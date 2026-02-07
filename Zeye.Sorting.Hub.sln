@@ -1,0 +1,102 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.36915.13 d17.14
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zeye.Sorting.Hub.Host", "Zeye.Sorting.Hub.Host\Zeye.Sorting.Hub.Host.csproj", "{5AB3E6C3-5649-4AFE-91F6-A51F5A442FCC}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Host", "Host", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Application", "Application", "{B96EA793-ECA1-4580-9A3C-381FA47DA3A9}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Domain", "Domain", "{5D165C96-1084-4F4A-9A4E-15B1EEB10DF7}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Infrastructure", "Infrastructure", "{567B4642-262B-4D8B-ACD2-013C4F4B49E9}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Contracts", "Contracts", "{A96252AE-1115-40E6-9A1E-B390058BD0E3}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Analytics", "Analytics", "{C687622A-A561-4050-B895-D1A043B90FEF}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "RuleEngine", "RuleEngine", "{245105FF-8369-4FB4-B1DB-E40831115A1C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zeye.Sorting.Hub.Analytics", "Zeye.Sorting.Hub.Analytics\Zeye.Sorting.Hub.Analytics.csproj", "{26C19706-A933-44B9-B567-8A8DB910AA10}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zeye.Sorting.Hub.Application", "Zeye.Sorting.Hub.Application\Zeye.Sorting.Hub.Application.csproj", "{0DFD13B2-B70A-4D46-9D04-E749FBB5F9E9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zeye.Sorting.Hub.Contracts", "Zeye.Sorting.Hub.Contracts\Zeye.Sorting.Hub.Contracts.csproj", "{73D1F164-F40D-4D33-85BE-4D7ADF0FBE16}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zeye.Sorting.Hub.Domain", "Zeye.Sorting.Hub.Domain\Zeye.Sorting.Hub.Domain.csproj", "{42380A32-8DE1-4C39-997C-53B7F1F8A4BA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zeye.Sorting.Hub.Infrastructure", "Zeye.Sorting.Hub.Infrastructure\Zeye.Sorting.Hub.Infrastructure.csproj", "{9DF34B8A-767E-4502-9D58-714CA082C1FE}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zeye.Sorting.Hub.RuleEngine", "Zeye.Sorting.Hub.RuleEngine\Zeye.Sorting.Hub.RuleEngine.csproj", "{ABB53061-4301-4047-BC8B-F4ED2AD40C60}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Realtime", "Realtime", "{D08A1401-28F6-43CB-925B-828F27827B49}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zeye.Sorting.Hub.Realtime", "Zeye.Sorting.Hub.Realtime\Zeye.Sorting.Hub.Realtime.csproj", "{B76E97B5-00CC-4649-B90A-AED812EF7FFE}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "SharedKernel", "SharedKernel", "{3B2768A6-8666-45D5-8C0F-2C7533D63C82}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Zeye.Sorting.Hub.SharedKernel", "Zeye.Sorting.Hub.SharedKernel\Zeye.Sorting.Hub.SharedKernel.csproj", "{D8B7AFA6-1D10-4F6C-A166-8F85599F5DFE}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{5AB3E6C3-5649-4AFE-91F6-A51F5A442FCC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5AB3E6C3-5649-4AFE-91F6-A51F5A442FCC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5AB3E6C3-5649-4AFE-91F6-A51F5A442FCC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5AB3E6C3-5649-4AFE-91F6-A51F5A442FCC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{26C19706-A933-44B9-B567-8A8DB910AA10}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{26C19706-A933-44B9-B567-8A8DB910AA10}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{26C19706-A933-44B9-B567-8A8DB910AA10}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{26C19706-A933-44B9-B567-8A8DB910AA10}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0DFD13B2-B70A-4D46-9D04-E749FBB5F9E9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0DFD13B2-B70A-4D46-9D04-E749FBB5F9E9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0DFD13B2-B70A-4D46-9D04-E749FBB5F9E9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0DFD13B2-B70A-4D46-9D04-E749FBB5F9E9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{73D1F164-F40D-4D33-85BE-4D7ADF0FBE16}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{73D1F164-F40D-4D33-85BE-4D7ADF0FBE16}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{73D1F164-F40D-4D33-85BE-4D7ADF0FBE16}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{73D1F164-F40D-4D33-85BE-4D7ADF0FBE16}.Release|Any CPU.Build.0 = Release|Any CPU
+		{42380A32-8DE1-4C39-997C-53B7F1F8A4BA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{42380A32-8DE1-4C39-997C-53B7F1F8A4BA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{42380A32-8DE1-4C39-997C-53B7F1F8A4BA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{42380A32-8DE1-4C39-997C-53B7F1F8A4BA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9DF34B8A-767E-4502-9D58-714CA082C1FE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9DF34B8A-767E-4502-9D58-714CA082C1FE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9DF34B8A-767E-4502-9D58-714CA082C1FE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9DF34B8A-767E-4502-9D58-714CA082C1FE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{ABB53061-4301-4047-BC8B-F4ED2AD40C60}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{ABB53061-4301-4047-BC8B-F4ED2AD40C60}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{ABB53061-4301-4047-BC8B-F4ED2AD40C60}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{ABB53061-4301-4047-BC8B-F4ED2AD40C60}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B76E97B5-00CC-4649-B90A-AED812EF7FFE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B76E97B5-00CC-4649-B90A-AED812EF7FFE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B76E97B5-00CC-4649-B90A-AED812EF7FFE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B76E97B5-00CC-4649-B90A-AED812EF7FFE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D8B7AFA6-1D10-4F6C-A166-8F85599F5DFE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D8B7AFA6-1D10-4F6C-A166-8F85599F5DFE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D8B7AFA6-1D10-4F6C-A166-8F85599F5DFE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D8B7AFA6-1D10-4F6C-A166-8F85599F5DFE}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{5AB3E6C3-5649-4AFE-91F6-A51F5A442FCC} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
+		{26C19706-A933-44B9-B567-8A8DB910AA10} = {C687622A-A561-4050-B895-D1A043B90FEF}
+		{0DFD13B2-B70A-4D46-9D04-E749FBB5F9E9} = {B96EA793-ECA1-4580-9A3C-381FA47DA3A9}
+		{73D1F164-F40D-4D33-85BE-4D7ADF0FBE16} = {A96252AE-1115-40E6-9A1E-B390058BD0E3}
+		{42380A32-8DE1-4C39-997C-53B7F1F8A4BA} = {5D165C96-1084-4F4A-9A4E-15B1EEB10DF7}
+		{9DF34B8A-767E-4502-9D58-714CA082C1FE} = {567B4642-262B-4D8B-ACD2-013C4F4B49E9}
+		{ABB53061-4301-4047-BC8B-F4ED2AD40C60} = {245105FF-8369-4FB4-B1DB-E40831115A1C}
+		{B76E97B5-00CC-4649-B90A-AED812EF7FFE} = {D08A1401-28F6-43CB-925B-828F27827B49}
+		{D8B7AFA6-1D10-4F6C-A166-8F85599F5DFE} = {3B2768A6-8666-45D5-8C0F-2C7533D63C82}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {76443A22-8F56-4798-B976-2EC3E07AD18D}
+	EndGlobalSection
+EndGlobal
