@@ -13,6 +13,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Polly" Version="8.6.5" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Zeye.Sorting.Hub.Contracts\Zeye.Sorting.Hub.Contracts.csproj" />
   </ItemGroup>
 

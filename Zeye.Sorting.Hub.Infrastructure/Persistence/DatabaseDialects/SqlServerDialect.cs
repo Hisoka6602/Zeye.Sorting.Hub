@@ -6,6 +6,15 @@ using System.Collections.Generic;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
 
-    internal class SqlServerDialect {
+    /// <summary>
+    /// SQL Server 方言
+    /// </summary>
+    public sealed class SqlServerDialect : IDatabaseDialect {
+        public string ProviderName => "SQLServer";
+
+        public IReadOnlyList<string> GetOptionalBootstrapSql() => new[] {
+            ""
+            // 说明：按需补充
+        };
     }
 }

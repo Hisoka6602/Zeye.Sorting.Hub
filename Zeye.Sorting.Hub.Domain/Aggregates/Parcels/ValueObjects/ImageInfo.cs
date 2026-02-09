@@ -3,6 +3,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using Zeye.Sorting.Hub.Domain.Enums;
 
 namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
     /// <summary>

@@ -10,4 +10,9 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
   </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Zeye.Sorting.Hub.Domain\Zeye.Sorting.Hub.Domain.csproj" />
+    <ProjectReference Include="..\Zeye.Sorting.Hub.Infrastructure\Zeye.Sorting.Hub.Infrastructure.csproj" />
+  </ItemGroup>
 </Project>
