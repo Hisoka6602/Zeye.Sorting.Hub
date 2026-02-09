@@ -98,8 +98,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
             // 说明：
             // - 必填字段：用于统计与下游校验
             // - 注意：如需限制非负，可在 Domain 或数据库 Check 约束中实现（此处未添加）
-            builder.Property(x => x.PackageCount)
-                .HasColumnName("PackageCount")
+            builder.Property(x => x.ParcelCount)
+                .HasColumnName("ParcelCount")
                 .IsRequired();
 
             // ----------------------------

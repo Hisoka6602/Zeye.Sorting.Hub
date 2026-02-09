@@ -28,7 +28,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
         /// <summary>
         /// 当前集包中包裹数量
         /// </summary>
-        public int PackageCount { get; init; }
+        public int ParcelCount { get; init; }
 
         /// <summary>
         /// 集包完成时间

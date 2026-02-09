@@ -19,7 +19,7 @@ namespace Zeye.Sorting.Hub.Domain.Enums {
         /// 创建包裹
         /// </summary>
         [Description("创建包裹")]
-        CreatePackage = 1,
+        CreateParcel = 1,
 
         //发送目标格口信息
 
@@ -39,7 +39,7 @@ namespace Zeye.Sorting.Hub.Domain.Enums {
         /// 包裹异常信息通知
         /// </summary>
         [Description("包裹异常")]
-        PackageAbnormal = 5,
+        ParcelAbnormal = 5,
 
         //绑定小车
 

@@ -52,7 +52,7 @@ namespace Zeye.Sorting.Hub.Domain.Enums {
         /// 叠包
         /// </summary>
         [Description("叠包")]
-        Overlapping = 7,
+        MultipleParcels = 7,
 
         /// <summary>
         /// 锁格
