@@ -18,7 +18,7 @@ namespace Zeye.Sorting.Hub.Domain.Enums {
         /// <summary>
         /// 落格节点
         /// </summary>
-        [Description("Chute")]
+        [Description("落格")]
         Discharge = 1
     }
 }

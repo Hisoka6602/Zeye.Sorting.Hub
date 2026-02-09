@@ -39,7 +39,7 @@ namespace Zeye.Sorting.Hub.Domain.Enums {
         /// <summary>
         /// 落格不匹配
         /// </summary>
-        [Description("Chute 不匹配")]
+        [Description("落格不匹配")]
         ChuteMismatch = 5,
 
         /// <summary>
@@ -51,19 +51,19 @@ namespace Zeye.Sorting.Hub.Domain.Enums {
         /// <summary>
         /// 叠包
         /// </summary>
-        [Description("Multiple parcels")]
+        [Description("叠包")]
         MultipleParcels = 7,
 
         /// <summary>
         /// 锁格
         /// </summary>
-        [Description("Locked Chute")]
+        [Description("锁格")]
         LockedChute = 8,
 
         /// <summary>
         /// 落格失败
         /// </summary>
-        [Description("Chute 失败")]
+        [Description("落格失败")]
         DischargeFailure = 9,
 
         /// <summary>

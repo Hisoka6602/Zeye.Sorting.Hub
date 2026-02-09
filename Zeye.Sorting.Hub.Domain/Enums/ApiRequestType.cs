@@ -15,25 +15,25 @@ namespace Zeye.Sorting.Hub.Domain.Enums {
         /// <summary>
         /// 请求格口（获取可用格口编号）
         /// </summary>
-        [Description("Request Chute")]
+        [Description("请求格口")]
         RequestChute = 0,
 
         /// <summary>
         /// 锁格（锁定指定格口）
         /// </summary>
-        [Description("Lock Chute")]
+        [Description("锁格")]
         LockChute = 1,
 
         /// <summary>
         /// 解锁（释放已锁定格口）
         /// </summary>
-        [Description("Unlock Chute")]
+        [Description("解锁")]
         UnlockChute = 2,
 
         /// <summary>
         /// 上报包裹落格结果（分拣完成后的状态报告）
         /// </summary>
-        [Description("Chute 报告")]
+        [Description("落格报告")]
         DischargeReport = 3,
 
         /// <summary>
@@ -69,13 +69,13 @@ namespace Zeye.Sorting.Hub.Domain.Enums {
         /// <summary>
         /// 齐格
         /// </summary>
-        [Description("Align Chute")]
+        [Description("齐格")]
         AlignChute = 9,
 
         /// <summary>
         /// 格口切换（切换目标格口编号）
         /// </summary>
-        [Description("Chute 切换")]
+        [Description("格口切换")]
         SwitchChute = 10,
 
         /// <summary>
