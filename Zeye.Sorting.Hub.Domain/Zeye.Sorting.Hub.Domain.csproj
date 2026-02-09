@@ -7,13 +7,13 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Folder Include="Entities\" />
-    <Folder Include="ValueObjects\" />
     <Folder Include="Projections\" />
     <Folder Include="Attributes\" />
-    <Folder Include="Repositories\" />
-    <Folder Include="Aggregates\" />
     <Folder Include="Options\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Zeye.Sorting.Hub.Contracts\Zeye.Sorting.Hub.Contracts.csproj" />
   </ItemGroup>
 
 </Project>

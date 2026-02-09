@@ -11,6 +11,7 @@
     <Folder Include="DTOs\Queries\" />
     <Folder Include="Validators\" />
     <Folder Include="Services\" />
+    <Folder Include="Notifications\" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,402 @@
+﻿using System;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Collections.Generic;
+using Zeye.Sorting.Hub.Domain.Enums;
+using Zeye.Sorting.Hub.Domain.Primitives;
+using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects;
+
+namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
+
+    /// <summary>
+    /// 包裹实体（领域层聚合根）
+    /// 说明：
+    /// 1) 仅包含领域语义与状态，不包含任何 EF Core 映射特性
+    /// 2) 持久化映射（表名、列名、索引、关系）应在 Infrastructure/EntityConfigurations 中完成
+    /// </summary>
+    public sealed class Parcel : AuditableEntity {
+
+        /// <summary>
+        /// 包裹时间戳
+        /// </summary>
+        public long ParcelTimestamp { get; private set; }
+
+        /// <summary>
+        /// 包裹类型（例如普通、异常、大件等）
+        /// </summary>
+        public ParcelType Type { get; private set; } = ParcelType.Normal;
+
+        /// <summary>
+        /// 包裹状态（例如待处理、已分拣、异常等）
+        /// </summary>
+        public ParcelStatus Status { get; private set; }
+
+        /// <summary>
+        /// NoRead 类型
+        /// </summary>
+        public NoReadType NoReadType { get; private set; } = NoReadType.None;
+
+        /// <summary>
+        /// 小车编号（可选）
+        /// </summary>
+        public int? SorterCarrierId { get; private set; }
+
+        /// <summary>
+        /// 三段码
+        /// </summary>
+        public string? SegmentCodes { get; private set; }
+
+        /// <summary>
+        /// 包裹生命周期（毫秒）
+        /// </summary>
+        public long? LifecycleMilliseconds { get; private set; }
+
+        /// <summary>
+        /// 实际落格 Id
+        /// </summary>
+        public long TargetChuteId { get; private set; }
+
+        /// <summary>
+        /// 理论落格 Id
+        /// </summary>
+        public long ActualChuteId { get; private set; }
+
+        /// <summary>
+        /// 条码（主条码）
+        /// </summary>
+        public string BarCodes { get; private set; } = string.Empty;
+
+        /// <summary>
+        /// 重量
+        /// </summary>
+        public decimal Weight { get; private set; }
+
+        /// <summary>
+        /// 外部接口访问状态
+        /// </summary>
+        public ApiRequestStatus RequestStatus { get; private set; }
+
+        /// <summary>
+        /// 集包号
+        /// </summary>
+        public string BagCode { get; private set; } = string.Empty;
+
+        /// <summary>
+        /// 工作台
+        /// </summary>
+        public string WorkstationName { get; private set; } = string.Empty;
+
+        /// <summary>
+        /// 是否叠包
+        /// </summary>
+        public bool IsStacked { get; private set; }
+
+        /// <summary>
+        /// 长度
+        /// </summary>
+        public decimal Length { get; private set; }
+
+        /// <summary>
+        /// 宽度
+        /// </summary>
+        public decimal Width { get; private set; }
+
+        /// <summary>
+        /// 高度
+        /// </summary>
+        public decimal Height { get; private set; }
+
+        /// <summary>
+        /// 体积
+        /// </summary>
+        public decimal Volume { get; private set; }
+
+        /// <summary>
+        /// 扫码时间
+        /// </summary>
+        public DateTime ScannedTime { get; private set; }
+
+        /// <summary>
+        /// 落格时间
+        /// </summary>
+        public DateTime DischargeTime { get; private set; }
+
+        /// <summary>
+        /// 包裹完结时间（生命周期结束时间点）
+        /// </summary>
+        public DateTime? CompletedTime { get; private set; }
+
+        /// <summary>
+        /// 是否有图片
+        /// </summary>
+        public bool HasImages { get; private set; }
+
+        /// <summary>
+        /// 是否有视频
+        /// </summary>
+        public bool HasVideos { get; private set; }
+
+        /// <summary>
+        /// 包裹坐标位置（原始字符串表达）
+        /// </summary>
+        public string Coordinate { get; private set; } = string.Empty;
+
+        // ------------------------------
+        // 关联信息（领域层不使用 virtual，避免把 ORM 行为混入领域模型）
+        // 建议仅暴露只读集合，并通过方法维护一致性
+        // ------------------------------
+
+        private readonly List<BarCodeInfo> _barCodeInfos = new();
+        public IReadOnlyList<BarCodeInfo> BarCodeInfos => _barCodeInfos;
+
+        private readonly List<WeightInfo> _weightInfos = new();
+        public IReadOnlyList<WeightInfo> WeightInfos => _weightInfos;
+
+        public VolumeInfo? VolumeInfo { get; private set; }
+
+        private readonly List<ApiRequestInfo> _apiRequests = new();
+        public IReadOnlyList<ApiRequestInfo> ApiRequests => _apiRequests;
+
+        public ChuteInfo? ChuteInfo { get; private set; }
+
+        private readonly List<CommandInfo> _commandInfos = new();
+        public IReadOnlyList<CommandInfo> CommandInfos => _commandInfos;
+
+        private readonly List<ImageInfo> _imageInfos = new();
+        public IReadOnlyList<ImageInfo> ImageInfos => _imageInfos;
+
+        private readonly List<VideoInfo> _videoInfos = new();
+        public IReadOnlyList<VideoInfo> VideoInfos => _videoInfos;
+
+        public SorterCarrierInfo? SorterCarrierInfo { get; private set; }
+
+        public BagInfo? BagInfo { get; private set; }
+
+        public ParcelDeviceInfo? DeviceInfo { get; private set; }
+
+        public GrayDetectorInfo? GrayDetectorInfo { get; private set; }
+
+        public StackedParcelInfo? StackedParcelInfo { get; private set; }
+
+        public ParcelPositionInfo? ParcelPositionInfo { get; private set; }
+
+        private Parcel() {
+            // 说明：保留无参构造，便于持久化层（如 EF Core）构造实体
+        }
+
+        /// <summary>
+        /// 创建包裹（领域工厂方法）
+        /// </summary>
+        public static Parcel Create(
+            long parcelTimestamp,
+            ParcelType type,
+            string barCodes,
+            decimal weight,
+            string workstationName,
+            DateTime scannedTime,
+            DateTime dischargeTime,
+            long targetChuteId,
+            long actualChuteId,
+            ApiRequestStatus requestStatus,
+            string bagCode,
+            bool isStacked,
+            decimal length,
+            decimal width,
+            decimal height,
+            decimal volume,
+            bool hasImages,
+            bool hasVideos,
+            string coordinate,
+            NoReadType noReadType = NoReadType.None,
+            int? sorterCarrierId = null,
+            string? segmentCodes = null,
+            long? lifecycleMilliseconds = null) {
+            if (parcelTimestamp <= 0) {
+                throw new ArgumentOutOfRangeException(nameof(parcelTimestamp), "包裹时间戳必须大于 0");
+            }
+
+            if (string.IsNullOrWhiteSpace(barCodes)) {
+                throw new ArgumentException("条码不能为空", nameof(barCodes));
+            }
+
+            if (string.IsNullOrWhiteSpace(workstationName)) {
+                throw new ArgumentException("工作台不能为空", nameof(workstationName));
+            }
+
+            if (targetChuteId <= 0) {
+                throw new ArgumentOutOfRangeException(nameof(targetChuteId), "实际落格 Id 必须大于 0");
+            }
+
+            if (actualChuteId <= 0) {
+                throw new ArgumentOutOfRangeException(nameof(actualChuteId), "理论落格 Id 必须大于 0");
+            }
+
+            var entity = new Parcel {
+                ParcelTimestamp = parcelTimestamp,
+                Type = type,
+                Status = ParcelStatus.Pending,
+                NoReadType = noReadType,
+                SorterCarrierId = sorterCarrierId,
+                SegmentCodes = segmentCodes,
+                LifecycleMilliseconds = lifecycleMilliseconds,
+                TargetChuteId = targetChuteId,
+                ActualChuteId = actualChuteId,
+                BarCodes = barCodes.Trim(),
+                Weight = weight,
+                RequestStatus = requestStatus,
+                BagCode = bagCode ?? string.Empty,
+                WorkstationName = workstationName.Trim(),
+                IsStacked = isStacked,
+                Length = length,
+                Width = width,
+                Height = height,
+                Volume = volume,
+                ScannedTime = scannedTime,
+                DischargeTime = dischargeTime,
+                HasImages = hasImages,
+                HasVideos = hasVideos,
+                Coordinate = coordinate ?? string.Empty,
+            };
+
+            return entity;
+        }
+
+        /// <summary>
+        /// 标记包裹完结
+        /// </summary>
+        public void MarkCompleted(DateTime completedTime) {
+            CompletedTime = completedTime;
+            Status = ParcelStatus.Completed;
+        }
+
+        /// <summary>
+        /// 更新外部接口访问状态
+        /// </summary>
+        public void UpdateRequestStatus(ApiRequestStatus requestStatus) {
+            RequestStatus = requestStatus;
+        }
+
+        /// <summary>
+        /// 追加条码明细
+        /// </summary>
+        public void AddBarCodeInfo(BarCodeInfo info) {
+            if (info is null) {
+                throw new ArgumentNullException(nameof(info), "条码明细不能为空");
+            }
+
+            _barCodeInfos.Add(info);
+        }
+
+        /// <summary>
+        /// 追加称重明细
+        /// </summary>
+        public void AddWeightInfo(WeightInfo info) {
+            if (info is null) {
+                throw new ArgumentNullException(nameof(info), "称重明细不能为空");
+            }
+
+            _weightInfos.Add(info);
+        }
+
+        /// <summary>
+        /// 设置体积信息
+        /// </summary>
+        public void SetVolumeInfo(VolumeInfo info) {
+            VolumeInfo = info ?? throw new ArgumentNullException(nameof(info), "体积信息不能为空");
+        }
+
+        /// <summary>
+        /// 追加接口请求信息
+        /// </summary>
+        public void AddApiRequest(ApiRequestInfo info) {
+            if (info is null) {
+                throw new ArgumentNullException(nameof(info), "接口请求信息不能为空");
+            }
+
+            _apiRequests.Add(info);
+        }
+
+        /// <summary>
+        /// 设置格口信息
+        /// </summary>
+        public void SetChuteInfo(ChuteInfo info) {
+            ChuteInfo = info ?? throw new ArgumentNullException(nameof(info), "格口信息不能为空");
+        }
+
+        /// <summary>
+        /// 追加通信指令信息
+        /// </summary>
+        public void AddCommandInfo(CommandInfo info) {
+            if (info is null) {
+                throw new ArgumentNullException(nameof(info), "通信指令信息不能为空");
+            }
+
+            _commandInfos.Add(info);
+        }
+
+        /// <summary>
+        /// 追加图片信息
+        /// </summary>
+        public void AddImageInfo(ImageInfo info) {
+            if (info is null) {
+                throw new ArgumentNullException(nameof(info), "图片信息不能为空");
+            }
+
+            _imageInfos.Add(info);
+        }
+
+        /// <summary>
+        /// 追加视频信息
+        /// </summary>
+        public void AddVideoInfo(VideoInfo info) {
+            if (info is null) {
+                throw new ArgumentNullException(nameof(info), "视频信息不能为空");
+            }
+
+            _videoInfos.Add(info);
+        }
+
+        /// <summary>
+        /// 设置小车信息
+        /// </summary>
+        public void SetSorterCarrierInfo(SorterCarrierInfo info) {
+            SorterCarrierInfo = info ?? throw new ArgumentNullException(nameof(info), "小车信息不能为空");
+        }
+
+        /// <summary>
+        /// 设置集包信息
+        /// </summary>
+        public void SetBagInfo(BagInfo info) {
+            BagInfo = info ?? throw new ArgumentNullException(nameof(info), "集包信息不能为空");
+        }
+
+        /// <summary>
+        /// 设置设备信息
+        /// </summary>
+        public void SetDeviceInfo(ParcelDeviceInfo info) {
+            DeviceInfo = info ?? throw new ArgumentNullException(nameof(info), "设备信息不能为空");
+        }
+
+        /// <summary>
+        /// 设置灰度仪判断信息
+        /// </summary>
+        public void SetGrayDetectorInfo(GrayDetectorInfo info) {
+            GrayDetectorInfo = info ?? throw new ArgumentNullException(nameof(info), "灰度仪判断信息不能为空");
+        }
+
+        /// <summary>
+        /// 设置除叠仪判断信息
+        /// </summary>
+        public void SetStackedParcelInfo(StackedParcelInfo info) {
+            StackedParcelInfo = info ?? throw new ArgumentNullException(nameof(info), "除叠仪判断信息不能为空");
+        }
+
+        /// <summary>
+        /// 设置包裹坐标信息
+        /// </summary>
+        public void SetParcelPositionInfo(ParcelPositionInfo info) {
+            ParcelPositionInfo = info ?? throw new ArgumentNullException(nameof(info), "包裹坐标信息不能为空");
+        }
+    }
+}
