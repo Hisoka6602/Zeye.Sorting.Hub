@@ -15,19 +15,19 @@ namespace Zeye.Sorting.Hub.Domain.Enums {
         /// <summary>
         /// 请求 Chute（获取可用 Chute 编号）
         /// </summary>
-        [Description("请求 Chute")]
+        [Description("Request Chute")]
         RequestChute = 0,
 
         /// <summary>
         /// 锁 Chute（锁定指定 Chute）
         /// </summary>
-        [Description("锁 Chute")]
+        [Description("Lock Chute")]
         LockChute = 1,
 
         /// <summary>
         /// 解锁（释放已锁定 Chute）
         /// </summary>
-        [Description("解锁 Chute")]
+        [Description("Unlock Chute")]
         UnlockChute = 2,
 
         /// <summary>
@@ -69,7 +69,7 @@ namespace Zeye.Sorting.Hub.Domain.Enums {
         /// <summary>
         /// 齐 Chute
         /// </summary>
-        [Description("齐 Chute")]
+        [Description("Align Chute")]
         AlignChute = 9,
 
         /// <summary>

@@ -57,7 +57,7 @@ namespace Zeye.Sorting.Hub.Domain.Enums {
         /// <summary>
         /// 锁 Chute
         /// </summary>
-        [Description("锁 Chute")]
+        [Description("Locked Chute")]
         LockedChute = 8,
 
         /// <summary>

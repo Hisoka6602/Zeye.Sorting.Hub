@@ -64,13 +64,13 @@ namespace Zeye.Sorting.Hub.Domain.Enums {
         /// <summary>
         /// 锁 Chute 操作
         /// </summary>
-        [Description("锁 Chute")]
+        [Description("Lock Chute")]
         LockChute = 15,
 
         /// <summary>
         /// 解锁 Chute 操作
         /// </summary>
-        [Description("解锁 Chute")]
+        [Description("Unlock Chute")]
         UnlockChute = 16,
     }
 }
