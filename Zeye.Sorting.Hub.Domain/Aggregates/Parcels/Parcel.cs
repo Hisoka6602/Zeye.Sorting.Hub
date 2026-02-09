@@ -38,7 +38,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         public NoReadType NoReadType { get; private set; } = NoReadType.None;
 
         /// <summary>
-        /// 小车编号（可选）
+        /// SorterCarrier 编号（可选）
         /// </summary>
         public int? SorterCarrierId { get; private set; }
 
@@ -53,12 +53,12 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         public long? LifecycleMilliseconds { get; private set; }
 
         /// <summary>
-        /// 实际落格 Id
+        /// 实际 Chute Id
         /// </summary>
         public long TargetChuteId { get; private set; }
 
         /// <summary>
-        /// 理论落格 Id
+        /// 理论 Chute Id
         /// </summary>
         public long ActualChuteId { get; private set; }
 
@@ -88,9 +88,9 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         public string WorkstationName { get; private set; } = string.Empty;
 
         /// <summary>
-        /// 是否叠包
+        /// 是否 Sticking
         /// </summary>
-        public bool IsStacked { get; private set; }
+        public bool IsSticking { get; private set; }
 
         /// <summary>
         /// 长度
@@ -118,7 +118,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         public DateTime ScannedTime { get; private set; }
 
         /// <summary>
-        /// 落格时间
+        /// Chute 时间
         /// </summary>
         public DateTime DischargeTime { get; private set; }
 
@@ -177,7 +177,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
 
         public GrayDetectorInfo? GrayDetectorInfo { get; private set; }
 
-        public StackedParcelInfo? StackedParcelInfo { get; private set; }
+        public StickingParcelInfo? StickingParcelInfo { get; private set; }
 
         public ParcelPositionInfo? ParcelPositionInfo { get; private set; }
 
@@ -200,7 +200,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
             long actualChuteId,
             ApiRequestStatus requestStatus,
             string bagCode,
-            bool isStacked,
+            bool isSticking,
             decimal length,
             decimal width,
             decimal height,
@@ -225,11 +225,11 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
             }
 
             if (targetChuteId <= 0) {
-                throw new ArgumentOutOfRangeException(nameof(targetChuteId), "实际落格 Id 必须大于 0");
+                throw new ArgumentOutOfRangeException(nameof(targetChuteId), "实际 Chute Id 必须大于 0");
             }
 
             if (actualChuteId <= 0) {
-                throw new ArgumentOutOfRangeException(nameof(actualChuteId), "理论落格 Id 必须大于 0");
+                throw new ArgumentOutOfRangeException(nameof(actualChuteId), "理论 Chute Id 必须大于 0");
             }
 
             var entity = new Parcel {
@@ -247,7 +247,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
                 RequestStatus = requestStatus,
                 BagCode = bagCode ?? string.Empty,
                 WorkstationName = workstationName.Trim(),
-                IsStacked = isStacked,
+                IsSticking = isSticking,
                 Length = length,
                 Width = width,
                 Height = height,
@@ -318,10 +318,10 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         }
 
         /// <summary>
-        /// 设置格口信息
+        /// 设置 Chute 信息
         /// </summary>
         public void SetChuteInfo(ChuteInfo info) {
-            ChuteInfo = info ?? throw new ArgumentNullException(nameof(info), "格口信息不能为空");
+            ChuteInfo = info ?? throw new ArgumentNullException(nameof(info), "Chute 信息不能为空");
         }
 
         /// <summary>
@@ -358,10 +358,10 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         }
 
         /// <summary>
-        /// 设置小车信息
+        /// 设置 SorterCarrier 信息
         /// </summary>
         public void SetSorterCarrierInfo(SorterCarrierInfo info) {
-            SorterCarrierInfo = info ?? throw new ArgumentNullException(nameof(info), "小车信息不能为空");
+            SorterCarrierInfo = info ?? throw new ArgumentNullException(nameof(info), "SorterCarrier 信息不能为空");
         }
 
         /// <summary>
@@ -386,10 +386,10 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         }
 
         /// <summary>
-        /// 设置除叠仪判断信息
+        /// 设置 Sticking 判断信息
         /// </summary>
-        public void SetStackedParcelInfo(StackedParcelInfo info) {
-            StackedParcelInfo = info ?? throw new ArgumentNullException(nameof(info), "除叠仪判断信息不能为空");
+        public void SetStickingParcelInfo(StickingParcelInfo info) {
+            StickingParcelInfo = info ?? throw new ArgumentNullException(nameof(info), "Sticking 判断信息不能为空");
         }
 
         /// <summary>

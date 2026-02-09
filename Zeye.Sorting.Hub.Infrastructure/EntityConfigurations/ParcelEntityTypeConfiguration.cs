@@ -118,8 +118,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
                 .HasMaxLength(MaxCode128)
                 .IsRequired();
 
-            builder.Property(x => x.IsStacked)
-                .HasColumnName("IsStacked")
+            builder.Property(x => x.IsSticking)
+                .HasColumnName("IsSticking")
                 .IsRequired();
 
             builder.Property(x => x.Length)
@@ -294,14 +294,14 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
                 b.HasIndex("CarrierNumber");
             });
 
-            builder.OwnsOne(x => x.StackedParcelInfo, b => {
-                b.ToTable("Parcel_StackedParcelInfos", SchemaDbo);
+            builder.OwnsOne(x => x.StickingParcelInfo, b => {
+                b.ToTable("Parcel_StickingParcelInfos", SchemaDbo);
                 b.WithOwner().HasForeignKey("ParcelId");
 
                 b.Property<long>("Id").ValueGeneratedOnAdd();
                 b.HasKey("Id");
 
-                b.Property(x => x.IsStacked).HasColumnName("IsStacked").IsRequired();
+                b.Property(x => x.IsSticking).HasColumnName("IsSticking").IsRequired();
                 b.Property(x => x.ReceiveTime).HasColumnName("ReceiveTime");
                 b.Property(x => x.RawData).HasColumnName("RawData").HasMaxLength(MaxText2048);
                 b.Property(x => x.ElapsedMilliseconds).HasColumnName("ElapsedMilliseconds");

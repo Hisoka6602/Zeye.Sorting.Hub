@@ -40,12 +40,12 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
         public required DateTime GeneratedTime { get; init; }
 
         /// <summary>
-        /// 指令作用类型（如落格控制、锁格、灯控等）
+        /// 指令作用类型（如 Chute 控制、锁 Chute、灯控等）
         /// </summary>
         public required ActionType ActionType { get; init; }
 
         /// <summary>
-        /// 格式化说明（如“锁定目标格口 A12，超时30秒”）
+        /// 格式化说明（如“锁定目标 Chute A12，超时30秒”）
         /// </summary>
         public string FormattedMessage { get; init; } = string.Empty;
 

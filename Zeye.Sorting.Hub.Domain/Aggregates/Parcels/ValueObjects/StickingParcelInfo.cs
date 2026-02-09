@@ -6,14 +6,14 @@ using System.Collections.Generic;
 
 namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
     /// <summary>
-    /// 叠包信息（值对象）
-    /// 说明：用于记录叠包判断结果与原始返回数据
+    /// Sticking 信息（值对象）
+    /// 说明：用于记录 Sticking 判断结果与原始返回数据
     /// </summary>
-    public sealed record class StackedParcelInfo {
+    public sealed record class StickingParcelInfo {
         /// <summary>
-        /// 是否叠包（true=存在叠包，false=无叠包）
+        /// 是否 Sticking（true=存在 Sticking，false=无 Sticking）
         /// </summary>
-        public required bool IsStacked { get; init; }
+        public required bool IsSticking { get; init; }
 
         /// <summary>
         /// 判断结果接收时间（系统接收判断结果的时间点）

@@ -7,16 +7,16 @@ using System.Collections.Generic;
 namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
     /// <summary>
     /// 集包信息（值对象）
-    /// 说明：每个格口对应一个 Bag
+    /// 说明：每个 Chute 对应一个 Bag
     /// </summary>
     public sealed record class BagInfo {
         /// <summary>
-        /// 格口 Id（对应目标格口编号）
+        /// Chute Id（对应目标 Chute 编号）
         /// </summary>
         public required long ChuteId { get; init; }
 
         /// <summary>
-        /// 格口名称（例如 A01、B12，可用于界面展示）
+        /// Chute 名称（例如 A01、B12，可用于界面展示）
         /// </summary>
         public required string ChuteName { get; init; }
 
@@ -26,9 +26,9 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
         public required string BagCode { get; init; }
 
         /// <summary>
-        /// 当前集包中包裹数量
+        /// 当前集包中 Parcel 数量
         /// </summary>
-        public int PackageCount { get; init; }
+        public int ParcelCount { get; init; }
 
         /// <summary>
         /// 集包完成时间

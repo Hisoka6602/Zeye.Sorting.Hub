@@ -14,7 +14,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
     /// </summary>
     public sealed record class ApiRequestInfo {
         /// <summary>
-        /// 接口类型（请求格口、锁格、解锁、落格报告、推送图片、扫描等）
+        /// 接口类型（请求 Chute、锁 Chute、解锁 Chute、Chute 报告、推送图片、扫描等）
         /// </summary>
         public required ApiRequestType ApiType { get; init; }
 

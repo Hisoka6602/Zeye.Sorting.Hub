@@ -37,9 +37,9 @@ namespace Zeye.Sorting.Hub.Domain.Enums {
         DwsTimeout = 3,
 
         /// <summary>
-        /// 落格不匹配
+        /// Chute 不匹配
         /// </summary>
-        [Description("落格不匹配")]
+        [Description("Chute 不匹配")]
         ChuteMismatch = 5,
 
         /// <summary>
@@ -49,21 +49,21 @@ namespace Zeye.Sorting.Hub.Domain.Enums {
         SpeedMismatch = 6,
 
         /// <summary>
-        /// 叠包
+        /// Multiple parcels
         /// </summary>
-        [Description("叠包")]
-        Overlapping = 7,
+        [Description("Multiple parcels")]
+        MultipleParcels = 7,
 
         /// <summary>
-        /// 锁格
+        /// 锁 Chute
         /// </summary>
-        [Description("锁格")]
+        [Description("锁 Chute")]
         LockedChute = 8,
 
         /// <summary>
-        /// 落格失败
+        /// Chute 失败
         /// </summary>
-        [Description("落格失败")]
+        [Description("Chute 失败")]
         DischargeFailure = 9,
 
         /// <summary>
