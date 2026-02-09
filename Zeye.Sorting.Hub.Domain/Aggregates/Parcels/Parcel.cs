@@ -38,7 +38,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         public NoReadType NoReadType { get; private set; } = NoReadType.None;
 
         /// <summary>
-        /// SorterCarrier 编号（可选）
+        /// 小车编号（可选）
         /// </summary>
         public int? SorterCarrierId { get; private set; }
 
@@ -53,12 +53,12 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         public long? LifecycleMilliseconds { get; private set; }
 
         /// <summary>
-        /// 实际 Chute Id
+        /// 实际落格 Id
         /// </summary>
         public long TargetChuteId { get; private set; }
 
         /// <summary>
-        /// 理论 Chute Id
+        /// 理论落格 Id
         /// </summary>
         public long ActualChuteId { get; private set; }
 
@@ -88,7 +88,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         public string WorkstationName { get; private set; } = string.Empty;
 
         /// <summary>
-        /// 是否 Sticking
+        /// 是否叠包
         /// </summary>
         public bool IsSticking { get; private set; }
 
@@ -118,7 +118,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         public DateTime ScannedTime { get; private set; }
 
         /// <summary>
-        /// Chute 时间
+        /// 落格时间
         /// </summary>
         public DateTime DischargeTime { get; private set; }
 
@@ -318,7 +318,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         }
 
         /// <summary>
-        /// 设置 Chute 信息
+        /// 设置格口信息
         /// </summary>
         public void SetChuteInfo(ChuteInfo info) {
             ChuteInfo = info ?? throw new ArgumentNullException(nameof(info), "Chute 信息不能为空");
@@ -358,7 +358,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         }
 
         /// <summary>
-        /// 设置 SorterCarrier 信息
+        /// 设置小车信息
         /// </summary>
         public void SetSorterCarrierInfo(SorterCarrierInfo info) {
             SorterCarrierInfo = info ?? throw new ArgumentNullException(nameof(info), "SorterCarrier 信息不能为空");
@@ -386,7 +386,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         }
 
         /// <summary>
-        /// 设置 Sticking 判断信息
+        /// 设置除叠仪判断信息
         /// </summary>
         public void SetStickingParcelInfo(StickingParcelInfo info) {
             StickingParcelInfo = info ?? throw new ArgumentNullException(nameof(info), "Sticking 判断信息不能为空");

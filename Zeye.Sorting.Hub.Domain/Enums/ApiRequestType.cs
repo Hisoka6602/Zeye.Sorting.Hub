@@ -13,25 +13,25 @@ namespace Zeye.Sorting.Hub.Domain.Enums {
     public enum ApiRequestType {
 
         /// <summary>
-        /// 请求 Chute（获取可用 Chute 编号）
+        /// 请求格口（获取可用格口编号）
         /// </summary>
         [Description("Request Chute")]
         RequestChute = 0,
 
         /// <summary>
-        /// 锁 Chute（锁定指定 Chute）
+        /// 锁格（锁定指定格口）
         /// </summary>
         [Description("Lock Chute")]
         LockChute = 1,
 
         /// <summary>
-        /// 解锁（释放已锁定 Chute）
+        /// 解锁（释放已锁定格口）
         /// </summary>
         [Description("Unlock Chute")]
         UnlockChute = 2,
 
         /// <summary>
-        /// 上报 Parcel Chute 结果（分拣完成后的状态报告）
+        /// 上报包裹落格结果（分拣完成后的状态报告）
         /// </summary>
         [Description("Chute 报告")]
         DischargeReport = 3,
@@ -49,7 +49,7 @@ namespace Zeye.Sorting.Hub.Domain.Enums {
         ScanResult = 5,
 
         /// <summary>
-        /// 上报集包完成状态（某 Chute 已满或定时集包完成）
+        /// 上报集包完成状态（某格口已满或定时集包完成）
         /// </summary>
         [Description("集包报告")]
         GroupingReport = 6,
@@ -67,13 +67,13 @@ namespace Zeye.Sorting.Hub.Domain.Enums {
         QueryDeviceInfo = 8,
 
         /// <summary>
-        /// 齐 Chute
+        /// 齐格
         /// </summary>
         [Description("Align Chute")]
         AlignChute = 9,
 
         /// <summary>
-        /// Chute 切换（切换目标 Chute 编号）
+        /// 格口切换（切换目标格口编号）
         /// </summary>
         [Description("Chute 切换")]
         SwitchChute = 10,

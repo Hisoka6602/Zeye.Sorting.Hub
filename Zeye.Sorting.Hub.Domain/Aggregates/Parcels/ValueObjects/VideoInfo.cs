@@ -22,7 +22,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
         public required string NvrSerialNumber { get; init; }
 
         /// <summary>
-        /// 节点类型（如扫码节点、Chute 节点等）
+        /// 节点类型（如扫码节点、落格节点等）
         /// </summary>
         public required VideoNodeType NodeType { get; init; }
     }

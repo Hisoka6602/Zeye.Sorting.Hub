@@ -11,7 +11,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
     /// </summary>
     public sealed record class GrayDetectorInfo {
         /// <summary>
-        /// Carrier 编号
+        /// 小车编号
         /// </summary>
         public required string CarrierNumber { get; init; }
 
@@ -26,7 +26,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
         public string MainBoxInfo { get; init; } = string.Empty;
 
         /// <summary>
-        /// 联动 Carrier 数量
+        /// 联动小车数量
         /// </summary>
         public required int LinkedCarrierCount { get; init; }
 

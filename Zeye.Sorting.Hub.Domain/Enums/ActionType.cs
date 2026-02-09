@@ -16,15 +16,15 @@ namespace Zeye.Sorting.Hub.Domain.Enums {
         None = 0,
 
         /// <summary>
-        /// 创建 Parcel
+        /// 创建包裹
         /// </summary>
         [Description("创建 Parcel")]
         CreateParcel = 1,
 
-        //发送目标 Chute 信息
+        //发送目标格口信息
 
         /// <summary>
-        /// Chute 结果通知
+        /// 落格结果通知
         /// </summary>
         [Description("Chute 通知")]
         DischargeConfirmation = 3,
@@ -36,39 +36,39 @@ namespace Zeye.Sorting.Hub.Domain.Enums {
         Heartbeat = 4,
 
         /// <summary>
-        /// Parcel 异常信息通知
+        /// 包裹异常信息通知
         /// </summary>
         [Description("Parcel 异常")]
         ParcelAbnormal = 5,
 
-        //绑定 SorterCarrier
+        //绑定小车
 
         /// <summary>
-        /// Parcel 左移
+        /// 包裹左移
         /// </summary>
         [Description("Parcel 左移")]
         MoveLeft = 12,
 
         /// <summary>
-        /// Parcel 右移
+        /// 包裹右移
         /// </summary>
         [Description("Parcel 右移")]
         MoveRight = 13,
 
         /// <summary>
-        /// Parcel 居中
+        /// 包裹居中
         /// </summary>
         [Description("Parcel 居中")]
         MoveCenter = 14,
 
         /// <summary>
-        /// 锁 Chute 操作
+        /// 锁格操作
         /// </summary>
         [Description("Lock Chute")]
         LockChute = 15,
 
         /// <summary>
-        /// 解锁 Chute 操作
+        /// 解锁操作
         /// </summary>
         [Description("Unlock Chute")]
         UnlockChute = 16,
