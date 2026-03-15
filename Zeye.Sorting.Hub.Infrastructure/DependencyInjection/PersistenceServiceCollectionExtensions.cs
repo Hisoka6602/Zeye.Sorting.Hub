@@ -11,6 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 
 namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
@@ -57,6 +58,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             var minCommandElapsedMilliseconds = GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:MinCommandElapsedMilliseconds", 50);
             var parcelShardingStartTime = GetShardingStartTime(configuration);
 
+            services.AddSingleton<SlowQueryAutoTuningPipeline>();
+            services.AddSingleton<SlowQueryCommandInterceptor>();
+
             if (string.IsNullOrWhiteSpace(provider)) {
                 throw new InvalidOperationException("缺少配置：Persistence:Provider，可选值：MySql / SqlServer");
             }
@@ -70,6 +74,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 // DbContextPool：更低分配、更稳吞吐
                 services.AddDbContextPool<SortingHubDbContext>(static (sp, options) => {
                     var cfg = sp.GetRequiredService<IConfiguration>();
+                    var interceptor = sp.GetRequiredService<SlowQueryCommandInterceptor>();
                     var cs = cfg.GetConnectionString("MySql")!;
                     var commandTimeoutSeconds = GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
 
@@ -87,6 +92,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                     });
 
                     options.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
+                    options.AddInterceptors(interceptor);
 
                     // 开发环境建议开启，生产建议关闭
                     // options.EnableSensitiveDataLogging();
@@ -114,6 +120,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
 
                 services.AddDbContextPool<SortingHubDbContext>(static (sp, options) => {
                     var cfg = sp.GetRequiredService<IConfiguration>();
+                    var interceptor = sp.GetRequiredService<SlowQueryCommandInterceptor>();
                     var cs = cfg.GetConnectionString("SqlServer")!;
                     var commandTimeoutSeconds = GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
 
@@ -128,6 +135,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                     });
 
                     options.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
+                    options.AddInterceptors(interceptor);
                 });
 
                 services.AddEFCoreSharding(shardingBuilder => {

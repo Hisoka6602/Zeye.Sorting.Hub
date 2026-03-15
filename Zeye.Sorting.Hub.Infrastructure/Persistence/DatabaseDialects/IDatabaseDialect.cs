@@ -17,5 +17,12 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
         /// 初始化阶段可选 SQL（非关键，失败必须可降级）
         /// </summary>
         IReadOnlyList<string> GetOptionalBootstrapSql();
+
+        /// <summary>
+        /// 基于慢查询分析结果生成自动调谐动作 SQL（非关键，失败必须可降级）
+        /// </summary>
+        /// <param name="tableName">候选表名（已过标识符安全校验）。</param>
+        /// <param name="whereColumns">候选筛选列（已过标识符安全校验）。</param>
+        IReadOnlyList<string> BuildAutomaticTuningSql(string tableName, IReadOnlyList<string> whereColumns);
     }
 }
