@@ -7,12 +7,12 @@ using System.Collections.Generic;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
 
-    /// <summary>
-    /// SQL Server 方言
-    /// </summary>
+    /// <summary>SQL Server 方言</summary>
     public sealed class SqlServerDialect : IDatabaseDialect {
+        /// <summary>当前方言提供器名称。</summary>
         public string ProviderName => "SQLServer";
 
+        /// <summary>返回 SQL Server 可选初始化 SQL。</summary>
         public IReadOnlyList<string> GetOptionalBootstrapSql() => new[] {
             "ALTER DATABASE CURRENT SET QUERY_STORE = ON",
             "ALTER DATABASE CURRENT SET QUERY_STORE (OPERATION_MODE = READ_WRITE, QUERY_CAPTURE_MODE = AUTO)",
@@ -21,6 +21,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
             "ALTER DATABASE CURRENT SET AUTO_UPDATE_STATISTICS ON"
         };
 
+        /// <summary>根据慢查询 where 列生成 SQL Server 自动调优 SQL。</summary>
         public IReadOnlyList<string> BuildAutomaticTuningSql(string? schemaName, string tableName, IReadOnlyList<string> whereColumns) {
             if (whereColumns.Count == 0) {
                 return Array.Empty<string>();
@@ -57,10 +58,32 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
             };
         }
 
+        /// <summary>判断异常是否可被视为“已存在”并忽略。</summary>
         public bool ShouldIgnoreAutoTuningException(Exception exception) {
             return DatabaseProviderExceptionHelper.TryGetProviderErrorNumber(exception, out var errorNumber) && errorNumber == 1913;
         }
 
+        /// <summary>生成闭环自治维护 SQL（高峰/高风险仅执行轻量动作）。</summary>
+        public IReadOnlyList<string> BuildAutonomousMaintenanceSql(string? schemaName, string tableName, bool inPeakWindow, bool highRisk) {
+            if (string.IsNullOrWhiteSpace(tableName)) {
+                return Array.Empty<string>();
+            }
+
+            var normalizedSchemaName = schemaName?.Trim();
+            var normalizedTableName = tableName.Trim();
+            var escapedTable = string.IsNullOrWhiteSpace(normalizedSchemaName)
+                ? $"[{normalizedTableName}]"
+                : $"[{normalizedSchemaName}].[{normalizedTableName}]";
+            var updateStatisticsSql = $"UPDATE STATISTICS {escapedTable} WITH RESAMPLE";
+
+            if (inPeakWindow || highRisk) {
+                return new[] { updateStatisticsSql };
+            }
+
+            return new[] { updateStatisticsSql, $"ALTER INDEX ALL ON {escapedTable} REORGANIZE" };
+        }
+
+        /// <summary>构造长度受限且稳定的自动索引名称。</summary>
         private static string BuildIndexName(string? schemaName, string tableName, IReadOnlyList<string> columns, int maxLength) {
             var schemaPart = schemaName ?? string.Empty;
             var seed = $"{schemaPart}:{tableName}:{string.Join(",", columns)}";

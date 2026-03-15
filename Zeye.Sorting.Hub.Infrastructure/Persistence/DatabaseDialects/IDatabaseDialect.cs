@@ -30,5 +30,14 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
         /// 是否可忽略自动调谐动作异常（如“索引已存在”）
         /// </summary>
         bool ShouldIgnoreAutoTuningException(Exception exception);
+
+        /// <summary>
+        /// 闭环自治阶段：根据风险与时段生成数据库方言差异化维护动作（统计信息/索引维护）。
+        /// </summary>
+        /// <param name="schemaName">候选 schema 名；为空表示无 schema。</param>
+        /// <param name="tableName">候选表名（已过标识符安全校验）。</param>
+        /// <param name="inPeakWindow">是否处于业务高峰时段。</param>
+        /// <param name="highRisk">是否为高风险动作场景。</param>
+        IReadOnlyList<string> BuildAutonomousMaintenanceSql(string? schemaName, string tableName, bool inPeakWindow, bool highRisk);
     }
 }
