@@ -29,6 +29,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         private readonly int _maxSuggestionsPerCycle;
         private readonly int _maxQueueSize;
         private readonly int _aggregationTopN;
+        private readonly int _alertDebounceMinCallCount;
         private readonly int _alertP99Milliseconds;
         private readonly decimal _alertTimeoutRatePercent;
         private readonly int _alertDeadlockCount;
@@ -44,6 +45,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             _maxSuggestionsPerCycle = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:MaxActionsPerCycle", 3);
             _maxQueueSize = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:MaxQueueSize", 1000);
             _aggregationTopN = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:AggregationTopN", 10);
+            _alertDebounceMinCallCount = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:AlertDebounceMinCallCount", _triggerCount);
             _alertP99Milliseconds = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:AlertP99Milliseconds", 500);
             _alertTimeoutRatePercent = GetDecimalOrDefault(configuration, "Persistence:AutoTuning:AlertTimeoutRatePercent", 1m);
             _alertDeadlockCount = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:AlertDeadlockCount", 1);
@@ -103,6 +105,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                 .GroupBy(static q => q.SqlFingerprint)
                 .Select(group => BuildMetric(group.Key, group))
                 .OrderByDescending(static x => x.P99Milliseconds)
+                .ThenByDescending(static x => x.P95Milliseconds)
                 .ThenByDescending(static x => x.CallCount)
                 .Take(_aggregationTopN)
                 .ToList();
@@ -184,16 +187,20 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         private IReadOnlyList<string> BuildAlerts(IReadOnlyList<SlowQueryMetric> groups) {
             var alerts = new List<string>();
             foreach (var metric in groups) {
+                if (metric.CallCount < _alertDebounceMinCallCount) {
+                    continue;
+                }
+
                 if (metric.P99Milliseconds > _alertP99Milliseconds) {
-                    alerts.Add($"P99 超阈值：Fingerprint={metric.SqlFingerprint}, P99Ms={metric.P99Milliseconds:F2}, ThresholdMs={_alertP99Milliseconds}");
+                    alerts.Add($"P99 超阈值：Fingerprint={metric.SqlFingerprint}, Calls={metric.CallCount}, P99Ms={metric.P99Milliseconds:F2}, ThresholdMs={_alertP99Milliseconds}");
                 }
 
                 if (metric.TimeoutRatePercent > _alertTimeoutRatePercent) {
-                    alerts.Add($"超时率超阈值：Fingerprint={metric.SqlFingerprint}, TimeoutRatePercent={metric.TimeoutRatePercent:F2}, ThresholdPercent={_alertTimeoutRatePercent:F2}");
+                    alerts.Add($"超时率超阈值：Fingerprint={metric.SqlFingerprint}, Calls={metric.CallCount}, TimeoutRatePercent={metric.TimeoutRatePercent:F2}, ThresholdPercent={_alertTimeoutRatePercent:F2}");
                 }
 
                 if (metric.DeadlockCount >= _alertDeadlockCount) {
-                    alerts.Add($"死锁次数超阈值：Fingerprint={metric.SqlFingerprint}, DeadlockCount={metric.DeadlockCount}, Threshold={_alertDeadlockCount}");
+                    alerts.Add($"死锁次数超阈值：Fingerprint={metric.SqlFingerprint}, Calls={metric.CallCount}, DeadlockCount={metric.DeadlockCount}, Threshold={_alertDeadlockCount}");
                 }
             }
 
