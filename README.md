@@ -65,7 +65,7 @@
 │   └── Zeye.Sorting.Hub.Domain.csproj（Domain 项目定义）
 ├── Zeye.Sorting.Hub.Host（宿主层）
 │   ├── HostedServices（托管服务目录）
-│   │   ├── DatabaseAutoTuningHostedService.cs（数据库自动调谐托管服务（慢查询分析与自动动作执行））
+│   │   ├── DatabaseAutoTuningHostedService.cs（数据库自动调谐托管服务（慢查询分析、阈值告警、L2 可控执行与变更审计））
 │   │   └── DatabaseInitializerHostedService.cs（数据库初始化与迁移托管服务）
 │   ├── Program.cs（应用入口与 Host 构建流程）
 │   ├── Properties（运行调试属性目录）
@@ -83,7 +83,7 @@
 │   ├── Persistence（持久化核心目录）
 │   │   ├── AutoTuning（自动调谐核心目录）
 │   │   │   ├── MySqlSessionBootstrapConnectionInterceptor.cs（MySQL 连接会话初始化拦截器）
-│   │   │   ├── SlowQueryAutoTuningPipeline.cs（慢查询采集、分析与自动动作编排管道）
+│   │   │   ├── SlowQueryAutoTuningPipeline.cs（慢查询采集、TopN 聚合、阈值告警（含基础防抖）与 L2 结构化建议编排管道）
 │   │   │   ├── SlowQueryCommandInterceptor.cs（EF Core 慢查询采集拦截器）
 │   │   │   └── SlowQuerySample.cs（慢查询采样记录模型）
 │   │   ├── DatabaseDialects（数据库方言目录）
@@ -206,7 +206,7 @@
 - `appsettings.Development.json`：开发环境配置覆盖文件。
 
 #### `Zeye.Sorting.Hub.Host/HostedServices/`：启动/常驻托管服务目录
-- `DatabaseAutoTuningHostedService.cs`：数据库自动调谐托管服务（慢查询分析与自动动作执行）。
+- `DatabaseAutoTuningHostedService.cs`：数据库自动调谐托管服务（慢查询分析、阈值告警、L2 可控执行与变更审计）。
 - `DatabaseInitializerHostedService.cs`：数据库初始化与迁移托管服务。
 
 #### `Zeye.Sorting.Hub.Host/Properties/`：项目运行调试属性目录
@@ -233,7 +233,7 @@
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/`：自动调谐核心目录
 - `MySqlSessionBootstrapConnectionInterceptor.cs`：MySQL 连接会话初始化拦截器。
-- `SlowQueryAutoTuningPipeline.cs`：慢查询采集、分析与自动动作编排管道。
+- `SlowQueryAutoTuningPipeline.cs`：慢查询采集、TopN 聚合、阈值告警（含基础防抖）与 L2 结构化建议编排管道。
 - `SlowQueryCommandInterceptor.cs`：EF Core 慢查询采集拦截器。
 - `SlowQuerySample.cs`：慢查询采样记录模型。
 

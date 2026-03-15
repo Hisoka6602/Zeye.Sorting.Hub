@@ -29,6 +29,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         private readonly int _maxSuggestionsPerCycle;
         private readonly int _maxQueueSize;
         private readonly int _aggregationTopN;
+        private readonly int _alertDebounceMinCallCount;
         private readonly int _alertP99Milliseconds;
         private readonly decimal _alertTimeoutRatePercent;
         private readonly int _alertDeadlockCount;
@@ -44,6 +45,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             _maxSuggestionsPerCycle = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:MaxActionsPerCycle", 3);
             _maxQueueSize = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:MaxQueueSize", 1000);
             _aggregationTopN = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:AggregationTopN", 10);
+            _alertDebounceMinCallCount = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:AlertDebounceMinCallCount", _triggerCount);
             _alertP99Milliseconds = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:AlertP99Milliseconds", 500);
             _alertTimeoutRatePercent = GetDecimalOrDefault(configuration, "Persistence:AutoTuning:AlertTimeoutRatePercent", 1m);
             _alertDeadlockCount = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:AlertDeadlockCount", 1);
@@ -103,11 +105,13 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                 .GroupBy(static q => q.SqlFingerprint)
                 .Select(group => BuildMetric(group.Key, group))
                 .OrderByDescending(static x => x.P99Milliseconds)
+                .ThenByDescending(static x => x.P95Milliseconds)
                 .ThenByDescending(static x => x.CallCount)
                 .Take(_aggregationTopN)
                 .ToList();
 
-            var suggestions = BuildSuggestions(dialect, groups);
+            var tuningCandidates = BuildTuningCandidates(dialect, groups);
+            var suggestions = BuildReadOnlySuggestions(tuningCandidates);
             var alerts = BuildAlerts(groups);
             var now = DateTime.Now;
             var shouldEmitDailyReport = ShouldEmitDailyReport(now);
@@ -116,6 +120,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                 GeneratedTime: now,
                 DroppedSamples: GetDroppedCount(),
                 Metrics: groups,
+                TuningCandidates: tuningCandidates,
                 ReadOnlySuggestions: suggestions,
                 Alerts: alerts,
                 ShouldEmitDailyReport: shouldEmitDailyReport);
@@ -145,9 +150,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             return normalized.Length <= 512 ? normalized : normalized[..512];
         }
 
-        private IReadOnlyList<string> BuildSuggestions(IDatabaseDialect dialect, IReadOnlyList<SlowQueryMetric> groups) {
-            var suggestions = new List<string>();
+        private IReadOnlyList<SlowQueryTuningCandidate> BuildTuningCandidates(IDatabaseDialect dialect, IReadOnlyList<SlowQueryMetric> groups) {
+            var candidates = new List<SlowQueryTuningCandidate>();
             var existedSuggestions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var actionCount = 0;
 
             foreach (var metric in groups) {
                 if (metric.CallCount < _triggerCount) {
@@ -159,22 +165,44 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                 }
 
                 var dialectActions = dialect.BuildAutomaticTuningSql(schemaName, tableName, whereColumns);
+                var uniqueActions = new List<string>();
                 foreach (var action in dialectActions) {
                     if (string.IsNullOrWhiteSpace(action)) {
                         continue;
                     }
 
-                    if (suggestions.Count >= _maxSuggestionsPerCycle) {
+                    if (actionCount >= _maxSuggestionsPerCycle) {
                         break;
                     }
 
                     if (existedSuggestions.Add(action)) {
-                        suggestions.Add($"/*{AutoTuningMarker}_READ_ONLY*/ {action}");
+                        uniqueActions.Add(action);
+                        actionCount++;
                     }
                 }
 
-                if (suggestions.Count >= _maxSuggestionsPerCycle) {
+                if (uniqueActions.Count > 0) {
+                    candidates.Add(new SlowQueryTuningCandidate(
+                        SqlFingerprint: metric.SqlFingerprint,
+                        SchemaName: schemaName,
+                        TableName: tableName,
+                        WhereColumns: whereColumns,
+                        SuggestedActions: uniqueActions));
+                }
+
+                if (actionCount >= _maxSuggestionsPerCycle) {
                     break;
+                }
+            }
+
+            return candidates;
+        }
+
+        private static IReadOnlyList<string> BuildReadOnlySuggestions(IReadOnlyList<SlowQueryTuningCandidate> candidates) {
+            var suggestions = new List<string>();
+            foreach (var candidate in candidates) {
+                foreach (var action in candidate.SuggestedActions) {
+                    suggestions.Add($"/*{AutoTuningMarker}_READ_ONLY*/ {action}");
                 }
             }
 
@@ -184,16 +212,20 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         private IReadOnlyList<string> BuildAlerts(IReadOnlyList<SlowQueryMetric> groups) {
             var alerts = new List<string>();
             foreach (var metric in groups) {
+                if (metric.CallCount < _alertDebounceMinCallCount) {
+                    continue;
+                }
+
                 if (metric.P99Milliseconds > _alertP99Milliseconds) {
-                    alerts.Add($"P99 超阈值：Fingerprint={metric.SqlFingerprint}, P99Ms={metric.P99Milliseconds:F2}, ThresholdMs={_alertP99Milliseconds}");
+                    alerts.Add($"P99 超阈值：Fingerprint={metric.SqlFingerprint}, Calls={metric.CallCount}, P99Ms={metric.P99Milliseconds:F2}, ThresholdMs={_alertP99Milliseconds}");
                 }
 
                 if (metric.TimeoutRatePercent > _alertTimeoutRatePercent) {
-                    alerts.Add($"超时率超阈值：Fingerprint={metric.SqlFingerprint}, TimeoutRatePercent={metric.TimeoutRatePercent:F2}, ThresholdPercent={_alertTimeoutRatePercent:F2}");
+                    alerts.Add($"超时率超阈值：Fingerprint={metric.SqlFingerprint}, Calls={metric.CallCount}, TimeoutRatePercent={metric.TimeoutRatePercent:F2}, ThresholdPercent={_alertTimeoutRatePercent:F2}");
                 }
 
                 if (metric.DeadlockCount >= _alertDeadlockCount) {
-                    alerts.Add($"死锁次数超阈值：Fingerprint={metric.SqlFingerprint}, DeadlockCount={metric.DeadlockCount}, Threshold={_alertDeadlockCount}");
+                    alerts.Add($"死锁次数超阈值：Fingerprint={metric.SqlFingerprint}, Calls={metric.CallCount}, DeadlockCount={metric.DeadlockCount}, Threshold={_alertDeadlockCount}");
                 }
             }
 
@@ -392,6 +424,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         DateTime GeneratedTime,
         int DroppedSamples,
         IReadOnlyList<SlowQueryMetric> Metrics,
+        IReadOnlyList<SlowQueryTuningCandidate> TuningCandidates,
         IReadOnlyList<string> ReadOnlySuggestions,
         IReadOnlyList<string> Alerts,
         bool ShouldEmitDailyReport) {
@@ -399,8 +432,16 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             GeneratedTime: DateTime.Now,
             DroppedSamples: 0,
             Metrics: Array.Empty<SlowQueryMetric>(),
+            TuningCandidates: Array.Empty<SlowQueryTuningCandidate>(),
             ReadOnlySuggestions: Array.Empty<string>(),
             Alerts: Array.Empty<string>(),
             ShouldEmitDailyReport: false);
     }
+
+    public sealed record SlowQueryTuningCandidate(
+        string SqlFingerprint,
+        string? SchemaName,
+        string TableName,
+        IReadOnlyList<string> WhereColumns,
+        IReadOnlyList<string> SuggestedActions);
 }
