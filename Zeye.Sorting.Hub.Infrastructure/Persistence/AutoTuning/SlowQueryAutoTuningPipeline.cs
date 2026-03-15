@@ -110,7 +110,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                 .Take(_aggregationTopN)
                 .ToList();
 
-            var suggestions = BuildSuggestions(dialect, groups);
+            var tuningCandidates = BuildTuningCandidates(dialect, groups);
+            var suggestions = BuildReadOnlySuggestions(tuningCandidates);
             var alerts = BuildAlerts(groups);
             var now = DateTime.Now;
             var shouldEmitDailyReport = ShouldEmitDailyReport(now);
@@ -119,6 +120,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                 GeneratedTime: now,
                 DroppedSamples: GetDroppedCount(),
                 Metrics: groups,
+                TuningCandidates: tuningCandidates,
                 ReadOnlySuggestions: suggestions,
                 Alerts: alerts,
                 ShouldEmitDailyReport: shouldEmitDailyReport);
@@ -148,9 +150,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             return normalized.Length <= 512 ? normalized : normalized[..512];
         }
 
-        private IReadOnlyList<string> BuildSuggestions(IDatabaseDialect dialect, IReadOnlyList<SlowQueryMetric> groups) {
-            var suggestions = new List<string>();
+        private IReadOnlyList<SlowQueryTuningCandidate> BuildTuningCandidates(IDatabaseDialect dialect, IReadOnlyList<SlowQueryMetric> groups) {
+            var candidates = new List<SlowQueryTuningCandidate>();
             var existedSuggestions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var actionCount = 0;
 
             foreach (var metric in groups) {
                 if (metric.CallCount < _triggerCount) {
@@ -162,22 +165,44 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                 }
 
                 var dialectActions = dialect.BuildAutomaticTuningSql(schemaName, tableName, whereColumns);
+                var uniqueActions = new List<string>();
                 foreach (var action in dialectActions) {
                     if (string.IsNullOrWhiteSpace(action)) {
                         continue;
                     }
 
-                    if (suggestions.Count >= _maxSuggestionsPerCycle) {
+                    if (actionCount >= _maxSuggestionsPerCycle) {
                         break;
                     }
 
                     if (existedSuggestions.Add(action)) {
-                        suggestions.Add($"/*{AutoTuningMarker}_READ_ONLY*/ {action}");
+                        uniqueActions.Add(action);
+                        actionCount++;
                     }
                 }
 
-                if (suggestions.Count >= _maxSuggestionsPerCycle) {
+                if (uniqueActions.Count > 0) {
+                    candidates.Add(new SlowQueryTuningCandidate(
+                        SqlFingerprint: metric.SqlFingerprint,
+                        SchemaName: schemaName,
+                        TableName: tableName,
+                        WhereColumns: whereColumns,
+                        SuggestedActions: uniqueActions));
+                }
+
+                if (actionCount >= _maxSuggestionsPerCycle) {
                     break;
+                }
+            }
+
+            return candidates;
+        }
+
+        private static IReadOnlyList<string> BuildReadOnlySuggestions(IReadOnlyList<SlowQueryTuningCandidate> candidates) {
+            var suggestions = new List<string>();
+            foreach (var candidate in candidates) {
+                foreach (var action in candidate.SuggestedActions) {
+                    suggestions.Add($"/*{AutoTuningMarker}_READ_ONLY*/ {action}");
                 }
             }
 
@@ -399,6 +424,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         DateTime GeneratedTime,
         int DroppedSamples,
         IReadOnlyList<SlowQueryMetric> Metrics,
+        IReadOnlyList<SlowQueryTuningCandidate> TuningCandidates,
         IReadOnlyList<string> ReadOnlySuggestions,
         IReadOnlyList<string> Alerts,
         bool ShouldEmitDailyReport) {
@@ -406,8 +432,16 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             GeneratedTime: DateTime.Now,
             DroppedSamples: 0,
             Metrics: Array.Empty<SlowQueryMetric>(),
+            TuningCandidates: Array.Empty<SlowQueryTuningCandidate>(),
             ReadOnlySuggestions: Array.Empty<string>(),
             Alerts: Array.Empty<string>(),
             ShouldEmitDailyReport: false);
     }
+
+    public sealed record SlowQueryTuningCandidate(
+        string SqlFingerprint,
+        string? SchemaName,
+        string TableName,
+        IReadOnlyList<string> WhereColumns,
+        IReadOnlyList<string> SuggestedActions);
 }
