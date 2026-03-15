@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -112,12 +113,12 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             var shouldEmitDailyReport = ShouldEmitDailyReport(now);
 
             return new SlowQueryAnalysisResult(
-                generatedTime: now,
-                droppedSamples: GetDroppedCount(),
-                metrics: groups,
-                readOnlySuggestions: suggestions,
-                alerts: alerts,
-                shouldEmitDailyReport: shouldEmitDailyReport);
+                GeneratedTime: now,
+                DroppedSamples: GetDroppedCount(),
+                Metrics: groups,
+                ReadOnlySuggestions: suggestions,
+                Alerts: alerts,
+                ShouldEmitDailyReport: shouldEmitDailyReport);
         }
 
         private List<SlowQuerySample> DequeueWindow() {
@@ -211,7 +212,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         }
 
         private DateTime BuildNextDailyReportTime(DateTime now) {
-            var next = new DateTime(now.Year, now.Month, now.Day, _dailyReportTime.Hours, _dailyReportTime.Minutes, _dailyReportTime.Seconds, DateTimeKind.Local);
+            if (_dailyReportTime < TimeSpan.Zero || _dailyReportTime >= TimeSpan.FromDays(1)) {
+                throw new InvalidOperationException("Persistence:AutoTuning:DailyReportLocalTime 必须位于 [00:00:00, 24:00:00) 区间。");
+            }
+
+            var next = now.Date.Add(_dailyReportTime);
             if (next <= now) {
                 next = next.AddDays(1);
             }
@@ -233,16 +238,16 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             var sampleSql = samples[0].CommandText;
 
             return new SlowQueryMetric(
-                sqlFingerprint: fingerprint,
-                sampleSql: sampleSql,
-                callCount: callCount,
-                totalAffectedRows: totalRows,
-                errorRatePercent: errorCount * 100m / Math.Max(callCount, 1),
-                timeoutRatePercent: timeoutCount * 100m / Math.Max(callCount, 1),
-                deadlockCount: deadlockCount,
-                p95Milliseconds: CalculatePercentile(elapsedValues, 95),
-                p99Milliseconds: CalculatePercentile(elapsedValues, 99),
-                maxMilliseconds: elapsedValues[^1]);
+                SqlFingerprint: fingerprint,
+                SampleSql: sampleSql,
+                CallCount: callCount,
+                TotalAffectedRows: totalRows,
+                ErrorRatePercent: errorCount * 100m / Math.Max(callCount, 1),
+                TimeoutRatePercent: timeoutCount * 100m / Math.Max(callCount, 1),
+                DeadlockCount: deadlockCount,
+                P95Milliseconds: CalculatePercentile(elapsedValues, 95),
+                P99Milliseconds: CalculatePercentile(elapsedValues, 99),
+                MaxMilliseconds: elapsedValues[^1]);
         }
 
         private static double CalculatePercentile(IReadOnlyList<double> sorted, int percentile) {
@@ -270,7 +275,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             }
 
             return DatabaseProviderExceptionHelper.TryGetProviderErrorNumber(exception, out var number)
-                && (number == -2 || number == 1205 || number == 3024);
+                && (number == -2 || number == 3024);
         }
 
         private static bool IsDeadlockException(Exception? exception) {
@@ -350,7 +355,24 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
 
         private static TimeSpan GetTimeOfDayOrDefault(IConfiguration configuration, string key, TimeSpan fallback) {
             var value = configuration[key];
-            return TimeSpan.TryParse(value, out var parsed) ? parsed : fallback;
+            if (string.IsNullOrWhiteSpace(value)) {
+                return fallback;
+            }
+
+            if (!TimeSpan.TryParseExact(
+                    value,
+                    ["HH\\:mm\\:ss", "HH\\:mm"],
+                    CultureInfo.InvariantCulture,
+                    TimeSpanStyles.None,
+                    out var parsed)) {
+                throw new InvalidOperationException($"{key} 配置格式无效，仅支持 HH:mm:ss 或 HH:mm（本地时间语义）。");
+            }
+
+            if (parsed < TimeSpan.Zero || parsed >= TimeSpan.FromDays(1)) {
+                throw new InvalidOperationException($"{key} 必须位于 [00:00:00, 24:00:00) 区间。");
+            }
+
+            return parsed;
         }
     }
 
@@ -373,12 +395,12 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         IReadOnlyList<string> ReadOnlySuggestions,
         IReadOnlyList<string> Alerts,
         bool ShouldEmitDailyReport) {
-        public static SlowQueryAnalysisResult Empty { get; } = new(
-            generatedTime: DateTime.Now,
-            droppedSamples: 0,
-            metrics: Array.Empty<SlowQueryMetric>(),
-            readOnlySuggestions: Array.Empty<string>(),
-            alerts: Array.Empty<string>(),
-            shouldEmitDailyReport: false);
+        public static SlowQueryAnalysisResult Empty => new(
+            GeneratedTime: DateTime.Now,
+            DroppedSamples: 0,
+            Metrics: Array.Empty<SlowQueryMetric>(),
+            ReadOnlySuggestions: Array.Empty<string>(),
+            Alerts: Array.Empty<string>(),
+            ShouldEmitDailyReport: false);
     }
 }

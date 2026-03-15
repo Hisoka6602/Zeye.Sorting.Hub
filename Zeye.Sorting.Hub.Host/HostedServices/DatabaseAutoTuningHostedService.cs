@@ -88,14 +88,13 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
             foreach (var metric in result.Metrics) {
                 _logger.LogInformation(
-                    "每日慢 SQL Top：Fingerprint={Fingerprint}, Calls={Calls}, P95Ms={P95Ms}, P99Ms={P99Ms}, TimeoutRatePercent={TimeoutRatePercent}, DeadlockCount={DeadlockCount}, SampleSql={SampleSql}",
+                    "每日慢 SQL Top：Fingerprint={Fingerprint}, Calls={Calls}, P95Ms={P95Ms}, P99Ms={P99Ms}, TimeoutRatePercent={TimeoutRatePercent}, DeadlockCount={DeadlockCount}",
                     metric.SqlFingerprint,
                     metric.CallCount,
                     metric.P95Milliseconds,
                     metric.P99Milliseconds,
                     metric.TimeoutRatePercent,
-                    metric.DeadlockCount,
-                    metric.SampleSql);
+                    metric.DeadlockCount);
             }
 
             foreach (var suggestion in result.ReadOnlySuggestions) {
