@@ -46,6 +46,14 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                         _logger.LogInformation("自动调谐动作执行成功，Provider={Provider}, Sql={Sql}", _dialect.ProviderName, action);
                     }
                     catch (Exception ex) {
+                        if (_dialect.ShouldIgnoreAutoTuningException(ex)) {
+                            _logger.LogInformation(ex,
+                                "自动调谐动作命中可忽略异常，已跳过，Provider={Provider}, Sql={Sql}",
+                                _dialect.ProviderName,
+                                action);
+                            continue;
+                        }
+
                         _logger.LogWarning(ex,
                             "自动调谐动作执行失败，已降级忽略，Provider={Provider}, Sql={Sql}",
                             _dialect.ProviderName,

@@ -15,8 +15,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         private static readonly Regex MultiWhitespaceRegex = new(@"\s+", RegexOptions.Compiled | RegexOptions.CultureInvariant);
         private static readonly Regex ParameterRegex = new(@"@[A-Za-z_][A-Za-z0-9_]*", RegexOptions.Compiled | RegexOptions.CultureInvariant);
         private static readonly Regex StringLiteralRegex = new(@"'[^']*'", RegexOptions.Compiled | RegexOptions.CultureInvariant);
-        private static readonly Regex FromRegex = new(@"\bfrom\s+[`""\[]?([A-Za-z_][A-Za-z0-9_]*)[`""\]]?", RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
-        private static readonly Regex UpdateRegex = new(@"\bupdate\s+[`""\[]?([A-Za-z_][A-Za-z0-9_]*)[`""\]]?", RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        private static readonly Regex FromRegex = new(@"\bfrom\s+(?:[`""\[]?([A-Za-z_][A-Za-z0-9_]*)[`""\]]?\s*\.\s*)?[`""\[]?([A-Za-z_][A-Za-z0-9_]*)[`""\]]?", RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        private static readonly Regex UpdateRegex = new(@"\bupdate\s+(?:[`""\[]?([A-Za-z_][A-Za-z0-9_]*)[`""\]]?\s*\.\s*)?[`""\[]?([A-Za-z_][A-Za-z0-9_]*)[`""\]]?", RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
         private static readonly Regex WhereRegex = new(@"\bwhere\b(?<where>.+?)(\border\s+by\b|\bgroup\s+by\b|\blimit\b|;|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
         private static readonly Regex WhereColumnRegex = new(@"(?:[A-Za-z_][A-Za-z0-9_]*\.)?[`""\[]?([A-Za-z_][A-Za-z0-9_]*)[`""\]]?\s*(=|>|<|>=|<=|like\b|in\b)", RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
         private static readonly Regex SafeIdentifierRegex = new(@"^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -25,12 +25,16 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         private readonly int _analysisBatchSize;
         private readonly int _triggerCount;
         private readonly int _maxActionsPerCycle;
+        private readonly int _maxQueueSize;
+        private readonly object _queueSync = new();
+        private int _droppedCount;
 
         public SlowQueryAutoTuningPipeline(IConfiguration configuration) {
             _slowQueryThresholdMilliseconds = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:SlowQueryThresholdMilliseconds", 500);
             _analysisBatchSize = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:AnalysisBatchSize", 20);
             _triggerCount = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:TriggerCount", 3);
             _maxActionsPerCycle = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:MaxActionsPerCycle", 3);
+            _maxQueueSize = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:MaxQueueSize", 1000);
         }
 
         public void Collect(string commandText, TimeSpan elapsed) {
@@ -42,10 +46,21 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                 return;
             }
 
-            _slowQueries.Enqueue(new SlowQuerySample(
-                commandText: commandText,
-                elapsedMilliseconds: elapsed.TotalMilliseconds,
-                occurredTime: DateTime.Now));
+            lock (_queueSync) {
+                while (_slowQueries.Count >= _maxQueueSize && _slowQueries.TryDequeue(out _)) {
+                        _droppedCount++;
+                }
+
+                if (_slowQueries.Count >= _maxQueueSize) {
+                    _droppedCount++;
+                    return;
+                }
+
+                _slowQueries.Enqueue(new SlowQuerySample(
+                    commandText: commandText,
+                    elapsedMilliseconds: elapsed.TotalMilliseconds,
+                    occurredTime: DateTime.Now));
+            }
         }
 
         public IReadOnlyList<string> BuildActions(IDatabaseDialect dialect, ILogger logger) {
@@ -68,11 +83,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                 }
 
                 var sample = group.First();
-                if (!TryExtractTableAndColumns(sample.CommandText, out var tableName, out var whereColumns)) {
+                if (!TryExtractTableAndColumns(sample.CommandText, out var schemaName, out var tableName, out var whereColumns)) {
                     continue;
                 }
 
-                var dialectActions = dialect.BuildAutomaticTuningSql(tableName, whereColumns);
+                var dialectActions = dialect.BuildAutomaticTuningSql(schemaName, tableName, whereColumns);
                 foreach (var action in dialectActions) {
                     if (string.IsNullOrWhiteSpace(action)) {
                         continue;
@@ -95,10 +110,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             if (actions.Count > 0) {
                 var topSample = window.MaxBy(static s => s.ElapsedMilliseconds);
                 logger.LogInformation(
-                    "慢查询自动调谐已生成动作，Count={Count}, MaxElapsedMs={MaxElapsedMs}, LastOccurredTime={OccurredTime}",
+                    "慢查询自动调谐已生成动作，Count={Count}, MaxElapsedMs={MaxElapsedMs}, LastOccurredTime={OccurredTime}, DroppedSamples={DroppedSamples}",
                     actions.Count,
                     topSample?.ElapsedMilliseconds ?? 0d,
-                    topSample?.OccurredTime);
+                    topSample?.OccurredTime,
+                    GetDroppedCount());
             }
 
             return actions;
@@ -106,11 +122,19 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
 
         private List<SlowQuerySample> DequeueWindow() {
             var result = new List<SlowQuerySample>(_analysisBatchSize);
-            while (result.Count < _analysisBatchSize && _slowQueries.TryDequeue(out var sample)) {
-                result.Add(sample);
+            lock (_queueSync) {
+                while (result.Count < _analysisBatchSize && _slowQueries.TryDequeue(out var sample)) {
+                    result.Add(sample);
+                }
             }
 
             return result;
+        }
+
+        private int GetDroppedCount() {
+            lock (_queueSync) {
+                return _droppedCount;
+            }
         }
 
         private static string NormalizeSql(string sql) {
@@ -120,7 +144,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             return normalized.Length <= 512 ? normalized : normalized[..512];
         }
 
-        private static bool TryExtractTableAndColumns(string sql, out string tableName, out IReadOnlyList<string> whereColumns) {
+        private static bool TryExtractTableAndColumns(string sql, out string? schemaName, out string tableName, out IReadOnlyList<string> whereColumns) {
+            schemaName = null;
             tableName = string.Empty;
             whereColumns = Array.Empty<string>();
 
@@ -133,7 +158,12 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                 return false;
             }
 
-            var candidateTable = tableMatch.Groups[1].Value.Trim();
+            var candidateSchema = tableMatch.Groups[1].Value.Trim();
+            if (!string.IsNullOrWhiteSpace(candidateSchema) && !SafeIdentifierRegex.IsMatch(candidateSchema)) {
+                return false;
+            }
+
+            var candidateTable = tableMatch.Groups[2].Value.Trim();
             if (!SafeIdentifierRegex.IsMatch(candidateTable)) {
                 return false;
             }
@@ -164,6 +194,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                 return false;
             }
 
+            schemaName = string.IsNullOrWhiteSpace(candidateSchema) ? null : candidateSchema;
             tableName = candidateTable;
             whereColumns = columns;
             return true;

@@ -60,6 +60,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
 
             services.AddSingleton<SlowQueryAutoTuningPipeline>();
             services.AddSingleton<SlowQueryCommandInterceptor>();
+            services.AddSingleton<MySqlSessionBootstrapConnectionInterceptor>();
 
             if (string.IsNullOrWhiteSpace(provider)) {
                 throw new InvalidOperationException("缺少配置：Persistence:Provider，可选值：MySql / SqlServer");
@@ -75,6 +76,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 services.AddDbContextPool<SortingHubDbContext>(static (sp, options) => {
                     var cfg = sp.GetRequiredService<IConfiguration>();
                     var interceptor = sp.GetRequiredService<SlowQueryCommandInterceptor>();
+                    var mySqlSessionInterceptor = sp.GetRequiredService<MySqlSessionBootstrapConnectionInterceptor>();
                     var cs = cfg.GetConnectionString("MySql")!;
                     var commandTimeoutSeconds = GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
 
@@ -92,7 +94,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                     });
 
                     options.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
-                    options.AddInterceptors(interceptor);
+                    options.AddInterceptors(interceptor, mySqlSessionInterceptor);
 
                     // 开发环境建议开启，生产建议关闭
                     // options.EnableSensitiveDataLogging();

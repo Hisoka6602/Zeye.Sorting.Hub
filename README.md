@@ -82,10 +82,12 @@
 │   │   └── ParcelEntityTypeConfiguration.cs（Parcel 映射配置）
 │   ├── Persistence（持久化核心目录）
 │   │   ├── AutoTuning（自动调谐核心目录）
+│   │   │   ├── MySqlSessionBootstrapConnectionInterceptor.cs（MySQL 连接会话初始化拦截器）
 │   │   │   ├── SlowQueryAutoTuningPipeline.cs（慢查询采集、分析与自动动作编排管道）
 │   │   │   ├── SlowQueryCommandInterceptor.cs（EF Core 慢查询采集拦截器）
 │   │   │   └── SlowQuerySample.cs（慢查询采样记录模型）
 │   │   ├── DatabaseDialects（数据库方言目录）
+│   │   │   ├── DatabaseProviderExceptionHelper.cs（数据库异常错误码提取辅助类）
 │   │   │   ├── IDatabaseDialect.cs（数据库方言接口）
 │   │   │   ├── MySqlDialect.cs（MySQL 方言实现）
 │   │   │   └── SqlServerDialect.cs（SQL Server 方言实现）
@@ -224,11 +226,13 @@
 - `SortingHubDbContext.cs`：EF Core DbContext（实体集与模型构建入口）。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/DatabaseDialects/`：数据库方言抽象与实现目录
+- `DatabaseProviderExceptionHelper.cs`：数据库异常错误码提取辅助类。
 - `IDatabaseDialect.cs`：数据库方言抽象接口。
 - `MySqlDialect.cs`：MySQL 方言实现。
 - `SqlServerDialect.cs`：SQL Server 方言实现。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/`：自动调谐核心目录
+- `MySqlSessionBootstrapConnectionInterceptor.cs`：MySQL 连接会话初始化拦截器。
 - `SlowQueryAutoTuningPipeline.cs`：慢查询采集、分析与自动动作编排管道。
 - `SlowQueryCommandInterceptor.cs`：EF Core 慢查询采集拦截器。
 - `SlowQuerySample.cs`：慢查询采样记录模型。
