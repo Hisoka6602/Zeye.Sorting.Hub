@@ -8,7 +8,7 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 namespace Zeye.Sorting.Hub.Host.HostedServices {
 
     /// <summary>
-    /// 数据库自动调谐后台服务：慢查询分析 + 可控执行 + 审计日志
+    /// 数据库自动调谐后台服务：慢查询分析 + L3 闭环自治执行/验证/回退 + 审计日志
     /// </summary>
     public sealed class DatabaseAutoTuningHostedService : BackgroundService {
         private const int MaxTrackedFingerprintCount = 1000;
@@ -32,19 +32,13 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private readonly IDatabaseDialect _dialect;
         private readonly SlowQueryAutoTuningPipeline _pipeline;
         private readonly int _analyzeIntervalSeconds;
-        private readonly bool _enableActionExecution;
-        private readonly bool _enableDangerousActionIsolator;
-        private readonly bool _enableDryRun;
         private readonly int _maxExecuteActionsPerCycle;
         private readonly int _actionExecutionTimeoutSeconds;
         private readonly bool _skipExecutionDuringPeak;
         private readonly TimeSpan _peakStartTime;
         private readonly TimeSpan _peakEndTime;
-        private readonly decimal _regressionP99IncreasePercent;
-        private readonly decimal _regressionTimeoutRateIncreasePercent;
         private readonly bool _enableAutoRollback;
         private readonly HashSet<string> _whitelistedTables;
-        private readonly Dictionary<string, SlowQueryMetric> _lastMetricByFingerprint = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, PendingRollbackAction> _pendingRollbackByFingerprint = new(StringComparer.OrdinalIgnoreCase);
         private readonly int _baselineCommandTimeoutSeconds;
         private readonly int _baselineMaxRetryCount;
@@ -83,21 +77,13 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _dialect = dialect;
             _pipeline = pipeline;
             _analyzeIntervalSeconds = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:AnalyzeIntervalSeconds", 30);
-            _enableActionExecution = GetBoolOrDefault(configuration, "Persistence:AutoTuning:L2:EnableActionExecution", false);
-            _enableDangerousActionIsolator = GetBoolOrDefault(configuration, "Persistence:AutoTuning:L2:EnableDangerousActionIsolator", true);
-            _enableDryRun = GetBoolOrDefault(configuration, "Persistence:AutoTuning:L2:EnableDryRun", true);
-            _maxExecuteActionsPerCycle = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:L2:MaxExecuteActionsPerCycle", 2);
-            _actionExecutionTimeoutSeconds = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:L2:ActionExecutionTimeoutSeconds", 60);
-            _skipExecutionDuringPeak = GetBoolOrDefault(configuration, "Persistence:AutoTuning:L2:SkipExecutionDuringPeak", true);
-            _peakStartTime = GetTimeOfDayOrDefault(configuration, "Persistence:AutoTuning:L2:PeakStartLocalTime", new TimeSpan(8, 0, 0));
-            _peakEndTime = GetTimeOfDayOrDefault(configuration, "Persistence:AutoTuning:L2:PeakEndLocalTime", new TimeSpan(21, 0, 0));
-            _regressionP99IncreasePercent = GetNonNegativeDecimalOrDefault(configuration, "Persistence:AutoTuning:L2:RegressionP99IncreasePercent", 30m);
-            _regressionTimeoutRateIncreasePercent = GetNonNegativeDecimalOrDefault(configuration, "Persistence:AutoTuning:L2:RegressionTimeoutRateIncreasePercent", 1m);
-            _enableAutoRollback = GetBoolOrDefault(configuration, "Persistence:AutoTuning:L2:EnableAutoRollback", true);
-            _whitelistedTables = LoadWhitelistedTables(configuration.GetSection("Persistence:AutoTuning:L2:WhitelistedTables"));
-            if (_enableActionExecution && _whitelistedTables.Count == 0) {
-                _logger.LogWarning("L2 自动调优执行已启用但白名单为空：当前将阻止所有表执行自动动作。");
-            }
+            _maxExecuteActionsPerCycle = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:L3:Execution:MaxExecuteActionsPerCycle", 2);
+            _actionExecutionTimeoutSeconds = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:L3:Execution:ActionExecutionTimeoutSeconds", 60);
+            _skipExecutionDuringPeak = GetBoolOrDefault(configuration, "Persistence:AutoTuning:L3:Execution:SkipExecutionDuringPeak", true);
+            _peakStartTime = GetTimeOfDayOrDefault(configuration, "Persistence:AutoTuning:L3:Execution:PeakStartLocalTime", new TimeSpan(8, 0, 0));
+            _peakEndTime = GetTimeOfDayOrDefault(configuration, "Persistence:AutoTuning:L3:Execution:PeakEndLocalTime", new TimeSpan(21, 0, 0));
+            _enableAutoRollback = GetBoolOrDefault(configuration, "Persistence:AutoTuning:L3:Validation:EnableAutoRollback", true);
+            _whitelistedTables = LoadWhitelistedTables(configuration.GetSection("Persistence:AutoTuning:L3:Execution:WhitelistedTables"));
             _baselineCommandTimeoutSeconds = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:BaselineCommandTimeoutSeconds", 30);
             _baselineMaxRetryCount = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:BaselineMaxRetryCount", 5);
             _baselineMaxRetryDelaySeconds = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:BaselineMaxRetryDelaySeconds", 10);
@@ -166,8 +152,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 UpdateAutonomousSignals(result, result.GeneratedTime);
                 await ExecuteAutoTuningActionsAsync(result, stoppingToken);
                 await ValidateAutonomousActionsAsync(result, stoppingToken);
-                await DetectRegressionAndAutoRollbackAsync(result, stoppingToken);
-                SaveLastMetrics(result.Metrics);
+                PruneTrackingState();
 
                 if (result.ShouldEmitDailyReport) {
                     EmitDailyReport(result);
@@ -209,14 +194,13 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         private async Task ExecuteAutoTuningActionsAsync(SlowQueryAnalysisResult result, CancellationToken cancellationToken) {
-            var actionExecutionEnabled = _enableFullAutomation || _enableActionExecution;
-            if (!actionExecutionEnabled) {
+            if (!_enableFullAutomation) {
                 return;
             }
 
             var now = DateTime.Now;
             var inPeakWindow = IsInPeakWindow(now.TimeOfDay);
-            if (!_enableFullAutomation && _skipExecutionDuringPeak && inPeakWindow) {
+            if (_skipExecutionDuringPeak && inPeakWindow) {
                 _logger.LogInformation("自动调优执行已跳过：当前处于高峰时段，仅采集不变更。Provider={Provider}", _dialect.ProviderName);
                 return;
             }
@@ -259,13 +243,6 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
                     var rollbackSql = BuildRollbackSql(actionSql);
                     var actionId = Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
-                    var dangerous = IsDangerousAction(actionSql);
-                    var shouldDryRun = !_enableFullAutomation && (_enableDryRun || (_enableDangerousActionIsolator && dangerous));
-                    if (shouldDryRun) {
-                        EmitAuditLog(actionId, candidate, actionSql, rollbackSql, executed: false, dryRun: true, reason: $"dry-run, risk={policyDecision.RiskScore:F2}");
-                        continue;
-                    }
-
                     if (!await TryExecuteSqlAsync(actionSql, candidate.SqlFingerprint, isRollback: false, cancellationToken)) {
                         continue;
                     }
@@ -288,19 +265,17 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                             BaselineDeadlockCount: currentMetric?.DeadlockCount ?? 0);
                     }
 
-                    if (_enableFullAutomation) {
-                        var maintenanceSql = _dialect.BuildAutonomousMaintenanceSql(
-                            candidate.SchemaName,
-                            candidate.TableName,
-                            inPeakWindow,
-                            policyDecision.RiskScore > _policyMaxRiskScore);
-                        foreach (var maintenance in maintenanceSql) {
-                            if (!await TryExecuteSqlAsync(maintenance, candidate.SqlFingerprint, isRollback: false, cancellationToken)) {
-                                continue;
-                            }
-
-                            EmitAuditLog($"{actionId}-maintenance", candidate, maintenance, rollbackSql: null, executed: true, dryRun: false, reason: "l3-maintenance");
+                    var maintenanceSql = _dialect.BuildAutonomousMaintenanceSql(
+                        candidate.SchemaName,
+                        candidate.TableName,
+                        inPeakWindow,
+                        policyDecision.RiskScore > _policyMaxRiskScore);
+                    foreach (var maintenance in maintenanceSql) {
+                        if (!await TryExecuteSqlAsync(maintenance, candidate.SqlFingerprint, isRollback: false, cancellationToken)) {
+                            continue;
                         }
+
+                        EmitAuditLog($"{actionId}-maintenance", candidate, maintenance, rollbackSql: null, executed: true, dryRun: false, reason: "l3-maintenance");
                     }
                 }
             }
@@ -372,60 +347,6 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
         }
 
-        private async Task DetectRegressionAndAutoRollbackAsync(SlowQueryAnalysisResult result, CancellationToken cancellationToken) {
-            if (_enableFullAutomation) {
-                return;
-            }
-
-            foreach (var metric in result.Metrics) {
-                if (!_lastMetricByFingerprint.TryGetValue(metric.SqlFingerprint, out var previous)) {
-                    continue;
-                }
-
-                var p99IncreasePercent = CalculateIncreasePercent(previous.P99Milliseconds, metric.P99Milliseconds);
-                var timeoutRateIncrease = metric.TimeoutRatePercent - previous.TimeoutRatePercent;
-                var hasP99Regression = _regressionP99IncreasePercent > 0m && p99IncreasePercent >= _regressionP99IncreasePercent;
-                var hasTimeoutRegression = _regressionTimeoutRateIncreasePercent > 0m && timeoutRateIncrease >= _regressionTimeoutRateIncreasePercent;
-                if (!hasP99Regression && !hasTimeoutRegression) {
-                    continue;
-                }
-
-                _logger.LogWarning(
-                    "执行计划/统计信息疑似回退：Provider={Provider}, Fingerprint={Fingerprint}, PrevP99Ms={PrevP99Ms}, CurP99Ms={CurP99Ms}, P99IncreasePercent={P99IncreasePercent}, PrevTimeoutRate={PrevTimeoutRate}, CurTimeoutRate={CurTimeoutRate}",
-                    _dialect.ProviderName,
-                    metric.SqlFingerprint,
-                    previous.P99Milliseconds,
-                    metric.P99Milliseconds,
-                    p99IncreasePercent,
-                    previous.TimeoutRatePercent,
-                    metric.TimeoutRatePercent);
-
-                if (!_enableAutoRollback || !_pendingRollbackByFingerprint.TryGetValue(metric.SqlFingerprint, out var rollback)) {
-                    continue;
-                }
-
-                if (!await TryExecuteSqlAsync(rollback.RollbackSql, metric.SqlFingerprint, isRollback: true, cancellationToken)) {
-                    continue;
-                }
-
-                _pendingRollbackByFingerprint.Remove(metric.SqlFingerprint);
-                _logger.LogWarning(
-                    "自动调优回滚已执行：Provider={Provider}, Fingerprint={Fingerprint}, ActionId={ActionId}, RollbackSql={RollbackSql}",
-                    _dialect.ProviderName,
-                    metric.SqlFingerprint,
-                    rollback.ActionId,
-                    rollback.RollbackSql);
-            }
-        }
-
-        private void SaveLastMetrics(IReadOnlyList<SlowQueryMetric> metrics) {
-            foreach (var metric in metrics) {
-                _lastMetricByFingerprint[metric.SqlFingerprint] = metric;
-            }
-
-            PruneTrackingState();
-        }
-
         private async Task ExecuteSqlAsync(string sql, CancellationToken cancellationToken) {
             using var scope = _scopeFactory.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<SortingHubDbContext>();
@@ -494,7 +415,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
         private bool IsWhitelisted(string? schemaName, string tableName) {
             if (_whitelistedTables.Count == 0) {
-                return _enableFullAutomation;
+                return true;
             }
 
             return _whitelistedTables.Contains(BuildTableKey(schemaName, tableName));
@@ -502,28 +423,20 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
         private PolicyDecision EvaluateExecutionPolicy(string actionSql, SlowQueryMetric? metric, int tableHeat, bool inPeakWindow) {
             var riskScore = CalculateRiskScore(actionSql, metric, inPeakWindow);
-            if (_enableFullAutomation) {
-                if (tableHeat < _policyMinTableHeatCalls) {
-                    return PolicyDecision.Skip(riskScore, $"table heat too low: {tableHeat} < {_policyMinTableHeatCalls}");
-                }
-
-                if (inPeakWindow && tableHeat > _policyPeakMaxTableHeatCalls) {
-                    return PolicyDecision.Skip(riskScore, $"table heat too high in peak: {tableHeat} > {_policyPeakMaxTableHeatCalls}");
-                }
-
-                var threshold = inPeakWindow ? _policyPeakMaxRiskScore : _policyMaxRiskScore;
-                if (riskScore > threshold) {
-                    return PolicyDecision.Skip(riskScore, $"risk score {riskScore:F2} > threshold {threshold:F2}");
-                }
-
-                return PolicyDecision.Execute(riskScore, "l3-policy-approved");
+            if (tableHeat < _policyMinTableHeatCalls) {
+                return PolicyDecision.Skip(riskScore, $"table heat too low: {tableHeat} < {_policyMinTableHeatCalls}");
             }
 
-            if (metric is null) {
-                return PolicyDecision.Execute(riskScore, "l2-no-metric");
+            if (inPeakWindow && tableHeat > _policyPeakMaxTableHeatCalls) {
+                return PolicyDecision.Skip(riskScore, $"table heat too high in peak: {tableHeat} > {_policyPeakMaxTableHeatCalls}");
             }
 
-            return PolicyDecision.Execute(riskScore, "l2-approved");
+            var threshold = inPeakWindow ? _policyPeakMaxRiskScore : _policyMaxRiskScore;
+            if (riskScore > threshold) {
+                return PolicyDecision.Skip(riskScore, $"risk score {riskScore:F2} > threshold {threshold:F2}");
+            }
+
+            return PolicyDecision.Execute(riskScore, "l3-policy-approved");
         }
 
         private decimal CalculateRiskScore(string actionSql, SlowQueryMetric? metric, bool inPeakWindow) {
@@ -819,27 +732,14 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         private void PruneTrackingState() {
-            var overflowCount = _lastMetricByFingerprint.Count - MaxTrackedFingerprintCount;
-            if (overflowCount > 0) {
-                var removeKeys = _pendingRollbackByFingerprint
-                    .Where(pair => _lastMetricByFingerprint.ContainsKey(pair.Key))
+            var rollbackOverflow = _pendingRollbackByFingerprint.Count - MaxTrackedFingerprintCount;
+            if (rollbackOverflow > 0) {
+                var removeRollbacks = _pendingRollbackByFingerprint
                     .OrderBy(static pair => pair.Value.CreatedTime)
+                    .Take(rollbackOverflow)
                     .Select(static pair => pair.Key)
-                    .Take(overflowCount)
-                    .ToList();
-                var removeKeySet = new HashSet<string>(removeKeys, StringComparer.OrdinalIgnoreCase);
-
-                if (removeKeys.Count < overflowCount) {
-                    var remaining = overflowCount - removeKeys.Count;
-                    var fallbackKeys = _lastMetricByFingerprint.Keys
-                        .OrderBy(static key => key, StringComparer.Ordinal)
-                        .Where(key => !removeKeySet.Contains(key))
-                        .Take(remaining);
-                    removeKeys.AddRange(fallbackKeys);
-                }
-
-                foreach (var key in removeKeys) {
-                    _lastMetricByFingerprint.Remove(key);
+                    .ToArray();
+                foreach (var key in removeRollbacks) {
                     _pendingRollbackByFingerprint.Remove(key);
                 }
             }
