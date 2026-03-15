@@ -8,9 +8,7 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
 
-    /// <summary>
-    /// 慢查询采集、分析与自动动作编排管道
-    /// </summary>
+    /// <summary>慢查询采集、分析与自动动作编排管道</summary>
     public sealed class SlowQueryAutoTuningPipeline {
         private const string AutoTuningConfigPrefix = "Persistence:AutoTuning";
         private const string AutoTuningMarker = "AUTO_TUNING";
@@ -39,9 +37,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         private int _droppedCount;
         private DateTime _nextDailyReportTime;
 
-        /// <summary>
-        /// 初始化慢查询采集、分析和告警阈值配置。
-        /// </summary>
+        /// <summary>初始化慢查询采集、分析和告警阈值配置。</summary>
         public SlowQueryAutoTuningPipeline(IConfiguration configuration) {
             _slowQueryThresholdMilliseconds = GetPositiveIntOrDefault(configuration, AutoTuningKey("SlowQueryThresholdMilliseconds"), 500);
             _analysisBatchSize = GetPositiveIntOrDefault(configuration, AutoTuningKey("AnalysisBatchSize"), 20);
@@ -57,9 +53,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             _nextDailyReportTime = BuildNextDailyReportTime(DateTime.Now);
         }
 
-        /// <summary>
-        /// 采集慢查询样本（含错误、超时、死锁标记）。
-        /// </summary>
+        /// <summary>采集慢查询样本（含错误、超时、死锁标记）。</summary>
         public void Collect(string commandText, TimeSpan elapsed, int affectedRows = 0, Exception? exception = null) {
             if (string.IsNullOrWhiteSpace(commandText)) {
                 return;
@@ -102,9 +96,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             }
         }
 
-        /// <summary>
-        /// 分析窗口内样本并生成指标、建议与告警。
-        /// </summary>
+        /// <summary>分析窗口内样本并生成指标、建议与告警。</summary>
         public SlowQueryAnalysisResult Analyze(IDatabaseDialect dialect) {
             var now = DateTime.Now;
             var shouldEmitDailyReport = ShouldEmitDailyReport(now);
@@ -143,9 +135,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                 ShouldEmitDailyReport: shouldEmitDailyReport);
         }
 
-        /// <summary>
-        /// 从队列中取出单次分析窗口样本。
-        /// </summary>
+        /// <summary>从队列中取出单次分析窗口样本。</summary>
         private List<SlowQuerySample> DequeueWindow() {
             var result = new List<SlowQuerySample>(_analysisBatchSize);
             lock (_queueSync) {
@@ -157,18 +147,14 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             return result;
         }
 
-        /// <summary>
-        /// 获取当前累计丢弃样本数量。
-        /// </summary>
+        /// <summary>获取当前累计丢弃样本数量。</summary>
         private int GetDroppedCount() {
             lock (_queueSync) {
                 return _droppedCount;
             }
         }
 
-        /// <summary>
-        /// 归一化 SQL 文本，消除参数与格式噪音。
-        /// </summary>
+        /// <summary>归一化 SQL 文本，消除参数与格式噪音。</summary>
         private static string NormalizeSql(string sql) {
             var withoutStringLiterals = StringLiteralRegex.Replace(sql, "?");
             var withoutParameters = ParameterRegex.Replace(withoutStringLiterals, "?");
@@ -176,9 +162,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             return normalized.Length <= 512 ? normalized : normalized[..512];
         }
 
-        /// <summary>
-        /// 基于聚合结果生成自动调优候选动作。
-        /// </summary>
+        /// <summary>基于聚合结果生成自动调优候选动作。</summary>
         private IReadOnlyList<SlowQueryTuningCandidate> BuildTuningCandidates(IDatabaseDialect dialect, IReadOnlyList<SlowQueryMetric> groups) {
             var candidates = new List<SlowQueryTuningCandidate>();
             var existedSuggestions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -227,9 +211,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             return candidates;
         }
 
-        /// <summary>
-        /// 将候选动作转换为只读建议文案。
-        /// </summary>
+        /// <summary>将候选动作转换为只读建议文案。</summary>
         private static IReadOnlyList<string> BuildReadOnlySuggestions(IReadOnlyList<SlowQueryTuningCandidate> candidates) {
             var suggestions = new List<string>();
             foreach (var candidate in candidates) {
@@ -241,9 +223,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             return suggestions;
         }
 
-        /// <summary>
-        /// 根据阈值规则生成告警列表。
-        /// </summary>
+        /// <summary>根据阈值规则生成告警列表。</summary>
         private IReadOnlyList<string> BuildAlerts(IReadOnlyList<SlowQueryMetric> groups) {
             var alerts = new List<string>();
             foreach (var metric in groups) {
@@ -267,9 +247,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             return alerts;
         }
 
-        /// <summary>
-        /// 判断当前是否到达日报输出时点。
-        /// </summary>
+        /// <summary>判断当前是否到达日报输出时点。</summary>
         private bool ShouldEmitDailyReport(DateTime now) {
             lock (_queueSync) {
                 if (now < _nextDailyReportTime) {
@@ -281,9 +259,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             }
         }
 
-        /// <summary>
-        /// 计算下一次日报触发时间。
-        /// </summary>
+        /// <summary>计算下一次日报触发时间。</summary>
         private DateTime BuildNextDailyReportTime(DateTime now) {
             if (_dailyReportTime < TimeSpan.Zero || _dailyReportTime >= TimeSpan.FromDays(1)) {
                 throw new InvalidOperationException("Persistence:AutoTuning:DailyReportLocalTime 必须位于 [00:00:00, 24:00:00) 区间。");
@@ -297,9 +273,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             return next;
         }
 
-        /// <summary>
-        /// 将一组样本聚合为单条慢查询指标。
-        /// </summary>
+        /// <summary>将一组样本聚合为单条慢查询指标。</summary>
         private static SlowQueryMetric BuildMetric(string fingerprint, IGrouping<string, SlowQuerySample> group) {
             var samples = group.ToList();
             var callCount = samples.Count;
@@ -326,9 +300,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                 MaxMilliseconds: elapsedValues[^1]);
         }
 
-        /// <summary>
-        /// 计算指定分位点值（输入必须为升序数组）。
-        /// </summary>
+        /// <summary>计算指定分位点值（输入必须为升序数组）。</summary>
         private static double CalculatePercentile(IReadOnlyList<double> sorted, int percentile) {
             if (sorted.Count == 0) {
                 return 0d;
@@ -339,17 +311,13 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             return sorted[index];
         }
 
-        /// <summary>
-        /// 计算标准化 SQL 指纹。
-        /// </summary>
+        /// <summary>计算标准化 SQL 指纹。</summary>
         private static string BuildSqlFingerprint(string normalizedSql) {
             var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(normalizedSql));
             return Convert.ToHexString(hashBytes[..8]).ToLowerInvariant();
         }
 
-        /// <summary>
-        /// 判断异常是否属于超时类。
-        /// </summary>
+        /// <summary>判断异常是否属于超时类。</summary>
         private static bool IsTimeoutException(Exception? exception) {
             if (exception is null) {
                 return false;
@@ -363,9 +331,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                 && (number == -2 || number == 3024);
         }
 
-        /// <summary>
-        /// 判断异常是否属于死锁类。
-        /// </summary>
+        /// <summary>判断异常是否属于死锁类。</summary>
         private static bool IsDeadlockException(Exception? exception) {
             if (exception is null) {
                 return false;
@@ -375,9 +341,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                 && (number == 1205 || number == 1213);
         }
 
-        /// <summary>
-        /// 从 SQL 中提取 schema/table 与 where 列候选。
-        /// </summary>
+        /// <summary>从 SQL 中提取 schema/table 与 where 列候选。</summary>
         private static bool TryExtractTableAndColumns(string sql, out string? schemaName, out string tableName, out IReadOnlyList<string> whereColumns) {
             schemaName = null;
             tableName = string.Empty;
@@ -434,25 +398,19 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             return true;
         }
 
-        /// <summary>
-        /// 读取正整数配置，非法值回退默认值。
-        /// </summary>
+        /// <summary>读取正整数配置，非法值回退默认值。</summary>
         private static int GetPositiveIntOrDefault(IConfiguration configuration, string key, int fallback) {
             var value = configuration[key];
             return int.TryParse(value, out var parsed) && parsed > 0 ? parsed : fallback;
         }
 
-        /// <summary>
-        /// 读取正小数配置，非法值回退默认值。
-        /// </summary>
+        /// <summary>读取正小数配置，非法值回退默认值。</summary>
         private static decimal GetDecimalOrDefault(IConfiguration configuration, string key, decimal fallback) {
             var value = configuration[key];
             return decimal.TryParse(value, out var parsed) && parsed > 0 ? parsed : fallback;
         }
 
-        /// <summary>
-        /// 读取本地时间（HH:mm 或 HH:mm:ss）配置。
-        /// </summary>
+        /// <summary>读取本地时间（HH:mm 或 HH:mm:ss）配置。</summary>
         private static TimeSpan GetTimeOfDayOrDefault(IConfiguration configuration, string key, TimeSpan fallback) {
             var value = configuration[key];
             if (string.IsNullOrWhiteSpace(value)) {
@@ -475,9 +433,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             return parsed;
         }
 
-        /// <summary>
-        /// 生成 AutoTuning 配置全路径键名。
-        /// </summary>
+        /// <summary>生成 AutoTuning 配置全路径键名。</summary>
         private static string AutoTuningKey(string suffix) => $"{AutoTuningConfigPrefix}:{suffix}";
     }
 

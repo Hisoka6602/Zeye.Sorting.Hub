@@ -7,9 +7,7 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 
 namespace Zeye.Sorting.Hub.Host.HostedServices {
 
-    /// <summary>
-    /// 数据库自动调谐后台服务：慢查询分析 + 闭环自治执行/验证/回退 + 审计日志
-    /// </summary>
+    /// <summary>数据库自动调谐后台服务：慢查询分析 + 闭环自治执行/验证/回退 + 审计日志</summary>
     public sealed class DatabaseAutoTuningHostedService : BackgroundService {
         private const string AutoTuningConfigPrefix = "Persistence:AutoTuning";
         private const string AutonomousConfigPrefix = $"{AutoTuningConfigPrefix}:Autonomous";
@@ -69,9 +67,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private readonly Dictionary<string, Queue<TableCapacitySnapshot>> _capacitySnapshotsByTable = new(StringComparer.OrdinalIgnoreCase);
         private int _analysisCycleCounter;
 
-        /// <summary>
-        /// 初始化数据库自动调谐后台服务及其运行策略参数。
-        /// </summary>
+        /// <summary>初始化数据库自动调谐后台服务及其运行策略参数。</summary>
         public DatabaseAutoTuningHostedService(
             ILogger<DatabaseAutoTuningHostedService> logger,
             IServiceScopeFactory scopeFactory,
@@ -117,9 +113,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _capacityHotLayeringRows = GetPositiveIntOrDefault(configuration, AutonomousKey("CapacityPrediction:HotLayeringRows"), 200000);
         }
 
-        /// <summary>
-        /// 后台循环：按固定周期分析慢 SQL，并执行自治策略/验证/清理。
-        /// </summary>
+        /// <summary>后台循环：按固定周期分析慢 SQL，并执行自治策略/验证/清理。</summary>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
             AuditBaseline();
 
@@ -172,9 +166,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
         }
 
-        /// <summary>
-        /// 输出每日慢 SQL 汇总报告与只读建议。
-        /// </summary>
+        /// <summary>输出每日慢 SQL 汇总报告与只读建议。</summary>
         private void EmitDailyReport(SlowQueryAnalysisResult result) {
             _logger.LogInformation(
                 "每日慢 SQL 报告：Provider={Provider}, GeneratedTime={GeneratedTime}, TopCount={TopCount}, DroppedSamples={DroppedSamples}",
@@ -208,9 +200,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
         }
 
-        /// <summary>
-        /// 执行自动调优动作及其后置维护动作。
-        /// </summary>
+        /// <summary>执行自动调优动作及其后置维护动作。</summary>
         private async Task ExecuteAutoTuningActionsAsync(SlowQueryAnalysisResult result, CancellationToken cancellationToken) {
             // 步骤 1：先判断总开关与执行窗口。
             if (!_enableFullAutomation) {
@@ -302,9 +292,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
         }
 
-        /// <summary>
-        /// 对已执行动作执行延迟验证，必要时触发自动回滚。
-        /// </summary>
+        /// <summary>对已执行动作执行延迟验证，必要时触发自动回滚。</summary>
         private async Task ValidateAutonomousActionsAsync(SlowQueryAnalysisResult result, CancellationToken cancellationToken) {
             // 步骤 1：检查验证开关与待验证池。
             if (!_enableFullAutomation || !_enableAutoValidation || _pendingRollbackByFingerprint.Count == 0) {
@@ -374,9 +362,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
         }
 
-        /// <summary>
-        /// 在独立作用域中执行单条 SQL。
-        /// </summary>
+        /// <summary>在独立作用域中执行单条 SQL。</summary>
         private async Task ExecuteSqlAsync(string sql, CancellationToken cancellationToken) {
             using var scope = _scopeFactory.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<SortingHubDbContext>();
@@ -384,9 +370,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             await dbContext.Database.ExecuteSqlRawAsync(sql, cancellationToken);
         }
 
-        /// <summary>
-        /// 包装 SQL 执行并处理可忽略异常。
-        /// </summary>
+        /// <summary>包装 SQL 执行并处理可忽略异常。</summary>
         private async Task<bool> TryExecuteSqlAsync(string sql, string fingerprint, bool isRollback, CancellationToken cancellationToken) {
             try {
                 await ExecuteSqlAsync(sql, cancellationToken);
@@ -412,9 +396,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
         }
 
-        /// <summary>
-        /// 计算百分比增幅（仅统计正向增长）。
-        /// </summary>
+        /// <summary>计算百分比增幅（仅统计正向增长）。</summary>
         private static decimal CalculateIncreasePercent(double previousValue, double currentValue) {
             if (previousValue <= 0d) {
                 return currentValue > 0d ? 100m : 0m;
@@ -428,9 +410,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return (decimal)(increase / previousValue * 100d);
         }
 
-        /// <summary>
-        /// 输出自动调优动作审计日志。
-        /// </summary>
+        /// <summary>输出自动调优动作审计日志。</summary>
         private void EmitAuditLog(
             string actionId,
             SlowQueryTuningCandidate candidate,
@@ -452,9 +432,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 rollbackSql ?? string.Empty);
         }
 
-        /// <summary>
-        /// 判断候选表是否命中执行白名单。
-        /// </summary>
+        /// <summary>判断候选表是否命中执行白名单。</summary>
         private bool IsWhitelisted(string? schemaName, string tableName) {
             if (_whitelistedTables.Count == 0) {
                 return true;
@@ -463,9 +441,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return _whitelistedTables.Contains(BuildTableKey(schemaName, tableName));
         }
 
-        /// <summary>
-        /// 根据风险评分、热度与时段判定动作是否可执行。
-        /// </summary>
+        /// <summary>根据风险评分、热度与时段判定动作是否可执行。</summary>
         private PolicyDecision EvaluateExecutionPolicy(string actionSql, SlowQueryMetric? metric, int tableHeat, bool inPeakWindow) {
             var riskScore = CalculateRiskScore(actionSql, metric, inPeakWindow);
             if (tableHeat < _policyMinTableHeatCalls) {
@@ -484,9 +460,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return PolicyDecision.Execute(riskScore, "autonomous-policy-approved");
         }
 
-        /// <summary>
-        /// 计算动作风险分（0~1）。
-        /// </summary>
+        /// <summary>计算动作风险分（0~1）。</summary>
         private decimal CalculateRiskScore(string actionSql, SlowQueryMetric? metric, bool inPeakWindow) {
             decimal riskScore = 0m;
             if (IsDangerousAction(actionSql)) {
@@ -518,9 +492,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return decimal.Clamp(riskScore, 0m, 1m);
         }
 
-        /// <summary>
-        /// 更新表热度与容量观测快照。
-        /// </summary>
+        /// <summary>更新表热度与容量观测快照。</summary>
         private void UpdateAutonomousSignals(SlowQueryAnalysisResult result, DateTime cycleTime) {
             // 步骤 1：先对历史热度做衰减，避免旧热点长期占用容量。
             if (!_enableFullAutomation) {
@@ -580,9 +552,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
         }
 
-        /// <summary>
-        /// 根据表级样本序列估算查询体量增长趋势并告警。
-        /// </summary>
+        /// <summary>根据表级样本序列估算查询体量增长趋势并告警。</summary>
         private void EmitCapacityForecast(string tableKey, Queue<TableCapacitySnapshot> snapshots) {
             // 步骤 1：确保观察窗口足够，避免短样本导致误报。
             if (snapshots.Count < 2) {
@@ -643,18 +613,14 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 projectedRows >= _capacityHotLayeringRows ? "建议冷热分层 + 历史归档 + 索引重评估" : "建议优先检查索引与统计信息维护策略");
         }
 
-        /// <summary>
-        /// 生成统一的小写表标识（schema.table）。
-        /// </summary>
+        /// <summary>生成统一的小写表标识（schema.table）。</summary>
         private static string BuildTableKey(string? schemaName, string tableName) {
             return string.IsNullOrWhiteSpace(schemaName)
                 ? tableName.Trim().ToLowerInvariant()
                 : $"{schemaName.Trim().ToLowerInvariant()}.{tableName.Trim().ToLowerInvariant()}";
         }
 
-        /// <summary>
-        /// 判断当前时刻是否位于高峰执行窗口。
-        /// </summary>
+        /// <summary>判断当前时刻是否位于高峰执行窗口。</summary>
         private bool IsInPeakWindow(TimeSpan nowTime) {
             if (_peakStartTime == _peakEndTime) {
                 return false;
@@ -667,9 +633,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return nowTime >= _peakStartTime || nowTime < _peakEndTime;
         }
 
-        /// <summary>
-        /// 识别是否为高风险 DDL 动作。
-        /// </summary>
+        /// <summary>识别是否为高风险 DDL 动作。</summary>
         private bool IsDangerousAction(string actionSql) {
             if (string.IsNullOrWhiteSpace(actionSql)) {
                 return false;
@@ -679,9 +643,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return DangerousDdlRegex.IsMatch(normalized);
         }
 
-        /// <summary>
-        /// 尝试为自动创建索引动作生成回滚 SQL。
-        /// </summary>
+        /// <summary>尝试为自动创建索引动作生成回滚 SQL。</summary>
         private string? BuildRollbackSql(string actionSql) {
             if (string.IsNullOrWhiteSpace(actionSql)) {
                 return null;
@@ -705,18 +667,14 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return null;
         }
 
-        /// <summary>
-        /// 审计当前运行参数是否符合推荐基线。
-        /// </summary>
+        /// <summary>审计当前运行参数是否符合推荐基线。</summary>
         private void AuditBaseline() {
             AuditBaselineItem("CommandTimeoutSeconds", _configuredCommandTimeoutSeconds, _baselineCommandTimeoutSeconds);
             AuditBaselineItem("MaxRetryCount", _configuredMaxRetryCount, _baselineMaxRetryCount);
             AuditBaselineItem("MaxRetryDelaySeconds", _configuredMaxRetryDelaySeconds, _baselineMaxRetryDelaySeconds);
         }
 
-        /// <summary>
-        /// 输出单个参数的基线审计结果。
-        /// </summary>
+        /// <summary>输出单个参数的基线审计结果。</summary>
         private void AuditBaselineItem(string key, int configured, int baseline) {
             if (configured == baseline) {
                 _logger.LogInformation("运行参数基线审计通过：Key={Key}, Current={Current}, Baseline={Baseline}", key, configured, baseline);
@@ -726,33 +684,25 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _logger.LogWarning("运行参数基线审计告警：Key={Key}, Current={Current}, Baseline={Baseline}", key, configured, baseline);
         }
 
-        /// <summary>
-        /// 读取正整数配置，非法值回退默认值。
-        /// </summary>
+        /// <summary>读取正整数配置，非法值回退默认值。</summary>
         private static int GetPositiveIntOrDefault(IConfiguration configuration, string key, int fallback) {
             var value = configuration[key];
             return int.TryParse(value, out var parsed) && parsed > 0 ? parsed : fallback;
         }
 
-        /// <summary>
-        /// 读取非负整数配置，非法值回退默认值。
-        /// </summary>
+        /// <summary>读取非负整数配置，非法值回退默认值。</summary>
         private static int GetNonNegativeIntOrDefault(IConfiguration configuration, string key, int fallback) {
             var value = configuration[key];
             return int.TryParse(value, out var parsed) && parsed >= 0 ? parsed : fallback;
         }
 
-        /// <summary>
-        /// 读取非负小数配置，非法值回退默认值。
-        /// </summary>
+        /// <summary>读取非负小数配置，非法值回退默认值。</summary>
         private static decimal GetNonNegativeDecimalOrDefault(IConfiguration configuration, string key, decimal fallback) {
             var value = configuration[key];
             return decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed) && parsed >= 0m ? parsed : fallback;
         }
 
-        /// <summary>
-        /// 读取指定区间内的小数配置，非法值回退默认值。
-        /// </summary>
+        /// <summary>读取指定区间内的小数配置，非法值回退默认值。</summary>
         private static decimal GetDecimalInRangeOrDefault(IConfiguration configuration, string key, decimal fallback, decimal min, decimal max) {
             var value = configuration[key];
             if (!decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)) {
@@ -766,17 +716,13 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return parsed;
         }
 
-        /// <summary>
-        /// 读取布尔配置，非法值回退默认值。
-        /// </summary>
+        /// <summary>读取布尔配置，非法值回退默认值。</summary>
         private static bool GetBoolOrDefault(IConfiguration configuration, string key, bool fallback) {
             var value = configuration[key];
             return bool.TryParse(value, out var parsed) ? parsed : fallback;
         }
 
-        /// <summary>
-        /// 读取本地时间（HH:mm 或 HH:mm:ss）配置。
-        /// </summary>
+        /// <summary>读取本地时间（HH:mm 或 HH:mm:ss）配置。</summary>
         private static TimeSpan GetTimeOfDayOrDefault(IConfiguration configuration, string key, TimeSpan fallback) {
             var value = configuration[key];
             if (string.IsNullOrWhiteSpace(value)) {
@@ -799,9 +745,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return parsed;
         }
 
-        /// <summary>
-        /// 加载执行白名单并标准化为小写。
-        /// </summary>
+        /// <summary>加载执行白名单并标准化为小写。</summary>
         private static HashSet<string> LoadWhitelistedTables(IConfigurationSection section) {
             var tables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var child in section.GetChildren()) {
@@ -816,9 +760,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return tables;
         }
 
-        /// <summary>
-        /// 移除 SQL 前导注释，便于后续规则匹配。
-        /// </summary>
+        /// <summary>移除 SQL 前导注释，便于后续规则匹配。</summary>
         private static string TrimLeadingComments(string sql) {
             var normalized = sql;
             while (true) {
@@ -833,9 +775,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return normalized.TrimStart();
         }
 
-        /// <summary>
-        /// 裁剪追踪状态，限制内存占用并剔除过期记录。
-        /// </summary>
+        /// <summary>裁剪追踪状态，限制内存占用并剔除过期记录。</summary>
         private void PruneTrackingState() {
             var rollbackOverflow = _pendingRollbackByFingerprint.Count - MaxTrackedFingerprintCount;
             if (rollbackOverflow > 0) {
@@ -873,14 +813,10 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
         }
 
-        /// <summary>
-        /// 生成 AutoTuning 配置全路径键名。
-        /// </summary>
+        /// <summary>生成 AutoTuning 配置全路径键名。</summary>
         private static string AutoTuningKey(string suffix) => $"{AutoTuningConfigPrefix}:{suffix}";
 
-        /// <summary>
-        /// 生成 Autonomous 配置全路径键名。
-        /// </summary>
+        /// <summary>生成 Autonomous 配置全路径键名。</summary>
         private static string AutonomousKey(string suffix) => $"{AutonomousConfigPrefix}:{suffix}";
 
         private sealed record PendingRollbackAction(
@@ -896,9 +832,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             decimal BaselineTimeoutRatePercent,
             int BaselineDeadlockCount);
 
-        /// <summary>
-        /// 表级容量快照（CapturedLocalTime 必须使用本地时间语义）。
-        /// </summary>
+        /// <summary>表级容量快照（CapturedLocalTime 必须使用本地时间语义）。</summary>
         private sealed record TableCapacitySnapshot(
             DateTime CapturedLocalTime,
             long AffectedRows,
