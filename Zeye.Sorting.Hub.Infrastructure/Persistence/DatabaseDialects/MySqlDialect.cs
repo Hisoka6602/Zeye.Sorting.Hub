@@ -51,6 +51,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
         }
 
         public IReadOnlyList<string> BuildAutonomousMaintenanceSql(string? schemaName, string tableName, bool inPeakWindow, bool highRisk) {
+            if (string.IsNullOrWhiteSpace(tableName)) {
+                return Array.Empty<string>();
+            }
+
             var normalizedSchemaName = schemaName?.Trim();
             var normalizedTableName = tableName.Trim();
             var escapedTable = string.IsNullOrWhiteSpace(normalizedSchemaName)

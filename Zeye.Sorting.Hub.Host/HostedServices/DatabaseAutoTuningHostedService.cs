@@ -163,7 +163,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     _logger.LogWarning("慢 SQL 阈值告警：Provider={Provider}, Alert={Alert}", _dialect.ProviderName, alert);
                 }
 
-                UpdateAutonomousSignals(result);
+                UpdateAutonomousSignals(result, result.GeneratedTime);
                 await ExecuteAutoTuningActionsAsync(result, stoppingToken);
                 await ValidateAutonomousActionsAsync(result, stoppingToken);
                 await DetectRegressionAndAutoRollbackAsync(result, stoppingToken);
@@ -557,7 +557,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return decimal.Clamp(riskScore, 0m, 1m);
         }
 
-        private void UpdateAutonomousSignals(SlowQueryAnalysisResult result) {
+        private void UpdateAutonomousSignals(SlowQueryAnalysisResult result, DateTime cycleTime) {
             if (!_enableFullAutomation) {
                 return;
             }
@@ -607,7 +607,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                         queue.Dequeue();
                     }
 
-                    queue.Enqueue(new TableCapacitySnapshot(DateTime.Now, pair.Value.Rows, pair.Value.Calls));
+                    queue.Enqueue(new TableCapacitySnapshot(cycleTime, pair.Value.Rows, pair.Value.Calls));
                     EmitCapacityForecast(pair.Key, queue);
                 }
             }
@@ -621,13 +621,37 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             var ordered = snapshots.ToArray();
             var first = ordered[0];
             var last = ordered[^1];
-            var elapsedSeconds = (last.CapturedTime - first.CapturedTime).TotalSeconds;
+            var elapsedSeconds = (last.CapturedLocalTime - first.CapturedLocalTime).TotalSeconds;
             if (elapsedSeconds <= 0d) {
+                _logger.LogWarning(
+                    "L3 查询体量趋势预测跳过：Provider={Provider}, Table={Table}, ElapsedSeconds={ElapsedSeconds:F0}, Reason={Reason}",
+                    _dialect.ProviderName,
+                    tableKey,
+                    elapsedSeconds,
+                    "non-positive elapsed time");
+                return;
+            }
+
+            var minimumElapsedSeconds = _analyzeIntervalSeconds * 3d;
+            if (elapsedSeconds < minimumElapsedSeconds) {
+                _logger.LogInformation(
+                    "L3 查询体量趋势预测跳过：Provider={Provider}, Table={Table}, ElapsedSeconds={ElapsedSeconds:F0}, MinimumElapsedSeconds={MinimumElapsedSeconds:F0}, Reason={Reason}",
+                    _dialect.ProviderName,
+                    tableKey,
+                    elapsedSeconds,
+                    minimumElapsedSeconds,
+                    "insufficient observation window");
                 return;
             }
 
             var rowGrowthPerDay = (last.AffectedRows - first.AffectedRows) / elapsedSeconds * TimeSpan.FromDays(1).TotalSeconds;
             if (rowGrowthPerDay <= 0d) {
+                _logger.LogInformation(
+                    "L3 查询体量趋势预测跳过：Provider={Provider}, Table={Table}, GrowthQueryVolumeRowsPerDay={GrowthRowsPerDay:F0}, Reason={Reason}",
+                    _dialect.ProviderName,
+                    tableKey,
+                    rowGrowthPerDay,
+                    "non-positive growth");
                 return;
             }
 
@@ -637,7 +661,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
 
             _logger.LogWarning(
-                "L3 容量预测告警：Provider={Provider}, Table={Table}, ProjectionDays={ProjectionDays}, ProjectedRows={ProjectedRows:F0}, GrowthRowsPerDay={GrowthRowsPerDay:F0}, ActionHint={Hint}",
+                "L3 查询体量趋势告警：Provider={Provider}, Table={Table}, ProjectionDays={ProjectionDays}, ProjectedQueryVolume={ProjectedQueryVolume:F0}, GrowthQueryVolumePerDay={GrowthQueryVolumePerDay:F0}, ActionHint={Hint}",
                 _dialect.ProviderName,
                 tableKey,
                 _capacityProjectionDays,
@@ -831,8 +855,10 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
             var tableOverflow = _tableHeatByTable.Count - MaxTrackedTableCount;
             if (tableOverflow > 0) {
-                var removeTables = _tableHeatByTable.Keys
-                    .OrderBy(static key => key, StringComparer.Ordinal)
+                var removeTables = _tableHeatByTable
+                    .OrderBy(static pair => pair.Value)
+                    .ThenBy(static pair => pair.Key, StringComparer.Ordinal)
+                    .Select(static pair => pair.Key)
                     .Take(tableOverflow)
                     .ToArray();
                 foreach (var table in removeTables) {
@@ -856,7 +882,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             int BaselineDeadlockCount);
 
         private sealed record TableCapacitySnapshot(
-            DateTime CapturedTime,
+            DateTime CapturedLocalTime,
             long AffectedRows,
             int CallCount);
 
