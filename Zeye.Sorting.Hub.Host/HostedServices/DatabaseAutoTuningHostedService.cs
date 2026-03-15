@@ -15,6 +15,16 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private const int MaxTrackedFingerprintCount = 1000;
         private const int MaxTrackedTableCount = 500;
         private const int MaxCapacitySnapshotsPerTable = 64;
+        // 风险项采用加权叠加后再截断到 [0,1]，刻意不要求权重和为 1。
+        private const decimal DangerousActionRiskWeight = 0.45m;
+        private const decimal PeakWindowRiskWeight = 0.20m;
+        private const decimal HighP99RiskWeight = 0.15m;
+        private const decimal HighTimeoutRiskWeight = 0.15m;
+        private const decimal HighErrorRiskWeight = 0.10m;
+        private const decimal DeadlockRiskWeight = 0.20m;
+        private const double HighP99ThresholdMilliseconds = 1000d;
+        private const decimal HighTimeoutThresholdPercent = 1m;
+        private const decimal HighErrorThresholdPercent = 1m;
         private static readonly TimeSpan PendingRollbackRetention = TimeSpan.FromHours(24);
         private static readonly Regex SqlServerCreateIndexRegex = new(
             @"\bcreate\s+(?:unique\s+)?index\s+\[(?<index>[^\]]+)\]\s+on\s+(?<table>\[[^\]]+\](?:\.\[[^\]]+\])?)",
@@ -87,7 +97,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _enableAutoRollback = GetBoolOrDefault(configuration, AutonomousKey("Validation:EnableAutoRollback"), true);
             _whitelistedTables = LoadWhitelistedTables(configuration.GetSection(AutonomousKey("Execution:WhitelistedTables")));
             if (_whitelistedTables.Count == 0) {
-                _logger.LogInformation("自动调优执行白名单为空：当前允许所有候选表参与自动动作。");
+                _logger.LogWarning("自动调优执行白名单为空：当前将阻断所有候选表自动动作。");
             }
             _baselineCommandTimeoutSeconds = GetPositiveIntOrDefault(configuration, AutoTuningKey("BaselineCommandTimeoutSeconds"), 30);
             _baselineMaxRetryCount = GetPositiveIntOrDefault(configuration, AutoTuningKey("BaselineMaxRetryCount"), 5);
@@ -155,9 +165,10 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     _logger.LogWarning("慢 SQL 阈值告警：Provider={Provider}, Alert={Alert}", _dialect.ProviderName, alert);
                 }
 
-                UpdateAutonomousSignals(result, result.GeneratedTime);
-                await ExecuteAutoTuningActionsAsync(result, stoppingToken);
-                await ValidateAutonomousActionsAsync(result, stoppingToken);
+                var metricsByFingerprint = result.Metrics.ToDictionary(static metric => metric.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
+                UpdateAutonomousSignals(result, result.GeneratedTime, metricsByFingerprint);
+                await ExecuteAutoTuningActionsAsync(result, metricsByFingerprint, stoppingToken);
+                await ValidateAutonomousActionsAsync(result, metricsByFingerprint, stoppingToken);
                 PruneTrackingState();
 
                 if (result.ShouldEmitDailyReport) {
@@ -201,7 +212,10 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         /// <summary>执行自动调优动作及其后置维护动作。</summary>
-        private async Task ExecuteAutoTuningActionsAsync(SlowQueryAnalysisResult result, CancellationToken cancellationToken) {
+        private async Task ExecuteAutoTuningActionsAsync(
+            SlowQueryAnalysisResult result,
+            IReadOnlyDictionary<string, SlowQueryMetric> metricsByFingerprint,
+            CancellationToken cancellationToken) {
             // 步骤 1：先判断总开关与执行窗口。
             if (!_enableFullAutomation) {
                 return;
@@ -216,7 +230,6 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
             // 步骤 2：逐候选执行（含白名单、风险评分、动作上限）。
             var executedCount = 0;
-            var metricsByFingerprint = result.Metrics.ToDictionary(static metric => metric.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
             foreach (var candidate in result.TuningCandidates) {
                 if (executedCount >= _maxExecuteActionsPerCycle) {
                     break;
@@ -293,14 +306,16 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         /// <summary>对已执行动作执行延迟验证，必要时触发自动回滚。</summary>
-        private async Task ValidateAutonomousActionsAsync(SlowQueryAnalysisResult result, CancellationToken cancellationToken) {
+        private async Task ValidateAutonomousActionsAsync(
+            SlowQueryAnalysisResult result,
+            IReadOnlyDictionary<string, SlowQueryMetric> metricsByFingerprint,
+            CancellationToken cancellationToken) {
             // 步骤 1：检查验证开关与待验证池。
             if (!_enableFullAutomation || !_enableAutoValidation || _pendingRollbackByFingerprint.Count == 0) {
                 return;
             }
 
             // 步骤 2：计算回归指标并判定是否退化。
-            var metricsByFingerprint = result.Metrics.ToDictionary(static metric => metric.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
             foreach (var rollback in _pendingRollbackByFingerprint.Values.ToArray()) {
                 if (_analysisCycleCounter - rollback.CreatedCycle < _validationDelayCycles) {
                     continue;
@@ -435,7 +450,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <summary>判断候选表是否命中执行白名单。</summary>
         private bool IsWhitelisted(string? schemaName, string tableName) {
             if (_whitelistedTables.Count == 0) {
-                return true;
+                return false;
             }
 
             return _whitelistedTables.Contains(BuildTableKey(schemaName, tableName));
@@ -464,28 +479,28 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private decimal CalculateRiskScore(string actionSql, SlowQueryMetric? metric, bool inPeakWindow) {
             decimal riskScore = 0m;
             if (IsDangerousAction(actionSql)) {
-                riskScore += 0.45m;
+                riskScore += DangerousActionRiskWeight;
             }
 
             if (inPeakWindow) {
-                riskScore += 0.20m;
+                riskScore += PeakWindowRiskWeight;
             }
 
             if (metric is not null) {
-                if (metric.P99Milliseconds >= 1000d) {
-                    riskScore += 0.15m;
+                if (metric.P99Milliseconds >= HighP99ThresholdMilliseconds) {
+                    riskScore += HighP99RiskWeight;
                 }
 
-                if (metric.TimeoutRatePercent >= 1m) {
-                    riskScore += 0.15m;
+                if (metric.TimeoutRatePercent >= HighTimeoutThresholdPercent) {
+                    riskScore += HighTimeoutRiskWeight;
                 }
 
-                if (metric.ErrorRatePercent >= 1m) {
-                    riskScore += 0.10m;
+                if (metric.ErrorRatePercent >= HighErrorThresholdPercent) {
+                    riskScore += HighErrorRiskWeight;
                 }
 
                 if (metric.DeadlockCount > 0) {
-                    riskScore += 0.20m;
+                    riskScore += DeadlockRiskWeight;
                 }
             }
 
@@ -493,7 +508,10 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         /// <summary>更新表热度与容量观测快照。</summary>
-        private void UpdateAutonomousSignals(SlowQueryAnalysisResult result, DateTime cycleTime) {
+        private void UpdateAutonomousSignals(
+            SlowQueryAnalysisResult result,
+            DateTime cycleTime,
+            IReadOnlyDictionary<string, SlowQueryMetric> metricsByFingerprint) {
             // 步骤 1：先对历史热度做衰减，避免旧热点长期占用容量。
             if (!_enableFullAutomation) {
                 return;
@@ -510,7 +528,6 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
 
             // 步骤 2：按本轮候选聚合表级调用量与影响行数。
-            var metricsByFingerprint = result.Metrics.ToDictionary(static metric => metric.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
             var tableSamples = new Dictionary<string, (long Rows, int Calls)>(StringComparer.OrdinalIgnoreCase);
             foreach (var candidate in result.TuningCandidates) {
                 if (!metricsByFingerprint.TryGetValue(candidate.SqlFingerprint, out var metric)) {
@@ -585,32 +602,23 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 return;
             }
 
-            // 步骤 2：估算日增长量并过滤非增长场景（以 affected rows 作为查询体量代理指标）。
-            var queryVolumeGrowthPerDay = (double)(last.AffectedRows - first.AffectedRows) / observationWindowSeconds * TimeSpan.FromDays(1).TotalSeconds;
-            if (queryVolumeGrowthPerDay <= 0d) {
-                _logger.LogInformation(
-                    "闭环自治查询体量趋势预测跳过：Provider={Provider}, Table={Table}, GrowthQueryVolumeRowsPerDay={GrowthRowsPerDay:F0}, Reason={Reason}",
-                    _dialect.ProviderName,
-                    tableKey,
-                    queryVolumeGrowthPerDay,
-                    "non-positive growth");
+            // 步骤 2：按窗口样本均值估算投影体量（AffectedRows 为每轮窗口值，不能直接做首尾差分增长）。
+            var averageRowsPerCycle = ordered.Average(static snapshot => (double)snapshot.AffectedRows);
+            var cyclesPerDay = TimeSpan.FromDays(1).TotalSeconds / _analyzeIntervalSeconds;
+            var projectedWindowRows = averageRowsPerCycle * cyclesPerDay * _capacityProjectionDays;
+            if (projectedWindowRows < _capacityGrowthAlertRows) {
                 return;
             }
 
-            // 步骤 3：按线性增长模型预测容量趋势并给出处理建议。
-            var projectedRows = last.AffectedRows + queryVolumeGrowthPerDay * _capacityProjectionDays;
-            if (projectedRows < _capacityGrowthAlertRows) {
-                return;
-            }
-
+            // 步骤 3：达到投影阈值后输出容量告警并给出治理建议。
             _logger.LogWarning(
-                "闭环自治查询体量趋势告警：Provider={Provider}, Table={Table}, ProjectionDays={ProjectionDays}, ProjectedQueryVolume={ProjectedQueryVolume:F0}, GrowthQueryVolumePerDay={GrowthQueryVolumePerDay:F0}, ActionHint={Hint}",
+                "闭环自治查询体量趋势告警：Provider={Provider}, Table={Table}, ProjectionDays={ProjectionDays}, ProjectedWindowQueryVolume={ProjectedWindowQueryVolume:F0}, AverageQueryVolumePerCycle={AverageRowsPerCycle:F0}, ActionHint={Hint}",
                 _dialect.ProviderName,
                 tableKey,
                 _capacityProjectionDays,
-                projectedRows,
-                queryVolumeGrowthPerDay,
-                projectedRows >= _capacityHotLayeringRows ? "建议冷热分层 + 历史归档 + 索引重评估" : "建议优先检查索引与统计信息维护策略");
+                projectedWindowRows,
+                averageRowsPerCycle,
+                projectedWindowRows >= _capacityHotLayeringRows ? "建议冷热分层 + 历史归档 + 索引重评估" : "建议优先检查索引与统计信息维护策略");
         }
 
         /// <summary>生成统一的小写表标识（schema.table）。</summary>

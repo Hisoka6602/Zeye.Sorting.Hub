@@ -102,14 +102,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             var shouldEmitDailyReport = ShouldEmitDailyReport(now);
             var window = DequeueWindow();
             if (window.Count == 0) {
-                return new SlowQueryAnalysisResult(
-                    GeneratedTime: now,
-                    DroppedSamples: GetDroppedCount(),
-                    Metrics: Array.Empty<SlowQueryMetric>(),
-                    TuningCandidates: Array.Empty<SlowQueryTuningCandidate>(),
-                    ReadOnlySuggestions: Array.Empty<string>(),
-                    Alerts: Array.Empty<string>(),
-                    ShouldEmitDailyReport: shouldEmitDailyReport);
+                return SlowQueryAnalysisResult.Empty with {
+                    GeneratedTime = now,
+                    DroppedSamples = GetDroppedCount(),
+                    ShouldEmitDailyReport = shouldEmitDailyReport
+                };
             }
 
             var groups = window
