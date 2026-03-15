@@ -11,6 +11,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
     /// 数据库自动调谐后台服务：慢查询分析 + 闭环自治执行/验证/回退 + 审计日志
     /// </summary>
     public sealed class DatabaseAutoTuningHostedService : BackgroundService {
+        private const string AutoTuningConfigPrefix = "Persistence:AutoTuning";
+        private const string AutonomousConfigPrefix = $"{AutoTuningConfigPrefix}:Autonomous";
+        private const string PerformanceConfigPrefix = "Persistence:PerformanceTuning";
         private const int MaxTrackedFingerprintCount = 1000;
         private const int MaxTrackedTableCount = 500;
         private const int MaxCapacitySnapshotsPerTable = 64;
@@ -66,6 +69,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private readonly Dictionary<string, Queue<TableCapacitySnapshot>> _capacitySnapshotsByTable = new(StringComparer.OrdinalIgnoreCase);
         private int _analysisCycleCounter;
 
+        /// <summary>
+        /// 初始化数据库自动调谐后台服务及其运行策略参数。
+        /// </summary>
         public DatabaseAutoTuningHostedService(
             ILogger<DatabaseAutoTuningHostedService> logger,
             IServiceScopeFactory scopeFactory,
@@ -76,41 +82,44 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _scopeFactory = scopeFactory;
             _dialect = dialect;
             _pipeline = pipeline;
-            _analyzeIntervalSeconds = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:AnalyzeIntervalSeconds", 30);
-            _maxExecuteActionsPerCycle = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Execution:MaxExecuteActionsPerCycle", 2);
-            _actionExecutionTimeoutSeconds = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Execution:ActionExecutionTimeoutSeconds", 60);
-            _skipExecutionDuringPeak = GetBoolOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Execution:SkipExecutionDuringPeak", true);
-            _peakStartTime = GetTimeOfDayOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Execution:PeakStartLocalTime", new TimeSpan(8, 0, 0));
-            _peakEndTime = GetTimeOfDayOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Execution:PeakEndLocalTime", new TimeSpan(21, 0, 0));
-            _enableAutoRollback = GetBoolOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Validation:EnableAutoRollback", true);
-            _whitelistedTables = LoadWhitelistedTables(configuration.GetSection("Persistence:AutoTuning:Autonomous:Execution:WhitelistedTables"));
+            _analyzeIntervalSeconds = GetPositiveIntOrDefault(configuration, AutoTuningKey("AnalyzeIntervalSeconds"), 30);
+            _maxExecuteActionsPerCycle = GetPositiveIntOrDefault(configuration, AutonomousKey("Execution:MaxExecuteActionsPerCycle"), 2);
+            _actionExecutionTimeoutSeconds = GetPositiveIntOrDefault(configuration, AutonomousKey("Execution:ActionExecutionTimeoutSeconds"), 60);
+            _skipExecutionDuringPeak = GetBoolOrDefault(configuration, AutonomousKey("Execution:SkipExecutionDuringPeak"), true);
+            _peakStartTime = GetTimeOfDayOrDefault(configuration, AutonomousKey("Execution:PeakStartLocalTime"), new TimeSpan(8, 0, 0));
+            _peakEndTime = GetTimeOfDayOrDefault(configuration, AutonomousKey("Execution:PeakEndLocalTime"), new TimeSpan(21, 0, 0));
+            _enableAutoRollback = GetBoolOrDefault(configuration, AutonomousKey("Validation:EnableAutoRollback"), true);
+            _whitelistedTables = LoadWhitelistedTables(configuration.GetSection(AutonomousKey("Execution:WhitelistedTables")));
             if (_whitelistedTables.Count == 0) {
                 _logger.LogInformation("自动调优执行白名单为空：当前允许所有候选表参与自动动作。");
             }
-            _baselineCommandTimeoutSeconds = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:BaselineCommandTimeoutSeconds", 30);
-            _baselineMaxRetryCount = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:BaselineMaxRetryCount", 5);
-            _baselineMaxRetryDelaySeconds = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:BaselineMaxRetryDelaySeconds", 10);
-            _configuredCommandTimeoutSeconds = GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
-            _configuredMaxRetryCount = GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:MaxRetryCount", 5);
-            _configuredMaxRetryDelaySeconds = GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:MaxRetryDelaySeconds", 10);
-            _enableFullAutomation = GetBoolOrDefault(configuration, "Persistence:AutoTuning:Autonomous:EnableFullAutomation", true);
-            _policyMinTableHeatCalls = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Policy:MinTableHeatCalls", 10);
-            _policyMaxRiskScore = GetDecimalInRangeOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Policy:MaxRiskScore", 0.85m, 0m, 1m);
-            _policyPeakMaxRiskScore = GetDecimalInRangeOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Policy:PeakMaxRiskScore", 0.45m, 0m, 1m);
-            _policyPeakMaxTableHeatCalls = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Policy:PeakMaxTableHeatCalls", 50);
-            _enableAutoValidation = GetBoolOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Validation:EnableAutoValidation", true);
-            _validationDelayCycles = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Validation:DelayCycles", 1);
-            _validationP95IncreasePercent = GetNonNegativeDecimalOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Validation:P95IncreasePercent", 5m);
-            _validationP99IncreasePercent = GetNonNegativeDecimalOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Validation:P99IncreasePercent", 10m);
-            _validationErrorRateIncreasePercent = GetNonNegativeDecimalOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Validation:ErrorRateIncreasePercent", 0.5m);
-            _validationTimeoutRateIncreasePercent = GetNonNegativeDecimalOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Validation:TimeoutRateIncreasePercent", 0.5m);
-            _validationDeadlockIncreaseCount = GetNonNegativeIntOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Validation:DeadlockIncreaseCount", 1);
-            _enableCapacityPrediction = GetBoolOrDefault(configuration, "Persistence:AutoTuning:Autonomous:CapacityPrediction:EnableCapacityPrediction", true);
-            _capacityProjectionDays = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:Autonomous:CapacityPrediction:ProjectionDays", 7);
-            _capacityGrowthAlertRows = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:Autonomous:CapacityPrediction:GrowthAlertRows", 50000);
-            _capacityHotLayeringRows = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:Autonomous:CapacityPrediction:HotLayeringRows", 200000);
+            _baselineCommandTimeoutSeconds = GetPositiveIntOrDefault(configuration, AutoTuningKey("BaselineCommandTimeoutSeconds"), 30);
+            _baselineMaxRetryCount = GetPositiveIntOrDefault(configuration, AutoTuningKey("BaselineMaxRetryCount"), 5);
+            _baselineMaxRetryDelaySeconds = GetPositiveIntOrDefault(configuration, AutoTuningKey("BaselineMaxRetryDelaySeconds"), 10);
+            _configuredCommandTimeoutSeconds = GetPositiveIntOrDefault(configuration, $"{PerformanceConfigPrefix}:CommandTimeoutSeconds", 30);
+            _configuredMaxRetryCount = GetPositiveIntOrDefault(configuration, $"{PerformanceConfigPrefix}:MaxRetryCount", 5);
+            _configuredMaxRetryDelaySeconds = GetPositiveIntOrDefault(configuration, $"{PerformanceConfigPrefix}:MaxRetryDelaySeconds", 10);
+            _enableFullAutomation = GetBoolOrDefault(configuration, AutonomousKey("EnableFullAutomation"), true);
+            _policyMinTableHeatCalls = GetPositiveIntOrDefault(configuration, AutonomousKey("Policy:MinTableHeatCalls"), 10);
+            _policyMaxRiskScore = GetDecimalInRangeOrDefault(configuration, AutonomousKey("Policy:MaxRiskScore"), 0.85m, 0m, 1m);
+            _policyPeakMaxRiskScore = GetDecimalInRangeOrDefault(configuration, AutonomousKey("Policy:PeakMaxRiskScore"), 0.45m, 0m, 1m);
+            _policyPeakMaxTableHeatCalls = GetPositiveIntOrDefault(configuration, AutonomousKey("Policy:PeakMaxTableHeatCalls"), 50);
+            _enableAutoValidation = GetBoolOrDefault(configuration, AutonomousKey("Validation:EnableAutoValidation"), true);
+            _validationDelayCycles = GetPositiveIntOrDefault(configuration, AutonomousKey("Validation:DelayCycles"), 1);
+            _validationP95IncreasePercent = GetNonNegativeDecimalOrDefault(configuration, AutonomousKey("Validation:P95IncreasePercent"), 5m);
+            _validationP99IncreasePercent = GetNonNegativeDecimalOrDefault(configuration, AutonomousKey("Validation:P99IncreasePercent"), 10m);
+            _validationErrorRateIncreasePercent = GetNonNegativeDecimalOrDefault(configuration, AutonomousKey("Validation:ErrorRateIncreasePercent"), 0.5m);
+            _validationTimeoutRateIncreasePercent = GetNonNegativeDecimalOrDefault(configuration, AutonomousKey("Validation:TimeoutRateIncreasePercent"), 0.5m);
+            _validationDeadlockIncreaseCount = GetNonNegativeIntOrDefault(configuration, AutonomousKey("Validation:DeadlockIncreaseCount"), 1);
+            _enableCapacityPrediction = GetBoolOrDefault(configuration, AutonomousKey("CapacityPrediction:EnableCapacityPrediction"), true);
+            _capacityProjectionDays = GetPositiveIntOrDefault(configuration, AutonomousKey("CapacityPrediction:ProjectionDays"), 7);
+            _capacityGrowthAlertRows = GetPositiveIntOrDefault(configuration, AutonomousKey("CapacityPrediction:GrowthAlertRows"), 50000);
+            _capacityHotLayeringRows = GetPositiveIntOrDefault(configuration, AutonomousKey("CapacityPrediction:HotLayeringRows"), 200000);
         }
 
+        /// <summary>
+        /// 后台循环：按固定周期分析慢 SQL，并执行自治策略/验证/清理。
+        /// </summary>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
             AuditBaseline();
 
@@ -163,6 +172,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
         }
 
+        /// <summary>
+        /// 输出每日慢 SQL 汇总报告与只读建议。
+        /// </summary>
         private void EmitDailyReport(SlowQueryAnalysisResult result) {
             _logger.LogInformation(
                 "每日慢 SQL 报告：Provider={Provider}, GeneratedTime={GeneratedTime}, TopCount={TopCount}, DroppedSamples={DroppedSamples}",
@@ -196,7 +208,11 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
         }
 
+        /// <summary>
+        /// 执行自动调优动作及其后置维护动作。
+        /// </summary>
         private async Task ExecuteAutoTuningActionsAsync(SlowQueryAnalysisResult result, CancellationToken cancellationToken) {
+            // 步骤 1：先判断总开关与执行窗口。
             if (!_enableFullAutomation) {
                 return;
             }
@@ -208,6 +224,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 return;
             }
 
+            // 步骤 2：逐候选执行（含白名单、风险评分、动作上限）。
             var executedCount = 0;
             var metricsByFingerprint = result.Metrics.ToDictionary(static metric => metric.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
             foreach (var candidate in result.TuningCandidates) {
@@ -253,6 +270,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     EmitAuditLog(actionId, candidate, actionSql, rollbackSql, executed: true, dryRun: false, reason: $"executed, risk={policyDecision.RiskScore:F2}");
                     executedCount++;
 
+                    // 步骤 3：登记可回滚动作，并执行自治维护 SQL。
                     if (!string.IsNullOrWhiteSpace(rollbackSql)) {
                         _pendingRollbackByFingerprint[candidate.SqlFingerprint] = new PendingRollbackAction(
                             ActionId: actionId,
@@ -284,11 +302,16 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
         }
 
+        /// <summary>
+        /// 对已执行动作执行延迟验证，必要时触发自动回滚。
+        /// </summary>
         private async Task ValidateAutonomousActionsAsync(SlowQueryAnalysisResult result, CancellationToken cancellationToken) {
+            // 步骤 1：检查验证开关与待验证池。
             if (!_enableFullAutomation || !_enableAutoValidation || _pendingRollbackByFingerprint.Count == 0) {
                 return;
             }
 
+            // 步骤 2：计算回归指标并判定是否退化。
             var metricsByFingerprint = result.Metrics.ToDictionary(static metric => metric.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
             foreach (var rollback in _pendingRollbackByFingerprint.Values.ToArray()) {
                 if (_analysisCycleCounter - rollback.CreatedCycle < _validationDelayCycles) {
@@ -337,6 +360,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     timeoutRateIncrease,
                     deadlockIncrease);
 
+                // 步骤 3：在允许条件下执行回滚并移除追踪记录。
                 if (_enableAutoRollback && await TryExecuteSqlAsync(rollback.RollbackSql, rollback.Fingerprint, isRollback: true, cancellationToken)) {
                     _logger.LogWarning(
                         "闭环自治自动验证回滚执行完成：Provider={Provider}, Fingerprint={Fingerprint}, ActionId={ActionId}, RollbackSql={RollbackSql}",
@@ -350,6 +374,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
         }
 
+        /// <summary>
+        /// 在独立作用域中执行单条 SQL。
+        /// </summary>
         private async Task ExecuteSqlAsync(string sql, CancellationToken cancellationToken) {
             using var scope = _scopeFactory.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<SortingHubDbContext>();
@@ -357,6 +384,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             await dbContext.Database.ExecuteSqlRawAsync(sql, cancellationToken);
         }
 
+        /// <summary>
+        /// 包装 SQL 执行并处理可忽略异常。
+        /// </summary>
         private async Task<bool> TryExecuteSqlAsync(string sql, string fingerprint, bool isRollback, CancellationToken cancellationToken) {
             try {
                 await ExecuteSqlAsync(sql, cancellationToken);
@@ -382,6 +412,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
         }
 
+        /// <summary>
+        /// 计算百分比增幅（仅统计正向增长）。
+        /// </summary>
         private static decimal CalculateIncreasePercent(double previousValue, double currentValue) {
             if (previousValue <= 0d) {
                 return currentValue > 0d ? 100m : 0m;
@@ -395,6 +428,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return (decimal)(increase / previousValue * 100d);
         }
 
+        /// <summary>
+        /// 输出自动调优动作审计日志。
+        /// </summary>
         private void EmitAuditLog(
             string actionId,
             SlowQueryTuningCandidate candidate,
@@ -416,6 +452,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 rollbackSql ?? string.Empty);
         }
 
+        /// <summary>
+        /// 判断候选表是否命中执行白名单。
+        /// </summary>
         private bool IsWhitelisted(string? schemaName, string tableName) {
             if (_whitelistedTables.Count == 0) {
                 return true;
@@ -424,6 +463,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return _whitelistedTables.Contains(BuildTableKey(schemaName, tableName));
         }
 
+        /// <summary>
+        /// 根据风险评分、热度与时段判定动作是否可执行。
+        /// </summary>
         private PolicyDecision EvaluateExecutionPolicy(string actionSql, SlowQueryMetric? metric, int tableHeat, bool inPeakWindow) {
             var riskScore = CalculateRiskScore(actionSql, metric, inPeakWindow);
             if (tableHeat < _policyMinTableHeatCalls) {
@@ -442,6 +484,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return PolicyDecision.Execute(riskScore, "autonomous-policy-approved");
         }
 
+        /// <summary>
+        /// 计算动作风险分（0~1）。
+        /// </summary>
         private decimal CalculateRiskScore(string actionSql, SlowQueryMetric? metric, bool inPeakWindow) {
             decimal riskScore = 0m;
             if (IsDangerousAction(actionSql)) {
@@ -473,7 +518,11 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return decimal.Clamp(riskScore, 0m, 1m);
         }
 
+        /// <summary>
+        /// 更新表热度与容量观测快照。
+        /// </summary>
         private void UpdateAutonomousSignals(SlowQueryAnalysisResult result, DateTime cycleTime) {
+            // 步骤 1：先对历史热度做衰减，避免旧热点长期占用容量。
             if (!_enableFullAutomation) {
                 return;
             }
@@ -488,6 +537,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 _tableHeatByTable[table] = decayed;
             }
 
+            // 步骤 2：按本轮候选聚合表级调用量与影响行数。
             var metricsByFingerprint = result.Metrics.ToDictionary(static metric => metric.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
             var tableSamples = new Dictionary<string, (long Rows, int Calls)>(StringComparer.OrdinalIgnoreCase);
             foreach (var candidate in result.TuningCandidates) {
@@ -505,6 +555,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 tableSamples[tableKey] = sample;
             }
 
+            // 步骤 3：刷新热度与容量样本，并触发趋势评估。
             foreach (var pair in tableSamples) {
                 if (_tableHeatByTable.TryGetValue(pair.Key, out var currentHeat)) {
                     _tableHeatByTable[pair.Key] = currentHeat + pair.Value.Calls;
@@ -529,7 +580,11 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
         }
 
+        /// <summary>
+        /// 根据表级样本序列估算查询体量增长趋势并告警。
+        /// </summary>
         private void EmitCapacityForecast(string tableKey, Queue<TableCapacitySnapshot> snapshots) {
+            // 步骤 1：确保观察窗口足够，避免短样本导致误报。
             if (snapshots.Count < 2) {
                 return;
             }
@@ -537,41 +592,43 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             var ordered = snapshots.ToArray();
             var first = ordered[0];
             var last = ordered[^1];
-            var elapsedSeconds = (last.CapturedLocalTime - first.CapturedLocalTime).TotalSeconds;
-            if (elapsedSeconds <= 0d) {
+            var observationWindowSeconds = (last.CapturedLocalTime - first.CapturedLocalTime).TotalSeconds;
+            if (observationWindowSeconds <= 0d) {
                 _logger.LogWarning(
                     "闭环自治查询体量趋势预测跳过：Provider={Provider}, Table={Table}, ElapsedSeconds={ElapsedSeconds:F0}, Reason={Reason}",
                     _dialect.ProviderName,
                     tableKey,
-                    elapsedSeconds,
+                    observationWindowSeconds,
                     "non-positive elapsed time");
                 return;
             }
 
             var minimumElapsedSeconds = _analyzeIntervalSeconds * 3d;
-            if (elapsedSeconds < minimumElapsedSeconds) {
+            if (observationWindowSeconds < minimumElapsedSeconds) {
                 _logger.LogInformation(
                     "闭环自治查询体量趋势预测跳过：Provider={Provider}, Table={Table}, ElapsedSeconds={ElapsedSeconds:F0}, MinimumElapsedSeconds={MinimumElapsedSeconds:F0}, Reason={Reason}",
                     _dialect.ProviderName,
                     tableKey,
-                    elapsedSeconds,
+                    observationWindowSeconds,
                     minimumElapsedSeconds,
                     "insufficient observation window");
                 return;
             }
 
-            var rowGrowthPerDay = (last.AffectedRows - first.AffectedRows) / elapsedSeconds * TimeSpan.FromDays(1).TotalSeconds;
-            if (rowGrowthPerDay <= 0d) {
+            // 步骤 2：估算日增长量并过滤非增长场景（以 affected rows 作为查询体量代理指标）。
+            var queryVolumeGrowthPerDay = (double)(last.AffectedRows - first.AffectedRows) / observationWindowSeconds * TimeSpan.FromDays(1).TotalSeconds;
+            if (queryVolumeGrowthPerDay <= 0d) {
                 _logger.LogInformation(
                     "闭环自治查询体量趋势预测跳过：Provider={Provider}, Table={Table}, GrowthQueryVolumeRowsPerDay={GrowthRowsPerDay:F0}, Reason={Reason}",
                     _dialect.ProviderName,
                     tableKey,
-                    rowGrowthPerDay,
+                    queryVolumeGrowthPerDay,
                     "non-positive growth");
                 return;
             }
 
-            var projectedRows = last.AffectedRows + rowGrowthPerDay * _capacityProjectionDays;
+            // 步骤 3：按线性增长模型预测容量趋势并给出处理建议。
+            var projectedRows = last.AffectedRows + queryVolumeGrowthPerDay * _capacityProjectionDays;
             if (projectedRows < _capacityGrowthAlertRows) {
                 return;
             }
@@ -582,16 +639,22 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 tableKey,
                 _capacityProjectionDays,
                 projectedRows,
-                rowGrowthPerDay,
+                queryVolumeGrowthPerDay,
                 projectedRows >= _capacityHotLayeringRows ? "建议冷热分层 + 历史归档 + 索引重评估" : "建议优先检查索引与统计信息维护策略");
         }
 
+        /// <summary>
+        /// 生成统一的小写表标识（schema.table）。
+        /// </summary>
         private static string BuildTableKey(string? schemaName, string tableName) {
             return string.IsNullOrWhiteSpace(schemaName)
                 ? tableName.Trim().ToLowerInvariant()
                 : $"{schemaName.Trim().ToLowerInvariant()}.{tableName.Trim().ToLowerInvariant()}";
         }
 
+        /// <summary>
+        /// 判断当前时刻是否位于高峰执行窗口。
+        /// </summary>
         private bool IsInPeakWindow(TimeSpan nowTime) {
             if (_peakStartTime == _peakEndTime) {
                 return false;
@@ -604,6 +667,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return nowTime >= _peakStartTime || nowTime < _peakEndTime;
         }
 
+        /// <summary>
+        /// 识别是否为高风险 DDL 动作。
+        /// </summary>
         private bool IsDangerousAction(string actionSql) {
             if (string.IsNullOrWhiteSpace(actionSql)) {
                 return false;
@@ -613,6 +679,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return DangerousDdlRegex.IsMatch(normalized);
         }
 
+        /// <summary>
+        /// 尝试为自动创建索引动作生成回滚 SQL。
+        /// </summary>
         private string? BuildRollbackSql(string actionSql) {
             if (string.IsNullOrWhiteSpace(actionSql)) {
                 return null;
@@ -636,12 +705,18 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return null;
         }
 
+        /// <summary>
+        /// 审计当前运行参数是否符合推荐基线。
+        /// </summary>
         private void AuditBaseline() {
             AuditBaselineItem("CommandTimeoutSeconds", _configuredCommandTimeoutSeconds, _baselineCommandTimeoutSeconds);
             AuditBaselineItem("MaxRetryCount", _configuredMaxRetryCount, _baselineMaxRetryCount);
             AuditBaselineItem("MaxRetryDelaySeconds", _configuredMaxRetryDelaySeconds, _baselineMaxRetryDelaySeconds);
         }
 
+        /// <summary>
+        /// 输出单个参数的基线审计结果。
+        /// </summary>
         private void AuditBaselineItem(string key, int configured, int baseline) {
             if (configured == baseline) {
                 _logger.LogInformation("运行参数基线审计通过：Key={Key}, Current={Current}, Baseline={Baseline}", key, configured, baseline);
@@ -651,21 +726,33 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _logger.LogWarning("运行参数基线审计告警：Key={Key}, Current={Current}, Baseline={Baseline}", key, configured, baseline);
         }
 
+        /// <summary>
+        /// 读取正整数配置，非法值回退默认值。
+        /// </summary>
         private static int GetPositiveIntOrDefault(IConfiguration configuration, string key, int fallback) {
             var value = configuration[key];
             return int.TryParse(value, out var parsed) && parsed > 0 ? parsed : fallback;
         }
 
+        /// <summary>
+        /// 读取非负整数配置，非法值回退默认值。
+        /// </summary>
         private static int GetNonNegativeIntOrDefault(IConfiguration configuration, string key, int fallback) {
             var value = configuration[key];
             return int.TryParse(value, out var parsed) && parsed >= 0 ? parsed : fallback;
         }
 
+        /// <summary>
+        /// 读取非负小数配置，非法值回退默认值。
+        /// </summary>
         private static decimal GetNonNegativeDecimalOrDefault(IConfiguration configuration, string key, decimal fallback) {
             var value = configuration[key];
             return decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed) && parsed >= 0m ? parsed : fallback;
         }
 
+        /// <summary>
+        /// 读取指定区间内的小数配置，非法值回退默认值。
+        /// </summary>
         private static decimal GetDecimalInRangeOrDefault(IConfiguration configuration, string key, decimal fallback, decimal min, decimal max) {
             var value = configuration[key];
             if (!decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)) {
@@ -679,11 +766,17 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return parsed;
         }
 
+        /// <summary>
+        /// 读取布尔配置，非法值回退默认值。
+        /// </summary>
         private static bool GetBoolOrDefault(IConfiguration configuration, string key, bool fallback) {
             var value = configuration[key];
             return bool.TryParse(value, out var parsed) ? parsed : fallback;
         }
 
+        /// <summary>
+        /// 读取本地时间（HH:mm 或 HH:mm:ss）配置。
+        /// </summary>
         private static TimeSpan GetTimeOfDayOrDefault(IConfiguration configuration, string key, TimeSpan fallback) {
             var value = configuration[key];
             if (string.IsNullOrWhiteSpace(value)) {
@@ -706,6 +799,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return parsed;
         }
 
+        /// <summary>
+        /// 加载执行白名单并标准化为小写。
+        /// </summary>
         private static HashSet<string> LoadWhitelistedTables(IConfigurationSection section) {
             var tables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var child in section.GetChildren()) {
@@ -720,6 +816,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return tables;
         }
 
+        /// <summary>
+        /// 移除 SQL 前导注释，便于后续规则匹配。
+        /// </summary>
         private static string TrimLeadingComments(string sql) {
             var normalized = sql;
             while (true) {
@@ -734,6 +833,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return normalized.TrimStart();
         }
 
+        /// <summary>
+        /// 裁剪追踪状态，限制内存占用并剔除过期记录。
+        /// </summary>
         private void PruneTrackingState() {
             var rollbackOverflow = _pendingRollbackByFingerprint.Count - MaxTrackedFingerprintCount;
             if (rollbackOverflow > 0) {
@@ -771,6 +873,16 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
         }
 
+        /// <summary>
+        /// 生成 AutoTuning 配置全路径键名。
+        /// </summary>
+        private static string AutoTuningKey(string suffix) => $"{AutoTuningConfigPrefix}:{suffix}";
+
+        /// <summary>
+        /// 生成 Autonomous 配置全路径键名。
+        /// </summary>
+        private static string AutonomousKey(string suffix) => $"{AutonomousConfigPrefix}:{suffix}";
+
         private sealed record PendingRollbackAction(
             string ActionId,
             string Fingerprint,
@@ -784,6 +896,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             decimal BaselineTimeoutRatePercent,
             int BaselineDeadlockCount);
 
+        /// <summary>
+        /// 表级容量快照（CapturedLocalTime 必须使用本地时间语义）。
+        /// </summary>
         private sealed record TableCapacitySnapshot(
             DateTime CapturedLocalTime,
             long AffectedRows,

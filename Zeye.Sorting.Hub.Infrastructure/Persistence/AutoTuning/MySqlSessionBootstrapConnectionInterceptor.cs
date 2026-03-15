@@ -16,10 +16,16 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
 
         private readonly ILogger<MySqlSessionBootstrapConnectionInterceptor> _logger;
 
+        /// <summary>
+        /// 初始化 MySQL 会话级参数拦截器。
+        /// </summary>
         public MySqlSessionBootstrapConnectionInterceptor(ILogger<MySqlSessionBootstrapConnectionInterceptor> logger) {
             _logger = logger;
         }
 
+        /// <summary>
+        /// 连接打开后同步执行会话初始化 SQL。
+        /// </summary>
         public override void ConnectionOpened(DbConnection connection, ConnectionEndEventData eventData) {
             if (!IsMySqlConnection(connection)) {
                 return;
@@ -28,6 +34,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             ApplySessionSql(connection);
         }
 
+        /// <summary>
+        /// 连接打开后异步执行会话初始化 SQL。
+        /// </summary>
         public override async Task ConnectionOpenedAsync(DbConnection connection, ConnectionEndEventData eventData, CancellationToken cancellationToken = default) {
             if (!IsMySqlConnection(connection)) {
                 return;
@@ -36,6 +45,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             await ApplySessionSqlAsync(connection, cancellationToken);
         }
 
+        /// <summary>
+        /// 同步执行会话初始化 SQL，失败时降级忽略。
+        /// </summary>
         private void ApplySessionSql(DbConnection connection) {
             foreach (var sql in SessionSql) {
                 try {
@@ -49,6 +61,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             }
         }
 
+        /// <summary>
+        /// 异步执行会话初始化 SQL，失败时降级忽略。
+        /// </summary>
         private async Task ApplySessionSqlAsync(DbConnection connection, CancellationToken cancellationToken) {
             foreach (var sql in SessionSql) {
                 try {
@@ -62,6 +77,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             }
         }
 
+        /// <summary>
+        /// 判断当前连接是否为 MySQL 驱动连接。
+        /// </summary>
         private static bool IsMySqlConnection(DbConnection connection) {
             return connection is MySqlConnection;
         }
