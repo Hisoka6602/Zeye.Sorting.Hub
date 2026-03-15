@@ -3,6 +3,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.Globalization;
 using EFCore.Sharding;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -133,8 +134,12 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
 
         private static DateTime GetShardingStartTime(IConfiguration configuration) {
             var configured = configuration["Persistence:Sharding:ParcelStartTime"];
-            if (DateTime.TryParse(configured, out var parsed)) {
-                return DateTime.SpecifyKind(parsed, DateTimeKind.Utc);
+            if (DateTimeOffset.TryParse(
+                configured,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                out var parsed)) {
+                return parsed.UtcDateTime;
             }
 
             var now = DateTime.UtcNow;

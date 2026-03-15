@@ -73,7 +73,7 @@
 │   └── appsettings.json（默认运行配置）
 ├── Zeye.Sorting.Hub.Infrastructure（基础设施层）
 │   ├── DependencyInjection（依赖注入扩展目录）
-│   │   └── PersistenceServiceCollectionExtensions.cs（持久化服务注册扩展（Parcel 按 CreatedTime 月分表））
+│   │   └── PersistenceServiceCollectionExtensions.cs（持久化服务注册扩展（数据库提供器选择、连接字符串校验、DbContext 注册、性能参数读取配置、Parcel 按 CreatedTime 月分表））
 │   ├── EntityConfigurations（EF Core 映射配置目录）
 │   │   ├── BagInfoEntityTypeConfiguration.cs（BagInfo 映射配置）
 │   │   └── ParcelEntityTypeConfiguration.cs（Parcel 映射配置）
@@ -201,7 +201,7 @@
 - `Zeye.Sorting.Hub.Infrastructure.csproj`：Infrastructure 项目定义。
 
 #### `Zeye.Sorting.Hub.Infrastructure/DependencyInjection/`：依赖注入扩展目录
-- `PersistenceServiceCollectionExtensions.cs`：持久化服务注册扩展（Parcel 按 CreatedTime 月分表）。
+- `PersistenceServiceCollectionExtensions.cs`：持久化服务注册扩展（数据库提供器选择、连接字符串校验、DbContext 注册、性能参数读取配置、Parcel 按 CreatedTime 月分表）。
 
 #### `Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/`：EF Core 实体映射配置目录
 - `BagInfoEntityTypeConfiguration.cs`：BagInfo 映射配置。

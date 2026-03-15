@@ -12,9 +12,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
     public sealed class SqlServerDialect : IDatabaseDialect {
         public string ProviderName => "SQLServer";
 
-        public IReadOnlyList<string> GetOptionalBootstrapSql() => new[] {
-            "SET NOCOUNT ON;",
-            "SET ARITHABORT ON;"
-        };
+        public IReadOnlyList<string> GetOptionalBootstrapSql() => Array.Empty<string>();
     }
 }
