@@ -62,10 +62,13 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _skipExecutionDuringPeak = GetBoolOrDefault(configuration, "Persistence:AutoTuning:L2:SkipExecutionDuringPeak", true);
             _peakStartTime = GetTimeOfDayOrDefault(configuration, "Persistence:AutoTuning:L2:PeakStartLocalTime", new TimeSpan(8, 0, 0));
             _peakEndTime = GetTimeOfDayOrDefault(configuration, "Persistence:AutoTuning:L2:PeakEndLocalTime", new TimeSpan(21, 0, 0));
-            _regressionP99IncreasePercent = GetDecimalOrDefault(configuration, "Persistence:AutoTuning:L2:RegressionP99IncreasePercent", 30m);
-            _regressionTimeoutRateIncreasePercent = GetDecimalOrDefault(configuration, "Persistence:AutoTuning:L2:RegressionTimeoutRateIncreasePercent", 1m);
+            _regressionP99IncreasePercent = GetNonNegativeDecimalOrDefault(configuration, "Persistence:AutoTuning:L2:RegressionP99IncreasePercent", 30m);
+            _regressionTimeoutRateIncreasePercent = GetNonNegativeDecimalOrDefault(configuration, "Persistence:AutoTuning:L2:RegressionTimeoutRateIncreasePercent", 1m);
             _enableAutoRollback = GetBoolOrDefault(configuration, "Persistence:AutoTuning:L2:EnableAutoRollback", true);
             _whitelistedTables = LoadWhitelistedTables(configuration.GetSection("Persistence:AutoTuning:L2:WhitelistedTables"));
+            if (_enableActionExecution && _whitelistedTables.Count == 0) {
+                _logger.LogWarning("L2 自动调优执行已启用但白名单为空：当前将阻止所有表执行自动动作。");
+            }
             _baselineCommandTimeoutSeconds = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:BaselineCommandTimeoutSeconds", 30);
             _baselineMaxRetryCount = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:BaselineMaxRetryCount", 5);
             _baselineMaxRetryDelaySeconds = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:BaselineMaxRetryDelaySeconds", 10);
@@ -365,9 +368,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return int.TryParse(value, out var parsed) && parsed > 0 ? parsed : fallback;
         }
 
-        private static decimal GetDecimalOrDefault(IConfiguration configuration, string key, decimal fallback) {
+        private static decimal GetNonNegativeDecimalOrDefault(IConfiguration configuration, string key, decimal fallback) {
             var value = configuration[key];
-            return decimal.TryParse(value, out var parsed) && parsed > 0 ? parsed : fallback;
+            return decimal.TryParse(value, out var parsed) && parsed >= 0m ? parsed : fallback;
         }
 
         private static bool GetBoolOrDefault(IConfiguration configuration, string key, bool fallback) {
