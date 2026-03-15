@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Zeye.Sorting.Hub.Domain.Enums;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
 
@@ -17,28 +18,12 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         }
     }
 
-    /// <summary>闭环自治阶段模型。</summary>
-    public enum AutoTuningClosedLoopStage {
-        Monitor,
-        Diagnose,
-        Execute,
-        Verify,
-        Rollback
-    }
-
     /// <summary>回归检测结果（支持 unavailable 标记）。</summary>
     public sealed record RegressionEvaluationResult(
         bool IsRegressed,
         bool IsSevereRegression,
         string Reason,
         string LockWaitStatus);
-
-    /// <summary>危险动作隔离决策。</summary>
-    public enum ActionIsolationDecision {
-        Execute,
-        BlockedByGuard,
-        DryRunOnly
-    }
 
     /// <summary>危险动作隔离策略引擎。</summary>
     public static class ActionIsolationPolicy {

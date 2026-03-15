@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Configuration;
+using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 

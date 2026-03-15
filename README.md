@@ -47,8 +47,10 @@
 │   │       └── ParcelScannedEventArgs.cs（包裹扫描事件参数）
 │   ├── Enums（领域枚举目录）
 │   │   ├── ActionType.cs（动作类型枚举）
+│   │   ├── ActionIsolationDecision.cs（自动调优危险动作隔离决策枚举）
 │   │   ├── ApiRequestStatus.cs（接口请求状态枚举）
 │   │   ├── ApiRequestType.cs（接口请求类型枚举）
+│   │   ├── AutoTuningClosedLoopStage.cs（自动调优闭环阶段枚举）
 │   │   ├── BarCodeType.cs（条码类型枚举）
 │   │   ├── CommandDirection.cs（命令方向枚举）
 │   │   ├── ImageCaptureType.cs（图像采集方式枚举）
@@ -185,8 +187,10 @@
 
 #### `Zeye.Sorting.Hub.Domain/Enums/`：领域枚举与业务语义常量目录
 - `ActionType.cs`：动作类型枚举定义。
+- `ActionIsolationDecision.cs`：自动调优危险动作隔离决策枚举定义。
 - `ApiRequestStatus.cs`：接口请求状态枚举定义。
 - `ApiRequestType.cs`：接口请求类型枚举定义。
+- `AutoTuningClosedLoopStage.cs`：自动调优闭环阶段枚举定义。
 - `BarCodeType.cs`：条码类型枚举定义。
 - `CommandDirection.cs`：命令方向枚举定义。
 - `ImageCaptureType.cs`：图像采集方式枚举定义。
