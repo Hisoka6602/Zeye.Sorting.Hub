@@ -68,7 +68,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                         .CreateShardingTableOnStarting(false)
                         .UseDatabase(connectionString, DatabaseType.MySql, typeof(Parcel).Namespace!, static _ => { })
                         .SetDateSharding<Parcel>(
-                            shardingField: nameof(Parcel.ScannedTime),
+                            shardingField: nameof(Parcel.CreatedTime),
                             expandByDateMode: ExpandByDateMode.PerMonth,
                             startTime: parcelShardingStartTime,
                             sourceName: ShardingConstant.DefaultSource);
@@ -108,7 +108,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                         .CreateShardingTableOnStarting(false)
                         .UseDatabase(connectionString, DatabaseType.SqlServer, typeof(Parcel).Namespace!, static _ => { })
                         .SetDateSharding<Parcel>(
-                            shardingField: nameof(Parcel.ScannedTime),
+                            shardingField: nameof(Parcel.CreatedTime),
                             expandByDateMode: ExpandByDateMode.PerMonth,
                             startTime: parcelShardingStartTime,
                             sourceName: ShardingConstant.DefaultSource);
