@@ -134,16 +134,20 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
 
         private static DateTime GetShardingStartTime(IConfiguration configuration) {
             var configured = configuration["Persistence:Sharding:ParcelStartTime"];
-            if (DateTimeOffset.TryParse(
+            if (DateTime.TryParse(
                 configured,
                 CultureInfo.InvariantCulture,
-                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                DateTimeStyles.AssumeLocal,
                 out var parsed)) {
-                return parsed.UtcDateTime;
+                return parsed.Kind switch {
+                    DateTimeKind.Unspecified => DateTime.SpecifyKind(parsed, DateTimeKind.Local),
+                    DateTimeKind.Local => parsed,
+                    _ => parsed.ToLocalTime()
+                };
             }
 
-            var now = DateTime.UtcNow;
-            return new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+            var now = DateTime.Now;
+            return new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Local);
         }
     }
 }

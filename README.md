@@ -6,6 +6,8 @@
 
 ```text
 .
+├── .github（Copilot 仓库级指令目录）
+│   └── copilot-instructions.md（Copilot 自定义指令：禁止 UTC、统一本地时间）
 ├── .gitattributes（Git 属性配置）
 ├── .gitignore（Git 忽略规则）
 ├── README.md（仓库总览、结构清单与维护规范）
@@ -107,17 +109,22 @@
 
 - 每次新增文件或删除文件后，必须同步更新本 README 的“仓库文件结构（当前）”章节，保证结构清单与仓库实际内容一致。
 - 每次新增文件或删除文件后，必须同步更新本 README 的“各层级与各文件作用说明（逐项）”章节，保证职责说明与仓库实际内容一致。
+- 硬性规则：全项目禁止使用 UTC 时间（如 `DateTime.UtcNow`、`DateTimeOffset.UtcNow`、`DateTimeKind.Utc`、`ToUniversalTime` 等），统一使用本地时间语义（如 `DateTime.Now`、`DateTimeKind.Local`）。
 
 ## 各层级与各文件作用说明（逐项）
 
 ### 根目录（`.`）
 
 - `.`：解决方案根目录，承载多项目分层结构（Host、Domain、Infrastructure、Application、Contracts 等）。
+- `.github/`：Copilot 仓库级指令目录。
 - `.gitattributes`：Git 属性配置（如行尾规范）。
 - `.gitignore`：Git 忽略规则（如 `bin/`、`obj/`、IDE 临时文件）。
 - `README.md`：仓库总览、结构清单与维护规范文档。
 - `Zeye.Sorting.Hub.sln`：.NET 解决方案入口，聚合全部项目。
 - `项目完成度与推进计划.md`：项目阶段评估与路线图文档。
+
+### `.github/`：Copilot 仓库级指令目录
+- `copilot-instructions.md`：Copilot 自定义指令，硬性要求禁止 UTC 时间 API，统一使用本地时间语义。
 
 ### `Zeye.Sorting.Hub.Analytics/`：分析与报表子域（当前为占位工程）
 - `Zeye.Sorting.Hub.Analytics.csproj`：Analytics 项目定义。
