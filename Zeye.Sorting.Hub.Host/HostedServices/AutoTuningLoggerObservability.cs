@@ -12,7 +12,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         public void EmitMetric(string name, double value, IReadOnlyDictionary<string, string>? tags = null) {
-            _logger.LogInformation("AutoTuningMetric: Name={Name}, Value={Value}, Tags={Tags}", name, value, FormatTags(tags));
+            _logger.LogDebug("AutoTuningMetric: Name={Name}, Value={Value}, Tags={Tags}", name, value, FormatTags(tags));
         }
 
         public void EmitEvent(string name, LogLevel level, string message, IReadOnlyDictionary<string, string>? tags = null) {

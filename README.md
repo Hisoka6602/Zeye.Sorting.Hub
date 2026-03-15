@@ -271,16 +271,3 @@
 ### `Zeye.Sorting.Hub.Host.Tests/`：自动调优测试层
 - `Zeye.Sorting.Hub.Host.Tests.csproj`：xUnit 测试项目定义。
 - `AutoTuningProductionControlTests.cs`：覆盖 dry-run、危险动作隔离、告警防抖与恢复、自动回滚触发、闭环阶段链路。
-
-## 本次更新内容
-
-- L1：增强慢 SQL 告警防抖（最小调用次数 + 时间窗口去重 + 连续窗口触发）与恢复通知；日报建议新增原因、风险等级、置信度；引入统一观测抽象接口并提供默认日志实现；基线审计新增 AutoTuning 关键阈值偏离等级与推荐值。
-- L2：危险动作统一走隔离器入口（开关、dry-run、审计、回滚脚本协同）；保持高峰仅采集低峰维护策略，且执行继续受白名单约束。
-- L3：闭环阶段显式化（Monitor→Diagnose→Execute→Verify→Rollback）；自动验证日志补充 lock wait unavailable 标识；新增分级动作（暂停后续动作 / 严重回归立即回滚）；补齐执行计划回退检测抽象接口（默认日志占位实现）。
-- 测试：新增自动调优测试工程，覆盖关键生产可控行为。
-
-## 后续可继续完善项
-
-- 将 `IAutoTuningObservability` 对接 OpenTelemetry Meter/Activity 与 Prometheus 指标导出。
-- 将 `IExecutionPlanRegressionProbe` 对接 SQL Server Query Store / MySQL Performance Schema 的真实计划视图。
-- 增加基于容器数据库的集成测试，验证真实 SQL 执行、回滚脚本可用性和跨方言一致性。

@@ -14,6 +14,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         private const string AutoTuningConfigPrefix = "Persistence:AutoTuning";
         private const string AutoTuningMarker = "AUTO_TUNING";
         private const int MaxWhereColumns = 3;
+        private const int MaxAlertTrackingStates = 2048;
         private static readonly Regex MultiWhitespaceRegex = new(@"\s+", RegexOptions.Compiled | RegexOptions.CultureInvariant);
         private static readonly Regex ParameterRegex = new(@"@[A-Za-z_][A-Za-z0-9_]*", RegexOptions.Compiled | RegexOptions.CultureInvariant);
         private static readonly Regex StringLiteralRegex = new(@"'[^']*'", RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -321,10 +322,13 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             string message,
             List<SlowQueryAlertNotification> notifications) {
             if (!_alertStates.TryGetValue(alertKey, out var state)) {
-                state = new AlertTrackingState();
+                state = new AlertTrackingState {
+                    LastSeenTime = now
+                };
                 _alertStates[alertKey] = state;
             }
 
+            state.LastSeenTime = now;
             state.ConsecutiveTriggeredWindows++;
             state.ConsecutiveRecoveredWindows = 0;
             var hasReachedConsecutiveThreshold = state.ConsecutiveTriggeredWindows >= _alertConsecutiveWindows;
@@ -362,6 +366,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                 state.ConsecutiveTriggeredWindows = 0;
                 if (!state.IsActive) {
                     state.ConsecutiveRecoveredWindows = 0;
+                    if (now - state.LastSeenTime >= _alertDebounceWindow) {
+                        _alertStates.Remove(alertKey);
+                    }
                     continue;
                 }
 
@@ -378,6 +385,35 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                     Message: $"告警恢复：{alertKey}",
                     IsRecovery: true,
                     TriggeredTime: now));
+            }
+
+            PruneAlertStateCapacity();
+        }
+
+        private void PruneAlertStateCapacity() {
+            if (_alertStates.Count <= MaxAlertTrackingStates) {
+                return;
+            }
+
+            foreach (var key in _alertStates
+                .Where(static pair => !pair.Value.IsActive)
+                .OrderBy(static pair => pair.Value.LastSeenTime)
+                .Select(static pair => pair.Key)
+                .ToList()) {
+                _alertStates.Remove(key);
+                if (_alertStates.Count <= MaxAlertTrackingStates) {
+                    return;
+                }
+            }
+
+            foreach (var key in _alertStates
+                .OrderBy(static pair => pair.Value.LastSeenTime)
+                .Select(static pair => pair.Key)
+                .ToList()) {
+                _alertStates.Remove(key);
+                if (_alertStates.Count <= MaxAlertTrackingStates) {
+                    return;
+                }
             }
         }
 
@@ -614,6 +650,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             public int ConsecutiveRecoveredWindows { get; set; }
             public bool IsActive { get; set; }
             public DateTime? LastNotifiedTime { get; set; }
+            public DateTime LastSeenTime { get; set; }
         }
     }
 
