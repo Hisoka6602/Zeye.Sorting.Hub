@@ -93,6 +93,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
                 var result = _pipeline.Analyze(_dialect);
                 if (result.Metrics.Count == 0) {
+                    if (result.ShouldEmitDailyReport) {
+                        EmitDailyReport(result);
+                    }
                     continue;
                 }
 
@@ -140,13 +143,19 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 result.Metrics.Count,
                 result.DroppedSamples);
 
+            if (result.Metrics.Count == 0) {
+                _logger.LogInformation("每日慢 SQL 报告：Provider={Provider}, 当前报告周期无慢 SQL 样本。", _dialect.ProviderName);
+            }
+
             foreach (var metric in result.Metrics) {
                 _logger.LogInformation(
-                    "每日慢 SQL Top：Fingerprint={Fingerprint}, Calls={Calls}, P95Ms={P95Ms}, P99Ms={P99Ms}, TimeoutRatePercent={TimeoutRatePercent}, DeadlockCount={DeadlockCount}",
+                    "每日慢 SQL Top：Fingerprint={Fingerprint}, Calls={Calls}, Rows={Rows}, P95Ms={P95Ms}, P99Ms={P99Ms}, ErrorRatePercent={ErrorRatePercent}, TimeoutRatePercent={TimeoutRatePercent}, DeadlockCount={DeadlockCount}",
                     metric.SqlFingerprint,
                     metric.CallCount,
+                    metric.TotalAffectedRows,
                     metric.P95Milliseconds,
                     metric.P99Milliseconds,
+                    metric.ErrorRatePercent,
                     metric.TimeoutRatePercent,
                     metric.DeadlockCount);
             }

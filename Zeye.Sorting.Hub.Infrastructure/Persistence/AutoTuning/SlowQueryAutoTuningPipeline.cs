@@ -96,9 +96,18 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         }
 
         public SlowQueryAnalysisResult Analyze(IDatabaseDialect dialect) {
+            var now = DateTime.Now;
+            var shouldEmitDailyReport = ShouldEmitDailyReport(now);
             var window = DequeueWindow();
             if (window.Count == 0) {
-                return SlowQueryAnalysisResult.Empty;
+                return new SlowQueryAnalysisResult(
+                    GeneratedTime: now,
+                    DroppedSamples: GetDroppedCount(),
+                    Metrics: Array.Empty<SlowQueryMetric>(),
+                    TuningCandidates: Array.Empty<SlowQueryTuningCandidate>(),
+                    ReadOnlySuggestions: Array.Empty<string>(),
+                    Alerts: Array.Empty<string>(),
+                    ShouldEmitDailyReport: shouldEmitDailyReport);
             }
 
             var groups = window
@@ -113,8 +122,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             var tuningCandidates = BuildTuningCandidates(dialect, groups);
             var suggestions = BuildReadOnlySuggestions(tuningCandidates);
             var alerts = BuildAlerts(groups);
-            var now = DateTime.Now;
-            var shouldEmitDailyReport = ShouldEmitDailyReport(now);
 
             return new SlowQueryAnalysisResult(
                 GeneratedTime: now,
