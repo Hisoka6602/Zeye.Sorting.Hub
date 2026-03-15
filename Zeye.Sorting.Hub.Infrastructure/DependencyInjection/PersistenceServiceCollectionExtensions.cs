@@ -137,13 +137,13 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             if (DateTimeOffset.TryParse(
                 configured,
                 CultureInfo.InvariantCulture,
-                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                DateTimeStyles.AssumeLocal,
                 out var parsed)) {
-                return parsed.UtcDateTime;
+                return parsed.LocalDateTime;
             }
 
-            var now = DateTime.UtcNow;
-            return new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+            var now = DateTime.Now;
+            return new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Local);
         }
     }
 }
