@@ -1,9 +1,9 @@
 ﻿using System;
-using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Text.RegularExpressions;
 using EFCore.Sharding;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -40,6 +40,16 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// 因此这里集中定义常量，避免魔法字符串散落。
         /// </remarks>
         private const string ParcelIdShadowField = "ParcelId";
+
+        /// <summary>
+        /// 检测配置字符串结尾是否携带时区后缀（Z、+08:00、-0500 等）。
+        /// </summary>
+        /// <remarks>
+        /// 通过“结尾匹配”避免误伤日期中的连字符，仅拦截真正的时区信息。
+        /// </remarks>
+        private static readonly Regex TimeZoneSuffixRegex = new(
+            pattern: @"(Z|[+\-]\d{2}:\d{2}|[+\-]\d{4})$",
+            options: RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         public static IServiceCollection AddSortingHubPersistence(this IServiceCollection services, IConfiguration configuration) {
             var provider = configuration["Persistence:Provider"];
@@ -278,20 +288,57 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
 
         private static DateTime GetShardingStartTime(IConfiguration configuration) {
             var configured = configuration["Persistence:Sharding:ParcelStartTime"];
+
+            // 严格禁止配置使用 Z / offset（如 +08:00 / -0500）语义。
+            // 该校验必须发生在 DateTime.TryParse 之前，避免被解析器自动折算后绕过。
+            EnsureNoTimeZoneSuffix(configured);
+
             if (DateTime.TryParse(
                 configured,
                 CultureInfo.InvariantCulture,
                 DateTimeStyles.AssumeLocal,
                 out var parsed)) {
-                return parsed.Kind switch {
-                    DateTimeKind.Unspecified => DateTime.SpecifyKind(parsed, DateTimeKind.Local),
-                    DateTimeKind.Local => parsed,
-                    _ => throw new InvalidOperationException("配置项 Persistence:Sharding:ParcelStartTime 仅支持本地时间语义，禁止使用 Z 或 offset。")
-                };
+                // 统一复用本地时间归一化入口，避免规则分叉。
+                return NormalizeToLocalTime(parsed);
             }
 
             var now = DateTime.Now;
             return new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Local);
+        }
+
+        /// <summary>
+        /// 校验分表起始时间配置中不允许出现时区后缀。
+        /// </summary>
+        /// <param name="configured">原始配置值。</param>
+        /// <exception cref="InvalidOperationException">当配置包含 Z/offset 时抛出。</exception>
+        private static void EnsureNoTimeZoneSuffix(string? configured) {
+            if (string.IsNullOrWhiteSpace(configured)) {
+                return;
+            }
+
+            var configuredText = configured.Trim();
+            if (TimeZoneSuffixRegex.IsMatch(configuredText)) {
+                var safeConfiguredText = GetSafeConfigPreview(configuredText);
+                throw new InvalidOperationException($"配置项 Persistence:Sharding:ParcelStartTime 仅支持本地时间语义，禁止使用 Z 或 offset。检测到：{safeConfiguredText}");
+            }
+        }
+
+        /// <summary>
+        /// 生成适合放入异常消息的安全配置预览文本。
+        /// </summary>
+        /// <param name="configuredText">原始配置文本。</param>
+        /// <returns>移除控制字符并截断后的预览文本。</returns>
+        private static string GetSafeConfigPreview(string configuredText) {
+            var builder = new StringBuilder(configuredText.Length);
+            foreach (var c in configuredText) {
+                if (!char.IsControl(c)) {
+                    builder.Append(c);
+                }
+            }
+
+            var sanitized = builder.ToString();
+            const int maxLength = 120;
+            return sanitized.Length <= maxLength ? sanitized : $"{sanitized[..maxLength]}...";
         }
     }
 }
