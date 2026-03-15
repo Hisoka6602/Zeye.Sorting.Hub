@@ -3,9 +3,12 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.Globalization;
+using EFCore.Sharding;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 
@@ -18,6 +21,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
 
         public static IServiceCollection AddSortingHubPersistence(this IServiceCollection services, IConfiguration configuration) {
             var provider = configuration["Persistence:Provider"];
+            var commandTimeoutSeconds = GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
+            var minCommandElapsedMilliseconds = GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:MinCommandElapsedMilliseconds", 50);
+            var parcelShardingStartTime = GetShardingStartTime(configuration);
 
             if (string.IsNullOrWhiteSpace(provider)) {
                 throw new InvalidOperationException("缺少配置：Persistence:Provider，可选值：MySql / SqlServer");
@@ -33,6 +39,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 services.AddDbContextPool<SortingHubDbContext>(static (sp, options) => {
                     var cfg = sp.GetRequiredService<IConfiguration>();
                     var cs = cfg.GetConnectionString("MySql")!;
+                    var commandTimeoutSeconds = GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
 
                     // 建议：生产环境可改为固定版本，避免探测失败导致启动失败
                     var serverVersion = ServerVersion.AutoDetect(cs);
@@ -44,14 +51,28 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                             maxRetryCount: 5,
                             maxRetryDelay: TimeSpan.FromSeconds(10),
                             errorNumbersToAdd: null);
+                        mySqlOptions.CommandTimeout(commandTimeoutSeconds);
                     });
 
-                    // 读多写少场景建议默认 NoTracking；按项目需求开启
-                    // options.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
+                    options.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
 
                     // 开发环境建议开启，生产建议关闭
                     // options.EnableSensitiveDataLogging();
                     // options.EnableDetailedErrors();
+                });
+
+                services.AddEFCoreSharding(shardingBuilder => {
+                    shardingBuilder
+                        .SetEntityAssemblies(typeof(SortingHubDbContext).Assembly)
+                        .SetCommandTimeout(commandTimeoutSeconds)
+                        .SetMinCommandElapsedMilliseconds(minCommandElapsedMilliseconds)
+                        .CreateShardingTableOnStarting(false)
+                        .UseDatabase(connectionString, DatabaseType.MySql, typeof(Parcel).Namespace!, static _ => { })
+                        .SetDateSharding<Parcel>(
+                            shardingField: nameof(Parcel.CreatedTime),
+                            expandByDateMode: ExpandByDateMode.PerMonth,
+                            startTime: parcelShardingStartTime,
+                            sourceName: ShardingConstant.DefaultSource);
                 });
 
                 services.AddSingleton<IDatabaseDialect, MySqlDialect>();
@@ -65,6 +86,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 services.AddDbContextPool<SortingHubDbContext>(static (sp, options) => {
                     var cfg = sp.GetRequiredService<IConfiguration>();
                     var cs = cfg.GetConnectionString("SqlServer")!;
+                    var commandTimeoutSeconds = GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
 
                     options.UseSqlServer(cs, sqlServerOptions => {
                         // 迁移程序集通常指向 Host 或 Infrastructure，按你迁移放置位置调整
@@ -73,9 +95,24 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                             maxRetryCount: 5,
                             maxRetryDelay: TimeSpan.FromSeconds(10),
                             errorNumbersToAdd: null);
+                        sqlServerOptions.CommandTimeout(commandTimeoutSeconds);
                     });
 
-                    // options.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
+                    options.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
+                });
+
+                services.AddEFCoreSharding(shardingBuilder => {
+                    shardingBuilder
+                        .SetEntityAssemblies(typeof(SortingHubDbContext).Assembly)
+                        .SetCommandTimeout(commandTimeoutSeconds)
+                        .SetMinCommandElapsedMilliseconds(minCommandElapsedMilliseconds)
+                        .CreateShardingTableOnStarting(false)
+                        .UseDatabase(connectionString, DatabaseType.SqlServer, typeof(Parcel).Namespace!, static _ => { })
+                        .SetDateSharding<Parcel>(
+                            shardingField: nameof(Parcel.CreatedTime),
+                            expandByDateMode: ExpandByDateMode.PerMonth,
+                            startTime: parcelShardingStartTime,
+                            sourceName: ShardingConstant.DefaultSource);
                 });
 
                 services.AddSingleton<IDatabaseDialect, SqlServerDialect>();
@@ -88,6 +125,25 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             // services.AddScoped(typeof(IRepository<>), typeof(RepositoryBase<>));
 
             return services;
+        }
+
+        private static int GetPositiveIntOrDefault(IConfiguration configuration, string key, int fallback) {
+            var value = configuration[key];
+            return int.TryParse(value, out var parsed) && parsed > 0 ? parsed : fallback;
+        }
+
+        private static DateTime GetShardingStartTime(IConfiguration configuration) {
+            var configured = configuration["Persistence:Sharding:ParcelStartTime"];
+            if (DateTimeOffset.TryParse(
+                configured,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                out var parsed)) {
+                return parsed.UtcDateTime;
+            }
+
+            var now = DateTime.UtcNow;
+            return new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
         }
     }
 }

@@ -12,9 +12,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
     public sealed class SqlServerDialect : IDatabaseDialect {
         public string ProviderName => "SQLServer";
 
-        public IReadOnlyList<string> GetOptionalBootstrapSql() => new[] {
-            ""
-            // 说明：按需补充
-        };
+        public IReadOnlyList<string> GetOptionalBootstrapSql() => Array.Empty<string>();
     }
 }

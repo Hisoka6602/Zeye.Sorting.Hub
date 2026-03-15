@@ -1,5 +1,5 @@
-﻿namespace Zeye.Sorting.Hub.Analytics {
-    public class Class1 {
+namespace Zeye.Sorting.Hub.Analytics {
+    public static class AssemblyReference {
 
     }
 }
