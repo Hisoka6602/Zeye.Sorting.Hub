@@ -12,6 +12,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
     /// </summary>
     public sealed class DatabaseAutoTuningHostedService : BackgroundService {
         private const int MaxTrackedFingerprintCount = 1000;
+        private const int MaxTrackedTableCount = 500;
+        private const int MaxCapacitySnapshotsPerTable = 64;
         private static readonly TimeSpan PendingRollbackRetention = TimeSpan.FromHours(24);
         private static readonly Regex SqlServerCreateIndexRegex = new(
             @"\bcreate\s+(?:unique\s+)?index\s+\[(?<index>[^\]]+)\]\s+on\s+(?<table>\[[^\]]+\](?:\.\[[^\]]+\])?)",
@@ -50,6 +52,25 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private readonly int _configuredCommandTimeoutSeconds;
         private readonly int _configuredMaxRetryCount;
         private readonly int _configuredMaxRetryDelaySeconds;
+        private readonly bool _enableFullAutomation;
+        private readonly int _policyMinTableHeatCalls;
+        private readonly decimal _policyMaxRiskScore;
+        private readonly decimal _policyPeakMaxRiskScore;
+        private readonly int _policyPeakMaxTableHeatCalls;
+        private readonly bool _enableAutoValidation;
+        private readonly int _validationDelayCycles;
+        private readonly decimal _validationP95IncreasePercent;
+        private readonly decimal _validationP99IncreasePercent;
+        private readonly decimal _validationErrorRateIncreasePercent;
+        private readonly decimal _validationTimeoutRateIncreasePercent;
+        private readonly int _validationDeadlockIncreaseCount;
+        private readonly bool _enableCapacityPrediction;
+        private readonly int _capacityProjectionDays;
+        private readonly int _capacityGrowthAlertRows;
+        private readonly int _capacityHotLayeringRows;
+        private readonly Dictionary<string, int> _tableHeatByTable = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, Queue<TableCapacitySnapshot>> _capacitySnapshotsByTable = new(StringComparer.OrdinalIgnoreCase);
+        private int _analysisCycleCounter;
 
         public DatabaseAutoTuningHostedService(
             ILogger<DatabaseAutoTuningHostedService> logger,
@@ -83,6 +104,22 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _configuredCommandTimeoutSeconds = GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
             _configuredMaxRetryCount = GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:MaxRetryCount", 5);
             _configuredMaxRetryDelaySeconds = GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:MaxRetryDelaySeconds", 10);
+            _enableFullAutomation = GetBoolOrDefault(configuration, "Persistence:AutoTuning:L3:EnableFullAutomation", true);
+            _policyMinTableHeatCalls = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:L3:Policy:MinTableHeatCalls", 10);
+            _policyMaxRiskScore = GetDecimalInRangeOrDefault(configuration, "Persistence:AutoTuning:L3:Policy:MaxRiskScore", 0.85m, 0m, 1m);
+            _policyPeakMaxRiskScore = GetDecimalInRangeOrDefault(configuration, "Persistence:AutoTuning:L3:Policy:PeakMaxRiskScore", 0.45m, 0m, 1m);
+            _policyPeakMaxTableHeatCalls = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:L3:Policy:PeakMaxTableHeatCalls", 50);
+            _enableAutoValidation = GetBoolOrDefault(configuration, "Persistence:AutoTuning:L3:Validation:EnableAutoValidation", true);
+            _validationDelayCycles = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:L3:Validation:DelayCycles", 1);
+            _validationP95IncreasePercent = GetNonNegativeDecimalOrDefault(configuration, "Persistence:AutoTuning:L3:Validation:P95IncreasePercent", 5m);
+            _validationP99IncreasePercent = GetNonNegativeDecimalOrDefault(configuration, "Persistence:AutoTuning:L3:Validation:P99IncreasePercent", 10m);
+            _validationErrorRateIncreasePercent = GetNonNegativeDecimalOrDefault(configuration, "Persistence:AutoTuning:L3:Validation:ErrorRateIncreasePercent", 0.5m);
+            _validationTimeoutRateIncreasePercent = GetNonNegativeDecimalOrDefault(configuration, "Persistence:AutoTuning:L3:Validation:TimeoutRateIncreasePercent", 0.5m);
+            _validationDeadlockIncreaseCount = GetNonNegativeIntOrDefault(configuration, "Persistence:AutoTuning:L3:Validation:DeadlockIncreaseCount", 1);
+            _enableCapacityPrediction = GetBoolOrDefault(configuration, "Persistence:AutoTuning:L3:CapacityPrediction:EnableCapacityPrediction", true);
+            _capacityProjectionDays = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:L3:CapacityPrediction:ProjectionDays", 7);
+            _capacityGrowthAlertRows = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:L3:CapacityPrediction:GrowthAlertRows", 50000);
+            _capacityHotLayeringRows = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:L3:CapacityPrediction:HotLayeringRows", 200000);
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
@@ -98,6 +135,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     }
                     continue;
                 }
+                _analysisCycleCounter++;
 
                 _logger.LogInformation(
                     "慢 SQL 分析窗口完成，Provider={Provider}, GeneratedTime={GeneratedTime}, Groups={Groups}, DroppedSamples={DroppedSamples}",
@@ -125,7 +163,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     _logger.LogWarning("慢 SQL 阈值告警：Provider={Provider}, Alert={Alert}", _dialect.ProviderName, alert);
                 }
 
+                UpdateAutonomousSignals(result);
                 await ExecuteAutoTuningActionsAsync(result, stoppingToken);
+                await ValidateAutonomousActionsAsync(result, stoppingToken);
                 await DetectRegressionAndAutoRollbackAsync(result, stoppingToken);
                 SaveLastMetrics(result.Metrics);
 
@@ -169,41 +209,60 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         private async Task ExecuteAutoTuningActionsAsync(SlowQueryAnalysisResult result, CancellationToken cancellationToken) {
-            if (!_enableActionExecution) {
+            var actionExecutionEnabled = _enableFullAutomation || _enableActionExecution;
+            if (!actionExecutionEnabled) {
                 return;
             }
 
-            if (_skipExecutionDuringPeak && IsInPeakWindow(DateTime.Now.TimeOfDay)) {
+            var now = DateTime.Now;
+            var inPeakWindow = IsInPeakWindow(now.TimeOfDay);
+            if (!_enableFullAutomation && _skipExecutionDuringPeak && inPeakWindow) {
                 _logger.LogInformation("自动调优执行已跳过：当前处于高峰时段，仅采集不变更。Provider={Provider}", _dialect.ProviderName);
                 return;
             }
 
             var executedCount = 0;
+            var metricsByFingerprint = result.Metrics.ToDictionary(static metric => metric.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
             foreach (var candidate in result.TuningCandidates) {
                 if (executedCount >= _maxExecuteActionsPerCycle) {
                     break;
                 }
 
+                var tableKey = BuildTableKey(candidate.SchemaName, candidate.TableName);
                 if (!IsWhitelisted(candidate.SchemaName, candidate.TableName)) {
                     _logger.LogInformation(
                         "自动调优白名单拦截：Provider={Provider}, Fingerprint={Fingerprint}, Table={Table}",
                         _dialect.ProviderName,
                         candidate.SqlFingerprint,
-                        BuildTableKey(candidate.SchemaName, candidate.TableName));
+                        tableKey);
                     continue;
                 }
 
+                metricsByFingerprint.TryGetValue(candidate.SqlFingerprint, out var currentMetric);
+                var tableHeat = _tableHeatByTable.TryGetValue(tableKey, out var heat) ? heat : 0;
                 foreach (var actionSql in candidate.SuggestedActions) {
                     if (executedCount >= _maxExecuteActionsPerCycle) {
                         break;
                     }
 
+                    var policyDecision = EvaluateExecutionPolicy(actionSql, currentMetric, tableHeat, inPeakWindow);
+                    if (!policyDecision.ShouldExecute) {
+                        _logger.LogInformation(
+                            "L3 策略引擎拦截自动动作：Provider={Provider}, Fingerprint={Fingerprint}, Table={Table}, RiskScore={RiskScore:F2}, Reason={Reason}",
+                            _dialect.ProviderName,
+                            candidate.SqlFingerprint,
+                            tableKey,
+                            policyDecision.RiskScore,
+                            policyDecision.Reason);
+                        continue;
+                    }
+
                     var rollbackSql = BuildRollbackSql(actionSql);
                     var actionId = Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
                     var dangerous = IsDangerousAction(actionSql);
-                    var shouldDryRun = _enableDryRun || (_enableDangerousActionIsolator && dangerous);
+                    var shouldDryRun = !_enableFullAutomation && (_enableDryRun || (_enableDangerousActionIsolator && dangerous));
                     if (shouldDryRun) {
-                        EmitAuditLog(actionId, candidate, actionSql, rollbackSql, executed: false, dryRun: true, reason: "dry-run");
+                        EmitAuditLog(actionId, candidate, actionSql, rollbackSql, executed: false, dryRun: true, reason: $"dry-run, risk={policyDecision.RiskScore:F2}");
                         continue;
                     }
 
@@ -211,7 +270,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                         continue;
                     }
 
-                    EmitAuditLog(actionId, candidate, actionSql, rollbackSql, executed: true, dryRun: false, reason: "executed");
+                    EmitAuditLog(actionId, candidate, actionSql, rollbackSql, executed: true, dryRun: false, reason: $"executed, risk={policyDecision.RiskScore:F2}");
                     executedCount++;
 
                     if (!string.IsNullOrWhiteSpace(rollbackSql)) {
@@ -219,13 +278,105 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                             ActionId: actionId,
                             Fingerprint: candidate.SqlFingerprint,
                             RollbackSql: rollbackSql,
-                            CreatedTime: DateTime.Now);
+                            TableKey: tableKey,
+                            CreatedTime: now,
+                            CreatedCycle: _analysisCycleCounter,
+                            BaselineP95Milliseconds: currentMetric?.P95Milliseconds ?? 0d,
+                            BaselineP99Milliseconds: currentMetric?.P99Milliseconds ?? 0d,
+                            BaselineErrorRatePercent: currentMetric?.ErrorRatePercent ?? 0m,
+                            BaselineTimeoutRatePercent: currentMetric?.TimeoutRatePercent ?? 0m,
+                            BaselineDeadlockCount: currentMetric?.DeadlockCount ?? 0);
+                    }
+
+                    if (_enableFullAutomation) {
+                        var maintenanceSql = _dialect.BuildAutonomousMaintenanceSql(
+                            candidate.SchemaName,
+                            candidate.TableName,
+                            inPeakWindow,
+                            policyDecision.RiskScore > _policyMaxRiskScore);
+                        foreach (var maintenance in maintenanceSql) {
+                            if (!await TryExecuteSqlAsync(maintenance, candidate.SqlFingerprint, isRollback: false, cancellationToken)) {
+                                continue;
+                            }
+
+                            EmitAuditLog($"{actionId}-maintenance", candidate, maintenance, rollbackSql: null, executed: true, dryRun: false, reason: "l3-maintenance");
+                        }
                     }
                 }
             }
         }
 
+        private async Task ValidateAutonomousActionsAsync(SlowQueryAnalysisResult result, CancellationToken cancellationToken) {
+            if (!_enableFullAutomation || !_enableAutoValidation || _pendingRollbackByFingerprint.Count == 0) {
+                return;
+            }
+
+            var metricsByFingerprint = result.Metrics.ToDictionary(static metric => metric.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
+            foreach (var rollback in _pendingRollbackByFingerprint.Values.ToArray()) {
+                if (_analysisCycleCounter - rollback.CreatedCycle < _validationDelayCycles) {
+                    continue;
+                }
+
+                if (!metricsByFingerprint.TryGetValue(rollback.Fingerprint, out var currentMetric)) {
+                    continue;
+                }
+
+                var p95IncreasePercent = CalculateIncreasePercent(rollback.BaselineP95Milliseconds, currentMetric.P95Milliseconds);
+                var p99IncreasePercent = CalculateIncreasePercent(rollback.BaselineP99Milliseconds, currentMetric.P99Milliseconds);
+                var errorRateIncrease = currentMetric.ErrorRatePercent - rollback.BaselineErrorRatePercent;
+                var timeoutRateIncrease = currentMetric.TimeoutRatePercent - rollback.BaselineTimeoutRatePercent;
+                var deadlockIncrease = currentMetric.DeadlockCount - rollback.BaselineDeadlockCount;
+
+                var regressed = (_validationP95IncreasePercent > 0m && p95IncreasePercent >= _validationP95IncreasePercent)
+                    || (_validationP99IncreasePercent > 0m && p99IncreasePercent >= _validationP99IncreasePercent)
+                    || (_validationErrorRateIncreasePercent > 0m && errorRateIncrease >= _validationErrorRateIncreasePercent)
+                    || (_validationTimeoutRateIncreasePercent > 0m && timeoutRateIncrease >= _validationTimeoutRateIncreasePercent)
+                    || (_validationDeadlockIncreaseCount > 0 && deadlockIncrease >= _validationDeadlockIncreaseCount);
+
+                if (!regressed) {
+                    _pendingRollbackByFingerprint.Remove(rollback.Fingerprint);
+                    _logger.LogInformation(
+                        "L3 自动验证通过：Provider={Provider}, Fingerprint={Fingerprint}, Table={Table}, P95Increase={P95Increase:F2}, P99Increase={P99Increase:F2}, ErrorRateIncrease={ErrorRateIncrease:F2}, TimeoutRateIncrease={TimeoutRateIncrease:F2}, DeadlockIncrease={DeadlockIncrease}",
+                        _dialect.ProviderName,
+                        rollback.Fingerprint,
+                        rollback.TableKey,
+                        p95IncreasePercent,
+                        p99IncreasePercent,
+                        errorRateIncrease,
+                        timeoutRateIncrease,
+                        deadlockIncrease);
+                    continue;
+                }
+
+                _logger.LogWarning(
+                    "L3 自动验证失败：Provider={Provider}, Fingerprint={Fingerprint}, Table={Table}, P95Increase={P95Increase:F2}, P99Increase={P99Increase:F2}, ErrorRateIncrease={ErrorRateIncrease:F2}, TimeoutRateIncrease={TimeoutRateIncrease:F2}, DeadlockIncrease={DeadlockIncrease}",
+                    _dialect.ProviderName,
+                    rollback.Fingerprint,
+                    rollback.TableKey,
+                    p95IncreasePercent,
+                    p99IncreasePercent,
+                    errorRateIncrease,
+                    timeoutRateIncrease,
+                    deadlockIncrease);
+
+                if (_enableAutoRollback && await TryExecuteSqlAsync(rollback.RollbackSql, rollback.Fingerprint, isRollback: true, cancellationToken)) {
+                    _logger.LogWarning(
+                        "L3 自动验证回滚执行完成：Provider={Provider}, Fingerprint={Fingerprint}, ActionId={ActionId}, RollbackSql={RollbackSql}",
+                        _dialect.ProviderName,
+                        rollback.Fingerprint,
+                        rollback.ActionId,
+                        rollback.RollbackSql);
+                }
+
+                _pendingRollbackByFingerprint.Remove(rollback.Fingerprint);
+            }
+        }
+
         private async Task DetectRegressionAndAutoRollbackAsync(SlowQueryAnalysisResult result, CancellationToken cancellationToken) {
+            if (_enableFullAutomation) {
+                return;
+            }
+
             foreach (var metric in result.Metrics) {
                 if (!_lastMetricByFingerprint.TryGetValue(metric.SqlFingerprint, out var previous)) {
                     continue;
@@ -343,10 +494,156 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
         private bool IsWhitelisted(string? schemaName, string tableName) {
             if (_whitelistedTables.Count == 0) {
-                return false;
+                return _enableFullAutomation;
             }
 
             return _whitelistedTables.Contains(BuildTableKey(schemaName, tableName));
+        }
+
+        private PolicyDecision EvaluateExecutionPolicy(string actionSql, SlowQueryMetric? metric, int tableHeat, bool inPeakWindow) {
+            var riskScore = CalculateRiskScore(actionSql, metric, inPeakWindow);
+            if (_enableFullAutomation) {
+                if (tableHeat < _policyMinTableHeatCalls) {
+                    return PolicyDecision.Skip(riskScore, $"table heat too low: {tableHeat} < {_policyMinTableHeatCalls}");
+                }
+
+                if (inPeakWindow && tableHeat > _policyPeakMaxTableHeatCalls) {
+                    return PolicyDecision.Skip(riskScore, $"table heat too high in peak: {tableHeat} > {_policyPeakMaxTableHeatCalls}");
+                }
+
+                var threshold = inPeakWindow ? _policyPeakMaxRiskScore : _policyMaxRiskScore;
+                if (riskScore > threshold) {
+                    return PolicyDecision.Skip(riskScore, $"risk score {riskScore:F2} > threshold {threshold:F2}");
+                }
+
+                return PolicyDecision.Execute(riskScore, "l3-policy-approved");
+            }
+
+            if (metric is null) {
+                return PolicyDecision.Execute(riskScore, "l2-no-metric");
+            }
+
+            return PolicyDecision.Execute(riskScore, "l2-approved");
+        }
+
+        private decimal CalculateRiskScore(string actionSql, SlowQueryMetric? metric, bool inPeakWindow) {
+            decimal riskScore = 0m;
+            if (IsDangerousAction(actionSql)) {
+                riskScore += 0.45m;
+            }
+
+            if (inPeakWindow) {
+                riskScore += 0.20m;
+            }
+
+            if (metric is not null) {
+                if (metric.P99Milliseconds >= 1000d) {
+                    riskScore += 0.15m;
+                }
+
+                if (metric.TimeoutRatePercent >= 1m) {
+                    riskScore += 0.15m;
+                }
+
+                if (metric.ErrorRatePercent >= 1m) {
+                    riskScore += 0.10m;
+                }
+
+                if (metric.DeadlockCount > 0) {
+                    riskScore += 0.20m;
+                }
+            }
+
+            return decimal.Clamp(riskScore, 0m, 1m);
+        }
+
+        private void UpdateAutonomousSignals(SlowQueryAnalysisResult result) {
+            if (!_enableFullAutomation) {
+                return;
+            }
+
+            foreach (var table in _tableHeatByTable.Keys.ToArray()) {
+                var decayed = (int)Math.Floor(_tableHeatByTable[table] * 0.9d);
+                if (decayed <= 0) {
+                    _tableHeatByTable.Remove(table);
+                    continue;
+                }
+
+                _tableHeatByTable[table] = decayed;
+            }
+
+            var metricsByFingerprint = result.Metrics.ToDictionary(static metric => metric.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
+            var tableSamples = new Dictionary<string, (long Rows, int Calls)>(StringComparer.OrdinalIgnoreCase);
+            foreach (var candidate in result.TuningCandidates) {
+                if (!metricsByFingerprint.TryGetValue(candidate.SqlFingerprint, out var metric)) {
+                    continue;
+                }
+
+                var tableKey = BuildTableKey(candidate.SchemaName, candidate.TableName);
+                if (!tableSamples.TryGetValue(tableKey, out var sample)) {
+                    sample = (Rows: 0L, Calls: 0);
+                }
+
+                sample.Rows += metric.TotalAffectedRows;
+                sample.Calls += metric.CallCount;
+                tableSamples[tableKey] = sample;
+            }
+
+            foreach (var pair in tableSamples) {
+                if (_tableHeatByTable.TryGetValue(pair.Key, out var currentHeat)) {
+                    _tableHeatByTable[pair.Key] = currentHeat + pair.Value.Calls;
+                }
+                else {
+                    _tableHeatByTable[pair.Key] = pair.Value.Calls;
+                }
+
+                if (_enableCapacityPrediction) {
+                    if (!_capacitySnapshotsByTable.TryGetValue(pair.Key, out var queue)) {
+                        queue = new Queue<TableCapacitySnapshot>(MaxCapacitySnapshotsPerTable);
+                        _capacitySnapshotsByTable[pair.Key] = queue;
+                    }
+
+                    if (queue.Count >= MaxCapacitySnapshotsPerTable) {
+                        queue.Dequeue();
+                    }
+
+                    queue.Enqueue(new TableCapacitySnapshot(DateTime.Now, pair.Value.Rows, pair.Value.Calls));
+                    EmitCapacityForecast(pair.Key, queue);
+                }
+            }
+        }
+
+        private void EmitCapacityForecast(string tableKey, Queue<TableCapacitySnapshot> snapshots) {
+            if (snapshots.Count < 2) {
+                return;
+            }
+
+            var ordered = snapshots.ToArray();
+            var first = ordered[0];
+            var last = ordered[^1];
+            var elapsedSeconds = (last.CapturedTime - first.CapturedTime).TotalSeconds;
+            if (elapsedSeconds <= 0d) {
+                return;
+            }
+
+            var rowGrowthPerDay = (last.AffectedRows - first.AffectedRows) / elapsedSeconds * TimeSpan.FromDays(1).TotalSeconds;
+            if (rowGrowthPerDay <= 0d) {
+                return;
+            }
+
+            var projectedRows = last.AffectedRows + rowGrowthPerDay * _capacityProjectionDays;
+            if (projectedRows < _capacityGrowthAlertRows) {
+                return;
+            }
+
+            _logger.LogWarning(
+                "L3 容量预测告警：Provider={Provider}, Table={Table}, ProjectionDays={ProjectionDays}, ProjectedRows={ProjectedRows:F0}, GrowthRowsPerDay={GrowthRowsPerDay:F0}, ActionHint={Hint}",
+                _dialect.ProviderName,
+                tableKey,
+                _capacityProjectionDays,
+                projectedRows,
+                rowGrowthPerDay,
+                projectedRows >= _capacityHotLayeringRows ? "建议冷热分层 + 历史归档 + 索引重评估" : "建议优先检查索引与统计信息维护策略");
         }
 
         private static string BuildTableKey(string? schemaName, string tableName) {
@@ -419,9 +716,27 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return int.TryParse(value, out var parsed) && parsed > 0 ? parsed : fallback;
         }
 
+        private static int GetNonNegativeIntOrDefault(IConfiguration configuration, string key, int fallback) {
+            var value = configuration[key];
+            return int.TryParse(value, out var parsed) && parsed >= 0 ? parsed : fallback;
+        }
+
         private static decimal GetNonNegativeDecimalOrDefault(IConfiguration configuration, string key, decimal fallback) {
             var value = configuration[key];
             return decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed) && parsed >= 0m ? parsed : fallback;
+        }
+
+        private static decimal GetDecimalInRangeOrDefault(IConfiguration configuration, string key, decimal fallback, decimal min, decimal max) {
+            var value = configuration[key];
+            if (!decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)) {
+                return fallback;
+            }
+
+            if (parsed < min || parsed > max) {
+                return fallback;
+            }
+
+            return parsed;
         }
 
         private static bool GetBoolOrDefault(IConfiguration configuration, string key, bool fallback) {
@@ -513,12 +828,44 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             foreach (var fingerprint in expiredFingerprints) {
                 _pendingRollbackByFingerprint.Remove(fingerprint);
             }
+
+            var tableOverflow = _tableHeatByTable.Count - MaxTrackedTableCount;
+            if (tableOverflow > 0) {
+                var removeTables = _tableHeatByTable.Keys
+                    .OrderBy(static key => key, StringComparer.Ordinal)
+                    .Take(tableOverflow)
+                    .ToArray();
+                foreach (var table in removeTables) {
+                    _tableHeatByTable.Remove(table);
+                    _capacitySnapshotsByTable.Remove(table);
+                }
+            }
         }
 
         private sealed record PendingRollbackAction(
             string ActionId,
             string Fingerprint,
             string RollbackSql,
-            DateTime CreatedTime);
+            string TableKey,
+            DateTime CreatedTime,
+            int CreatedCycle,
+            double BaselineP95Milliseconds,
+            double BaselineP99Milliseconds,
+            decimal BaselineErrorRatePercent,
+            decimal BaselineTimeoutRatePercent,
+            int BaselineDeadlockCount);
+
+        private sealed record TableCapacitySnapshot(
+            DateTime CapturedTime,
+            long AffectedRows,
+            int CallCount);
+
+        private sealed record PolicyDecision(
+            bool ShouldExecute,
+            decimal RiskScore,
+            string Reason) {
+            public static PolicyDecision Execute(decimal riskScore, string reason) => new(true, riskScore, reason);
+            public static PolicyDecision Skip(decimal riskScore, string reason) => new(false, riskScore, reason);
+        }
     }
 }

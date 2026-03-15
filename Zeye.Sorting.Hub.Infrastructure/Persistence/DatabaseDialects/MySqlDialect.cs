@@ -50,6 +50,25 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
             return DatabaseProviderExceptionHelper.TryGetProviderErrorNumber(exception, out var errorNumber) && errorNumber == 1061;
         }
 
+        public IReadOnlyList<string> BuildAutonomousMaintenanceSql(string? schemaName, string tableName, bool inPeakWindow, bool highRisk) {
+            var normalizedSchemaName = schemaName?.Trim();
+            var normalizedTableName = tableName.Trim();
+            var escapedTable = string.IsNullOrWhiteSpace(normalizedSchemaName)
+                ? $"`{normalizedTableName}`"
+                : $"`{normalizedSchemaName}`.`{normalizedTableName}`";
+
+            if (inPeakWindow || highRisk) {
+                return new[] {
+                    $"ANALYZE TABLE {escapedTable}"
+                };
+            }
+
+            return new[] {
+                $"ANALYZE TABLE {escapedTable}",
+                $"OPTIMIZE TABLE {escapedTable}"
+            };
+        }
+
         private static string BuildIndexName(string? schemaName, string tableName, IReadOnlyList<string> columns, int maxLength) {
             var schemaPart = schemaName ?? string.Empty;
             var seed = $"{schemaPart}:{tableName}:{string.Join(",", columns)}";
