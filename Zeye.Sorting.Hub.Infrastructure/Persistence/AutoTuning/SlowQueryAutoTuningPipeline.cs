@@ -322,9 +322,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             string message,
             List<SlowQueryAlertNotification> notifications) {
             if (!_alertStates.TryGetValue(alertKey, out var state)) {
-                state = new AlertTrackingState {
-                    LastSeenTime = now
-                };
+                state = new AlertTrackingState();
                 _alertStates[alertKey] = state;
             }
 
@@ -391,29 +389,19 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         }
 
         private void PruneAlertStateCapacity() {
-            if (_alertStates.Count <= MaxAlertTrackingStates) {
+            var overflow = _alertStates.Count - MaxAlertTrackingStates;
+            if (overflow <= 0) {
                 return;
             }
 
-            foreach (var key in _alertStates
-                .Where(static pair => !pair.Value.IsActive)
-                .OrderBy(static pair => pair.Value.LastSeenTime)
+            var keysToRemove = _alertStates
+                .OrderBy(static pair => pair.Value.IsActive)
+                .ThenBy(static pair => pair.Value.LastSeenTime)
                 .Select(static pair => pair.Key)
-                .ToList()) {
+                .Take(overflow)
+                .ToList();
+            foreach (var key in keysToRemove) {
                 _alertStates.Remove(key);
-                if (_alertStates.Count <= MaxAlertTrackingStates) {
-                    return;
-                }
-            }
-
-            foreach (var key in _alertStates
-                .OrderBy(static pair => pair.Value.LastSeenTime)
-                .Select(static pair => pair.Key)
-                .ToList()) {
-                _alertStates.Remove(key);
-                if (_alertStates.Count <= MaxAlertTrackingStates) {
-                    return;
-                }
             }
         }
 
