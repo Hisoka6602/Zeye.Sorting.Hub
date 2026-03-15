@@ -79,6 +79,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                     var mySqlSessionInterceptor = sp.GetRequiredService<MySqlSessionBootstrapConnectionInterceptor>();
                     var cs = cfg.GetConnectionString("MySql")!;
                     var commandTimeoutSeconds = GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
+                    var maxRetryCount = GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryCount", 5);
+                    var maxRetryDelaySeconds = GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryDelaySeconds", 10);
 
                     // 建议：生产环境可改为固定版本，避免探测失败导致启动失败
                     var serverVersion = ServerVersion.AutoDetect(cs);
@@ -87,8 +89,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                         // 迁移程序集通常指向 Host 或 Infrastructure，按你迁移放置位置调整
                         // mySqlOptions.MigrationsAssembly("Zeye.Sorting.Hub.Host");
                         mySqlOptions.EnableRetryOnFailure(
-                            maxRetryCount: 5,
-                            maxRetryDelay: TimeSpan.FromSeconds(10),
+                            maxRetryCount: maxRetryCount,
+                            maxRetryDelay: TimeSpan.FromSeconds(maxRetryDelaySeconds),
                             errorNumbersToAdd: null);
                         mySqlOptions.CommandTimeout(commandTimeoutSeconds);
                     });
@@ -125,13 +127,15 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                     var interceptor = sp.GetRequiredService<SlowQueryCommandInterceptor>();
                     var cs = cfg.GetConnectionString("SqlServer")!;
                     var commandTimeoutSeconds = GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
+                    var maxRetryCount = GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryCount", 5);
+                    var maxRetryDelaySeconds = GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryDelaySeconds", 10);
 
                     options.UseSqlServer(cs, sqlServerOptions => {
                         // 迁移程序集通常指向 Host 或 Infrastructure，按你迁移放置位置调整
                         // sqlServerOptions.MigrationsAssembly("Zeye.Sorting.Hub.Host");
                         sqlServerOptions.EnableRetryOnFailure(
-                            maxRetryCount: 5,
-                            maxRetryDelay: TimeSpan.FromSeconds(10),
+                            maxRetryCount: maxRetryCount,
+                            maxRetryDelay: TimeSpan.FromSeconds(maxRetryDelaySeconds),
                             errorNumbersToAdd: null);
                         sqlServerOptions.CommandTimeout(commandTimeoutSeconds);
                     });

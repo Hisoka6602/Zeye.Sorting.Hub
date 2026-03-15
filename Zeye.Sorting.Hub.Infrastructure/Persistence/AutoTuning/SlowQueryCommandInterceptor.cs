@@ -14,7 +14,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         }
 
         public override int NonQueryExecuted(DbCommand command, CommandExecutedEventData eventData, int result) {
-            _pipeline.Collect(command.CommandText, eventData.Duration);
+            _pipeline.Collect(command.CommandText, eventData.Duration, result);
             return result;
         }
 
@@ -33,7 +33,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             CommandExecutedEventData eventData,
             int result,
             CancellationToken cancellationToken = default) {
-            _pipeline.Collect(command.CommandText, eventData.Duration);
+            _pipeline.Collect(command.CommandText, eventData.Duration, result);
             return ValueTask.FromResult(result);
         }
 
@@ -53,6 +53,18 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             CancellationToken cancellationToken = default) {
             _pipeline.Collect(command.CommandText, eventData.Duration);
             return ValueTask.FromResult(result);
+        }
+
+        public override void CommandFailed(DbCommand command, CommandErrorEventData eventData) {
+            _pipeline.Collect(command.CommandText, eventData.Duration, exception: eventData.Exception);
+        }
+
+        public override Task CommandFailedAsync(
+            DbCommand command,
+            CommandErrorEventData eventData,
+            CancellationToken cancellationToken = default) {
+            _pipeline.Collect(command.CommandText, eventData.Duration, exception: eventData.Exception);
+            return Task.CompletedTask;
         }
     }
 }

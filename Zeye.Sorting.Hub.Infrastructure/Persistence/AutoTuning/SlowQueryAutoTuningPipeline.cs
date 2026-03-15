@@ -1,7 +1,8 @@
 using System.Collections.Concurrent;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
@@ -24,21 +25,33 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         private readonly int _slowQueryThresholdMilliseconds;
         private readonly int _analysisBatchSize;
         private readonly int _triggerCount;
-        private readonly int _maxActionsPerCycle;
+        private readonly int _maxSuggestionsPerCycle;
         private readonly int _maxQueueSize;
+        private readonly int _aggregationTopN;
+        private readonly int _alertP99Milliseconds;
+        private readonly decimal _alertTimeoutRatePercent;
+        private readonly int _alertDeadlockCount;
+        private readonly TimeSpan _dailyReportTime;
         private readonly object _queueSync = new();
         private int _droppedCount;
+        private DateTime _nextDailyReportTime;
 
         public SlowQueryAutoTuningPipeline(IConfiguration configuration) {
             _slowQueryThresholdMilliseconds = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:SlowQueryThresholdMilliseconds", 500);
             _analysisBatchSize = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:AnalysisBatchSize", 20);
             _triggerCount = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:TriggerCount", 3);
-            _maxActionsPerCycle = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:MaxActionsPerCycle", 3);
+            _maxSuggestionsPerCycle = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:MaxActionsPerCycle", 3);
             _maxQueueSize = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:MaxQueueSize", 1000);
+            _aggregationTopN = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:AggregationTopN", 10);
+            _alertP99Milliseconds = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:AlertP99Milliseconds", 500);
+            _alertTimeoutRatePercent = GetDecimalOrDefault(configuration, "Persistence:AutoTuning:AlertTimeoutRatePercent", 1m);
+            _alertDeadlockCount = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:AlertDeadlockCount", 1);
+            _dailyReportTime = GetTimeOfDayOrDefault(configuration, "Persistence:AutoTuning:DailyReportLocalTime", new TimeSpan(2, 30, 0));
+            _nextDailyReportTime = BuildNextDailyReportTime(DateTime.Now);
         }
 
-        public void Collect(string commandText, TimeSpan elapsed) {
-            if (elapsed.TotalMilliseconds < _slowQueryThresholdMilliseconds || string.IsNullOrWhiteSpace(commandText)) {
+        public void Collect(string commandText, TimeSpan elapsed, int affectedRows = 0, Exception? exception = null) {
+            if (string.IsNullOrWhiteSpace(commandText)) {
                 return;
             }
 
@@ -46,9 +59,20 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                 return;
             }
 
+            var isError = exception is not null;
+            var elapsedMilliseconds = elapsed.TotalMilliseconds;
+            var isSlow = elapsedMilliseconds >= _slowQueryThresholdMilliseconds;
+            if (!isSlow && !isError) {
+                return;
+            }
+
+            var isTimeout = IsTimeoutException(exception);
+            var isDeadlock = IsDeadlockException(exception);
+            var normalizedSql = NormalizeSql(commandText);
+            var sqlFingerprint = BuildSqlFingerprint(normalizedSql);
             lock (_queueSync) {
                 while (_slowQueries.Count >= _maxQueueSize && _slowQueries.TryDequeue(out _)) {
-                        _droppedCount++;
+                    _droppedCount++;
                 }
 
                 if (_slowQueries.Count >= _maxQueueSize) {
@@ -58,66 +82,42 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
 
                 _slowQueries.Enqueue(new SlowQuerySample(
                     commandText: commandText,
-                    elapsedMilliseconds: elapsed.TotalMilliseconds,
+                    sqlFingerprint: sqlFingerprint,
+                    elapsedMilliseconds: elapsedMilliseconds,
+                    affectedRows: Math.Max(affectedRows, 0),
+                    isError: isError,
+                    isTimeout: isTimeout,
+                    isDeadlock: isDeadlock,
                     occurredTime: DateTime.Now));
             }
         }
 
-        public IReadOnlyList<string> BuildActions(IDatabaseDialect dialect, ILogger logger) {
+        public SlowQueryAnalysisResult Analyze(IDatabaseDialect dialect) {
             var window = DequeueWindow();
             if (window.Count == 0) {
-                return Array.Empty<string>();
+                return SlowQueryAnalysisResult.Empty;
             }
 
             var groups = window
-                .GroupBy(static q => NormalizeSql(q.CommandText))
-                .OrderByDescending(static g => g.Count())
+                .GroupBy(static q => q.SqlFingerprint)
+                .Select(group => BuildMetric(group.Key, group))
+                .OrderByDescending(static x => x.P99Milliseconds)
+                .ThenByDescending(static x => x.CallCount)
+                .Take(_aggregationTopN)
                 .ToList();
 
-            var actions = new List<string>();
-            var existedActions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var suggestions = BuildSuggestions(dialect, groups);
+            var alerts = BuildAlerts(groups);
+            var now = DateTime.Now;
+            var shouldEmitDailyReport = ShouldEmitDailyReport(now);
 
-            foreach (var group in groups) {
-                if (group.Count() < _triggerCount) {
-                    continue;
-                }
-
-                var sample = group.First();
-                if (!TryExtractTableAndColumns(sample.CommandText, out var schemaName, out var tableName, out var whereColumns)) {
-                    continue;
-                }
-
-                var dialectActions = dialect.BuildAutomaticTuningSql(schemaName, tableName, whereColumns);
-                foreach (var action in dialectActions) {
-                    if (string.IsNullOrWhiteSpace(action)) {
-                        continue;
-                    }
-
-                    if (actions.Count >= _maxActionsPerCycle) {
-                        break;
-                    }
-
-                    if (existedActions.Add(action)) {
-                        actions.Add($"/*{AutoTuningMarker}*/ {action}");
-                    }
-                }
-
-                if (actions.Count >= _maxActionsPerCycle) {
-                    break;
-                }
-            }
-
-            if (actions.Count > 0) {
-                var topSample = window.MaxBy(static s => s.ElapsedMilliseconds);
-                logger.LogInformation(
-                    "慢查询自动调谐已生成动作，Count={Count}, MaxElapsedMs={MaxElapsedMs}, LastOccurredTime={OccurredTime}, DroppedSamples={DroppedSamples}",
-                    actions.Count,
-                    topSample?.ElapsedMilliseconds ?? 0d,
-                    topSample?.OccurredTime,
-                    GetDroppedCount());
-            }
-
-            return actions;
+            return new SlowQueryAnalysisResult(
+                generatedTime: now,
+                droppedSamples: GetDroppedCount(),
+                metrics: groups,
+                readOnlySuggestions: suggestions,
+                alerts: alerts,
+                shouldEmitDailyReport: shouldEmitDailyReport);
         }
 
         private List<SlowQuerySample> DequeueWindow() {
@@ -142,6 +142,144 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             var withoutParameters = ParameterRegex.Replace(withoutStringLiterals, "?");
             var normalized = MultiWhitespaceRegex.Replace(withoutParameters, " ").Trim();
             return normalized.Length <= 512 ? normalized : normalized[..512];
+        }
+
+        private IReadOnlyList<string> BuildSuggestions(IDatabaseDialect dialect, IReadOnlyList<SlowQueryMetric> groups) {
+            var suggestions = new List<string>();
+            var existedSuggestions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var metric in groups) {
+                if (metric.CallCount < _triggerCount) {
+                    continue;
+                }
+
+                if (!TryExtractTableAndColumns(metric.SampleSql, out var schemaName, out var tableName, out var whereColumns)) {
+                    continue;
+                }
+
+                var dialectActions = dialect.BuildAutomaticTuningSql(schemaName, tableName, whereColumns);
+                foreach (var action in dialectActions) {
+                    if (string.IsNullOrWhiteSpace(action)) {
+                        continue;
+                    }
+
+                    if (suggestions.Count >= _maxSuggestionsPerCycle) {
+                        break;
+                    }
+
+                    if (existedSuggestions.Add(action)) {
+                        suggestions.Add($"/*{AutoTuningMarker}_READ_ONLY*/ {action}");
+                    }
+                }
+
+                if (suggestions.Count >= _maxSuggestionsPerCycle) {
+                    break;
+                }
+            }
+
+            return suggestions;
+        }
+
+        private IReadOnlyList<string> BuildAlerts(IReadOnlyList<SlowQueryMetric> groups) {
+            var alerts = new List<string>();
+            foreach (var metric in groups) {
+                if (metric.P99Milliseconds > _alertP99Milliseconds) {
+                    alerts.Add($"P99 超阈值：Fingerprint={metric.SqlFingerprint}, P99Ms={metric.P99Milliseconds:F2}, ThresholdMs={_alertP99Milliseconds}");
+                }
+
+                if (metric.TimeoutRatePercent > _alertTimeoutRatePercent) {
+                    alerts.Add($"超时率超阈值：Fingerprint={metric.SqlFingerprint}, TimeoutRatePercent={metric.TimeoutRatePercent:F2}, ThresholdPercent={_alertTimeoutRatePercent:F2}");
+                }
+
+                if (metric.DeadlockCount >= _alertDeadlockCount) {
+                    alerts.Add($"死锁次数超阈值：Fingerprint={metric.SqlFingerprint}, DeadlockCount={metric.DeadlockCount}, Threshold={_alertDeadlockCount}");
+                }
+            }
+
+            return alerts;
+        }
+
+        private bool ShouldEmitDailyReport(DateTime now) {
+            lock (_queueSync) {
+                if (now < _nextDailyReportTime) {
+                    return false;
+                }
+
+                _nextDailyReportTime = BuildNextDailyReportTime(now);
+                return true;
+            }
+        }
+
+        private DateTime BuildNextDailyReportTime(DateTime now) {
+            var next = new DateTime(now.Year, now.Month, now.Day, _dailyReportTime.Hours, _dailyReportTime.Minutes, _dailyReportTime.Seconds, DateTimeKind.Local);
+            if (next <= now) {
+                next = next.AddDays(1);
+            }
+
+            return next;
+        }
+
+        private static SlowQueryMetric BuildMetric(string fingerprint, IGrouping<string, SlowQuerySample> group) {
+            var samples = group.ToList();
+            var callCount = samples.Count;
+            var elapsedValues = samples
+                .Select(static s => s.ElapsedMilliseconds)
+                .OrderBy(static x => x)
+                .ToArray();
+            var totalRows = samples.Sum(static s => s.AffectedRows);
+            var errorCount = samples.Count(static s => s.IsError);
+            var timeoutCount = samples.Count(static s => s.IsTimeout);
+            var deadlockCount = samples.Count(static s => s.IsDeadlock);
+            var sampleSql = samples[0].CommandText;
+
+            return new SlowQueryMetric(
+                sqlFingerprint: fingerprint,
+                sampleSql: sampleSql,
+                callCount: callCount,
+                totalAffectedRows: totalRows,
+                errorRatePercent: errorCount * 100m / Math.Max(callCount, 1),
+                timeoutRatePercent: timeoutCount * 100m / Math.Max(callCount, 1),
+                deadlockCount: deadlockCount,
+                p95Milliseconds: CalculatePercentile(elapsedValues, 95),
+                p99Milliseconds: CalculatePercentile(elapsedValues, 99),
+                maxMilliseconds: elapsedValues[^1]);
+        }
+
+        private static double CalculatePercentile(IReadOnlyList<double> sorted, int percentile) {
+            if (sorted.Count == 0) {
+                return 0d;
+            }
+
+            var rank = (int)Math.Ceiling(percentile / 100d * sorted.Count);
+            var index = Math.Clamp(rank - 1, 0, sorted.Count - 1);
+            return sorted[index];
+        }
+
+        private static string BuildSqlFingerprint(string normalizedSql) {
+            var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(normalizedSql));
+            return Convert.ToHexString(hashBytes[..8]).ToLowerInvariant();
+        }
+
+        private static bool IsTimeoutException(Exception? exception) {
+            if (exception is null) {
+                return false;
+            }
+
+            if (exception is TimeoutException) {
+                return true;
+            }
+
+            return DatabaseProviderExceptionHelper.TryGetProviderErrorNumber(exception, out var number)
+                && (number == -2 || number == 1205 || number == 3024);
+        }
+
+        private static bool IsDeadlockException(Exception? exception) {
+            if (exception is null) {
+                return false;
+            }
+
+            return DatabaseProviderExceptionHelper.TryGetProviderErrorNumber(exception, out var number)
+                && (number == 1205 || number == 1213);
         }
 
         private static bool TryExtractTableAndColumns(string sql, out string? schemaName, out string tableName, out IReadOnlyList<string> whereColumns) {
@@ -204,5 +342,43 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             var value = configuration[key];
             return int.TryParse(value, out var parsed) && parsed > 0 ? parsed : fallback;
         }
+
+        private static decimal GetDecimalOrDefault(IConfiguration configuration, string key, decimal fallback) {
+            var value = configuration[key];
+            return decimal.TryParse(value, out var parsed) && parsed > 0 ? parsed : fallback;
+        }
+
+        private static TimeSpan GetTimeOfDayOrDefault(IConfiguration configuration, string key, TimeSpan fallback) {
+            var value = configuration[key];
+            return TimeSpan.TryParse(value, out var parsed) ? parsed : fallback;
+        }
+    }
+
+    public sealed record SlowQueryMetric(
+        string SqlFingerprint,
+        string SampleSql,
+        int CallCount,
+        int TotalAffectedRows,
+        decimal ErrorRatePercent,
+        decimal TimeoutRatePercent,
+        int DeadlockCount,
+        double P95Milliseconds,
+        double P99Milliseconds,
+        double MaxMilliseconds);
+
+    public sealed record SlowQueryAnalysisResult(
+        DateTime GeneratedTime,
+        int DroppedSamples,
+        IReadOnlyList<SlowQueryMetric> Metrics,
+        IReadOnlyList<string> ReadOnlySuggestions,
+        IReadOnlyList<string> Alerts,
+        bool ShouldEmitDailyReport) {
+        public static SlowQueryAnalysisResult Empty { get; } = new(
+            generatedTime: DateTime.Now,
+            droppedSamples: 0,
+            metrics: Array.Empty<SlowQueryMetric>(),
+            readOnlySuggestions: Array.Empty<string>(),
+            alerts: Array.Empty<string>(),
+            shouldEmitDailyReport: false);
     }
 }
