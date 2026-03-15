@@ -224,9 +224,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
                 var p99IncreasePercent = CalculateIncreasePercent(previous.P99Milliseconds, metric.P99Milliseconds);
                 var timeoutRateIncrease = metric.TimeoutRatePercent - previous.TimeoutRatePercent;
-                var p99RegressionMatched = _regressionP99IncreasePercent > 0m && p99IncreasePercent >= _regressionP99IncreasePercent;
-                var timeoutRegressionMatched = _regressionTimeoutRateIncreasePercent > 0m && timeoutRateIncrease >= _regressionTimeoutRateIncreasePercent;
-                if (!p99RegressionMatched && !timeoutRegressionMatched) {
+                var hasP99Regression = _regressionP99IncreasePercent > 0m && p99IncreasePercent >= _regressionP99IncreasePercent;
+                var hasTimeoutRegression = _regressionTimeoutRateIncreasePercent > 0m && timeoutRateIncrease >= _regressionTimeoutRateIncreasePercent;
+                if (!hasP99Regression && !hasTimeoutRegression) {
                     continue;
                 }
 
@@ -471,23 +471,29 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         private void PruneTrackingState() {
-            while (_lastMetricByFingerprint.Count > MaxTrackedFingerprintCount) {
-                var oldestFingerprint = _pendingRollbackByFingerprint
+            var overflowCount = _lastMetricByFingerprint.Count - MaxTrackedFingerprintCount;
+            if (overflowCount > 0) {
+                var removeKeys = _pendingRollbackByFingerprint
                     .Where(pair => _lastMetricByFingerprint.ContainsKey(pair.Key))
                     .OrderBy(static pair => pair.Value.CreatedTime)
                     .Select(static pair => pair.Key)
-                    .FirstOrDefault();
+                    .Take(overflowCount)
+                    .ToList();
+                var removeKeySet = new HashSet<string>(removeKeys, StringComparer.OrdinalIgnoreCase);
 
-                if (string.IsNullOrWhiteSpace(oldestFingerprint)) {
-                    oldestFingerprint = _lastMetricByFingerprint.Keys.FirstOrDefault();
+                if (removeKeys.Count < overflowCount) {
+                    var remaining = overflowCount - removeKeys.Count;
+                    var fallbackKeys = _lastMetricByFingerprint.Keys
+                        .OrderBy(static key => key, StringComparer.Ordinal)
+                        .Where(key => !removeKeySet.Contains(key))
+                        .Take(remaining);
+                    removeKeys.AddRange(fallbackKeys);
                 }
 
-                if (string.IsNullOrWhiteSpace(oldestFingerprint)) {
-                    break;
+                foreach (var key in removeKeys) {
+                    _lastMetricByFingerprint.Remove(key);
+                    _pendingRollbackByFingerprint.Remove(key);
                 }
-
-                _lastMetricByFingerprint.Remove(oldestFingerprint);
-                _pendingRollbackByFingerprint.Remove(oldestFingerprint);
             }
 
             var now = DateTime.Now;
