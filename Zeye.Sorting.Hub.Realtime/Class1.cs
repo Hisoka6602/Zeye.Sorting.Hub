@@ -1,5 +1,5 @@
-﻿namespace Zeye.Sorting.Hub.Realtime {
-    public class Class1 {
+namespace Zeye.Sorting.Hub.Realtime {
+    public static class AssemblyReference {
 
     }
 }

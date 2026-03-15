@@ -1,5 +1,5 @@
-﻿namespace Zeye.Sorting.Hub.RuleEngine {
-    public class Class1 {
+namespace Zeye.Sorting.Hub.RuleEngine {
+    public static class AssemblyReference {
 
     }
 }

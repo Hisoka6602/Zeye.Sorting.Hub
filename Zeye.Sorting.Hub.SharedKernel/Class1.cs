@@ -1,5 +1,5 @@
-﻿namespace Zeye.Sorting.Hub.SharedKernel {
-    public class Class1 {
+namespace Zeye.Sorting.Hub.SharedKernel {
+    public static class AssemblyReference {
 
     }
 }

@@ -4,13 +4,11 @@ using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
 
 var builder = Host.CreateApplicationBuilder(args);
 builder.Services.AddHostedService<Worker>();
-
-var host = builder.Build();
-
-/*
 builder.Services.AddSortingHubPersistence(builder.Configuration);
 
-// Host ¸ºÔğÆô¶¯±àÅÅ
-builder.Services.AddHostedService<DatabaseInitializerHostedService>();*/
+// Host å¯åŠ¨æ—¶æ‰§è¡ŒæŒä¹…åŒ–åˆå§‹åŒ–
+builder.Services.AddHostedService<DatabaseInitializerHostedService>();
+
+var host = builder.Build();
 
 host.Run();

@@ -13,8 +13,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
         public string ProviderName => "SQLServer";
 
         public IReadOnlyList<string> GetOptionalBootstrapSql() => new[] {
-            ""
-            // 说明：按需补充
+            "SET NOCOUNT ON;",
+            "SET ARITHABORT ON;"
         };
     }
 }
