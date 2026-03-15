@@ -6,101 +6,101 @@
 
 ```text
 .
-├── .gitattributes
-├── .gitignore
-├── README.md
-├── Zeye.Sorting.Hub.Analytics
-│   ├── Class1.cs
-│   └── Zeye.Sorting.Hub.Analytics.csproj
-├── Zeye.Sorting.Hub.Application
-│   ├── Class1.cs
-│   └── Zeye.Sorting.Hub.Application.csproj
-├── Zeye.Sorting.Hub.Contracts
-│   ├── Class1.cs
-│   └── Zeye.Sorting.Hub.Contracts.csproj
-├── Zeye.Sorting.Hub.Domain
-│   ├── Abstractions
-│   │   └── IEntity.cs
-│   ├── Aggregates
-│   │   └── Parcels
-│   │       ├── Parcel.cs
-│   │       └── ValueObjects
-│   │           ├── ApiRequestInfo.cs
-│   │           ├── BagInfo.cs
-│   │           ├── BarCodeInfo.cs
-│   │           ├── ChuteInfo.cs
-│   │           ├── CommandInfo.cs
-│   │           ├── GrayDetectorInfo.cs
-│   │           ├── ImageInfo.cs
-│   │           ├── ParcelDeviceInfo.cs
-│   │           ├── ParcelPositionInfo.cs
-│   │           ├── SorterCarrierInfo.cs
-│   │           ├── StickingParcelInfo.cs
-│   │           ├── VideoInfo.cs
-│   │           ├── VolumeInfo.cs
-│   │           └── WeightInfo.cs
-│   ├── DomainEvents
-│   │   └── Parcels
-│   │       ├── ParcelChuteAssignedEventArgs.cs
-│   │       └── ParcelScannedEventArgs.cs
-│   ├── Enums
-│   │   ├── ActionType.cs
-│   │   ├── ApiRequestStatus.cs
-│   │   ├── ApiRequestType.cs
-│   │   ├── BarCodeType.cs
-│   │   ├── CommandDirection.cs
-│   │   ├── ImageCaptureType.cs
-│   │   ├── ImageType.cs
-│   │   ├── NoReadType.cs
-│   │   ├── ParcelStatus.cs
-│   │   ├── ParcelType.cs
-│   │   ├── VideoNodeType.cs
-│   │   └── VolumeSourceType.cs
-│   ├── Primitives
-│   │   └── AuditableEntity.cs
-│   ├── Repositories
-│   │   └── IParcelRepository.cs
-│   └── Zeye.Sorting.Hub.Domain.csproj
-├── Zeye.Sorting.Hub.Host
-│   ├── HostedServices
-│   │   └── DatabaseInitializerHostedService.cs
-│   ├── Program.cs
-│   ├── Properties
-│   │   └── launchSettings.json
-│   ├── Worker.cs
-│   ├── Zeye.Sorting.Hub.Host.csproj
-│   ├── appsettings.Development.json
-│   └── appsettings.json
-├── Zeye.Sorting.Hub.Infrastructure
-│   ├── DependencyInjection
-│   │   └── PersistenceServiceCollectionExtensions.cs
-│   ├── EntityConfigurations
-│   │   ├── BagInfoEntityTypeConfiguration.cs
-│   │   └── ParcelEntityTypeConfiguration.cs
-│   ├── Persistence
-│   │   ├── DatabaseDialects
-│   │   │   ├── IDatabaseDialect.cs
-│   │   │   ├── MySqlDialect.cs
-│   │   │   └── SqlServerDialect.cs
-│   │   ├── DesignTime
-│   │   │   └── MySqlContextFactory.cs
-│   │   └── SortingHubDbContext.cs
-│   ├── Repositories
-│   │   ├── MemoryCacheRepositoryBase.cs
-│   │   ├── RepositoryBase.cs
-│   │   └── RepositoryResult.cs
-│   └── Zeye.Sorting.Hub.Infrastructure.csproj
-├── Zeye.Sorting.Hub.Realtime
-│   ├── Class1.cs
-│   └── Zeye.Sorting.Hub.Realtime.csproj
-├── Zeye.Sorting.Hub.RuleEngine
-│   ├── Class1.cs
-│   └── Zeye.Sorting.Hub.RuleEngine.csproj
-├── Zeye.Sorting.Hub.SharedKernel
-│   ├── Class1.cs
-│   └── Zeye.Sorting.Hub.SharedKernel.csproj
-├── Zeye.Sorting.Hub.sln
-└── 项目完成度与推进计划.md
+├── .gitattributes（Git 属性配置）
+├── .gitignore（Git 忽略规则）
+├── README.md（仓库总览、结构清单与维护规范）
+├── Zeye.Sorting.Hub.Analytics（分析与报表子域，占位工程）
+│   ├── Class1.cs（占位类，预留统计指标/报表能力）
+│   └── Zeye.Sorting.Hub.Analytics.csproj（Analytics 项目定义）
+├── Zeye.Sorting.Hub.Application（应用层，占位工程）
+│   ├── Class1.cs（占位类，预留命令/查询/应用服务）
+│   └── Zeye.Sorting.Hub.Application.csproj（Application 项目定义）
+├── Zeye.Sorting.Hub.Contracts（契约层，占位工程）
+│   ├── Class1.cs（占位类，预留请求/响应契约）
+│   └── Zeye.Sorting.Hub.Contracts.csproj（Contracts 项目定义）
+├── Zeye.Sorting.Hub.Domain（核心领域层）
+│   ├── Abstractions（领域抽象接口目录）
+│   │   └── IEntity.cs（实体通用接口）
+│   ├── Aggregates（领域聚合目录）
+│   │   └── Parcels（包裹聚合目录）
+│   │       ├── Parcel.cs（包裹聚合根）
+│   │       └── ValueObjects（包裹聚合值对象目录）
+│   │           ├── ApiRequestInfo.cs（外部接口请求/响应信息值对象）
+│   │           ├── BagInfo.cs（袋笼/集包信息值对象）
+│   │           ├── BarCodeInfo.cs（条码识别信息值对象）
+│   │           ├── ChuteInfo.cs（格口分配信息值对象）
+│   │           ├── CommandInfo.cs（设备命令交互信息值对象）
+│   │           ├── GrayDetectorInfo.cs（灰度检测结果值对象）
+│   │           ├── ImageInfo.cs（图片元数据值对象）
+│   │           ├── ParcelDeviceInfo.cs（包裹相关设备信息值对象）
+│   │           ├── ParcelPositionInfo.cs（包裹空间/轨迹位置信息值对象）
+│   │           ├── SorterCarrierInfo.cs（分拣小车/载体信息值对象）
+│   │           ├── StickingParcelInfo.cs（叠包检测结果值对象）
+│   │           ├── VideoInfo.cs（视频信息值对象）
+│   │           ├── VolumeInfo.cs（体积信息值对象）
+│   │           └── WeightInfo.cs（重量信息值对象）
+│   ├── DomainEvents（领域事件目录）
+│   │   └── Parcels（包裹相关领域事件目录）
+│   │       ├── ParcelChuteAssignedEventArgs.cs（包裹分配格口事件参数）
+│   │       └── ParcelScannedEventArgs.cs（包裹扫描事件参数）
+│   ├── Enums（领域枚举目录）
+│   │   ├── ActionType.cs（动作类型枚举）
+│   │   ├── ApiRequestStatus.cs（接口请求状态枚举）
+│   │   ├── ApiRequestType.cs（接口请求类型枚举）
+│   │   ├── BarCodeType.cs（条码类型枚举）
+│   │   ├── CommandDirection.cs（命令方向枚举）
+│   │   ├── ImageCaptureType.cs（图像采集方式枚举）
+│   │   ├── ImageType.cs（图像类型枚举）
+│   │   ├── NoReadType.cs（无码/难码类型枚举）
+│   │   ├── ParcelStatus.cs（包裹状态枚举）
+│   │   ├── ParcelType.cs（包裹类别枚举）
+│   │   ├── VideoNodeType.cs（视频节点类型枚举）
+│   │   └── VolumeSourceType.cs（体积来源类型枚举）
+│   ├── Primitives（领域基础类型目录）
+│   │   └── AuditableEntity.cs（可审计实体基类）
+│   ├── Repositories（领域仓储契约目录）
+│   │   └── IParcelRepository.cs（包裹仓储接口）
+│   └── Zeye.Sorting.Hub.Domain.csproj（Domain 项目定义）
+├── Zeye.Sorting.Hub.Host（宿主层）
+│   ├── HostedServices（托管服务目录）
+│   │   └── DatabaseInitializerHostedService.cs（数据库初始化与迁移托管服务）
+│   ├── Program.cs（应用入口与 Host 构建流程）
+│   ├── Properties（运行调试属性目录）
+│   │   └── launchSettings.json（本地启动配置）
+│   ├── Worker.cs（后台任务示例服务）
+│   ├── Zeye.Sorting.Hub.Host.csproj（Host 项目定义）
+│   ├── appsettings.Development.json（开发环境配置）
+│   └── appsettings.json（默认运行配置）
+├── Zeye.Sorting.Hub.Infrastructure（基础设施层）
+│   ├── DependencyInjection（依赖注入扩展目录）
+│   │   └── PersistenceServiceCollectionExtensions.cs（持久化服务注册扩展）
+│   ├── EntityConfigurations（EF Core 映射配置目录）
+│   │   ├── BagInfoEntityTypeConfiguration.cs（BagInfo 映射配置）
+│   │   └── ParcelEntityTypeConfiguration.cs（Parcel 映射配置）
+│   ├── Persistence（持久化核心目录）
+│   │   ├── DatabaseDialects（数据库方言目录）
+│   │   │   ├── IDatabaseDialect.cs（数据库方言接口）
+│   │   │   ├── MySqlDialect.cs（MySQL 方言实现）
+│   │   │   └── SqlServerDialect.cs（SQL Server 方言实现）
+│   │   ├── DesignTime（EF 设计时支持目录）
+│   │   │   └── MySqlContextFactory.cs（设计时 DbContext 工厂）
+│   │   └── SortingHubDbContext.cs（EF Core DbContext）
+│   ├── Repositories（仓储基类与结果模型目录）
+│   │   ├── MemoryCacheRepositoryBase.cs（缓存仓储基类）
+│   │   ├── RepositoryBase.cs（通用仓储基类）
+│   │   └── RepositoryResult.cs（仓储调用结果封装）
+│   └── Zeye.Sorting.Hub.Infrastructure.csproj（Infrastructure 项目定义）
+├── Zeye.Sorting.Hub.Realtime（实时通信子域，占位工程）
+│   ├── Class1.cs（占位类，预留实时推送/订阅能力）
+│   └── Zeye.Sorting.Hub.Realtime.csproj（Realtime 项目定义）
+├── Zeye.Sorting.Hub.RuleEngine（规则引擎子域，占位工程）
+│   ├── Class1.cs（占位类，预留规则执行引擎）
+│   └── Zeye.Sorting.Hub.RuleEngine.csproj（RuleEngine 项目定义）
+├── Zeye.Sorting.Hub.SharedKernel（共享内核，占位工程）
+│   ├── Class1.cs（占位类，预留通用基础能力）
+│   └── Zeye.Sorting.Hub.SharedKernel.csproj（SharedKernel 项目定义）
+├── Zeye.Sorting.Hub.sln（.NET 解决方案入口）
+└── 项目完成度与推进计划.md（项目阶段评估与路线图文档）
 ```
 
 ## Copilot 维护规定
