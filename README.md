@@ -67,7 +67,7 @@
 │   ├── Program.cs（应用入口与 Host 构建流程）
 │   ├── Properties（运行调试属性目录）
 │   │   └── launchSettings.json（本地启动配置）
-│   ├── Worker.cs（后台任务示例服务）
+│   ├── Worker.cs（后台轮询任务示例服务）
 │   ├── Zeye.Sorting.Hub.Host.csproj（Host 项目定义）
 │   ├── appsettings.Development.json（开发环境配置）
 │   └── appsettings.json（默认运行配置）
@@ -88,7 +88,7 @@
 │   ├── Repositories（仓储基类与结果模型目录）
 │   │   ├── MemoryCacheRepositoryBase.cs（缓存仓储基类）
 │   │   ├── RepositoryBase.cs（通用仓储基类）
-│   │   └── RepositoryResult.cs（仓储调用结果封装）
+│   │   └── RepositoryResult.cs（仓储调用结果封装模型）
 │   └── Zeye.Sorting.Hub.Infrastructure.csproj（Infrastructure 项目定义）
 ├── Zeye.Sorting.Hub.Realtime（实时通信子域，占位工程）
 │   ├── Class1.cs（占位类，预留实时推送/订阅能力）
