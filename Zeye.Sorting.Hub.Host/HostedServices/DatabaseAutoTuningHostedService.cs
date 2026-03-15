@@ -84,6 +84,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _peakEndTime = GetTimeOfDayOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Execution:PeakEndLocalTime", new TimeSpan(21, 0, 0));
             _enableAutoRollback = GetBoolOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Validation:EnableAutoRollback", true);
             _whitelistedTables = LoadWhitelistedTables(configuration.GetSection("Persistence:AutoTuning:Autonomous:Execution:WhitelistedTables"));
+            if (_whitelistedTables.Count == 0) {
+                _logger.LogInformation("自动调优执行白名单为空：当前允许所有候选表参与自动动作。");
+            }
             _baselineCommandTimeoutSeconds = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:BaselineCommandTimeoutSeconds", 30);
             _baselineMaxRetryCount = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:BaselineMaxRetryCount", 5);
             _baselineMaxRetryDelaySeconds = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:BaselineMaxRetryDelaySeconds", 10);
