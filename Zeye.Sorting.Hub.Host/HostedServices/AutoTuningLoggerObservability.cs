@@ -1,0 +1,30 @@
+using Microsoft.Extensions.Logging;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
+
+namespace Zeye.Sorting.Hub.Host.HostedServices {
+
+    /// <summary>自动调优观测默认日志实现（可被 Prometheus/Otel 实现替换）。</summary>
+    public sealed class AutoTuningLoggerObservability : IAutoTuningObservability {
+        private readonly ILogger<AutoTuningLoggerObservability> _logger;
+
+        public AutoTuningLoggerObservability(ILogger<AutoTuningLoggerObservability> logger) {
+            _logger = logger;
+        }
+
+        public void EmitMetric(string name, double value, IReadOnlyDictionary<string, string>? tags = null) {
+            _logger.LogInformation("AutoTuningMetric: Name={Name}, Value={Value}, Tags={Tags}", name, value, FormatTags(tags));
+        }
+
+        public void EmitEvent(string name, LogLevel level, string message, IReadOnlyDictionary<string, string>? tags = null) {
+            _logger.Log(level, "AutoTuningEvent: Name={Name}, Message={Message}, Tags={Tags}", name, message, FormatTags(tags));
+        }
+
+        private static string FormatTags(IReadOnlyDictionary<string, string>? tags) {
+            if (tags is null || tags.Count == 0) {
+                return string.Empty;
+            }
+
+            return string.Join(", ", tags.Select(static pair => $"{pair.Key}={pair.Value}"));
+        }
+    }
+}

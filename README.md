@@ -65,6 +65,7 @@
 │   └── Zeye.Sorting.Hub.Domain.csproj（Domain 项目定义）
 ├── Zeye.Sorting.Hub.Host（宿主层）
 │   ├── HostedServices（托管服务目录）
+│   │   ├── AutoTuningLoggerObservability.cs（自动调优观测默认日志实现）
 │   │   ├── DatabaseAutoTuningHostedService.cs（数据库自动调谐托管服务（慢查询分析、阈值告警、闭环自治执行验证回退与变更审计））
 │   │   └── DatabaseInitializerHostedService.cs（数据库初始化与迁移托管服务）
 │   ├── Program.cs（应用入口与 Host 构建流程）
@@ -74,6 +75,9 @@
 │   ├── Zeye.Sorting.Hub.Host.csproj（Host 项目定义）
 │   ├── appsettings.Development.json（开发环境配置）
 │   └── appsettings.json（默认运行配置）
+├── Zeye.Sorting.Hub.Host.Tests（自动调优行为测试工程）
+│   ├── AutoTuningProductionControlTests.cs（自动调优生产可控能力测试：dry-run/隔离器/告警恢复/回滚/闭环链路）
+│   └── Zeye.Sorting.Hub.Host.Tests.csproj（xUnit 测试项目定义）
 ├── Zeye.Sorting.Hub.Infrastructure（基础设施层）
 │   ├── DependencyInjection（依赖注入扩展目录）
 │   │   └── PersistenceServiceCollectionExtensions.cs（持久化服务注册扩展（数据库提供器选择、连接字符串校验、DbContext 注册、性能参数读取配置、Parcel 按 CreatedTime 月分表））
@@ -82,6 +86,7 @@
 │   │   └── ParcelEntityTypeConfiguration.cs（Parcel 映射配置）
 │   ├── Persistence（持久化核心目录）
 │   │   ├── AutoTuning（自动调谐核心目录）
+│   │   │   ├── AutoTuningAbstractions.cs（自动调优观测抽象、闭环阶段、隔离/回滚策略与执行计划回退探针抽象）
 │   │   │   ├── MySqlSessionBootstrapConnectionInterceptor.cs（MySQL 连接会话初始化拦截器）
 │   │   │   ├── SlowQueryAutoTuningPipeline.cs（慢查询采集、TopN 聚合、阈值告警（含基础防抖）与闭环自治结构化建议编排管道）
 │   │   │   ├── SlowQueryCommandInterceptor.cs（EF Core 慢查询采集拦截器）
@@ -206,6 +211,7 @@
 - `appsettings.Development.json`：开发环境配置覆盖文件。
 
 #### `Zeye.Sorting.Hub.Host/HostedServices/`：启动/常驻托管服务目录
+- `AutoTuningLoggerObservability.cs`：自动调优观测默认日志实现（统一日志 + 指标抽象默认落地）。
 - `DatabaseAutoTuningHostedService.cs`：数据库自动调谐托管服务（慢查询分析、阈值告警、闭环自治执行验证回退与变更审计）。
 - `DatabaseInitializerHostedService.cs`：数据库初始化与迁移托管服务。
 
@@ -232,6 +238,7 @@
 - `SqlServerDialect.cs`：SQL Server 方言实现。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/`：自动调谐核心目录
+- `AutoTuningAbstractions.cs`：自动调优观测抽象、闭环阶段模型、危险动作隔离策略、自动回滚决策与执行计划回退探针抽象。
 - `MySqlSessionBootstrapConnectionInterceptor.cs`：MySQL 连接会话初始化拦截器。
 - `SlowQueryAutoTuningPipeline.cs`：慢查询采集、TopN 聚合、阈值告警（含基础防抖）与闭环自治结构化建议编排管道。
 - `SlowQueryCommandInterceptor.cs`：EF Core 慢查询采集拦截器。
@@ -256,3 +263,20 @@
 ### `Zeye.Sorting.Hub.SharedKernel/`：跨模块共享内核（当前为占位工程）
 - `Zeye.Sorting.Hub.SharedKernel.csproj`：SharedKernel 项目定义。
 - `Class1.cs`：占位类，预留通用基础能力实现位置。
+
+### `Zeye.Sorting.Hub.Host.Tests/`：自动调优测试层
+- `Zeye.Sorting.Hub.Host.Tests.csproj`：xUnit 测试项目定义。
+- `AutoTuningProductionControlTests.cs`：覆盖 dry-run、危险动作隔离、告警防抖与恢复、自动回滚触发、闭环阶段链路。
+
+## 本次更新内容
+
+- L1：增强慢 SQL 告警防抖（最小调用次数 + 时间窗口去重 + 连续窗口触发）与恢复通知；日报建议新增原因、风险等级、置信度；引入统一观测抽象接口并提供默认日志实现；基线审计新增 AutoTuning 关键阈值偏离等级与推荐值。
+- L2：危险动作统一走隔离器入口（开关、dry-run、审计、回滚脚本协同）；保持高峰仅采集低峰维护策略，且执行继续受白名单约束。
+- L3：闭环阶段显式化（Monitor→Diagnose→Execute→Verify→Rollback）；自动验证日志补充 lock wait unavailable 标识；新增分级动作（暂停后续动作 / 严重回归立即回滚）；补齐执行计划回退检测抽象接口（默认日志占位实现）。
+- 测试：新增自动调优测试工程，覆盖关键生产可控行为。
+
+## 后续可继续完善项
+
+- 将 `IAutoTuningObservability` 对接 OpenTelemetry Meter/Activity 与 Prometheus 指标导出。
+- 将 `IExecutionPlanRegressionProbe` 对接 SQL Server Query Store / MySQL Performance Schema 的真实计划视图。
+- 增加基于容器数据库的集成测试，验证真实 SQL 执行、回滚脚本可用性和跨方言一致性。
