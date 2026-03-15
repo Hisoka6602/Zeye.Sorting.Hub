@@ -8,7 +8,7 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 namespace Zeye.Sorting.Hub.Host.HostedServices {
 
     /// <summary>
-    /// 数据库自动调谐后台服务：慢查询分析 + L3 闭环自治执行/验证/回退 + 审计日志
+    /// 数据库自动调谐后台服务：慢查询分析 + 闭环自治执行/验证/回退 + 审计日志
     /// </summary>
     public sealed class DatabaseAutoTuningHostedService : BackgroundService {
         private const int MaxTrackedFingerprintCount = 1000;
@@ -77,35 +77,35 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _dialect = dialect;
             _pipeline = pipeline;
             _analyzeIntervalSeconds = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:AnalyzeIntervalSeconds", 30);
-            _maxExecuteActionsPerCycle = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:L3:Execution:MaxExecuteActionsPerCycle", 2);
-            _actionExecutionTimeoutSeconds = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:L3:Execution:ActionExecutionTimeoutSeconds", 60);
-            _skipExecutionDuringPeak = GetBoolOrDefault(configuration, "Persistence:AutoTuning:L3:Execution:SkipExecutionDuringPeak", true);
-            _peakStartTime = GetTimeOfDayOrDefault(configuration, "Persistence:AutoTuning:L3:Execution:PeakStartLocalTime", new TimeSpan(8, 0, 0));
-            _peakEndTime = GetTimeOfDayOrDefault(configuration, "Persistence:AutoTuning:L3:Execution:PeakEndLocalTime", new TimeSpan(21, 0, 0));
-            _enableAutoRollback = GetBoolOrDefault(configuration, "Persistence:AutoTuning:L3:Validation:EnableAutoRollback", true);
-            _whitelistedTables = LoadWhitelistedTables(configuration.GetSection("Persistence:AutoTuning:L3:Execution:WhitelistedTables"));
+            _maxExecuteActionsPerCycle = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Execution:MaxExecuteActionsPerCycle", 2);
+            _actionExecutionTimeoutSeconds = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Execution:ActionExecutionTimeoutSeconds", 60);
+            _skipExecutionDuringPeak = GetBoolOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Execution:SkipExecutionDuringPeak", true);
+            _peakStartTime = GetTimeOfDayOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Execution:PeakStartLocalTime", new TimeSpan(8, 0, 0));
+            _peakEndTime = GetTimeOfDayOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Execution:PeakEndLocalTime", new TimeSpan(21, 0, 0));
+            _enableAutoRollback = GetBoolOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Validation:EnableAutoRollback", true);
+            _whitelistedTables = LoadWhitelistedTables(configuration.GetSection("Persistence:AutoTuning:Autonomous:Execution:WhitelistedTables"));
             _baselineCommandTimeoutSeconds = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:BaselineCommandTimeoutSeconds", 30);
             _baselineMaxRetryCount = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:BaselineMaxRetryCount", 5);
             _baselineMaxRetryDelaySeconds = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:BaselineMaxRetryDelaySeconds", 10);
             _configuredCommandTimeoutSeconds = GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
             _configuredMaxRetryCount = GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:MaxRetryCount", 5);
             _configuredMaxRetryDelaySeconds = GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:MaxRetryDelaySeconds", 10);
-            _enableFullAutomation = GetBoolOrDefault(configuration, "Persistence:AutoTuning:L3:EnableFullAutomation", true);
-            _policyMinTableHeatCalls = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:L3:Policy:MinTableHeatCalls", 10);
-            _policyMaxRiskScore = GetDecimalInRangeOrDefault(configuration, "Persistence:AutoTuning:L3:Policy:MaxRiskScore", 0.85m, 0m, 1m);
-            _policyPeakMaxRiskScore = GetDecimalInRangeOrDefault(configuration, "Persistence:AutoTuning:L3:Policy:PeakMaxRiskScore", 0.45m, 0m, 1m);
-            _policyPeakMaxTableHeatCalls = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:L3:Policy:PeakMaxTableHeatCalls", 50);
-            _enableAutoValidation = GetBoolOrDefault(configuration, "Persistence:AutoTuning:L3:Validation:EnableAutoValidation", true);
-            _validationDelayCycles = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:L3:Validation:DelayCycles", 1);
-            _validationP95IncreasePercent = GetNonNegativeDecimalOrDefault(configuration, "Persistence:AutoTuning:L3:Validation:P95IncreasePercent", 5m);
-            _validationP99IncreasePercent = GetNonNegativeDecimalOrDefault(configuration, "Persistence:AutoTuning:L3:Validation:P99IncreasePercent", 10m);
-            _validationErrorRateIncreasePercent = GetNonNegativeDecimalOrDefault(configuration, "Persistence:AutoTuning:L3:Validation:ErrorRateIncreasePercent", 0.5m);
-            _validationTimeoutRateIncreasePercent = GetNonNegativeDecimalOrDefault(configuration, "Persistence:AutoTuning:L3:Validation:TimeoutRateIncreasePercent", 0.5m);
-            _validationDeadlockIncreaseCount = GetNonNegativeIntOrDefault(configuration, "Persistence:AutoTuning:L3:Validation:DeadlockIncreaseCount", 1);
-            _enableCapacityPrediction = GetBoolOrDefault(configuration, "Persistence:AutoTuning:L3:CapacityPrediction:EnableCapacityPrediction", true);
-            _capacityProjectionDays = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:L3:CapacityPrediction:ProjectionDays", 7);
-            _capacityGrowthAlertRows = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:L3:CapacityPrediction:GrowthAlertRows", 50000);
-            _capacityHotLayeringRows = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:L3:CapacityPrediction:HotLayeringRows", 200000);
+            _enableFullAutomation = GetBoolOrDefault(configuration, "Persistence:AutoTuning:Autonomous:EnableFullAutomation", true);
+            _policyMinTableHeatCalls = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Policy:MinTableHeatCalls", 10);
+            _policyMaxRiskScore = GetDecimalInRangeOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Policy:MaxRiskScore", 0.85m, 0m, 1m);
+            _policyPeakMaxRiskScore = GetDecimalInRangeOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Policy:PeakMaxRiskScore", 0.45m, 0m, 1m);
+            _policyPeakMaxTableHeatCalls = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Policy:PeakMaxTableHeatCalls", 50);
+            _enableAutoValidation = GetBoolOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Validation:EnableAutoValidation", true);
+            _validationDelayCycles = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Validation:DelayCycles", 1);
+            _validationP95IncreasePercent = GetNonNegativeDecimalOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Validation:P95IncreasePercent", 5m);
+            _validationP99IncreasePercent = GetNonNegativeDecimalOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Validation:P99IncreasePercent", 10m);
+            _validationErrorRateIncreasePercent = GetNonNegativeDecimalOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Validation:ErrorRateIncreasePercent", 0.5m);
+            _validationTimeoutRateIncreasePercent = GetNonNegativeDecimalOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Validation:TimeoutRateIncreasePercent", 0.5m);
+            _validationDeadlockIncreaseCount = GetNonNegativeIntOrDefault(configuration, "Persistence:AutoTuning:Autonomous:Validation:DeadlockIncreaseCount", 1);
+            _enableCapacityPrediction = GetBoolOrDefault(configuration, "Persistence:AutoTuning:Autonomous:CapacityPrediction:EnableCapacityPrediction", true);
+            _capacityProjectionDays = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:Autonomous:CapacityPrediction:ProjectionDays", 7);
+            _capacityGrowthAlertRows = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:Autonomous:CapacityPrediction:GrowthAlertRows", 50000);
+            _capacityHotLayeringRows = GetPositiveIntOrDefault(configuration, "Persistence:AutoTuning:Autonomous:CapacityPrediction:HotLayeringRows", 200000);
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
@@ -232,7 +232,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     var policyDecision = EvaluateExecutionPolicy(actionSql, currentMetric, tableHeat, inPeakWindow);
                     if (!policyDecision.ShouldExecute) {
                         _logger.LogInformation(
-                            "L3 策略引擎拦截自动动作：Provider={Provider}, Fingerprint={Fingerprint}, Table={Table}, RiskScore={RiskScore:F2}, Reason={Reason}",
+                            "闭环自治策略引擎拦截自动动作：Provider={Provider}, Fingerprint={Fingerprint}, Table={Table}, RiskScore={RiskScore:F2}, Reason={Reason}",
                             _dialect.ProviderName,
                             candidate.SqlFingerprint,
                             tableKey,
@@ -275,7 +275,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                             continue;
                         }
 
-                        EmitAuditLog($"{actionId}-maintenance", candidate, maintenance, rollbackSql: null, executed: true, dryRun: false, reason: "l3-maintenance");
+                        EmitAuditLog($"{actionId}-maintenance", candidate, maintenance, rollbackSql: null, executed: true, dryRun: false, reason: "autonomous-maintenance");
                     }
                 }
             }
@@ -311,7 +311,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 if (!regressed) {
                     _pendingRollbackByFingerprint.Remove(rollback.Fingerprint);
                     _logger.LogInformation(
-                        "L3 自动验证通过：Provider={Provider}, Fingerprint={Fingerprint}, Table={Table}, P95Increase={P95Increase:F2}, P99Increase={P99Increase:F2}, ErrorRateIncrease={ErrorRateIncrease:F2}, TimeoutRateIncrease={TimeoutRateIncrease:F2}, DeadlockIncrease={DeadlockIncrease}",
+                        "闭环自治自动验证通过：Provider={Provider}, Fingerprint={Fingerprint}, Table={Table}, P95Increase={P95Increase:F2}, P99Increase={P99Increase:F2}, ErrorRateIncrease={ErrorRateIncrease:F2}, TimeoutRateIncrease={TimeoutRateIncrease:F2}, DeadlockIncrease={DeadlockIncrease}",
                         _dialect.ProviderName,
                         rollback.Fingerprint,
                         rollback.TableKey,
@@ -324,7 +324,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 }
 
                 _logger.LogWarning(
-                    "L3 自动验证失败：Provider={Provider}, Fingerprint={Fingerprint}, Table={Table}, P95Increase={P95Increase:F2}, P99Increase={P99Increase:F2}, ErrorRateIncrease={ErrorRateIncrease:F2}, TimeoutRateIncrease={TimeoutRateIncrease:F2}, DeadlockIncrease={DeadlockIncrease}",
+                    "闭环自治自动验证失败：Provider={Provider}, Fingerprint={Fingerprint}, Table={Table}, P95Increase={P95Increase:F2}, P99Increase={P99Increase:F2}, ErrorRateIncrease={ErrorRateIncrease:F2}, TimeoutRateIncrease={TimeoutRateIncrease:F2}, DeadlockIncrease={DeadlockIncrease}",
                     _dialect.ProviderName,
                     rollback.Fingerprint,
                     rollback.TableKey,
@@ -336,7 +336,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
                 if (_enableAutoRollback && await TryExecuteSqlAsync(rollback.RollbackSql, rollback.Fingerprint, isRollback: true, cancellationToken)) {
                     _logger.LogWarning(
-                        "L3 自动验证回滚执行完成：Provider={Provider}, Fingerprint={Fingerprint}, ActionId={ActionId}, RollbackSql={RollbackSql}",
+                        "闭环自治自动验证回滚执行完成：Provider={Provider}, Fingerprint={Fingerprint}, ActionId={ActionId}, RollbackSql={RollbackSql}",
                         _dialect.ProviderName,
                         rollback.Fingerprint,
                         rollback.ActionId,
@@ -436,7 +436,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 return PolicyDecision.Skip(riskScore, $"risk score {riskScore:F2} > threshold {threshold:F2}");
             }
 
-            return PolicyDecision.Execute(riskScore, "l3-policy-approved");
+            return PolicyDecision.Execute(riskScore, "autonomous-policy-approved");
         }
 
         private decimal CalculateRiskScore(string actionSql, SlowQueryMetric? metric, bool inPeakWindow) {
@@ -537,7 +537,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             var elapsedSeconds = (last.CapturedLocalTime - first.CapturedLocalTime).TotalSeconds;
             if (elapsedSeconds <= 0d) {
                 _logger.LogWarning(
-                    "L3 查询体量趋势预测跳过：Provider={Provider}, Table={Table}, ElapsedSeconds={ElapsedSeconds:F0}, Reason={Reason}",
+                    "闭环自治查询体量趋势预测跳过：Provider={Provider}, Table={Table}, ElapsedSeconds={ElapsedSeconds:F0}, Reason={Reason}",
                     _dialect.ProviderName,
                     tableKey,
                     elapsedSeconds,
@@ -548,7 +548,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             var minimumElapsedSeconds = _analyzeIntervalSeconds * 3d;
             if (elapsedSeconds < minimumElapsedSeconds) {
                 _logger.LogInformation(
-                    "L3 查询体量趋势预测跳过：Provider={Provider}, Table={Table}, ElapsedSeconds={ElapsedSeconds:F0}, MinimumElapsedSeconds={MinimumElapsedSeconds:F0}, Reason={Reason}",
+                    "闭环自治查询体量趋势预测跳过：Provider={Provider}, Table={Table}, ElapsedSeconds={ElapsedSeconds:F0}, MinimumElapsedSeconds={MinimumElapsedSeconds:F0}, Reason={Reason}",
                     _dialect.ProviderName,
                     tableKey,
                     elapsedSeconds,
@@ -560,7 +560,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             var rowGrowthPerDay = (last.AffectedRows - first.AffectedRows) / elapsedSeconds * TimeSpan.FromDays(1).TotalSeconds;
             if (rowGrowthPerDay <= 0d) {
                 _logger.LogInformation(
-                    "L3 查询体量趋势预测跳过：Provider={Provider}, Table={Table}, GrowthQueryVolumeRowsPerDay={GrowthRowsPerDay:F0}, Reason={Reason}",
+                    "闭环自治查询体量趋势预测跳过：Provider={Provider}, Table={Table}, GrowthQueryVolumeRowsPerDay={GrowthRowsPerDay:F0}, Reason={Reason}",
                     _dialect.ProviderName,
                     tableKey,
                     rowGrowthPerDay,
@@ -574,7 +574,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
 
             _logger.LogWarning(
-                "L3 查询体量趋势告警：Provider={Provider}, Table={Table}, ProjectionDays={ProjectionDays}, ProjectedQueryVolume={ProjectedQueryVolume:F0}, GrowthQueryVolumePerDay={GrowthQueryVolumePerDay:F0}, ActionHint={Hint}",
+                "闭环自治查询体量趋势告警：Provider={Provider}, Table={Table}, ProjectionDays={ProjectionDays}, ProjectedQueryVolume={ProjectedQueryVolume:F0}, GrowthQueryVolumePerDay={GrowthQueryVolumePerDay:F0}, ActionHint={Hint}",
                 _dialect.ProviderName,
                 tableKey,
                 _capacityProjectionDays,

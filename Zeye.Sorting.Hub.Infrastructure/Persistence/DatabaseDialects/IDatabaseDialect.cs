@@ -32,7 +32,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
         bool ShouldIgnoreAutoTuningException(Exception exception);
 
         /// <summary>
-        /// L3 闭环自治阶段：根据风险与时段生成数据库方言差异化维护动作（统计信息/索引维护）。
+        /// 闭环自治阶段：根据风险与时段生成数据库方言差异化维护动作（统计信息/索引维护）。
         /// </summary>
         /// <param name="schemaName">候选 schema 名；为空表示无 schema。</param>
         /// <param name="tableName">候选表名（已过标识符安全校验）。</param>
