@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using System.Collections.Generic;
@@ -36,10 +37,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
                 return Array.Empty<string>();
             }
 
-            var indexName = $"idx_auto_{normalizedTableName}_{string.Join("_", indexColumns)}";
-            if (indexName.Length > 120) {
-                indexName = indexName[..120];
-            }
+            var indexName = BuildIndexName(normalizedTableName, indexColumns, 120);
 
             var escapedTable = $"[{normalizedTableName}]";
             var escapedColumns = string.Join(", ", indexColumns.Select(static col => $"[{col}]"));
@@ -51,6 +49,19 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
                 $"IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'{escapedIndexNameLiteral}' AND object_id = OBJECT_ID(N'{escapedObjectNameLiteral}')) CREATE INDEX {escapedIndexName} ON {escapedTable} ({escapedColumns})",
                 $"UPDATE STATISTICS {escapedTable} WITH RESAMPLE"
             };
+        }
+
+        private static string BuildIndexName(string tableName, IReadOnlyList<string> columns, int maxLength) {
+            var seed = $"{tableName}:{string.Join(",", columns)}";
+            var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(seed));
+            var hash = Convert.ToHexString(hashBytes[..4]).ToLowerInvariant();
+            var prefix = $"idx_auto_{tableName}_{string.Join("_", columns)}";
+
+            var normalizedPrefix = prefix.Length > maxLength - hash.Length - 1
+                ? prefix[..(maxLength - hash.Length - 1)]
+                : prefix;
+
+            return $"{normalizedPrefix}_{hash}";
         }
     }
 }

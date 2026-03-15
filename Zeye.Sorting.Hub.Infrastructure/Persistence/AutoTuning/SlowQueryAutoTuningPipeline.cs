@@ -43,9 +43,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             }
 
             _slowQueries.Enqueue(new SlowQuerySample(
-                CommandText: commandText,
-                ElapsedMilliseconds: elapsed.TotalMilliseconds,
-                OccurredTime: DateTime.Now));
+                commandText: commandText,
+                elapsedMilliseconds: elapsed.TotalMilliseconds,
+                occurredTime: DateTime.Now));
         }
 
         public IReadOnlyList<string> BuildActions(IDatabaseDialect dialect, ILogger logger) {
@@ -56,7 +56,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
 
             var groups = window
                 .GroupBy(static q => NormalizeSql(q.CommandText))
-                .Where(g => g.Count() >= 1)
                 .OrderByDescending(static g => g.Count())
                 .ToList();
 
