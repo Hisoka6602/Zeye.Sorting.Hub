@@ -11,11 +11,19 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
     /// 数据库自动调谐后台服务：慢查询分析 + 可控执行 + 审计日志
     /// </summary>
     public sealed class DatabaseAutoTuningHostedService : BackgroundService {
+        private const int MaxTrackedFingerprintCount = 1000;
+        private static readonly TimeSpan PendingRollbackRetention = TimeSpan.FromHours(24);
         private static readonly Regex SqlServerCreateIndexRegex = new(
-            @"create\s+index\s+\[(?<index>[^\]]+)\]\s+on\s+(?<table>\[[^\]]+\](?:\.\[[^\]]+\])?)",
-            RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+            @"\bcreate\s+(?:unique\s+)?index\s+\[(?<index>[^\]]+)\]\s+on\s+(?<table>\[[^\]]+\](?:\.\[[^\]]+\])?)",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
         private static readonly Regex MySqlCreateIndexRegex = new(
-            @"create\s+index\s+`(?<index>[^`]+)`\s+on\s+(?<table>(?:`[^`]+`\.)?`[^`]+`)",
+            @"\bcreate\s+(?:unique\s+)?index\s+`(?<index>[^`]+)`\s+on\s+(?<table>(?:`[^`]+`\.)?`[^`]+`)",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
+        private static readonly Regex LeadingCommentRegex = new(
+            @"^\s*(?:(--[^\r\n]*[\r\n]+)|(/\*.*?\*/\s*))",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
+        private static readonly Regex DangerousDdlRegex = new(
+            @"\b(create|alter|drop)\b",
             RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
         private readonly ILogger<DatabaseAutoTuningHostedService> _logger;
         private readonly IServiceScopeFactory _scopeFactory;
@@ -190,7 +198,10 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                         continue;
                     }
 
-                    await ExecuteSqlAsync(actionSql, cancellationToken);
+                    if (!await TryExecuteSqlAsync(actionSql, candidate.SqlFingerprint, isRollback: false, cancellationToken)) {
+                        continue;
+                    }
+
                     EmitAuditLog(actionId, candidate, actionSql, rollbackSql, executed: true, dryRun: false, reason: "executed");
                     executedCount++;
 
@@ -213,7 +224,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
                 var p99IncreasePercent = CalculateIncreasePercent(previous.P99Milliseconds, metric.P99Milliseconds);
                 var timeoutRateIncrease = metric.TimeoutRatePercent - previous.TimeoutRatePercent;
-                if (p99IncreasePercent < _regressionP99IncreasePercent && timeoutRateIncrease < _regressionTimeoutRateIncreasePercent) {
+                var p99RegressionMatched = _regressionP99IncreasePercent > 0m && p99IncreasePercent >= _regressionP99IncreasePercent;
+                var timeoutRegressionMatched = _regressionTimeoutRateIncreasePercent > 0m && timeoutRateIncrease >= _regressionTimeoutRateIncreasePercent;
+                if (!p99RegressionMatched && !timeoutRegressionMatched) {
                     continue;
                 }
 
@@ -231,7 +244,10 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     continue;
                 }
 
-                await ExecuteSqlAsync(rollback.RollbackSql, cancellationToken);
+                if (!await TryExecuteSqlAsync(rollback.RollbackSql, metric.SqlFingerprint, isRollback: true, cancellationToken)) {
+                    continue;
+                }
+
                 _pendingRollbackByFingerprint.Remove(metric.SqlFingerprint);
                 _logger.LogWarning(
                     "自动调优回滚已执行：Provider={Provider}, Fingerprint={Fingerprint}, ActionId={ActionId}, RollbackSql={RollbackSql}",
@@ -246,6 +262,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             foreach (var metric in metrics) {
                 _lastMetricByFingerprint[metric.SqlFingerprint] = metric;
             }
+
+            PruneTrackingState();
         }
 
         private async Task ExecuteSqlAsync(string sql, CancellationToken cancellationToken) {
@@ -253,6 +271,31 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             var dbContext = scope.ServiceProvider.GetRequiredService<SortingHubDbContext>();
             dbContext.Database.SetCommandTimeout(_actionExecutionTimeoutSeconds);
             await dbContext.Database.ExecuteSqlRawAsync(sql, cancellationToken);
+        }
+
+        private async Task<bool> TryExecuteSqlAsync(string sql, string fingerprint, bool isRollback, CancellationToken cancellationToken) {
+            try {
+                await ExecuteSqlAsync(sql, cancellationToken);
+                return true;
+            } catch (Exception ex) when (_dialect.ShouldIgnoreAutoTuningException(ex)) {
+                _logger.LogWarning(
+                    ex,
+                    "自动调优 SQL 已忽略异常：Provider={Provider}, Fingerprint={Fingerprint}, IsRollback={IsRollback}, Sql={Sql}",
+                    _dialect.ProviderName,
+                    fingerprint,
+                    isRollback,
+                    sql);
+                return false;
+            } catch (Exception ex) {
+                _logger.LogError(
+                    ex,
+                    "自动调优 SQL 执行失败：Provider={Provider}, Fingerprint={Fingerprint}, IsRollback={IsRollback}, Sql={Sql}",
+                    _dialect.ProviderName,
+                    fingerprint,
+                    isRollback,
+                    sql);
+                return false;
+            }
         }
 
         private static decimal CalculateIncreasePercent(double previousValue, double currentValue) {
@@ -320,10 +363,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 return false;
             }
 
-            var normalized = actionSql.TrimStart();
-            return normalized.StartsWith("CREATE ", StringComparison.OrdinalIgnoreCase)
-                   || normalized.StartsWith("ALTER ", StringComparison.OrdinalIgnoreCase)
-                   || normalized.StartsWith("DROP ", StringComparison.OrdinalIgnoreCase);
+            var normalized = TrimLeadingComments(actionSql);
+            return DangerousDdlRegex.IsMatch(normalized);
         }
 
         private string? BuildRollbackSql(string actionSql) {
@@ -331,14 +372,15 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 return null;
             }
 
-            var sqlServerMatch = SqlServerCreateIndexRegex.Match(actionSql);
+            var normalized = TrimLeadingComments(actionSql);
+            var sqlServerMatch = SqlServerCreateIndexRegex.Match(normalized);
             if (sqlServerMatch.Success) {
                 var indexName = sqlServerMatch.Groups["index"].Value;
                 var tableName = sqlServerMatch.Groups["table"].Value;
                 return $"DROP INDEX [{indexName}] ON {tableName}";
             }
 
-            var mySqlMatch = MySqlCreateIndexRegex.Match(actionSql);
+            var mySqlMatch = MySqlCreateIndexRegex.Match(normalized);
             if (mySqlMatch.Success) {
                 var indexName = mySqlMatch.Groups["index"].Value;
                 var tableName = mySqlMatch.Groups["table"].Value;
@@ -370,7 +412,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
         private static decimal GetNonNegativeDecimalOrDefault(IConfiguration configuration, string key, decimal fallback) {
             var value = configuration[key];
-            return decimal.TryParse(value, out var parsed) && parsed >= 0m ? parsed : fallback;
+            return decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed) && parsed >= 0m ? parsed : fallback;
         }
 
         private static bool GetBoolOrDefault(IConfiguration configuration, string key, bool fallback) {
@@ -412,6 +454,50 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
 
             return tables;
+        }
+
+        private static string TrimLeadingComments(string sql) {
+            var normalized = sql;
+            while (true) {
+                var match = LeadingCommentRegex.Match(normalized);
+                if (!match.Success) {
+                    break;
+                }
+
+                normalized = normalized[match.Length..];
+            }
+
+            return normalized.TrimStart();
+        }
+
+        private void PruneTrackingState() {
+            while (_lastMetricByFingerprint.Count > MaxTrackedFingerprintCount) {
+                var oldestFingerprint = _pendingRollbackByFingerprint
+                    .Where(pair => _lastMetricByFingerprint.ContainsKey(pair.Key))
+                    .OrderBy(static pair => pair.Value.CreatedTime)
+                    .Select(static pair => pair.Key)
+                    .FirstOrDefault();
+
+                if (string.IsNullOrWhiteSpace(oldestFingerprint)) {
+                    oldestFingerprint = _lastMetricByFingerprint.Keys.FirstOrDefault();
+                }
+
+                if (string.IsNullOrWhiteSpace(oldestFingerprint)) {
+                    break;
+                }
+
+                _lastMetricByFingerprint.Remove(oldestFingerprint);
+                _pendingRollbackByFingerprint.Remove(oldestFingerprint);
+            }
+
+            var now = DateTime.Now;
+            var expiredFingerprints = _pendingRollbackByFingerprint
+                .Where(pair => now - pair.Value.CreatedTime > PendingRollbackRetention)
+                .Select(static pair => pair.Key)
+                .ToArray();
+            foreach (var fingerprint in expiredFingerprints) {
+                _pendingRollbackByFingerprint.Remove(fingerprint);
+            }
         }
 
         private sealed record PendingRollbackAction(
