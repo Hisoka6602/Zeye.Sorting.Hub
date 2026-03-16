@@ -116,53 +116,53 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _scopeFactory = scopeFactory;
             _dialect = dialect;
             _pipeline = pipeline;
-            _analyzeIntervalSeconds = GetPositiveIntOrDefault(configuration, AutoTuningKey("AnalyzeIntervalSeconds"), 30);
-            _maxExecuteActionsPerCycle = GetPositiveIntOrDefault(configuration, AutonomousKey("Execution:MaxExecuteActionsPerCycle"), 2);
-            _actionExecutionTimeoutSeconds = GetPositiveIntOrDefault(configuration, AutonomousKey("Execution:ActionExecutionTimeoutSeconds"), 60);
-            _skipExecutionDuringPeak = GetBoolOrDefault(configuration, AutonomousKey("Execution:SkipExecutionDuringPeak"), true);
-            _peakStartTime = GetTimeOfDayOrDefault(configuration, AutonomousKey("Execution:PeakStartLocalTime"), new TimeSpan(8, 0, 0));
-            _peakEndTime = GetTimeOfDayOrDefault(configuration, AutonomousKey("Execution:PeakEndLocalTime"), new TimeSpan(21, 0, 0));
-            _enableDangerousActionIsolator = GetBoolOrDefault(configuration, AutonomousKey("Execution:Isolator:EnableGuard"), true);
-            _allowDangerousActionExecution = GetBoolOrDefault(configuration, AutonomousKey("Execution:Isolator:AllowDangerousActionExecution"), false);
-            _enableActionDryRun = GetBoolOrDefault(configuration, AutonomousKey("Execution:Isolator:DryRun"), false);
-            _enableAutoRollback = GetBoolOrDefault(configuration, AutonomousKey("Validation:EnableAutoRollback"), true);
+            _analyzeIntervalSeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningKey("AnalyzeIntervalSeconds"), 30);
+            _maxExecuteActionsPerCycle = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutonomousKey("Execution:MaxExecuteActionsPerCycle"), 2);
+            _actionExecutionTimeoutSeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutonomousKey("Execution:ActionExecutionTimeoutSeconds"), 60);
+            _skipExecutionDuringPeak = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, AutonomousKey("Execution:SkipExecutionDuringPeak"), true);
+            _peakStartTime = AutoTuningConfigurationHelper.GetTimeOfDayOrDefault(configuration, AutonomousKey("Execution:PeakStartLocalTime"), new TimeSpan(8, 0, 0));
+            _peakEndTime = AutoTuningConfigurationHelper.GetTimeOfDayOrDefault(configuration, AutonomousKey("Execution:PeakEndLocalTime"), new TimeSpan(21, 0, 0));
+            _enableDangerousActionIsolator = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, AutonomousKey("Execution:Isolator:EnableGuard"), true);
+            _allowDangerousActionExecution = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, AutonomousKey("Execution:Isolator:AllowDangerousActionExecution"), false);
+            _enableActionDryRun = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, AutonomousKey("Execution:Isolator:DryRun"), false);
+            _enableAutoRollback = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, AutonomousKey("Validation:EnableAutoRollback"), true);
             _whitelistedTables = LoadWhitelistedTables(configuration.GetSection(AutonomousKey("Execution:WhitelistedTables")));
             if (_whitelistedTables.Count == 0) {
                 _logger.LogWarning("自动调优执行白名单为空：当前将阻断所有候选表自动动作。");
             }
-            _baselineCommandTimeoutSeconds = GetPositiveIntOrDefault(configuration, AutoTuningKey("BaselineCommandTimeoutSeconds"), 30);
-            _baselineMaxRetryCount = GetPositiveIntOrDefault(configuration, AutoTuningKey("BaselineMaxRetryCount"), 5);
-            _baselineMaxRetryDelaySeconds = GetPositiveIntOrDefault(configuration, AutoTuningKey("BaselineMaxRetryDelaySeconds"), 10);
-            _configuredCommandTimeoutSeconds = GetPositiveIntOrDefault(configuration, $"{PerformanceConfigPrefix}:CommandTimeoutSeconds", 30);
-            _configuredMaxRetryCount = GetPositiveIntOrDefault(configuration, $"{PerformanceConfigPrefix}:MaxRetryCount", 5);
-            _configuredMaxRetryDelaySeconds = GetPositiveIntOrDefault(configuration, $"{PerformanceConfigPrefix}:MaxRetryDelaySeconds", 10);
-            _configuredSlowQueryThresholdMilliseconds = GetPositiveIntOrDefault(configuration, AutoTuningKey("SlowQueryThresholdMilliseconds"), 500);
-            _configuredTriggerCount = GetPositiveIntOrDefault(configuration, AutoTuningKey("TriggerCount"), 3);
-            _configuredMaxSuggestionsPerCycle = GetPositiveIntOrDefault(configuration, AutoTuningKey("MaxActionsPerCycle"), 3);
-            _configuredAlertP99Milliseconds = GetPositiveIntOrDefault(configuration, AutoTuningKey("AlertP99Milliseconds"), 500);
-            _configuredAlertTimeoutRatePercent = GetNonNegativeDecimalOrDefault(configuration, AutoTuningKey("AlertTimeoutRatePercent"), 1m);
-            _configuredAlertDeadlockCount = GetPositiveIntOrDefault(configuration, AutoTuningKey("AlertDeadlockCount"), 1);
-            _enableFullAutomation = GetBoolOrDefault(configuration, AutonomousKey("EnableFullAutomation"), true);
-            _policyMinTableHeatCalls = GetPositiveIntOrDefault(configuration, AutonomousKey("Policy:MinTableHeatCalls"), 10);
-            _policyMaxRiskScore = GetDecimalInRangeOrDefault(configuration, AutonomousKey("Policy:MaxRiskScore"), 0.85m, 0m, 1m);
-            _policyPeakMaxRiskScore = GetDecimalInRangeOrDefault(configuration, AutonomousKey("Policy:PeakMaxRiskScore"), 0.45m, 0m, 1m);
-            _policyPeakMaxTableHeatCalls = GetPositiveIntOrDefault(configuration, AutonomousKey("Policy:PeakMaxTableHeatCalls"), 50);
-            _enableAutoValidation = GetBoolOrDefault(configuration, AutonomousKey("Validation:EnableAutoValidation"), true);
-            _validationDelayCycles = GetPositiveIntOrDefault(configuration, AutonomousKey("Validation:DelayCycles"), 1);
-            _validationP95IncreasePercent = GetNonNegativeDecimalOrDefault(configuration, AutonomousKey("Validation:P95IncreasePercent"), 5m);
-            _validationP99IncreasePercent = GetNonNegativeDecimalOrDefault(configuration, AutonomousKey("Validation:P99IncreasePercent"), 10m);
-            _validationErrorRateIncreasePercent = GetNonNegativeDecimalOrDefault(configuration, AutonomousKey("Validation:ErrorRateIncreasePercent"), 0.5m);
-            _validationTimeoutRateIncreasePercent = GetNonNegativeDecimalOrDefault(configuration, AutonomousKey("Validation:TimeoutRateIncreasePercent"), 0.5m);
-            _validationDeadlockIncreaseCount = GetNonNegativeIntOrDefault(configuration, AutonomousKey("Validation:DeadlockIncreaseCount"), 1);
-            _enableCapacityPrediction = GetBoolOrDefault(configuration, AutonomousKey("CapacityPrediction:EnableCapacityPrediction"), true);
-            _capacityProjectionDays = GetPositiveIntOrDefault(configuration, AutonomousKey("CapacityPrediction:ProjectionDays"), 7);
-            _capacityGrowthAlertRows = GetPositiveIntOrDefault(configuration, AutonomousKey("CapacityPrediction:GrowthAlertRows"), 50000);
-            _capacityHotLayeringRows = GetPositiveIntOrDefault(configuration, AutonomousKey("CapacityPrediction:HotLayeringRows"), 200000);
-            _severeRollbackP99IncreasePercent = GetNonNegativeDecimalOrDefault(configuration, AutonomousKey("Validation:SevereRollback:P99IncreasePercent"), 25m);
-            _severeRollbackTimeoutIncreasePercent = GetNonNegativeDecimalOrDefault(configuration, AutonomousKey("Validation:SevereRollback:TimeoutRateIncreasePercent"), 2m);
-            _pauseActionCyclesOnRegression = GetPositiveIntOrDefault(configuration, AutonomousKey("Validation:PauseActionCyclesOnRegression"), 2);
-            _enablePlanProbe = GetBoolOrDefault(configuration, AutonomousKey("Validation:PlanProbe:Enable"), true);
-            _planProbeSampleRate = GetDecimalClampedOrDefault(configuration, AutonomousKey("Validation:PlanProbe:SampleRate"), 1m, 0m, 1m);
+            _baselineCommandTimeoutSeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningKey("BaselineCommandTimeoutSeconds"), 30);
+            _baselineMaxRetryCount = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningKey("BaselineMaxRetryCount"), 5);
+            _baselineMaxRetryDelaySeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningKey("BaselineMaxRetryDelaySeconds"), 10);
+            _configuredCommandTimeoutSeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, $"{PerformanceConfigPrefix}:CommandTimeoutSeconds", 30);
+            _configuredMaxRetryCount = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, $"{PerformanceConfigPrefix}:MaxRetryCount", 5);
+            _configuredMaxRetryDelaySeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, $"{PerformanceConfigPrefix}:MaxRetryDelaySeconds", 10);
+            _configuredSlowQueryThresholdMilliseconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningKey("SlowQueryThresholdMilliseconds"), 500);
+            _configuredTriggerCount = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningKey("TriggerCount"), 3);
+            _configuredMaxSuggestionsPerCycle = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningKey("MaxActionsPerCycle"), 3);
+            _configuredAlertP99Milliseconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningKey("AlertP99Milliseconds"), 500);
+            _configuredAlertTimeoutRatePercent = AutoTuningConfigurationHelper.GetNonNegativeDecimalOrDefault(configuration, AutoTuningKey("AlertTimeoutRatePercent"), 1m);
+            _configuredAlertDeadlockCount = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningKey("AlertDeadlockCount"), 1);
+            _enableFullAutomation = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, AutonomousKey("EnableFullAutomation"), true);
+            _policyMinTableHeatCalls = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutonomousKey("Policy:MinTableHeatCalls"), 10);
+            _policyMaxRiskScore = AutoTuningConfigurationHelper.GetDecimalInRangeOrDefault(configuration, AutonomousKey("Policy:MaxRiskScore"), 0.85m, 0m, 1m);
+            _policyPeakMaxRiskScore = AutoTuningConfigurationHelper.GetDecimalInRangeOrDefault(configuration, AutonomousKey("Policy:PeakMaxRiskScore"), 0.45m, 0m, 1m);
+            _policyPeakMaxTableHeatCalls = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutonomousKey("Policy:PeakMaxTableHeatCalls"), 50);
+            _enableAutoValidation = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, AutonomousKey("Validation:EnableAutoValidation"), true);
+            _validationDelayCycles = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutonomousKey("Validation:DelayCycles"), 1);
+            _validationP95IncreasePercent = AutoTuningConfigurationHelper.GetNonNegativeDecimalOrDefault(configuration, AutonomousKey("Validation:P95IncreasePercent"), 5m);
+            _validationP99IncreasePercent = AutoTuningConfigurationHelper.GetNonNegativeDecimalOrDefault(configuration, AutonomousKey("Validation:P99IncreasePercent"), 10m);
+            _validationErrorRateIncreasePercent = AutoTuningConfigurationHelper.GetNonNegativeDecimalOrDefault(configuration, AutonomousKey("Validation:ErrorRateIncreasePercent"), 0.5m);
+            _validationTimeoutRateIncreasePercent = AutoTuningConfigurationHelper.GetNonNegativeDecimalOrDefault(configuration, AutonomousKey("Validation:TimeoutRateIncreasePercent"), 0.5m);
+            _validationDeadlockIncreaseCount = AutoTuningConfigurationHelper.GetNonNegativeIntOrDefault(configuration, AutonomousKey("Validation:DeadlockIncreaseCount"), 1);
+            _enableCapacityPrediction = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, AutonomousKey("CapacityPrediction:EnableCapacityPrediction"), true);
+            _capacityProjectionDays = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutonomousKey("CapacityPrediction:ProjectionDays"), 7);
+            _capacityGrowthAlertRows = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutonomousKey("CapacityPrediction:GrowthAlertRows"), 50000);
+            _capacityHotLayeringRows = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutonomousKey("CapacityPrediction:HotLayeringRows"), 200000);
+            _severeRollbackP99IncreasePercent = AutoTuningConfigurationHelper.GetNonNegativeDecimalOrDefault(configuration, AutonomousKey("Validation:SevereRollback:P99IncreasePercent"), 25m);
+            _severeRollbackTimeoutIncreasePercent = AutoTuningConfigurationHelper.GetNonNegativeDecimalOrDefault(configuration, AutonomousKey("Validation:SevereRollback:TimeoutRateIncreasePercent"), 2m);
+            _pauseActionCyclesOnRegression = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutonomousKey("Validation:PauseActionCyclesOnRegression"), 2);
+            _enablePlanProbe = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, AutonomousKey("Validation:PlanProbe:Enable"), true);
+            _planProbeSampleRate = AutoTuningConfigurationHelper.GetDecimalClampedOrDefault(configuration, AutonomousKey("Validation:PlanProbe:SampleRate"), 1m, 0m, 1m);
         }
 
         /// <summary>后台循环：按固定周期分析慢 SQL，并执行自治策略/验证/清理。</summary>
@@ -643,7 +643,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
         /// <summary>在独立作用域中执行单条 SQL。</summary>
         private async Task ExecuteSqlAsync(string sql, CancellationToken cancellationToken) {
-            using var scope = _scopeFactory.CreateScope();
+            await using var scope = _scopeFactory.CreateAsyncScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<SortingHubDbContext>();
             dbContext.Database.SetCommandTimeout(_actionExecutionTimeoutSeconds);
             await dbContext.Database.ExecuteSqlRawAsync(sql, cancellationToken);
@@ -921,19 +921,22 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             SlowQueryAnalysisResult result,
             DateTime cycleTime,
             IReadOnlyDictionary<string, SlowQueryMetric> metricsByFingerprint) {
-            // 步骤 1：先对历史热度做衰减，避免旧热点长期占用容量。
-            if (!_enableFullAutomation) {
+            // 容量预测与执行热度是相互独立的功能，分别检查各自的开关。
+            if (!_enableFullAutomation && !_enableCapacityPrediction) {
                 return;
             }
 
-            foreach (var table in _tableHeatByTable.Keys.ToArray()) {
-                var decayed = (int)Math.Floor(_tableHeatByTable[table] * 0.9d);
-                if (decayed <= 0) {
-                    _tableHeatByTable.Remove(table);
-                    continue;
-                }
+            // 步骤 1：对历史热度做衰减（仅全自动模式下维护热度，避免旧热点长期占用容量）。
+            if (_enableFullAutomation) {
+                foreach (var table in _tableHeatByTable.Keys.ToArray()) {
+                    var decayed = (int)Math.Floor(_tableHeatByTable[table] * 0.9d);
+                    if (decayed <= 0) {
+                        _tableHeatByTable.Remove(table);
+                        continue;
+                    }
 
-                _tableHeatByTable[table] = decayed;
+                    _tableHeatByTable[table] = decayed;
+                }
             }
 
             // 步骤 2：按本轮候选聚合表级调用量与影响行数。
@@ -955,13 +958,17 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
             // 步骤 3：刷新热度与容量样本，并触发趋势评估。
             foreach (var pair in tableSamples) {
-                if (_tableHeatByTable.TryGetValue(pair.Key, out var currentHeat)) {
-                    _tableHeatByTable[pair.Key] = currentHeat + pair.Value.Calls;
-                }
-                else {
-                    _tableHeatByTable[pair.Key] = pair.Value.Calls;
+                // 表热度仅在全自动模式下维护（用于执行策略评估）。
+                if (_enableFullAutomation) {
+                    if (_tableHeatByTable.TryGetValue(pair.Key, out var currentHeat)) {
+                        _tableHeatByTable[pair.Key] = currentHeat + pair.Value.Calls;
+                    }
+                    else {
+                        _tableHeatByTable[pair.Key] = pair.Value.Calls;
+                    }
                 }
 
+                // 容量预测独立于全自动开关，单独由 _enableCapacityPrediction 控制。
                 if (_enableCapacityPrediction) {
                     if (!_capacitySnapshotsByTable.TryGetValue(pair.Key, out var queue)) {
                         queue = new Queue<TableCapacitySnapshot>(MaxCapacitySnapshotsPerTable);
@@ -1125,77 +1132,6 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     ["key"] = key,
                     ["level"] = level
                 });
-        }
-
-        /// <summary>读取正整数配置，非法值回退默认值。</summary>
-        private static int GetPositiveIntOrDefault(IConfiguration configuration, string key, int fallback) {
-            var value = configuration[key];
-            return int.TryParse(value, out var parsed) && parsed > 0 ? parsed : fallback;
-        }
-
-        /// <summary>读取非负整数配置，非法值回退默认值。</summary>
-        private static int GetNonNegativeIntOrDefault(IConfiguration configuration, string key, int fallback) {
-            var value = configuration[key];
-            return int.TryParse(value, out var parsed) && parsed >= 0 ? parsed : fallback;
-        }
-
-        /// <summary>读取非负小数配置，非法值回退默认值。</summary>
-        private static decimal GetNonNegativeDecimalOrDefault(IConfiguration configuration, string key, decimal fallback) {
-            var value = configuration[key];
-            return decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed) && parsed >= 0m ? parsed : fallback;
-        }
-
-        /// <summary>读取指定区间内的小数配置，非法值回退默认值。</summary>
-        private static decimal GetDecimalInRangeOrDefault(IConfiguration configuration, string key, decimal fallback, decimal min, decimal max) {
-            var value = configuration[key];
-            if (!decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)) {
-                return fallback;
-            }
-
-            if (parsed < min || parsed > max) {
-                return fallback;
-            }
-
-            return parsed;
-        }
-
-        /// <summary>读取小数配置，非法值回退默认值，合法值按区间钳制。</summary>
-        private static decimal GetDecimalClampedOrDefault(IConfiguration configuration, string key, decimal fallback, decimal min, decimal max) {
-            var value = configuration[key];
-            if (!decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)) {
-                return fallback;
-            }
-
-            return decimal.Clamp(parsed, min, max);
-        }
-
-        /// <summary>读取布尔配置，非法值回退默认值。</summary>
-        private static bool GetBoolOrDefault(IConfiguration configuration, string key, bool fallback) {
-            var value = configuration[key];
-            return bool.TryParse(value, out var parsed) ? parsed : fallback;
-        }
-
-        /// <summary>读取本地时间（HH:mm 或 HH:mm:ss）配置。</summary>
-        private static TimeSpan GetTimeOfDayOrDefault(IConfiguration configuration, string key, TimeSpan fallback) {
-            var value = configuration[key];
-            if (string.IsNullOrWhiteSpace(value)) {
-                return fallback;
-            }
-
-            if (!TimeSpan.TryParseExact(
-                    value,
-                    ["HH\\:mm\\:ss", "HH\\:mm"],
-                    CultureInfo.InvariantCulture,
-                    TimeSpanStyles.None,
-                    out var parsed)) {
-                throw new InvalidOperationException($"{key} 配置格式无效，仅支持 HH:mm:ss 或 HH:mm（本地时间语义）。");
-            }
-
-            if (parsed < TimeSpan.Zero || parsed >= TimeSpan.FromDays(1)) {
-                throw new InvalidOperationException($"{key} 必须位于 [00:00:00, 24:00:00) 区间。");
-            }
-
-            return parsed;
         }
 
         /// <summary>加载执行白名单并标准化为小写。</summary>

@@ -1,5 +1,3 @@
-using System.Collections.Concurrent;
-using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -23,7 +21,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         private static readonly Regex WhereRegex = new(@"\bwhere\b(?<where>.+?)(\border\s+by\b|\bgroup\s+by\b|\blimit\b|;|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
         private static readonly Regex WhereColumnRegex = new(@"(?:[A-Za-z_][A-Za-z0-9_]*\.)?[`""\[]?([A-Za-z_][A-Za-z0-9_]*)[`""\]]?\s*(=|>|<|>=|<=|like\b|in\b)", RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
         private static readonly Regex SafeIdentifierRegex = new(@"^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
-        private readonly ConcurrentQueue<SlowQuerySample> _slowQueries = new();
+        private readonly Queue<SlowQuerySample> _slowQueries = new();
         private readonly int _slowQueryThresholdMilliseconds;
         private readonly int _analysisBatchSize;
         private readonly int _triggerCount;
@@ -47,20 +45,20 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         /// <summary>初始化慢查询采集、分析和告警阈值配置。</summary>
         public SlowQueryAutoTuningPipeline(IConfiguration configuration, IAutoTuningObservability observability) {
             _observability = observability;
-            _slowQueryThresholdMilliseconds = GetPositiveIntOrDefault(configuration, AutoTuningKey("SlowQueryThresholdMilliseconds"), 500);
-            _analysisBatchSize = GetPositiveIntOrDefault(configuration, AutoTuningKey("AnalysisBatchSize"), 20);
-            _triggerCount = GetPositiveIntOrDefault(configuration, AutoTuningKey("TriggerCount"), 3);
-            _maxSuggestionsPerCycle = GetPositiveIntOrDefault(configuration, AutoTuningKey("MaxActionsPerCycle"), 3);
-            _maxQueueSize = GetPositiveIntOrDefault(configuration, AutoTuningKey("MaxQueueSize"), 1000);
-            _aggregationTopN = GetPositiveIntOrDefault(configuration, AutoTuningKey("AggregationTopN"), 10);
-            _alertDebounceMinCallCount = GetPositiveIntOrDefault(configuration, AutoTuningKey("AlertDebounceMinCallCount"), _triggerCount);
-            _alertP99Milliseconds = GetPositiveIntOrDefault(configuration, AutoTuningKey("AlertP99Milliseconds"), 500);
-            _alertTimeoutRatePercent = GetNonNegativeDecimalOrDefault(configuration, AutoTuningKey("AlertTimeoutRatePercent"), 1m);
-            _alertDeadlockCount = GetPositiveIntOrDefault(configuration, AutoTuningKey("AlertDeadlockCount"), 1);
-            _alertDebounceWindow = GetPositiveSecondsAsTimeSpanOrDefault(configuration, AutoTuningKey("AlertDebounceWindowSeconds"), TimeSpan.FromMinutes(10));
-            _alertConsecutiveWindows = GetPositiveIntOrDefault(configuration, AutoTuningKey("AlertConsecutiveWindows"), 1);
-            _alertRecoveryConsecutiveWindows = GetPositiveIntOrDefault(configuration, AutoTuningKey("AlertRecoveryConsecutiveWindows"), 1);
-            _dailyReportTime = GetTimeOfDayOrDefault(configuration, AutoTuningKey("DailyReportLocalTime"), new TimeSpan(2, 30, 0));
+            _slowQueryThresholdMilliseconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningKey("SlowQueryThresholdMilliseconds"), 500);
+            _analysisBatchSize = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningKey("AnalysisBatchSize"), 20);
+            _triggerCount = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningKey("TriggerCount"), 3);
+            _maxSuggestionsPerCycle = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningKey("MaxActionsPerCycle"), 3);
+            _maxQueueSize = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningKey("MaxQueueSize"), 1000);
+            _aggregationTopN = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningKey("AggregationTopN"), 10);
+            _alertDebounceMinCallCount = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningKey("AlertDebounceMinCallCount"), _triggerCount);
+            _alertP99Milliseconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningKey("AlertP99Milliseconds"), 500);
+            _alertTimeoutRatePercent = AutoTuningConfigurationHelper.GetNonNegativeDecimalOrDefault(configuration, AutoTuningKey("AlertTimeoutRatePercent"), 1m);
+            _alertDeadlockCount = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningKey("AlertDeadlockCount"), 1);
+            _alertDebounceWindow = AutoTuningConfigurationHelper.GetPositiveSecondsAsTimeSpanOrDefault(configuration, AutoTuningKey("AlertDebounceWindowSeconds"), TimeSpan.FromMinutes(10));
+            _alertConsecutiveWindows = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningKey("AlertConsecutiveWindows"), 1);
+            _alertRecoveryConsecutiveWindows = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningKey("AlertRecoveryConsecutiveWindows"), 1);
+            _dailyReportTime = AutoTuningConfigurationHelper.GetTimeOfDayOrDefault(configuration, AutoTuningKey("DailyReportLocalTime"), new TimeSpan(2, 30, 0));
             _nextDailyReportTime = BuildNextDailyReportTime(DateTime.Now);
         }
 
@@ -550,50 +548,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             tableName = candidateTable;
             whereColumns = columns;
             return true;
-        }
-
-        /// <summary>读取正整数配置，非法值回退默认值。</summary>
-        private static int GetPositiveIntOrDefault(IConfiguration configuration, string key, int fallback) {
-            var value = configuration[key];
-            return int.TryParse(value, out var parsed) && parsed > 0 ? parsed : fallback;
-        }
-
-        /// <summary>读取非负小数配置，非法值回退默认值。</summary>
-        private static decimal GetNonNegativeDecimalOrDefault(IConfiguration configuration, string key, decimal fallback) {
-            var value = configuration[key];
-            return decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed) && parsed >= 0m ? parsed : fallback;
-        }
-
-        private static TimeSpan GetPositiveSecondsAsTimeSpanOrDefault(IConfiguration configuration, string key, TimeSpan fallback) {
-            var value = configuration[key];
-            if (!int.TryParse(value, out var seconds) || seconds <= 0) {
-                return fallback;
-            }
-
-            return TimeSpan.FromSeconds(seconds);
-        }
-
-        /// <summary>读取本地时间（HH:mm 或 HH:mm:ss）配置。</summary>
-        private static TimeSpan GetTimeOfDayOrDefault(IConfiguration configuration, string key, TimeSpan fallback) {
-            var value = configuration[key];
-            if (string.IsNullOrWhiteSpace(value)) {
-                return fallback;
-            }
-
-            if (!TimeSpan.TryParseExact(
-                    value,
-                    ["HH\\:mm\\:ss", "HH\\:mm"],
-                    CultureInfo.InvariantCulture,
-                    TimeSpanStyles.None,
-                    out var parsed)) {
-                throw new InvalidOperationException($"{key} 配置格式无效，仅支持 HH:mm:ss 或 HH:mm（本地时间语义）。");
-            }
-
-            if (parsed < TimeSpan.Zero || parsed >= TimeSpan.FromDays(1)) {
-                throw new InvalidOperationException($"{key} 必须位于 [00:00:00, 24:00:00) 区间。");
-            }
-
-            return parsed;
         }
 
         /// <summary>生成 AutoTuning 配置全路径键名。</summary>
