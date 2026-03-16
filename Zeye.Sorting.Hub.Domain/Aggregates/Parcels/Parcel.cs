@@ -4,6 +4,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Primitives;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects;
@@ -73,6 +74,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         /// <summary>
         /// 重量
         /// </summary>
+        [Column(TypeName = "decimal(18,3)")]
         public decimal Weight { get; private set; }
 
         /// <summary>
@@ -100,21 +102,25 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         /// <summary>
         /// 长度
         /// </summary>
+        [Column(TypeName = "decimal(18,3)")]
         public decimal Length { get; private set; }
 
         /// <summary>
         /// 宽度
         /// </summary>
+        [Column(TypeName = "decimal(18,3)")]
         public decimal Width { get; private set; }
 
         /// <summary>
         /// 高度
         /// </summary>
+        [Column(TypeName = "decimal(18,3)")]
         public decimal Height { get; private set; }
 
         /// <summary>
         /// 体积
         /// </summary>
+        [Column(TypeName = "decimal(18,3)")]
         public decimal Volume { get; private set; }
 
         /// <summary>

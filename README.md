@@ -340,14 +340,15 @@
 
 1. **appsettings.json 连接字符串改为真实参数格式**：`ConnectionStrings:MySql` / `ConnectionStrings:SqlServer` 使用本地开发默认账密（`root`/`Admin@1234`、`sa`/`Admin@1234`），与设计时工厂 Fallback 值一致；说明注释更新为"私有库，由专属技术人员维护"。
 2. **数据模型添加 `[MaxLength]` ORM 特征标记**：在 `AuditableEntity`、`Parcel` 聚合根及所有值对象（`BagInfo`、`BarCodeInfo`、`WeightInfo`、`VolumeInfo`、`ParcelDeviceInfo`、`GrayDetectorInfo`、`StickingParcelInfo`、`ApiRequestInfo`、`CommandInfo`、`ImageInfo`、`VideoInfo`）的字符串属性上添加 `System.ComponentModel.DataAnnotations.MaxLength` 特征标记，无需在 Domain 层引入 EF Core 依赖。
-3. **实体配置精简**：`ParcelEntityTypeConfiguration`（468 行 → 203 行）和 `BagInfoEntityTypeConfiguration` 移除所有冗余的 `HasColumnName()`（列名与属性名相同）、`IsRequired()`（非可空类型自动推断）、`HasMaxLength()`（已由 Domain 层特征标记承担）配置，仅保留 EF Core 专属配置（`HasPrecision`、影子属性、关系、索引、表名）。
+3. **实体配置精简**：`ParcelEntityTypeConfiguration`（468 行 → 203 行）和 `BagInfoEntityTypeConfiguration` 移除所有冗余的 `HasColumnName()`（列名与属性名相同）、`IsRequired()`（非可空类型自动推断）、`HasMaxLength()`（已由 Domain 层特征标记承担）配置，仅保留 EF Core 专属配置（影子属性、关系、索引、表名）。所有 `decimal` 精度改由 `[Column(TypeName = "decimal(18,3)")]` 特征标记在 Domain 层声明，无需 EF Core 依赖。
 4. **`EFCore9-UpgradePlan.md` 新增**：详细说明 EF Core 8 → 9 的升级计划，包含可行性结论（EF Core 9 支持 .NET 8，无需升级运行时框架）、受影响 NuGet 包列表、升级步骤、`HasPendingModelChanges()` 守卫增强代码示例、重要变更说明及回滚方案。
 
 
-## 本次更新内容（EF Core 9 升级完成 + HasPendingModelChanges() 守卫增强）
+## 本次更新内容（EF Core 9 升级完成 + HasPendingModelChanges() 守卫增强 + ORM 特征标记精简）
 
 1. **EF Core 9 升级完成**：`Zeye.Sorting.Hub.Infrastructure.csproj` 中所有 EF Core 相关包升级至 9.0.14（EF Core 核心 + SqlServer + Design），Pomelo 升级至 9.0.0，EFCore.Sharding 升级至 9.0.10；同时显式覆盖 `Pomelo.EntityFrameworkCore.MySql.NetTopologySuite 9.0.0` 消除传递依赖版本警告。运行时框架仍为 `.NET 8`，无需升级框架。
 2. **`HasPendingModelChanges()` 守卫集成**：`DatabaseInitializerHostedService.AssertMigrationConsistencyAsync()` 新增第三项检查：调用 EF Core 9 专属 API `db.Database.HasPendingModelChanges()`，检测代码实体模型是否存在尚未通过 `dotnet ef migrations add` 生成迁移的变更。一旦检测到差异，立即输出 Critical 日志，提示执行 `dotnet ef migrations add` 对齐模型。
 3. **迁移快照 `ProductVersion` 更新**：`SortingHubDbContextModelSnapshot.cs` 与 `20260316184030_InitialCreate.Designer.cs` 的 `ProductVersion` 注解从 `8.0.23` 更新至 `9.0.14`，与安装的 EF Core 版本保持一致。
 4. **`EFCore9-UpgradePlan.md` 更新**：状态从"计划"更新为"✅ 已完成"，附实际升级前后版本对照表，第三项守卫检查代码示例替换为实际集成代码，核查清单全部标注为已完成。
 5. **`EFCore-Migration.md` 更新**：CodeFirst 守卫说明从"两项检查"更新为"三项检查（EF Core 9）"，新增 `HasPendingModelChanges()` 说明行，移除"EF Core 8 局限性"提示。
+6. **`[Column(TypeName = "decimal(18,3)")]` ORM 特征标记精简**：所有 `decimal` 字段（`Parcel`、`VolumeInfo`、`WeightInfo`、`SorterCarrierInfo`、`ParcelPositionInfo` 共 24 个属性）改用 BCL `[Column(TypeName = "decimal(18,3)")]`（`System.ComponentModel.DataAnnotations.Schema`）标注，Domain 层零新 EF Core 依赖；`ParcelEntityTypeConfiguration` 移除全部 `HasPrecision(18, 3)` 调用，配置文件进一步精简，迁移快照与 Designer.cs 同步更新。

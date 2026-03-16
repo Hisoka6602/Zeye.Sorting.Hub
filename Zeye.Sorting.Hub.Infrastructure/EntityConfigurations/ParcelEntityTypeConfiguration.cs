@@ -22,13 +22,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
             builder.HasKey(x => x.Id);
             builder.Property(x => x.Id).ValueGeneratedOnAdd();
 
-            // decimal 精度：无法用 BCL 特征标记，仍在此配置
-            builder.Property(x => x.Weight).HasPrecision(18, 3);
-            builder.Property(x => x.Length).HasPrecision(18, 3);
-            builder.Property(x => x.Width).HasPrecision(18, 3);
-            builder.Property(x => x.Height).HasPrecision(18, 3);
-            builder.Property(x => x.Volume).HasPrecision(18, 3);
-
             // 索引（按常用查询条件/时间维度加速）
             builder.HasIndex(x => x.ParcelTimestamp);
             builder.HasIndex(x => x.BagCode);
@@ -50,15 +43,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
                 b.Property<long>("Id").ValueGeneratedOnAdd();
                 b.HasKey("Id");
 
-                b.Property(x => x.FormattedLength).HasPrecision(18, 3);
-                b.Property(x => x.FormattedWidth).HasPrecision(18, 3);
-                b.Property(x => x.FormattedHeight).HasPrecision(18, 3);
-                b.Property(x => x.FormattedVolume).HasPrecision(18, 3);
-                b.Property(x => x.AdjustedLength).HasPrecision(18, 3);
-                b.Property(x => x.AdjustedWidth).HasPrecision(18, 3);
-                b.Property(x => x.AdjustedHeight).HasPrecision(18, 3);
-                b.Property(x => x.AdjustedVolume).HasPrecision(18, 3);
-
                 b.HasIndex("ParcelId");
             });
 
@@ -78,8 +62,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
                 b.WithOwner().HasForeignKey("ParcelId");
                 b.Property<long>("Id").ValueGeneratedOnAdd();
                 b.HasKey("Id");
-
-                b.Property(x => x.ConveyorSpeedWhenLoaded).HasPrecision(18, 3);
 
                 b.HasIndex("ParcelId");
                 b.HasIndex("SorterCarrierId");
@@ -120,15 +102,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
                 b.Property<long>("Id").ValueGeneratedOnAdd();
                 b.HasKey("Id");
 
-                b.Property(x => x.X1).HasPrecision(18, 3);
-                b.Property(x => x.X2).HasPrecision(18, 3);
-                b.Property(x => x.Y1).HasPrecision(18, 3);
-                b.Property(x => x.Y2).HasPrecision(18, 3);
-                b.Property(x => x.BackgroundX1).HasPrecision(18, 3);
-                b.Property(x => x.BackgroundX2).HasPrecision(18, 3);
-                b.Property(x => x.BackgroundY1).HasPrecision(18, 3);
-                b.Property(x => x.BackgroundY2).HasPrecision(18, 3);
-
                 b.HasIndex("ParcelId");
             });
 
@@ -149,9 +122,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
                 b.WithOwner().HasForeignKey("ParcelId");
                 b.Property<long>("Id").ValueGeneratedOnAdd();
                 b.HasKey("Id");
-
-                b.Property(x => x.FormattedWeight).HasPrecision(18, 3);
-                b.Property(x => x.AdjustedWeight).HasPrecision(18, 3);
 
                 b.HasIndex("ParcelId");
                 b.HasIndex("WeighingTime");

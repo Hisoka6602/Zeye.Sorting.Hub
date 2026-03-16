@@ -81,7 +81,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                         .HasColumnName("HasVideos");
 
                     b.Property<decimal>("Height")
-                        .HasPrecision(18, 3)
                         .HasColumnType("decimal(18,3)")
                         .HasColumnName("Height");
 
@@ -90,7 +89,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                         .HasColumnName("IsSticking");
 
                     b.Property<decimal>("Length")
-                        .HasPrecision(18, 3)
                         .HasColumnType("decimal(18,3)")
                         .HasColumnName("Length");
 
@@ -146,17 +144,14 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                         .HasColumnName("Type");
 
                     b.Property<decimal>("Volume")
-                        .HasPrecision(18, 3)
                         .HasColumnType("decimal(18,3)")
                         .HasColumnName("Volume");
 
                     b.Property<decimal>("Weight")
-                        .HasPrecision(18, 3)
                         .HasColumnType("decimal(18,3)")
                         .HasColumnName("Weight");
 
                     b.Property<decimal>("Width")
-                        .HasPrecision(18, 3)
                         .HasColumnType("decimal(18,3)")
                         .HasColumnName("Width");
 
@@ -634,22 +629,18 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                             MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b1.Property<long>("Id"));
 
                             b1.Property<decimal>("BackgroundX1")
-                                .HasPrecision(18, 3)
                                 .HasColumnType("decimal(18,3)")
                                 .HasColumnName("BackgroundX1");
 
                             b1.Property<decimal>("BackgroundX2")
-                                .HasPrecision(18, 3)
                                 .HasColumnType("decimal(18,3)")
                                 .HasColumnName("BackgroundX2");
 
                             b1.Property<decimal>("BackgroundY1")
-                                .HasPrecision(18, 3)
                                 .HasColumnType("decimal(18,3)")
                                 .HasColumnName("BackgroundY1");
 
                             b1.Property<decimal>("BackgroundY2")
-                                .HasPrecision(18, 3)
                                 .HasColumnType("decimal(18,3)")
                                 .HasColumnName("BackgroundY2");
 
@@ -657,22 +648,18 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                                 .HasColumnType("bigint");
 
                             b1.Property<decimal>("X1")
-                                .HasPrecision(18, 3)
                                 .HasColumnType("decimal(18,3)")
                                 .HasColumnName("X1");
 
                             b1.Property<decimal>("X2")
-                                .HasPrecision(18, 3)
                                 .HasColumnType("decimal(18,3)")
                                 .HasColumnName("X2");
 
                             b1.Property<decimal>("Y1")
-                                .HasPrecision(18, 3)
                                 .HasColumnType("decimal(18,3)")
                                 .HasColumnName("Y1");
 
                             b1.Property<decimal>("Y2")
-                                .HasPrecision(18, 3)
                                 .HasColumnType("decimal(18,3)")
                                 .HasColumnName("Y2");
 
@@ -696,7 +683,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                             MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b1.Property<long>("Id"));
 
                             b1.Property<decimal>("ConveyorSpeedWhenLoaded")
-                                .HasPrecision(18, 3)
                                 .HasColumnType("decimal(18,3)")
                                 .HasColumnName("ConveyorSpeedWhenLoaded");
 
@@ -816,22 +802,18 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                             MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b1.Property<long>("Id"));
 
                             b1.Property<decimal?>("AdjustedHeight")
-                                .HasPrecision(18, 3)
                                 .HasColumnType("decimal(18,3)")
                                 .HasColumnName("AdjustedHeight");
 
                             b1.Property<decimal?>("AdjustedLength")
-                                .HasPrecision(18, 3)
                                 .HasColumnType("decimal(18,3)")
                                 .HasColumnName("AdjustedLength");
 
                             b1.Property<decimal?>("AdjustedVolume")
-                                .HasPrecision(18, 3)
                                 .HasColumnType("decimal(18,3)")
                                 .HasColumnName("AdjustedVolume");
 
                             b1.Property<decimal?>("AdjustedWidth")
-                                .HasPrecision(18, 3)
                                 .HasColumnType("decimal(18,3)")
                                 .HasColumnName("AdjustedWidth");
 
@@ -846,22 +828,18 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                                 .HasColumnName("EvidenceCode");
 
                             b1.Property<decimal>("FormattedHeight")
-                                .HasPrecision(18, 3)
                                 .HasColumnType("decimal(18,3)")
                                 .HasColumnName("FormattedHeight");
 
                             b1.Property<decimal>("FormattedLength")
-                                .HasPrecision(18, 3)
                                 .HasColumnType("decimal(18,3)")
                                 .HasColumnName("FormattedLength");
 
                             b1.Property<decimal>("FormattedVolume")
-                                .HasPrecision(18, 3)
                                 .HasColumnType("decimal(18,3)")
                                 .HasColumnName("FormattedVolume");
 
                             b1.Property<decimal>("FormattedWidth")
-                                .HasPrecision(18, 3)
                                 .HasColumnType("decimal(18,3)")
                                 .HasColumnName("FormattedWidth");
 
@@ -902,7 +880,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                             MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b1.Property<long>("Id"));
 
                             b1.Property<decimal?>("AdjustedWeight")
-                                .HasPrecision(18, 3)
                                 .HasColumnType("decimal(18,3)")
                                 .HasColumnName("AdjustedWeight");
 
@@ -913,7 +890,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                                 .HasColumnName("EvidenceCode");
 
                             b1.Property<decimal>("FormattedWeight")
-                                .HasPrecision(18, 3)
                                 .HasColumnType("decimal(18,3)")
                                 .HasColumnName("FormattedWeight");
 
