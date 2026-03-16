@@ -115,7 +115,7 @@ public sealed class AutoTuningProductionControlTests {
             lockWaitCurrent: null,
             planRegression: new PlanRegressionSnapshot(false, false, "probe unavailable", "permission-denied"),
             lockWaitUnavailable: true,
-            lockWaitUnavailableReason: "baseline-and-current-unavailable");
+            lockWaitUnavailableReason: AutoTuningUnavailableReason.BaselineAndCurrentUnavailable);
 
         Assert.Equal("regressed", result.Verdict);
         Assert.Contains(result.SnapshotDiff, diff => diff.Name == "lock-wait" && diff.Status == "unavailable");
@@ -219,6 +219,75 @@ public sealed class AutoTuningProductionControlTests {
         Assert.Contains(logger.Messages, message => message.Contains("自动调优变更审计"));
         Assert.Contains(logger.Messages, message => message.Contains("闭环自治自动验证触发回滚"));
         Assert.Contains(logger.Messages, message => message.Contains("rollback-triggered"));
+        Assert.Contains(observability.EventEntries, entry =>
+            entry.Name == "autotuning.closed_loop.stage_transition"
+            && entry.Tags.TryGetValue("evidence_id", out var evidenceId)
+            && evidenceId.Contains("action-001", StringComparison.Ordinal)
+            && entry.Tags.ContainsKey("correlation_id"));
+        Assert.Contains(observability.EventEntries, entry =>
+            entry.Name == "autotuning.validation.rollback_triggered"
+            && entry.Tags.ContainsKey("evidence_id")
+            && entry.Tags.ContainsKey("correlation_id"));
+    }
+
+    [Fact]
+    public async Task Validation_WhenPlanProbeDisabledOrSampleRateZero_MarksUnavailableWithoutInvokingProbe() {
+        var logger = new TestLogger<DatabaseAutoTuningHostedService>();
+        var observability = new TestObservability();
+        var probe = new CountingPlanProbe();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:AutoTuning:Autonomous:EnableFullAutomation"] = "true",
+                ["Persistence:AutoTuning:Autonomous:Validation:EnableAutoValidation"] = "true",
+                ["Persistence:AutoTuning:Autonomous:Validation:EnableAutoRollback"] = "false",
+                ["Persistence:AutoTuning:Autonomous:Validation:DelayCycles"] = "1",
+                ["Persistence:AutoTuning:Autonomous:Validation:PlanProbe:Enable"] = "true",
+                ["Persistence:AutoTuning:Autonomous:Validation:PlanProbe:SampleRate"] = "0"
+            })
+            .Build();
+        var pipeline = new SlowQueryAutoTuningPipeline(configuration, observability);
+        var service = new DatabaseAutoTuningHostedService(
+            logger,
+            observability,
+            probe,
+            new EmptyServiceScopeFactory(),
+            new TestDialect(),
+            pipeline,
+            configuration);
+
+        SetField(service, "_analysisCycleCounter", 2);
+        SeedPendingRollback(service);
+        var validate = typeof(DatabaseAutoTuningHostedService).GetMethod("ValidateAutonomousActionsAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        var result = new SlowQueryAnalysisResult(
+            DateTime.Now,
+            0,
+            [
+                new SlowQueryMetric(
+                    "fingerprint-001",
+                    "select * from parcels where code = @p0",
+                    2,
+                    10,
+                    2m,
+                    3m,
+                    2,
+                    1200d,
+                    1800d,
+                    1800d,
+                    null)
+            ],
+            Array.Empty<SlowQueryTuningCandidate>(),
+            Array.Empty<string>(),
+            Array.Empty<SlowQuerySuggestionInsight>(),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            Array.Empty<SlowQueryAlertNotification>(),
+            false);
+        var metricsByFingerprint = result.Metrics.ToDictionary(static x => x.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
+        var validateTask = (Task)validate.Invoke(service, [result, metricsByFingerprint, CancellationToken.None])!;
+        await validateTask;
+
+        Assert.Equal(0, probe.CallCount);
+        Assert.Contains(logger.Messages, message => message.Contains("plan-probe-sampling-skipped"));
     }
 
     [Fact]
@@ -253,6 +322,14 @@ public sealed class AutoTuningProductionControlTests {
             new(true, false, $"probe available: {providerName}/{sqlFingerprint}", "none");
     }
 
+    private sealed class CountingPlanProbe : IExecutionPlanRegressionProbe {
+        public int CallCount { get; private set; }
+        public PlanRegressionSnapshot Evaluate(string providerName, string sqlFingerprint) {
+            CallCount++;
+            return new(true, false, $"probe available: {providerName}/{sqlFingerprint}", "none");
+        }
+    }
+
     private static void SetField(object target, string fieldName, object value) {
         var field = target.GetType().GetField(fieldName, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
         field.SetValue(target, value);
@@ -283,9 +360,24 @@ public sealed class AutoTuningProductionControlTests {
     private sealed class TestObservability : IAutoTuningObservability {
         public readonly List<string> Metrics = new();
         public readonly List<string> Events = new();
-        public void EmitMetric(string name, double value, IReadOnlyDictionary<string, string>? tags = null) => Metrics.Add(name);
-        public void EmitEvent(string name, LogLevel level, string message, IReadOnlyDictionary<string, string>? tags = null) => Events.Add($"{name}:{message}");
+        public readonly List<ObservabilityEntry> MetricEntries = new();
+        public readonly List<ObservabilityEntry> EventEntries = new();
+        public void EmitMetric(string name, double value, IReadOnlyDictionary<string, string>? tags = null) {
+            Metrics.Add(name);
+            MetricEntries.Add(new ObservabilityEntry(name, CloneTags(tags)));
+        }
+        public void EmitEvent(string name, LogLevel level, string message, IReadOnlyDictionary<string, string>? tags = null) {
+            Events.Add($"{name}:{message}");
+            EventEntries.Add(new ObservabilityEntry(name, CloneTags(tags)));
+        }
+        private static IReadOnlyDictionary<string, string> CloneTags(IReadOnlyDictionary<string, string>? tags) {
+            return tags is null
+                ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, string>(tags, StringComparer.OrdinalIgnoreCase);
+        }
     }
+
+    private sealed record ObservabilityEntry(string Name, IReadOnlyDictionary<string, string> Tags);
 
     private sealed class TestLogger<T> : ILogger<T> {
         public readonly List<string> Messages = new();

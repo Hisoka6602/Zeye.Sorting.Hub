@@ -122,10 +122,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             int? lockWaitCurrent,
             PlanRegressionSnapshot planRegression,
             bool lockWaitUnavailable,
-            string lockWaitUnavailableReason) {
+            AutoTuningUnavailableReason lockWaitUnavailableReason) {
             var verdict = BuildVerdict(regressed, severeRegressed);
             var lockWaitStatus = lockWaitUnavailable ? "unavailable" : "available";
-            var lockWaitReason = lockWaitUnavailable ? lockWaitUnavailableReason : "sampled";
+            var lockWaitReason = lockWaitUnavailable ? lockWaitUnavailableReason.ToTagValue() : AutoTuningUnavailableReason.Sampled.ToTagValue();
             var planStatus = planRegression.IsAvailable ? (planRegression.IsRegressed ? "regressed" : "pass") : "unavailable";
             var planReason = planRegression.IsAvailable ? "probe-sampled" : planRegression.UnavailableReason;
             return new AutoTuningVerificationResult(
@@ -247,7 +247,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                     IsAvailable: false,
                     IsRegressed: false,
                     Summary: $"fingerprint={sqlFingerprint}, plan regression unavailable(query failed)",
-                    UnavailableReason: "query-failed");
+                    UnavailableReason: AutoTuningUnavailableReason.QueryFailed.ToTagValue());
             }
 
             if (string.Equals(sqlFingerprint, "plan-probe-permission-denied", StringComparison.OrdinalIgnoreCase)) {
@@ -255,7 +255,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                     IsAvailable: false,
                     IsRegressed: false,
                     Summary: $"fingerprint={sqlFingerprint}, plan regression unavailable(permission denied)",
-                    UnavailableReason: "permission-denied");
+                    UnavailableReason: AutoTuningUnavailableReason.PermissionDenied.ToTagValue());
             }
 
             if (string.Equals(sqlFingerprint, "plan-probe-available-regressed", StringComparison.OrdinalIgnoreCase)
@@ -265,14 +265,14 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                     IsAvailable: true,
                     IsRegressed: regressed,
                     Summary: $"fingerprint={sqlFingerprint}, provider={providerName}, simulated plan regression sampled",
-                    UnavailableReason: "none");
+                    UnavailableReason: AutoTuningUnavailableReason.None.ToTagValue());
             }
 
             return new PlanRegressionSnapshot(
                 IsAvailable: false,
                 IsRegressed: false,
                 Summary: $"fingerprint={sqlFingerprint}, provider={providerName}, plan regression unavailable(dialect not supported)",
-                UnavailableReason: "dialect-not-supported");
+                UnavailableReason: AutoTuningUnavailableReason.DialectNotSupported.ToTagValue());
         }
     }
 }
