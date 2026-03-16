@@ -186,6 +186,27 @@ dotnet ef migrations script \
 
 **本项目使用 `MigrateAsync()`**，是生产环境正确选择。
 
+### Q：数据库被人为修改后，CodeFirst 模型还能保持同步吗？
+
+`MigrateAsync()` 仅根据 `__EFMigrationsHistory` 决定哪些迁移需要执行，**不会自动检测或修复手工 DDL（`ALTER TABLE`、`DROP COLUMN` 等）导致的表结构偏差**。
+
+#### 运行时守卫（已实现）
+
+`DatabaseInitializerHostedService.AssertMigrationConsistencyAsync()` 在每次启动时执行两项检查：
+
+| 检查项 | 行为 |
+|--------|------|
+| `GetPendingMigrationsAsync()` 不为空 | **抛出异常，阻止启动** — 说明迁移未全部应用 |
+| 代码迁移数 ≠ `__EFMigrationsHistory` 记录数 | **输出 Critical 日志** — 提示迁移历史与代码不一致，可能存在人工干预 |
+
+#### 手工 DDL 修改的正确处理方式
+
+1. **切勿直接修改数据库表结构**（`ALTER TABLE`、`DROP TABLE` 等）
+2. 若已发生，通过 `dotnet ef migrations add <Name>` 生成新迁移来描述"将当前 DB 对齐到代码模型"的变更
+3. 提交迁移文件，部署时 `MigrateAsync()` 自动执行
+
+> **注意**：EF Core 8 不具备自动检测实际列结构偏差的能力（该能力在 EF Core 9 的 `HasPendingModelChanges()` 中提供部分支持）。项目在升级到 EF Core 9 后可增强此守卫。
+
 ### Q：部署时数据库还未就绪怎么办？
 
 `DatabaseInitializerHostedService` 内置 Polly 重试策略（最多 6 次，指数退避），数据库容器延迟启动时仍可稳定连接。
