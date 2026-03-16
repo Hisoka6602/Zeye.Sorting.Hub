@@ -90,11 +90,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                     _droppedCount++;
                 }
 
-                if (_slowQueries.Count >= _maxQueueSize) {
-                    _droppedCount++;
-                    return;
-                }
-
                 _slowQueries.Enqueue(new SlowQuerySample(
                     commandText: commandText,
                     sqlFingerprint: sqlFingerprint,
@@ -563,10 +558,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             return int.TryParse(value, out var parsed) && parsed > 0 ? parsed : fallback;
         }
 
-        /// <summary>读取正小数配置，非法值回退默认值。</summary>
+        /// <summary>读取非负小数配置，非法值回退默认值。</summary>
         private static decimal GetDecimalOrDefault(IConfiguration configuration, string key, decimal fallback) {
             var value = configuration[key];
-            return decimal.TryParse(value, out var parsed) && parsed > 0 ? parsed : fallback;
+            return decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed) && parsed >= 0m ? parsed : fallback;
         }
 
         private static TimeSpan GetPositiveSecondsAsTimeSpanOrDefault(IConfiguration configuration, string key, TimeSpan fallback) {

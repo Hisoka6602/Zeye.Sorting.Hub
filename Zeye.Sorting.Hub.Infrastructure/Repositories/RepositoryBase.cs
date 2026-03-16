@@ -12,8 +12,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
     /// <summary>
     /// EF Core 仓储基类（Infrastructure 层实现细节）
     /// 说明：
-    /// 1) 使用 IDbContextFactory，降低 DbContext 生命周期耦合
-    /// 2) 不在仓储内隐式开启事务，事务边界建议由 Application 统一控制
+    /// 1) 使用 IDbContextFactory，每次操作独立创建和释放 DbContext，降低生命周期耦合
+    /// 2) 每次变更操作自动调用 SaveChangesAsync 提交；如需多步原子操作，请在应用层使用显式事务
     /// 3) 通过 Result 返回错误信息，隔离异常，不影响调用链
     /// </summary>
     public abstract class RepositoryBase<TEntity, TContext>
@@ -41,7 +41,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
         }
 
         /// <summary>
-        /// 新增（不调用 SaveChanges）
+        /// 新增并持久化
         /// </summary>
         public virtual async Task<RepositoryResult> AddAsync(TEntity entity, CancellationToken cancellationToken) {
             if (entity is null) {
@@ -51,6 +51,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
             try {
                 await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
                 await db.Set<TEntity>().AddAsync(entity, cancellationToken);
+                await db.SaveChangesAsync(cancellationToken);
                 return RepositoryResult.Success();
             }
             catch (OperationCanceledException) {
@@ -63,7 +64,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
         }
 
         /// <summary>
-        /// 批量新增（不调用 SaveChanges）
+        /// 批量新增并持久化
         /// </summary>
         public virtual async Task<RepositoryResult> AddRangeAsync(
             IReadOnlyCollection<TEntity> entities,
@@ -75,6 +76,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
             try {
                 await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
                 await db.Set<TEntity>().AddRangeAsync(entities, cancellationToken);
+                await db.SaveChangesAsync(cancellationToken);
                 return RepositoryResult.Success();
             }
             catch (OperationCanceledException) {
@@ -87,7 +89,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
         }
 
         /// <summary>
-        /// 更新（不调用 SaveChanges）
+        /// 更新并持久化
         /// </summary>
         public virtual async Task<RepositoryResult> UpdateAsync(TEntity entity, CancellationToken cancellationToken) {
             if (entity is null) {
@@ -97,6 +99,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
             try {
                 await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
                 db.Set<TEntity>().Update(entity);
+                await db.SaveChangesAsync(cancellationToken);
                 return RepositoryResult.Success();
             }
             catch (OperationCanceledException) {
@@ -109,7 +112,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
         }
 
         /// <summary>
-        /// 删除（不调用 SaveChanges）
+        /// 删除并持久化
         /// </summary>
         public virtual async Task<RepositoryResult> RemoveAsync(TEntity entity, CancellationToken cancellationToken) {
             if (entity is null) {
@@ -119,6 +122,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
             try {
                 await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
                 db.Set<TEntity>().Remove(entity);
+                await db.SaveChangesAsync(cancellationToken);
                 return RepositoryResult.Success();
             }
             catch (OperationCanceledException) {
