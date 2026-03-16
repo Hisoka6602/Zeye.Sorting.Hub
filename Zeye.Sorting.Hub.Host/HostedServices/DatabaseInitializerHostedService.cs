@@ -142,20 +142,38 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
 
             // 检查 2：__EFMigrationsHistory 记录数应与代码中定义的迁移总数一致
-            var allMigrationsInCode = db.Database.GetMigrations().ToList();
-            var appliedMigrations = (await db.Database.GetAppliedMigrationsAsync(cancellationToken)).ToList();
+            var allMigrationsInCode = db.Database.GetMigrations().ToHashSet(StringComparer.Ordinal);
+            var appliedMigrations = (await db.Database.GetAppliedMigrationsAsync(cancellationToken))
+                .ToHashSet(StringComparer.Ordinal);
 
-            if (appliedMigrations.Count != allMigrationsInCode.Count) {
-                // 记录数多于代码：可能有外部写入或历史表被污染
-                // 记录数少于代码：迁移历史丢失（例如数据库被还原后 MigrateAsync 意外未执行）
+            // 在代码中定义但尚未在 __EFMigrationsHistory 中记录（通常不应在 MigrateAsync 后出现）
+            var inCodeNotApplied = allMigrationsInCode.Except(appliedMigrations).OrderBy(static m => m).ToList();
+            // 在 __EFMigrationsHistory 中记录但在代码中已不存在（可能是迁移文件被删除或历史表被外部污染）
+            var appliedNotInCode = appliedMigrations.Except(allMigrationsInCode).OrderBy(static m => m).ToList();
+
+            if (inCodeNotApplied.Count > 0 || appliedNotInCode.Count > 0) {
+                var sb = new StringBuilder();
+                sb.Append($"[CodeFirst 守卫] 迁移一致性异常：代码中定义了 {allMigrationsInCode.Count} 个迁移，");
+                sb.Append($"__EFMigrationsHistory 中记录了 {appliedMigrations.Count} 个。");
+
+                if (inCodeNotApplied.Count > 0) {
+                    sb.AppendLine();
+                    sb.Append($"  ▸ 代码中存在但未应用（{inCodeNotApplied.Count} 个）：");
+                    sb.Append(string.Join(", ", inCodeNotApplied));
+                }
+
+                if (appliedNotInCode.Count > 0) {
+                    sb.AppendLine();
+                    sb.Append($"  ▸ 已应用但代码中不存在（{appliedNotInCode.Count} 个，可能为手工写入或迁移文件已删除）：");
+                    sb.Append(string.Join(", ", appliedNotInCode));
+                }
+
+                sb.AppendLine();
+                sb.Append("请通过 'dotnet ef migrations add' 生成新迁移以对齐模型，切勿直接修改数据库结构，以维护 CodeFirst 原则。");
+
                 _logger.LogCritical(
-                    "[CodeFirst 守卫] 迁移一致性异常：代码中定义了 {CodeCount} 个迁移，" +
-                    "但 __EFMigrationsHistory 中记录了 {AppliedCount} 个。" +
-                    "若数据库曾被手工 DDL 修改或还原，请通过 'dotnet ef migrations add' 生成新迁移以对齐模型，" +
-                    "切勿直接修改数据库结构，以维护 CodeFirst 原则。" +
-                    "Provider={Provider}",
-                    allMigrationsInCode.Count,
-                    appliedMigrations.Count,
+                    "{Message} Provider={Provider}",
+                    sb.ToString(),
                     _dialect.ProviderName);
             }
             else {

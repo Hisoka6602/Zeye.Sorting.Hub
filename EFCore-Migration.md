@@ -196,8 +196,8 @@ dotnet ef migrations script \
 
 | 检查项 | 行为 |
 |--------|------|
-| `GetPendingMigrationsAsync()` 不为空 | **输出 Critical 日志** — 说明迁移未全部应用，不阻止程序启动 |
-| 代码迁移数 ≠ `__EFMigrationsHistory` 记录数 | **输出 Critical 日志** — 提示迁移历史与代码不一致，可能存在人工干预 |
+| `GetPendingMigrationsAsync()` 不为空 | **输出 Critical 日志，列出具体迁移名称** — 说明迁移未全部应用，不阻止程序启动 |
+| 代码迁移 ≠ `__EFMigrationsHistory` 记录 | **输出 Critical 日志，分别列出"在代码中但未应用"与"已应用但代码中不存在"的迁移名称** — 精确定位不一致来源 |
 
 #### 手工 DDL 修改的正确处理方式
 
@@ -226,11 +226,22 @@ dotnet ef migrations script \
 
 ### Q：如何针对 SQL Server 使用迁移？
 
-`MySqlContextFactory` 仅为 MySQL 的设计时工厂。若需要 SQL Server 迁移，可新增：
+`SqlServerContextFactory.cs` 已在 `Persistence/DesignTime/` 目录下创建。使用以下命令生成 SQL Server 迁移：
 
 ```bash
-# 在 Persistence/DesignTime/ 目录下新增 SqlServerContextFactory.cs
-# 并使用 --context SortingHubDbContext 指定同一 DbContext
+# 设置 SQL Server 连接字符串（可选，未设置时使用占位值）
+export SQLSERVER_CONNECTION_STRING="Server=127.0.0.1,1433;Database=zeye_sorting_hub;..."
+
+# 生成迁移
+dotnet ef migrations add <迁移名称> \
+  --project Zeye.Sorting.Hub.Infrastructure \
+  --startup-project Zeye.Sorting.Hub.Infrastructure \
+  --output-dir Persistence/Migrations \
+  --context SortingHubDbContext
 ```
 
-运行时 SQL Server 路径通过 `Persistence:Provider = SqlServer` 配置启用，其 DbContext 配置与 MySQL 完全相同（仅 provider 不同），生成的迁移文件可同时服务两个提供器（需要在 DbContext 选项中指定 `MigrationsAssembly`）。
+运行时 SQL Server 路径通过 `Persistence:Provider = SqlServer` 配置启用，迁移文件可同时服务 MySQL 和 SQL Server（MySQL 专属 Annotation 在 SQL Server 运行时会被 EF Core 自动忽略）。
+
+### Q：如何接入第三种数据库（如 SQLite、PostgreSQL）？
+
+请参阅 [`NewDatabaseProvider-Guide.md`](./NewDatabaseProvider-Guide.md)，文档以 SQLite 为例，逐步说明接入新提供器时需要修改的所有文件，并附接入核查清单。

@@ -101,7 +101,8 @@
 │   │   │   ├── MySqlDialect.cs（MySQL 方言实现）
 │   │   │   └── SqlServerDialect.cs（SQL Server 方言实现）
 │   │   ├── DesignTime（EF 设计时支持目录）
-│   │   │   └── MySqlContextFactory.cs（设计时 DbContext 工厂，IDesignTimeDbContextFactory<SortingHubDbContext> 实现）
+│   │   │   ├── MySqlContextFactory.cs（MySQL 设计时 DbContext 工厂，IDesignTimeDbContextFactory<SortingHubDbContext> 实现）
+│   │   │   └── SqlServerContextFactory.cs（SQL Server 设计时 DbContext 工厂，IDesignTimeDbContextFactory<SortingHubDbContext> 实现）
 │   │   ├── Migrations（EF Core 迁移文件目录）
 │   │   │   ├── 20260316184030_InitialCreate.cs（初始迁移：全部表建表与回滚逻辑）
 │   │   │   ├── 20260316184030_InitialCreate.Designer.cs（迁移元数据，自动生成）
@@ -123,6 +124,7 @@
 │   └── Zeye.Sorting.Hub.SharedKernel.csproj（SharedKernel 项目定义）
 ├── Zeye.Sorting.Hub.sln（.NET 解决方案入口）
 ├── EFCore-Migration.md（EF Core CodeFirst 迁移使用说明文档）
+├── NewDatabaseProvider-Guide.md（接入新数据库提供器（如 SQLite / PostgreSQL）的逐步操作指南）
 ├── Parcel属性新增操作指南.md（Parcel 聚合新增属性时的文件修改操作指南）
 └── 项目完成度与推进计划.md（项目阶段评估与路线图文档）
 ```
@@ -261,7 +263,8 @@
 - `SlowQuerySample.cs`：慢查询采样记录模型。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/DesignTime/`：EF 设计时支持目录
-- `MySqlContextFactory.cs`：设计时 DbContext 工厂（实现 `IDesignTimeDbContextFactory<SortingHubDbContext>`），供 `dotnet ef migrations add/remove/list` 等 CLI 命令在无宿主进程时构建 DbContext；使用固定 MySQL 8.0 版本与占位连接字符串，避免设计时依赖真实数据库。
+- `MySqlContextFactory.cs`：MySQL 设计时 DbContext 工厂（实现 `IDesignTimeDbContextFactory<SortingHubDbContext>`），供 `dotnet ef migrations add/remove/list` 等 CLI 命令在无宿主进程时构建 DbContext；连接字符串优先读取环境变量 `MYSQL_CONNECTION_STRING`，版本采用 AutoDetect → 环境变量 → 兜底 8.0 三级策略。
+- `SqlServerContextFactory.cs`：SQL Server 设计时 DbContext 工厂（实现 `IDesignTimeDbContextFactory<SortingHubDbContext>`），供 `dotnet ef` CLI 命令在 SQL Server 环境下构建 DbContext；连接字符串优先读取环境变量 `SQLSERVER_CONNECTION_STRING`。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/`：EF Core 迁移文件目录
 - `20260316184030_InitialCreate.cs`：初始迁移，包含全部表（Parcels、Bags 及各值对象属性表）的 `Up`（建表）与 `Down`（回滚）逻辑。
@@ -318,9 +321,13 @@
 4. 为闭环动作增加端到端压测回放（离线流量）验证门禁，进一步提升生产变更安全性。
 5. `IParcelRepository`、`ParcelScannedEventArgs`、`ParcelChuteAssignedEventArgs` 等占位类后续应补充完整实现。
 
-## 本次更新内容（EF Core CodeFirst 迁移完成）
+## 本次更新内容（EF Core CodeFirst 迁移完成 + 数据库日志落盘 + SqlServer 设计时支持）
 
-1. **`MySqlContextFactory` 实现（`IDesignTimeDbContextFactory<SortingHubDbContext>`）**：将原本的空占位类补充为完整的设计时工厂实现，使用固定 MySQL 8.0 版本与占位连接字符串，确保 `dotnet ef migrations add/remove/list` 等 CLI 命令无需宿主进程即可运行。
-2. **初始迁移 `InitialCreate` 生成**：执行 `dotnet ef migrations add InitialCreate` 生成三个迁移文件（`20260316184030_InitialCreate.cs`、`20260316184030_InitialCreate.Designer.cs`、`SortingHubDbContextModelSnapshot.cs`），覆盖全部实体表（Parcels 主表及 14 个值对象属性表），建表与回滚逻辑完整。
-3. **`EFCore-Migration.md` 新增**：创建迁移使用说明文档，内容涵盖迁移架构总览、运行时自动迁移流程、`dotnet ef` CLI 命令速查（新增/删除/列表/推送/导出 SQL）、设计时工厂说明、实体变更后的迁移流程、分表与迁移的职责分离说明，以及常见问题解答。
-4. **`README.md` 同步更新**：在文件树与"各层级与各文件作用说明（逐项）"章节中新增 `Migrations/` 目录及三个迁移文件的描述，更新 `MySqlContextFactory.cs` 条目为完整实现说明，更新根目录条目新增 `EFCore-Migration.md` 说明，并从"后续可完善项"中移除已完成的 `MySqlContextFactory` 占位项。
+1. **`MySqlContextFactory` 实现（`IDesignTimeDbContextFactory<SortingHubDbContext>`）**：将原本的空占位类补充为完整的设计时工厂实现，连接字符串优先读取环境变量 `MYSQL_CONNECTION_STRING`，版本采用 AutoDetect → 环境变量 → 兜底 8.0 三级策略。
+2. **`SqlServerContextFactory` 新建**：新增 SQL Server 设计时工厂，连接字符串读取环境变量 `SQLSERVER_CONNECTION_STRING`，确保两种数据库均可通过 `dotnet ef` CLI 生成迁移。
+3. **初始迁移 `InitialCreate` 生成**：执行 `dotnet ef migrations add InitialCreate` 生成三个迁移文件（`20260316184030_InitialCreate.cs`、`20260316184030_InitialCreate.Designer.cs`、`SortingHubDbContextModelSnapshot.cs`），覆盖全部实体表（Parcels 主表及 14 个值对象属性表），建表与回滚逻辑完整。
+4. **Serilog 双路日志落盘**：引入 Serilog，`logs/app-*.log` 记录全量日志，`logs/database-*.log` 记录数据库专属日志（EF Core 迁移、`DatabaseInitializerHostedService`、`DatabaseAutoTuningHostedService`、Persistence 层），按天滚动，保留 30 天。任何数据库异常均记录，不导致程序崩溃。
+5. **CodeFirst 迁移一致性守卫（`AssertMigrationConsistencyAsync`）**：每次启动后检测未应用迁移与迁移历史差异，输出具体差异的迁移名称（在代码中但未应用 / 已应用但代码中不存在），不抛出异常，不阻止程序运行。
+6. **`EFCore-Migration.md` 新增**：创建迁移使用说明文档，涵盖迁移架构总览、运行时自动迁移流程、CLI 命令速查、设计时工厂说明、分表与迁移的职责分离说明、数据库日志落盘说明及常见问题。
+7. **`NewDatabaseProvider-Guide.md` 新增**：以 SQLite 为例，逐步说明接入第三种数据库提供器时需修改的文件（NuGet 包、方言实现、设计时工厂、DI 注册、appsettings、迁移生成），并附接入核查清单与常见注意事项。
+8. **`README.md` 同步更新**：文件树与逐项说明反映上述所有新增文件。
