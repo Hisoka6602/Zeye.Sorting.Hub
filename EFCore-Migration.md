@@ -116,25 +116,26 @@ dotnet ef migrations script \
 
 `IDesignTimeDbContextFactory<SortingHubDbContext>` 的作用是让 `dotnet ef` 工具在没有宿主进程的情况下也能构建 `SortingHubDbContext`。
 
-```csharp
-// 位置：Zeye.Sorting.Hub.Infrastructure/Persistence/DesignTime/MySqlContextFactory.cs
-internal sealed class MySqlContextFactory : IDesignTimeDbContextFactory<SortingHubDbContext> {
-    // 固定使用 MySQL 8.0，避免 ServerVersion.AutoDetect 在设计时无法连接数据库时报错
-    private static readonly MySqlServerVersion DesignTimeServerVersion =
-        new MySqlServerVersion(new Version(8, 0, 0));
+### 5.1 版本解析策略（三级优先级，不主动锁定版本）
 
-    // 设计时占位连接字符串（仅供 dotnet ef 分析模型使用，不实际执行 SQL）
-    private const string DesignTimeConnectionString =
-        "server=127.0.0.1;port=3306;database=zeye_sorting_hub;uid=root;pwd=root;SslMode=None;";
+`MySqlContextFactory` 通过 `ResolveServerVersion()` 按以下顺序确定 MySQL 版本，**不会硬性锁定版本号**：
 
-    public SortingHubDbContext CreateDbContext(string[] args) {
-        var options = new DbContextOptionsBuilder<SortingHubDbContext>()
-            .UseMySql(DesignTimeConnectionString, DesignTimeServerVersion)
-            .Options;
-        return new SortingHubDbContext(options);
-    }
-}
-```
+| 优先级 | 机制 | 触发条件 | 说明 |
+|--------|------|----------|------|
+| 1 | `ServerVersion.AutoDetect` | 数据库可连通 | 最准确，无任何版本限制 |
+| 2 | 环境变量 `MYSQL_SERVER_VERSION`（格式 `8.4.0`）| AutoDetect 失败且环境变量已设置 | 适用于 CI/CD 或本地无数据库场景 |
+| 3 | 兜底 `8.0.0` | 前两步均失败 | **仅影响 `dotnet ef` 工具链模型分析，不影响运行时行为**；选用 8.0 是因其为 Pomelo 当前最主流 LTS 基准，不限制实际部署的数据库版本 |
+
+> **说明**：步骤 3 的兜底版本仅用于 EF Core 在设计时推断 MySQL 方言特性（如是否支持 JSON 列、生成列等），不会限制实际部署时所连接的 MySQL 版本。运行时 `PersistenceServiceCollectionExtensions` 会独立调用 `ServerVersion.AutoDetect` 探测真实版本。
+
+### 5.2 连接字符串配置
+
+| 优先级 | 来源 | 说明 |
+|--------|------|------|
+| 1 | 环境变量 `MYSQL_CONNECTION_STRING` | 推荐用于 CI/CD 及有数据库的开发环境 |
+| 2 | 代码内占位值 | 设计时无数据库时使用，`dotnet ef migrations add` 不需要真实连接 |
+
+执行 `dotnet ef database update` 时，务必通过 `--connection` 参数或 `MYSQL_CONNECTION_STRING` 环境变量传入真实连接字符串。
 
 ---
 
