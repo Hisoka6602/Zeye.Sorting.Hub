@@ -1159,11 +1159,11 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return parsed;
         }
 
-        /// <summary>读取小数配置，非法值回退默认值，合法值按区间截断。</summary>
+        /// <summary>读取小数配置，非法值回退默认值，合法值按区间钳制。</summary>
         private static decimal GetDecimalClampedOrDefault(IConfiguration configuration, string key, decimal fallback, decimal min, decimal max) {
             var value = configuration[key];
             if (!decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)) {
-                return decimal.Clamp(fallback, min, max);
+                return fallback;
             }
 
             return decimal.Clamp(parsed, min, max);
