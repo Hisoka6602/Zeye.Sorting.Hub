@@ -16,6 +16,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private const int MaxTrackedFingerprintCount = 1000;
         private const int MaxTrackedTableCount = 500;
         private const int MaxCapacitySnapshotsPerTable = 64;
+        private const string NotAvailableTag = "n/a";
         // 风险项采用加权叠加后再截断到 [0,1]，刻意不要求权重和为 1。
         private const decimal DangerousActionRiskWeight = 0.45m;
         private const decimal PeakWindowRiskWeight = 0.20m;
@@ -88,6 +89,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private readonly decimal _severeRollbackP99IncreasePercent;
         private readonly decimal _severeRollbackTimeoutIncreasePercent;
         private readonly int _pauseActionCyclesOnRegression;
+        private readonly bool _enablePlanProbe;
+        private readonly decimal _planProbeSampleRate;
         private readonly Dictionary<string, int> _tableHeatByTable = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, Queue<TableCapacitySnapshot>> _capacitySnapshotsByTable = new(StringComparer.OrdinalIgnoreCase);
         private int _analysisCycleCounter;
@@ -155,6 +158,16 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _severeRollbackP99IncreasePercent = GetNonNegativeDecimalOrDefault(configuration, AutonomousKey("Validation:SevereRollback:P99IncreasePercent"), 25m);
             _severeRollbackTimeoutIncreasePercent = GetNonNegativeDecimalOrDefault(configuration, AutonomousKey("Validation:SevereRollback:TimeoutRateIncreasePercent"), 2m);
             _pauseActionCyclesOnRegression = GetPositiveIntOrDefault(configuration, AutonomousKey("Validation:PauseActionCyclesOnRegression"), 2);
+            var planProbeSection = configuration.GetSection(AutonomousKey("Validation:PlanProbe"));
+            var planProbeOptions = planProbeSection.Get<PlanProbeOptions>();
+            if (planProbeOptions is null) {
+                if (planProbeSection.Exists()) {
+                    _logger.LogWarning("PlanProbe 配置绑定失败，将使用默认值：Enable=true, SampleRate=1。");
+                }
+                planProbeOptions = new PlanProbeOptions();
+            }
+            _enablePlanProbe = planProbeOptions.Enable;
+            _planProbeSampleRate = decimal.Clamp(planProbeOptions.SampleRate, 0m, 1m);
         }
 
         /// <summary>后台循环：按固定周期分析慢 SQL，并执行自治策略/验证/清理。</summary>
@@ -387,6 +400,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 }
 
                 if (!metricsByFingerprint.TryGetValue(rollback.Fingerprint, out var currentMetric)) {
+                    var unavailableReason = AutoTuningUnavailableReason.MetricWindowMiss;
+                    var evidenceForUnavailable = BuildEvidenceContext(rollback.ActionId, rollback.Fingerprint);
                     _observability.EmitMetric(
                         "autotuning.validation.metric_unavailable",
                         1d,
@@ -395,7 +410,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                             ["stage"] = AutoTuningClosedLoopStage.Verify.ToString(),
                             ["action_id"] = rollback.ActionId,
                             ["fingerprint"] = rollback.Fingerprint,
-                            ["reason"] = "metric-window-miss"
+                            ["reason"] = unavailableReason.ToTagValue(),
+                            ["evidence_id"] = evidenceForUnavailable.EvidenceId,
+                            ["correlation_id"] = evidenceForUnavailable.CorrelationId
                         });
                     _observability.EmitEvent(
                         "autotuning.validation.metric_unavailable",
@@ -406,15 +423,19 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                             ["stage"] = AutoTuningClosedLoopStage.Verify.ToString(),
                             ["action_id"] = rollback.ActionId,
                             ["fingerprint"] = rollback.Fingerprint,
-                            ["reason"] = "metric-window-miss"
+                            ["reason"] = unavailableReason.ToTagValue(),
+                            ["evidence_id"] = evidenceForUnavailable.EvidenceId,
+                            ["correlation_id"] = evidenceForUnavailable.CorrelationId
                         });
                     _logger.LogWarning(
-                        "闭环自治自动验证跳过：Provider={Provider}, Stage={Stage}, ActionId={ActionId}, Fingerprint={Fingerprint}, Reason={Reason}",
+                        "闭环自治自动验证跳过：Provider={Provider}, Stage={Stage}, ActionId={ActionId}, Fingerprint={Fingerprint}, Reason={Reason}, EvidenceId={EvidenceId}, CorrelationId={CorrelationId}",
                         _dialect.ProviderName,
                         AutoTuningClosedLoopStage.Verify,
                         rollback.ActionId,
                         rollback.Fingerprint,
-                        "metric-window-miss");
+                        unavailableReason.ToTagValue(),
+                        evidenceForUnavailable.EvidenceId,
+                        evidenceForUnavailable.CorrelationId);
                     continue;
                 }
 
@@ -426,7 +447,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 var lockWaitUnavailable = !rollback.BaselineLockWaitCount.HasValue || !currentMetric.LockWaitCount.HasValue;
                 var lockWaitUnavailableReason = DetermineLockWaitUnavailableReason(rollback.BaselineLockWaitCount, currentMetric.LockWaitCount);
                 var lockWaitStatus = lockWaitUnavailable ? "unavailable" : "available";
-                var planRegression = _planRegressionProbe.Evaluate(_dialect.ProviderName, rollback.Fingerprint);
+                var planRegression = EvaluatePlanRegression(rollback);
+                var evidence = BuildEvidenceContext(rollback.ActionId, rollback.Fingerprint);
 
                 var regressed = (_validationP95IncreasePercent > 0m && p95IncreasePercent >= _validationP95IncreasePercent)
                     || (_validationP99IncreasePercent > 0m && p99IncreasePercent >= _validationP99IncreasePercent)
@@ -467,7 +489,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 if (!regressed) {
                     _pendingRollbackByFingerprint.Remove(rollback.Fingerprint);
                     _logger.LogInformation(
-                        "闭环自治自动验证通过：Provider={Provider}, Fingerprint={Fingerprint}, Table={Table}, P95Increase={P95Increase:F2}, P99Increase={P99Increase:F2}, ErrorRateIncrease={ErrorRateIncrease:F2}, TimeoutRateIncrease={TimeoutRateIncrease:F2}, DeadlockIncrease={DeadlockIncrease}, LockWaitStatus={LockWaitStatus}, PlanRegressionSummary={PlanRegressionSummary}",
+                        "闭环自治自动验证通过：Provider={Provider}, Fingerprint={Fingerprint}, Table={Table}, P95Increase={P95Increase:F2}, P99Increase={P99Increase:F2}, ErrorRateIncrease={ErrorRateIncrease:F2}, TimeoutRateIncrease={TimeoutRateIncrease:F2}, DeadlockIncrease={DeadlockIncrease}, LockWaitStatus={LockWaitStatus}, PlanRegressionSummary={PlanRegressionSummary}, EvidenceId={EvidenceId}, CorrelationId={CorrelationId}",
                         _dialect.ProviderName,
                         rollback.Fingerprint,
                         rollback.TableKey,
@@ -477,13 +499,15 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                         timeoutRateIncrease,
                         deadlockIncrease,
                         lockWaitStatus,
-                        planRegression.Summary);
+                        planRegression.Summary,
+                        evidence.EvidenceId,
+                        evidence.CorrelationId);
                     continue;
                 }
 
                 var severeRegression = regressionDecision.IsSevereRegression;
                 _logger.LogWarning(
-                    "闭环自治自动验证失败：Provider={Provider}, Fingerprint={Fingerprint}, Table={Table}, P95Increase={P95Increase:F2}, P99Increase={P99Increase:F2}, ErrorRateIncrease={ErrorRateIncrease:F2}, TimeoutRateIncrease={TimeoutRateIncrease:F2}, DeadlockIncrease={DeadlockIncrease}, LockWaitStatus={LockWaitStatus}, PlanRegressionSummary={PlanRegressionSummary}, SevereRegression={SevereRegression}",
+                    "闭环自治自动验证失败：Provider={Provider}, Fingerprint={Fingerprint}, Table={Table}, P95Increase={P95Increase:F2}, P99Increase={P99Increase:F2}, ErrorRateIncrease={ErrorRateIncrease:F2}, TimeoutRateIncrease={TimeoutRateIncrease:F2}, DeadlockIncrease={DeadlockIncrease}, LockWaitStatus={LockWaitStatus}, PlanRegressionSummary={PlanRegressionSummary}, SevereRegression={SevereRegression}, EvidenceId={EvidenceId}, CorrelationId={CorrelationId}",
                     _dialect.ProviderName,
                     rollback.Fingerprint,
                     rollback.TableKey,
@@ -494,7 +518,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     deadlockIncrease,
                     regressionDecision.LockWaitStatus,
                     planRegression.Summary,
-                    severeRegression);
+                    severeRegression,
+                    evidence.EvidenceId,
+                    evidence.CorrelationId);
 
                 // 步骤 3：分级动作（暂停后续动作 / 立即回滚）。
                 if (!severeRegression) {
@@ -517,7 +543,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                             ["stage"] = AutoTuningClosedLoopStage.Verify.ToString(),
                             ["action_id"] = rollback.ActionId,
                             ["fingerprint"] = rollback.Fingerprint,
-                            ["reason"] = triggerReason
+                            ["reason"] = triggerReason,
+                            ["evidence_id"] = evidence.EvidenceId,
+                            ["correlation_id"] = evidence.CorrelationId
                         });
                     _observability.EmitEvent(
                         "autotuning.validation.rollback_triggered",
@@ -528,15 +556,19 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                             ["stage"] = AutoTuningClosedLoopStage.Verify.ToString(),
                             ["action_id"] = rollback.ActionId,
                             ["fingerprint"] = rollback.Fingerprint,
-                            ["reason"] = triggerReason
+                            ["reason"] = triggerReason,
+                            ["evidence_id"] = evidence.EvidenceId,
+                            ["correlation_id"] = evidence.CorrelationId
                         });
                     _logger.LogWarning(
-                        "闭环自治自动验证触发回滚：Provider={Provider}, Stage={Stage}, ActionId={ActionId}, Fingerprint={Fingerprint}, Reason={Reason}",
+                        "闭环自治自动验证触发回滚：Provider={Provider}, Stage={Stage}, ActionId={ActionId}, Fingerprint={Fingerprint}, Reason={Reason}, EvidenceId={EvidenceId}, CorrelationId={CorrelationId}",
                         _dialect.ProviderName,
                         AutoTuningClosedLoopStage.Verify,
                         rollback.ActionId,
                         rollback.Fingerprint,
-                        triggerReason);
+                        triggerReason,
+                        evidence.EvidenceId,
+                        evidence.CorrelationId);
                 }
 
                 if (_enableAutoRollback && await ExecuteThroughIsolatorAsync(
@@ -549,11 +581,13 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                         cancellationToken)) {
                     MoveToStage(AutoTuningClosedLoopStage.Rollback, "validation-rollback-executed", rollback.ActionId, rollback.Fingerprint);
                     _logger.LogWarning(
-                        "闭环自治自动验证回滚执行完成：Provider={Provider}, Fingerprint={Fingerprint}, ActionId={ActionId}, RollbackSql={RollbackSql}",
+                        "闭环自治自动验证回滚执行完成：Provider={Provider}, Fingerprint={Fingerprint}, ActionId={ActionId}, RollbackSql={RollbackSql}, EvidenceId={EvidenceId}, CorrelationId={CorrelationId}",
                         _dialect.ProviderName,
                         rollback.Fingerprint,
                         rollback.ActionId,
-                        rollback.RollbackSql);
+                        rollback.RollbackSql,
+                        evidence.EvidenceId,
+                        evidence.CorrelationId);
                 }
 
                 _pendingRollbackByFingerprint.Remove(rollback.Fingerprint);
@@ -660,20 +694,20 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return (decimal)(increase / previousValue * 100d);
         }
 
-        private static string DetermineLockWaitUnavailableReason(int? baselineLockWaitCount, int? currentLockWaitCount) {
+        private static AutoTuningUnavailableReason DetermineLockWaitUnavailableReason(int? baselineLockWaitCount, int? currentLockWaitCount) {
             if (!baselineLockWaitCount.HasValue && !currentLockWaitCount.HasValue) {
-                return "baseline-and-current-unavailable";
+                return AutoTuningUnavailableReason.BaselineAndCurrentUnavailable;
             }
 
             if (!baselineLockWaitCount.HasValue) {
-                return "baseline-unavailable";
+                return AutoTuningUnavailableReason.BaselineUnavailable;
             }
 
             if (!currentLockWaitCount.HasValue) {
-                return "current-unavailable";
+                return AutoTuningUnavailableReason.CurrentUnavailable;
             }
 
-            return "sampled";
+            return AutoTuningUnavailableReason.Sampled;
         }
 
         /// <summary>输出自动调优动作审计日志。</summary>
@@ -708,14 +742,17 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _closedLoopTracker.MoveTo(stage);
             var normalizedActionId = NormalizeTagValue(actionId);
             var normalizedFingerprint = NormalizeTagValue(fingerprint);
+            var evidence = BuildEvidenceContext(normalizedActionId, normalizedFingerprint, normalized: true);
             _logger.LogInformation(
-                "闭环自治阶段迁移：Provider={Provider}, PreviousStage={PreviousStage}, CurrentStage={CurrentStage}, ActionId={ActionId}, Fingerprint={Fingerprint}, Reason={Reason}",
+                "闭环自治阶段迁移：Provider={Provider}, PreviousStage={PreviousStage}, CurrentStage={CurrentStage}, ActionId={ActionId}, Fingerprint={Fingerprint}, Reason={Reason}, EvidenceId={EvidenceId}, CorrelationId={CorrelationId}",
                 _dialect.ProviderName,
                 previousStage,
                 _currentStage,
                 normalizedActionId,
                 normalizedFingerprint,
-                reason);
+                reason,
+                evidence.EvidenceId,
+                evidence.CorrelationId);
             _observability.EmitMetric(
                 "autotuning.closed_loop.stage_transition",
                 1d,
@@ -724,7 +761,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     ["stage"] = _currentStage.ToString(),
                     ["action_id"] = normalizedActionId,
                     ["fingerprint"] = normalizedFingerprint,
-                    ["reason"] = reason
+                    ["reason"] = reason,
+                    ["evidence_id"] = evidence.EvidenceId,
+                    ["correlation_id"] = evidence.CorrelationId
                 });
             _observability.EmitEvent(
                 "autotuning.closed_loop.stage_transition",
@@ -735,7 +774,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     ["stage"] = _currentStage.ToString(),
                     ["action_id"] = normalizedActionId,
                     ["fingerprint"] = normalizedFingerprint,
-                    ["reason"] = reason
+                    ["reason"] = reason,
+                    ["evidence_id"] = evidence.EvidenceId,
+                    ["correlation_id"] = evidence.CorrelationId
                 });
         }
 
@@ -751,6 +792,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 ["reason"] = result.Reason,
                 ["verdict"] = result.Verdict
             };
+            var evidence = BuildEvidenceContext(rollback.ActionId, rollback.Fingerprint);
+            tags["evidence_id"] = evidence.EvidenceId;
+            tags["correlation_id"] = evidence.CorrelationId;
             _observability.EmitMetric("autotuning.validation.result", 1d, tags);
             _observability.EmitEvent(
                 "autotuning.validation.result",
@@ -758,18 +802,63 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 $"validation verdict: {result.Verdict}",
                 tags);
             _logger.LogInformation(
-                "闭环自治自动验证结果：Provider={Provider}, Stage={Stage}, ActionId={ActionId}, Fingerprint={Fingerprint}, Verdict={Verdict}, Reason={Reason}, SnapshotDiff={SnapshotDiff}",
+                "闭环自治自动验证结果：Provider={Provider}, Stage={Stage}, ActionId={ActionId}, Fingerprint={Fingerprint}, Verdict={Verdict}, Reason={Reason}, EvidenceId={EvidenceId}, CorrelationId={CorrelationId}, SnapshotDiff={SnapshotDiff}",
                 _dialect.ProviderName,
                 AutoTuningClosedLoopStage.Verify,
                 rollback.ActionId,
                 rollback.Fingerprint,
                 result.Verdict,
                 result.Reason,
+                evidence.EvidenceId,
+                evidence.CorrelationId,
                 string.Join(" | ", result.SnapshotDiff.Select(static diff => $"{diff.Name}:{diff.Status}:{diff.Delta}:{diff.Reason}")));
         }
 
-        private static string NormalizeTagValue(string? value) {
-            return string.IsNullOrWhiteSpace(value) ? "n/a" : value.Trim();
+        private static string NormalizeTagValue(string? value) => string.IsNullOrWhiteSpace(value) ? NotAvailableTag : value.Trim();
+
+        private PlanRegressionSnapshot EvaluatePlanRegression(PendingRollbackAction rollback) {
+            var normalizedFingerprint = NormalizeTagValue(rollback.Fingerprint);
+            if (!_enablePlanProbe) {
+                return BuildUnavailablePlanRegressionSnapshot(normalizedFingerprint, AutoTuningUnavailableReason.PlanProbeDisabled);
+            }
+
+            if (!ShouldSamplePlanProbe(rollback)) {
+                return BuildUnavailablePlanRegressionSnapshot(normalizedFingerprint, AutoTuningUnavailableReason.PlanProbeSamplingSkipped);
+            }
+
+            return _planRegressionProbe.Evaluate(_dialect.ProviderName, rollback.Fingerprint);
+        }
+
+        private bool ShouldSamplePlanProbe(PendingRollbackAction rollback) {
+            if (_planProbeSampleRate <= 0m) {
+                return false;
+            }
+
+            if (_planProbeSampleRate >= 1m) {
+                return true;
+            }
+
+            var seed = $"{rollback.ActionId}:{rollback.Fingerprint}";
+            var normalizedHash = (uint)seed.GetHashCode(StringComparison.Ordinal);
+            var bucket = normalizedHash % 10000u;
+            var threshold = (int)Math.Round((double)(_planProbeSampleRate * 10000m), MidpointRounding.AwayFromZero);
+            return bucket < (uint)threshold;
+        }
+
+        private PlanRegressionSnapshot BuildUnavailablePlanRegressionSnapshot(string fingerprint, AutoTuningUnavailableReason reason) {
+            return new PlanRegressionSnapshot(
+                IsAvailable: false,
+                IsRegressed: false,
+                Summary: $"fingerprint={fingerprint}, provider={_dialect.ProviderName}, plan regression unavailable({reason.ToTagValue()})",
+                UnavailableReason: reason.ToTagValue());
+        }
+
+        private static EvidenceContext BuildEvidenceContext(string? actionId, string? fingerprint, bool normalized = false) {
+            var normalizedActionId = normalized ? actionId ?? NotAvailableTag : NormalizeTagValue(actionId);
+            var normalizedFingerprint = normalized ? fingerprint ?? NotAvailableTag : NormalizeTagValue(fingerprint);
+            var evidenceId = $"{normalizedActionId}:{normalizedFingerprint}";
+            var correlationId = normalizedActionId != NotAvailableTag ? normalizedActionId : normalizedFingerprint;
+            return new EvidenceContext(evidenceId, correlationId);
         }
 
         /// <summary>判断候选表是否命中执行白名单。</summary>
@@ -1197,6 +1286,13 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             DateTime CapturedLocalTime,
             long AffectedRows,
             int CallCount);
+
+        private sealed class PlanProbeOptions {
+            public bool Enable { get; init; } = true;
+            public decimal SampleRate { get; init; } = 1m;
+        }
+
+        private readonly record struct EvidenceContext(string EvidenceId, string CorrelationId);
 
         private sealed record PolicyDecision(
             bool ShouldExecute,

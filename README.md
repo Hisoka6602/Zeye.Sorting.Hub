@@ -51,6 +51,7 @@
 │   │   ├── ApiRequestStatus.cs（接口请求状态枚举）
 │   │   ├── ApiRequestType.cs（接口请求类型枚举）
 │   │   ├── AutoTuningClosedLoopStage.cs（自动调优闭环阶段枚举）
+│   │   ├── AutoTuningUnavailableReason.cs（自动调优 unavailable 原因枚举与标签扩展）
 │   │   ├── BarCodeType.cs（条码类型枚举）
 │   │   ├── CommandDirection.cs（命令方向枚举）
 │   │   ├── ImageCaptureType.cs（图像采集方式枚举）
@@ -191,6 +192,7 @@
 - `ApiRequestStatus.cs`：接口请求状态枚举定义。
 - `ApiRequestType.cs`：接口请求类型枚举定义。
 - `AutoTuningClosedLoopStage.cs`：自动调优闭环阶段枚举定义。
+- `AutoTuningUnavailableReason.cs`：自动调优 unavailable 原因枚举与统一标签映射扩展，避免自由字符串漂移。
 - `BarCodeType.cs`：条码类型枚举定义。
 - `CommandDirection.cs`：命令方向枚举定义。
 - `ImageCaptureType.cs`：图像采集方式枚举定义。
@@ -272,13 +274,55 @@
 - `Zeye.Sorting.Hub.Host.Tests.csproj`：xUnit 测试项目定义。
 - `AutoTuningProductionControlTests.cs`：覆盖 dry-run、危险动作隔离、告警防抖与恢复、普通/严重回归、unavailable 指标处理、执行计划探针 available/unavailable 双路径与闭环链路。
 
-## 本次更新内容（L3 闭环自治增强）
+## 本次更新内容（L3 闭环自治最小可验证增强）
 
-1. 强化闭环阶段迁移可观测性：阶段迁移统一输出 event + metric + log，并统一包含 `provider/stage/action_id/fingerprint/reason` 标签。
-2. 增加自动验证标准化结构：输出 `pass/regressed/severe-regressed` verdict、reason 与 snapshot diff，且对 lock-wait / plan-probe 不可用场景显式标记 `unavailable` 与原因。
-3. 执行计划回退探针从占位升级为“可插拔可观测默认策略”：默认探针输出结构化结果与观测指标，并区分 `permission-denied`、`dialect-not-supported`、`query-failed` 等 unavailable 原因。
-4. 回滚阶段可观测增强：验证回归触发时先记录回滚触发阶段，再通过危险动作隔离器统一入口执行回滚，避免旁路。
-5. 测试扩充：新增普通回归判定、unavailable 指标分支、探针双路径、以及 monitor→execute→verify→rollback 闭环行为测试。
+1. 为 plan probe 增加配置化最小控制面：`Persistence:AutoTuning:Autonomous:Validation:PlanProbe:Enable/SampleRate`，并在 `DatabaseAutoTuningHostedService` 中通过强类型配置绑定读取与生效。
+2. 增加 `evidence_id/correlation_id` 证据链字段，并贯穿 `stage_transition`、`validation.result`、`validation.metric_unavailable`、`validation.rollback_triggered` 的日志与事件标签。
+3. unavailable 原因枚举化：新增 `AutoTuningUnavailableReason`，统一覆盖 lock-wait unavailable、plan probe unavailable、metric-window-miss 等原因标签。
+4. 继续保持危险动作统一走 isolator 入口：执行动作与回滚动作均通过 `ExecuteThroughIsolatorAsync`，不新增旁路执行链路。
+5. 测试扩充：新增 plan probe 采样关闭路径测试，并增强闭环测试对 `evidence_id/correlation_id` 事件标签断言。
+
+## 配置示例（默认值 / 推荐值 / 生产保守值）
+
+```json
+{
+  "Persistence": {
+    "AutoTuning": {
+      "Autonomous": {
+        "Validation": {
+          "PlanProbe": {
+            "Enable": true,
+            "SampleRate": 1
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+- 默认值：`Enable=true`，`SampleRate=1`（每次验证都探测，便于验收）。
+- 推荐值：`Enable=true`，`SampleRate=0.5`（平衡可观测性与探测开销）。
+- 生产保守值：`Enable=true`，`SampleRate=0.2`（优先控制探测负载）。
+
+## 变更清单
+
+1. 新增 `Zeye.Sorting.Hub.Domain/Enums/AutoTuningUnavailableReason.cs`。
+2. `DatabaseAutoTuningHostedService` 增加 PlanProbe 强类型配置读取、采样判定、证据链标签贯穿。
+3. `AutoTuningAbstractions` 改为使用 unavailable 枚举标签映射，减少自由字符串。
+4. `AutoTuningProductionControlTests` 增加证据链标签断言与采样关闭分支验证。
+5. `appsettings.json` 新增 `Validation:PlanProbe` 配置段与注释。
+
+## 风险清单
+
+1. 新增 `evidence_id` 由 `action_id:fingerprint` 拼接，若后端指标系统把该标签用于聚合，存在潜在高基数风险。
+2. `SampleRate` 过低时会提高 plan-probe unavailable（sampling-skipped）占比，可能降低短周期异常发现概率。
+
+## 回滚清单
+
+1. 配置层回滚：将 `Validation:PlanProbe` 恢复为 `Enable=true, SampleRate=1`（或删除配置段走默认）。
+2. 代码层回滚：回退 `DatabaseAutoTuningHostedService` 与 `AutoTuningAbstractions` 本次提交。
+3. 枚举层回滚：移除 `AutoTuningUnavailableReason` 并恢复历史字符串原因（不推荐）。
 
 ## 后续可继续完善项
 
