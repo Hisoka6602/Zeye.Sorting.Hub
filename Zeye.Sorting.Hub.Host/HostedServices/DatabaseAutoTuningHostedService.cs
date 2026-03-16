@@ -16,6 +16,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private const int MaxTrackedFingerprintCount = 1000;
         private const int MaxTrackedTableCount = 500;
         private const int MaxCapacitySnapshotsPerTable = 64;
+        private const string NotAvailableTag = "n/a";
         // 风险项采用加权叠加后再截断到 [0,1]，刻意不要求权重和为 1。
         private const decimal DangerousActionRiskWeight = 0.45m;
         private const decimal PeakWindowRiskWeight = 0.20m;
@@ -157,7 +158,14 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _severeRollbackP99IncreasePercent = GetNonNegativeDecimalOrDefault(configuration, AutonomousKey("Validation:SevereRollback:P99IncreasePercent"), 25m);
             _severeRollbackTimeoutIncreasePercent = GetNonNegativeDecimalOrDefault(configuration, AutonomousKey("Validation:SevereRollback:TimeoutRateIncreasePercent"), 2m);
             _pauseActionCyclesOnRegression = GetPositiveIntOrDefault(configuration, AutonomousKey("Validation:PauseActionCyclesOnRegression"), 2);
-            var planProbeOptions = configuration.GetSection(AutonomousKey("Validation:PlanProbe")).Get<PlanProbeOptions>() ?? new PlanProbeOptions();
+            var planProbeSection = configuration.GetSection(AutonomousKey("Validation:PlanProbe"));
+            var planProbeOptions = planProbeSection.Get<PlanProbeOptions>();
+            if (planProbeOptions is null) {
+                if (planProbeSection.Exists()) {
+                    _logger.LogWarning("PlanProbe 配置绑定失败，将使用默认值：Enable=true, SampleRate=1。");
+                }
+                planProbeOptions = new PlanProbeOptions();
+            }
             _enablePlanProbe = planProbeOptions.Enable;
             _planProbeSampleRate = decimal.Clamp(planProbeOptions.SampleRate, 0m, 1m);
         }
@@ -806,9 +814,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 string.Join(" | ", result.SnapshotDiff.Select(static diff => $"{diff.Name}:{diff.Status}:{diff.Delta}:{diff.Reason}")));
         }
 
-        private static string NormalizeTagValue(string? value) {
-            return string.IsNullOrWhiteSpace(value) ? "n/a" : value.Trim();
-        }
+        private static string NormalizeTagValue(string? value) => string.IsNullOrWhiteSpace(value) ? NotAvailableTag : value.Trim();
 
         private PlanRegressionSnapshot EvaluatePlanRegression(PendingRollbackAction rollback) {
             var normalizedFingerprint = NormalizeTagValue(rollback.Fingerprint);
@@ -832,11 +838,11 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 return true;
             }
 
-            var seed = $"{rollback.ActionId}:{rollback.Fingerprint}:{_analysisCycleCounter}";
-            var normalizedHash = Math.Abs(seed.GetHashCode(StringComparison.Ordinal));
-            var bucket = normalizedHash % 10000;
+            var seed = $"{rollback.ActionId}:{rollback.Fingerprint}";
+            var normalizedHash = (uint)seed.GetHashCode(StringComparison.Ordinal);
+            var bucket = normalizedHash % 10000u;
             var threshold = (int)Math.Round((double)(_planProbeSampleRate * 10000m), MidpointRounding.AwayFromZero);
-            return bucket < threshold;
+            return bucket < (uint)threshold;
         }
 
         private PlanRegressionSnapshot BuildUnavailablePlanRegressionSnapshot(string fingerprint, AutoTuningUnavailableReason reason) {
@@ -848,10 +854,10 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         private static EvidenceContext BuildEvidenceContext(string? actionId, string? fingerprint, bool normalized = false) {
-            var normalizedActionId = normalized ? actionId ?? "n/a" : NormalizeTagValue(actionId);
-            var normalizedFingerprint = normalized ? fingerprint ?? "n/a" : NormalizeTagValue(fingerprint);
+            var normalizedActionId = normalized ? actionId ?? NotAvailableTag : NormalizeTagValue(actionId);
+            var normalizedFingerprint = normalized ? fingerprint ?? NotAvailableTag : NormalizeTagValue(fingerprint);
             var evidenceId = $"{normalizedActionId}:{normalizedFingerprint}";
-            var correlationId = normalizedActionId != "n/a" ? normalizedActionId : normalizedFingerprint;
+            var correlationId = normalizedActionId != NotAvailableTag ? normalizedActionId : normalizedFingerprint;
             return new EvidenceContext(evidenceId, correlationId);
         }
 
