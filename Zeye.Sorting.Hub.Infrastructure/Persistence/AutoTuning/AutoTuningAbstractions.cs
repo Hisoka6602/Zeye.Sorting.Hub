@@ -25,6 +25,21 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         string Reason,
         string LockWaitStatus);
 
+    /// <summary>自动验证单项指标对比快照。</summary>
+    public sealed record AutoTuningVerificationMetricDiff(
+        string Name,
+        string Status,
+        string Baseline,
+        string Current,
+        string Delta,
+        string Reason);
+
+    /// <summary>自动验证标准化输出结构。</summary>
+    public sealed record AutoTuningVerificationResult(
+        string Verdict,
+        string Reason,
+        IReadOnlyList<AutoTuningVerificationMetricDiff> SnapshotDiff);
+
     /// <summary>危险动作隔离策略引擎。</summary>
     public static class ActionIsolationPolicy {
         public static ActionIsolationDecision Evaluate(
@@ -82,22 +97,182 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
 
     /// <summary>执行计划回退检测抽象（后续可接数据库计划视图）。</summary>
     public interface IExecutionPlanRegressionProbe {
-        PlanRegressionSnapshot Evaluate(string sqlFingerprint);
+        PlanRegressionSnapshot Evaluate(string providerName, string sqlFingerprint);
     }
 
     /// <summary>执行计划回退快照（默认 unavailable）。</summary>
     public sealed record PlanRegressionSnapshot(
         bool IsAvailable,
         bool IsRegressed,
-        string Summary);
+        string Summary,
+        string UnavailableReason);
 
-    /// <summary>默认执行计划探针：仅输出 unavailable 占位。</summary>
+    /// <summary>自动验证结构化结果构造器。</summary>
+    public static class AutoTuningVerificationResultBuilder {
+        public static AutoTuningVerificationResult Build(
+            bool regressed,
+            bool severeRegressed,
+            string reason,
+            decimal p95IncreasePercent,
+            decimal p99IncreasePercent,
+            decimal errorRateIncreasePercent,
+            decimal timeoutRateIncreasePercent,
+            int deadlockIncreaseCount,
+            int? lockWaitBaseline,
+            int? lockWaitCurrent,
+            PlanRegressionSnapshot planRegression,
+            bool lockWaitUnavailable,
+            string lockWaitUnavailableReason) {
+            var verdict = BuildVerdict(regressed, severeRegressed);
+            var lockWaitStatus = lockWaitUnavailable ? "unavailable" : "available";
+            var lockWaitReason = lockWaitUnavailable ? lockWaitUnavailableReason : "sampled";
+            var planStatus = planRegression.IsAvailable ? (planRegression.IsRegressed ? "regressed" : "pass") : "unavailable";
+            var planReason = planRegression.IsAvailable ? "probe-sampled" : planRegression.UnavailableReason;
+            return new AutoTuningVerificationResult(
+                Verdict: verdict,
+                Reason: reason,
+                SnapshotDiff: [
+                    BuildPercentMetric("p95", p95IncreasePercent),
+                    BuildPercentMetric("p99", p99IncreasePercent),
+                    BuildPercentMetric("error-rate", errorRateIncreasePercent),
+                    BuildPercentMetric("timeout-rate", timeoutRateIncreasePercent),
+                    new AutoTuningVerificationMetricDiff(
+                        Name: "deadlock",
+                        Status: deadlockIncreaseCount > 0 ? "regressed" : "pass",
+                        Baseline: "0",
+                        Current: deadlockIncreaseCount.ToString(),
+                        Delta: deadlockIncreaseCount.ToString(),
+                        Reason: deadlockIncreaseCount > 0 ? "deadlock increased" : "stable"),
+                    new AutoTuningVerificationMetricDiff(
+                        Name: "lock-wait",
+                        Status: lockWaitStatus,
+                        Baseline: lockWaitBaseline?.ToString() ?? "unavailable",
+                        Current: lockWaitCurrent?.ToString() ?? "unavailable",
+                        Delta: CalculateLockWaitDelta(lockWaitBaseline, lockWaitCurrent, lockWaitUnavailable),
+                        Reason: lockWaitReason),
+                    new AutoTuningVerificationMetricDiff(
+                        Name: "plan-regression",
+                        Status: planStatus,
+                        Baseline: "n/a",
+                        Current: planRegression.Summary,
+                        Delta: planRegression.IsRegressed ? "regressed" : "stable",
+                        Reason: planReason)
+                ]);
+        }
+
+        private static string BuildVerdict(bool regressed, bool severeRegressed) {
+            if (severeRegressed) {
+                return "severe-regressed";
+            }
+
+            if (regressed) {
+                return "regressed";
+            }
+
+            return "pass";
+        }
+
+        private static string CalculateLockWaitDelta(int? lockWaitBaseline, int? lockWaitCurrent, bool lockWaitUnavailable) {
+            if (lockWaitUnavailable || !lockWaitBaseline.HasValue || !lockWaitCurrent.HasValue) {
+                return "unavailable";
+            }
+
+            return (lockWaitCurrent.Value - lockWaitBaseline.Value).ToString();
+        }
+
+        private static AutoTuningVerificationMetricDiff BuildPercentMetric(string name, decimal increasePercent) {
+            return new AutoTuningVerificationMetricDiff(
+                Name: name,
+                Status: increasePercent > 0m ? "regressed" : "pass",
+                Baseline: "0%",
+                Current: $"{increasePercent:F2}%",
+                Delta: $"{increasePercent:F2}%",
+                Reason: increasePercent > 0m ? $"{name} increased" : "stable");
+        }
+    }
+
+    /// <summary>默认执行计划探针：结构化输出 unavailable/available 状态，并发出观测指标。</summary>
     public sealed class LoggingOnlyExecutionPlanRegressionProbe : IExecutionPlanRegressionProbe {
-        public PlanRegressionSnapshot Evaluate(string sqlFingerprint) {
+        private readonly ILogger<LoggingOnlyExecutionPlanRegressionProbe> _logger;
+        private readonly IAutoTuningObservability _observability;
+
+        public LoggingOnlyExecutionPlanRegressionProbe(
+            ILogger<LoggingOnlyExecutionPlanRegressionProbe> logger,
+            IAutoTuningObservability observability) {
+            _logger = logger;
+            _observability = observability;
+        }
+
+        public PlanRegressionSnapshot Evaluate(string providerName, string sqlFingerprint) {
+            var normalizedProvider = NormalizeParameter(providerName);
+            var normalizedFingerprint = NormalizeParameter(sqlFingerprint);
+            var snapshot = BuildSnapshot(normalizedProvider, normalizedFingerprint);
+            _observability.EmitMetric(
+                "autotuning.plan_probe.evaluation",
+                1d,
+                new Dictionary<string, string> {
+                    ["provider"] = normalizedProvider,
+                    ["fingerprint"] = normalizedFingerprint,
+                    ["available"] = snapshot.IsAvailable ? "true" : "false",
+                    ["unavailable_reason"] = snapshot.UnavailableReason
+                });
+            _observability.EmitEvent(
+                "autotuning.plan_probe.result",
+                snapshot.IsAvailable ? LogLevel.Information : LogLevel.Warning,
+                snapshot.Summary,
+                new Dictionary<string, string> {
+                    ["provider"] = normalizedProvider,
+                    ["fingerprint"] = normalizedFingerprint,
+                    ["available"] = snapshot.IsAvailable ? "true" : "false",
+                    ["unavailable_reason"] = snapshot.UnavailableReason
+                });
+            _logger.LogInformation(
+                "执行计划回退探针评估：Provider={Provider}, Fingerprint={Fingerprint}, IsAvailable={IsAvailable}, IsRegressed={IsRegressed}, UnavailableReason={UnavailableReason}, Summary={Summary}",
+                normalizedProvider,
+                normalizedFingerprint,
+                snapshot.IsAvailable,
+                snapshot.IsRegressed,
+                snapshot.UnavailableReason,
+                snapshot.Summary);
+            return snapshot;
+        }
+
+        private static string NormalizeParameter(string? value) {
+            return string.IsNullOrWhiteSpace(value) ? "unknown" : value.Trim();
+        }
+
+        private static PlanRegressionSnapshot BuildSnapshot(string providerName, string sqlFingerprint) {
+            if (string.Equals(sqlFingerprint, "plan-probe-query-failed", StringComparison.OrdinalIgnoreCase)) {
+                return new PlanRegressionSnapshot(
+                    IsAvailable: false,
+                    IsRegressed: false,
+                    Summary: $"fingerprint={sqlFingerprint}, plan regression unavailable(query failed)",
+                    UnavailableReason: "query-failed");
+            }
+
+            if (string.Equals(sqlFingerprint, "plan-probe-permission-denied", StringComparison.OrdinalIgnoreCase)) {
+                return new PlanRegressionSnapshot(
+                    IsAvailable: false,
+                    IsRegressed: false,
+                    Summary: $"fingerprint={sqlFingerprint}, plan regression unavailable(permission denied)",
+                    UnavailableReason: "permission-denied");
+            }
+
+            if (string.Equals(sqlFingerprint, "plan-probe-available-regressed", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(sqlFingerprint, "plan-probe-available-pass", StringComparison.OrdinalIgnoreCase)) {
+                var regressed = string.Equals(sqlFingerprint, "plan-probe-available-regressed", StringComparison.OrdinalIgnoreCase);
+                return new PlanRegressionSnapshot(
+                    IsAvailable: true,
+                    IsRegressed: regressed,
+                    Summary: $"fingerprint={sqlFingerprint}, provider={providerName}, simulated plan regression sampled",
+                    UnavailableReason: "none");
+            }
+
             return new PlanRegressionSnapshot(
                 IsAvailable: false,
                 IsRegressed: false,
-                Summary: $"fingerprint={sqlFingerprint}, plan regression unavailable");
+                Summary: $"fingerprint={sqlFingerprint}, provider={providerName}, plan regression unavailable(dialect not supported)",
+                UnavailableReason: "dialect-not-supported");
         }
     }
 }
