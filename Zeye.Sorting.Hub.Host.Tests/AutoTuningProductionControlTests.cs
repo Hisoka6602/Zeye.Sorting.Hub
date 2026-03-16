@@ -294,7 +294,7 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     [Fact]
-    public async Task Validation_WhenPlanProbeSampleRateInvalid_FallsBackToDefaultAndInvokesProbe() {
+    public async Task WhenPlanProbeSampleRateInvalid_FallsBackToDefaultAndInvokesProbe() {
         var logger = new TestLogger<DatabaseAutoTuningHostedService>();
         var observability = new TestObservability();
         var probe = new CountingPlanProbe();
@@ -353,7 +353,7 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     [Fact]
-    public void ShouldSamplePlanProbe_UsesStableHashBucket() {
+    public void WhenShouldSamplePlanProbeInvoked_UsesStableHashBucket() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:AutoTuning:Autonomous:Validation:PlanProbe:Enable"] = "true",
