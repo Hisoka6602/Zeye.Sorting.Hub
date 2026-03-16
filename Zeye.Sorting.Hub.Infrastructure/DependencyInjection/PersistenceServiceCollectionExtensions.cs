@@ -170,10 +170,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             return services;
         }
 
-        private static int GetPositiveIntOrDefault(IConfiguration configuration, string key, int fallback) {
-            var value = configuration[key];
-            return int.TryParse(value, out var parsed) && parsed > 0 ? parsed : fallback;
-        }
+        private static int GetPositiveIntOrDefault(IConfiguration configuration, string key, int fallback) =>
+            AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, key, fallback);
 
         /// <summary>
         /// 统一注册 Parcel 主表与属性表的分表规则。
