@@ -345,7 +345,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                             BaselineP99Milliseconds: currentMetric?.P99Milliseconds ?? 0d,
                             BaselineErrorRatePercent: currentMetric?.ErrorRatePercent ?? 0m,
                             BaselineTimeoutRatePercent: currentMetric?.TimeoutRatePercent ?? 0m,
-                            BaselineDeadlockCount: currentMetric?.DeadlockCount ?? 0);
+                            BaselineDeadlockCount: currentMetric?.DeadlockCount ?? 0,
+                            BaselineLockWaitCount: currentMetric?.LockWaitCount);
                     }
 
                     var maintenanceSql = _dialect.BuildAutonomousMaintenanceSql(
@@ -386,6 +387,34 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 }
 
                 if (!metricsByFingerprint.TryGetValue(rollback.Fingerprint, out var currentMetric)) {
+                    _observability.EmitMetric(
+                        "autotuning.validation.metric_unavailable",
+                        1d,
+                        new Dictionary<string, string> {
+                            ["provider"] = _dialect.ProviderName,
+                            ["stage"] = AutoTuningClosedLoopStage.Verify.ToString(),
+                            ["action_id"] = rollback.ActionId,
+                            ["fingerprint"] = rollback.Fingerprint,
+                            ["reason"] = "metric-window-miss"
+                        });
+                    _observability.EmitEvent(
+                        "autotuning.validation.metric_unavailable",
+                        LogLevel.Warning,
+                        $"validation metric unavailable: {rollback.Fingerprint}",
+                        new Dictionary<string, string> {
+                            ["provider"] = _dialect.ProviderName,
+                            ["stage"] = AutoTuningClosedLoopStage.Verify.ToString(),
+                            ["action_id"] = rollback.ActionId,
+                            ["fingerprint"] = rollback.Fingerprint,
+                            ["reason"] = "metric-window-miss"
+                        });
+                    _logger.LogWarning(
+                        "闭环自治自动验证跳过：Provider={Provider}, Stage={Stage}, ActionId={ActionId}, Fingerprint={Fingerprint}, Reason={Reason}",
+                        _dialect.ProviderName,
+                        AutoTuningClosedLoopStage.Verify,
+                        rollback.ActionId,
+                        rollback.Fingerprint,
+                        "metric-window-miss");
                     continue;
                 }
 
@@ -394,8 +423,10 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 var errorRateIncrease = currentMetric.ErrorRatePercent - rollback.BaselineErrorRatePercent;
                 var timeoutRateIncrease = currentMetric.TimeoutRatePercent - rollback.BaselineTimeoutRatePercent;
                 var deadlockIncrease = currentMetric.DeadlockCount - rollback.BaselineDeadlockCount;
-                var lockWaitStatus = currentMetric.LockWaitCount.HasValue ? currentMetric.LockWaitCount.Value.ToString(CultureInfo.InvariantCulture) : "unavailable";
-                var planRegression = _planRegressionProbe.Evaluate(rollback.Fingerprint);
+                var lockWaitUnavailable = !rollback.BaselineLockWaitCount.HasValue || !currentMetric.LockWaitCount.HasValue;
+                var lockWaitUnavailableReason = DetermineLockWaitUnavailableReason(rollback.BaselineLockWaitCount, currentMetric.LockWaitCount);
+                var lockWaitStatus = lockWaitUnavailable ? "unavailable" : "available";
+                var planRegression = _planRegressionProbe.Evaluate(_dialect.ProviderName, rollback.Fingerprint);
 
                 var regressed = (_validationP95IncreasePercent > 0m && p95IncreasePercent >= _validationP95IncreasePercent)
                     || (_validationP99IncreasePercent > 0m && p99IncreasePercent >= _validationP99IncreasePercent)
@@ -403,6 +434,35 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     || (_validationTimeoutRateIncreasePercent > 0m && timeoutRateIncrease >= _validationTimeoutRateIncreasePercent)
                     || (_validationDeadlockIncreaseCount > 0 && deadlockIncrease >= _validationDeadlockIncreaseCount)
                     || (planRegression.IsAvailable && planRegression.IsRegressed);
+                var regressionDecision = regressed
+                    ? AutoRollbackDecisionEngine.Evaluate(
+                        p99IncreasePercent,
+                        timeoutRateIncrease,
+                        lockWaitStatus,
+                        _severeRollbackP99IncreasePercent,
+                        _severeRollbackTimeoutIncreasePercent,
+                        regressed,
+                        "threshold-regression-detected")
+                    : new RegressionEvaluationResult(
+                        IsRegressed: false,
+                        IsSevereRegression: false,
+                        Reason: "validation-pass",
+                        LockWaitStatus: lockWaitStatus);
+                var verificationResult = AutoTuningVerificationResultBuilder.Build(
+                    regressed: regressed,
+                    severeRegressed: regressionDecision.IsSevereRegression,
+                    reason: regressed ? regressionDecision.Reason : "validation-pass",
+                    p95IncreasePercent: p95IncreasePercent,
+                    p99IncreasePercent: p99IncreasePercent,
+                    errorRateIncreasePercent: errorRateIncrease,
+                    timeoutRateIncreasePercent: timeoutRateIncrease,
+                    deadlockIncreaseCount: deadlockIncrease,
+                    lockWaitBaseline: rollback.BaselineLockWaitCount,
+                    lockWaitCurrent: currentMetric.LockWaitCount,
+                    planRegression: planRegression,
+                    lockWaitUnavailable: lockWaitUnavailable,
+                    lockWaitUnavailableReason: lockWaitUnavailableReason);
+                EmitValidationResult(rollback, verificationResult);
 
                 if (!regressed) {
                     _pendingRollbackByFingerprint.Remove(rollback.Fingerprint);
@@ -421,14 +481,6 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     continue;
                 }
 
-                var regressionDecision = AutoRollbackDecisionEngine.Evaluate(
-                    p99IncreasePercent,
-                    timeoutRateIncrease,
-                    lockWaitStatus,
-                    _severeRollbackP99IncreasePercent,
-                    _severeRollbackTimeoutIncreasePercent,
-                    regressed,
-                    "threshold-regression-detected");
                 var severeRegression = regressionDecision.IsSevereRegression;
                 _logger.LogWarning(
                     "闭环自治自动验证失败：Provider={Provider}, Fingerprint={Fingerprint}, Table={Table}, P95Increase={P95Increase:F2}, P99Increase={P99Increase:F2}, ErrorRateIncrease={ErrorRateIncrease:F2}, TimeoutRateIncrease={TimeoutRateIncrease:F2}, DeadlockIncrease={DeadlockIncrease}, LockWaitStatus={LockWaitStatus}, PlanRegressionSummary={PlanRegressionSummary}, SevereRegression={SevereRegression}",
@@ -455,6 +507,38 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 }
 
                 // 步骤 4：在允许条件下执行回滚并移除追踪记录。
+                if (_enableAutoRollback) {
+                    var triggerReason = severeRegression ? "validation-severe-rollback-triggered" : "validation-regression-rollback-triggered";
+                    _observability.EmitMetric(
+                        "autotuning.validation.rollback_triggered",
+                        1d,
+                        new Dictionary<string, string> {
+                            ["provider"] = _dialect.ProviderName,
+                            ["stage"] = AutoTuningClosedLoopStage.Verify.ToString(),
+                            ["action_id"] = rollback.ActionId,
+                            ["fingerprint"] = rollback.Fingerprint,
+                            ["reason"] = triggerReason
+                        });
+                    _observability.EmitEvent(
+                        "autotuning.validation.rollback_triggered",
+                        LogLevel.Warning,
+                        $"rollback triggered: {rollback.Fingerprint}",
+                        new Dictionary<string, string> {
+                            ["provider"] = _dialect.ProviderName,
+                            ["stage"] = AutoTuningClosedLoopStage.Verify.ToString(),
+                            ["action_id"] = rollback.ActionId,
+                            ["fingerprint"] = rollback.Fingerprint,
+                            ["reason"] = triggerReason
+                        });
+                    _logger.LogWarning(
+                        "闭环自治自动验证触发回滚：Provider={Provider}, Stage={Stage}, ActionId={ActionId}, Fingerprint={Fingerprint}, Reason={Reason}",
+                        _dialect.ProviderName,
+                        AutoTuningClosedLoopStage.Verify,
+                        rollback.ActionId,
+                        rollback.Fingerprint,
+                        triggerReason);
+                }
+
                 if (_enableAutoRollback && await ExecuteThroughIsolatorAsync(
                         rollback.ActionId,
                         new SlowQueryTuningCandidate(rollback.Fingerprint, null, rollback.TableKey, Array.Empty<string>(), Array.Empty<string>()),
@@ -463,7 +547,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                         reason: severeRegression ? "severe-regression-immediate-rollback" : "regression-rollback",
                         isRollback: true,
                         cancellationToken)) {
-                    MoveToStage(AutoTuningClosedLoopStage.Rollback, "validation-rollback-executed");
+                    MoveToStage(AutoTuningClosedLoopStage.Rollback, "validation-rollback-executed", rollback.ActionId, rollback.Fingerprint);
                     _logger.LogWarning(
                         "闭环自治自动验证回滚执行完成：Provider={Provider}, Fingerprint={Fingerprint}, ActionId={ActionId}, RollbackSql={RollbackSql}",
                         _dialect.ProviderName,
@@ -576,6 +660,22 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return (decimal)(increase / previousValue * 100d);
         }
 
+        private static string DetermineLockWaitUnavailableReason(int? baselineLockWaitCount, int? currentLockWaitCount) {
+            if (!baselineLockWaitCount.HasValue && !currentLockWaitCount.HasValue) {
+                return "baseline-and-current-unavailable";
+            }
+
+            if (!baselineLockWaitCount.HasValue) {
+                return "baseline-unavailable";
+            }
+
+            if (!currentLockWaitCount.HasValue) {
+                return "current-unavailable";
+            }
+
+            return "sampled";
+        }
+
         /// <summary>输出自动调优动作审计日志。</summary>
         private void EmitAuditLog(
             string actionId,
@@ -598,7 +698,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 rollbackSql ?? string.Empty);
         }
 
-        private void MoveToStage(AutoTuningClosedLoopStage stage, string reason) {
+        private void MoveToStage(AutoTuningClosedLoopStage stage, string reason, string? actionId = null, string? fingerprint = null) {
             if (_currentStage == stage) {
                 return;
             }
@@ -606,20 +706,70 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             var previousStage = _currentStage;
             _currentStage = stage;
             _closedLoopTracker.MoveTo(stage);
+            var normalizedActionId = NormalizeTagValue(actionId);
+            var normalizedFingerprint = NormalizeTagValue(fingerprint);
             _logger.LogInformation(
-                "闭环自治阶段迁移：Provider={Provider}, PreviousStage={PreviousStage}, CurrentStage={CurrentStage}, Reason={Reason}",
+                "闭环自治阶段迁移：Provider={Provider}, PreviousStage={PreviousStage}, CurrentStage={CurrentStage}, ActionId={ActionId}, Fingerprint={Fingerprint}, Reason={Reason}",
                 _dialect.ProviderName,
                 previousStage,
                 _currentStage,
+                normalizedActionId,
+                normalizedFingerprint,
                 reason);
+            _observability.EmitMetric(
+                "autotuning.closed_loop.stage_transition",
+                1d,
+                new Dictionary<string, string> {
+                    ["provider"] = _dialect.ProviderName,
+                    ["stage"] = _currentStage.ToString(),
+                    ["action_id"] = normalizedActionId,
+                    ["fingerprint"] = normalizedFingerprint,
+                    ["reason"] = reason
+                });
             _observability.EmitEvent(
                 "autotuning.closed_loop.stage_transition",
                 LogLevel.Information,
                 $"stage moved: {previousStage} -> {_currentStage}",
                 new Dictionary<string, string> {
                     ["provider"] = _dialect.ProviderName,
+                    ["stage"] = _currentStage.ToString(),
+                    ["action_id"] = normalizedActionId,
+                    ["fingerprint"] = normalizedFingerprint,
                     ["reason"] = reason
                 });
+        }
+
+        private void EmitValidationResult(PendingRollbackAction rollback, AutoTuningVerificationResult result) {
+            var level = string.Equals(result.Verdict, "pass", StringComparison.OrdinalIgnoreCase)
+                ? LogLevel.Information
+                : LogLevel.Warning;
+            var tags = new Dictionary<string, string> {
+                ["provider"] = _dialect.ProviderName,
+                ["stage"] = AutoTuningClosedLoopStage.Verify.ToString(),
+                ["action_id"] = rollback.ActionId,
+                ["fingerprint"] = rollback.Fingerprint,
+                ["reason"] = result.Reason,
+                ["verdict"] = result.Verdict
+            };
+            _observability.EmitMetric("autotuning.validation.result", 1d, tags);
+            _observability.EmitEvent(
+                "autotuning.validation.result",
+                level,
+                $"validation verdict: {result.Verdict}",
+                tags);
+            _logger.LogInformation(
+                "闭环自治自动验证结果：Provider={Provider}, Stage={Stage}, ActionId={ActionId}, Fingerprint={Fingerprint}, Verdict={Verdict}, Reason={Reason}, SnapshotDiff={SnapshotDiff}",
+                _dialect.ProviderName,
+                AutoTuningClosedLoopStage.Verify,
+                rollback.ActionId,
+                rollback.Fingerprint,
+                result.Verdict,
+                result.Reason,
+                string.Join(" | ", result.SnapshotDiff.Select(static diff => $"{diff.Name}:{diff.Status}:{diff.Delta}:{diff.Reason}")));
+        }
+
+        private static string NormalizeTagValue(string? value) {
+            return string.IsNullOrWhiteSpace(value) ? "n/a" : value.Trim();
         }
 
         /// <summary>判断候选表是否命中执行白名单。</summary>
@@ -1039,7 +1189,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             double BaselineP99Milliseconds,
             decimal BaselineErrorRatePercent,
             decimal BaselineTimeoutRatePercent,
-            int BaselineDeadlockCount);
+            int BaselineDeadlockCount,
+            int? BaselineLockWaitCount);
 
         /// <summary>表级容量快照（CapturedLocalTime 必须使用本地时间语义）。</summary>
         private sealed record TableCapacitySnapshot(
