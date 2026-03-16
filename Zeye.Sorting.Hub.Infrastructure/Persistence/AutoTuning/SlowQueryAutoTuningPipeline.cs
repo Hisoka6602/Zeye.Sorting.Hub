@@ -55,7 +55,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             _aggregationTopN = GetPositiveIntOrDefault(configuration, AutoTuningKey("AggregationTopN"), 10);
             _alertDebounceMinCallCount = GetPositiveIntOrDefault(configuration, AutoTuningKey("AlertDebounceMinCallCount"), _triggerCount);
             _alertP99Milliseconds = GetPositiveIntOrDefault(configuration, AutoTuningKey("AlertP99Milliseconds"), 500);
-            _alertTimeoutRatePercent = GetDecimalOrDefault(configuration, AutoTuningKey("AlertTimeoutRatePercent"), 1m);
+            _alertTimeoutRatePercent = GetNonNegativeDecimalOrDefault(configuration, AutoTuningKey("AlertTimeoutRatePercent"), 1m);
             _alertDeadlockCount = GetPositiveIntOrDefault(configuration, AutoTuningKey("AlertDeadlockCount"), 1);
             _alertDebounceWindow = GetPositiveSecondsAsTimeSpanOrDefault(configuration, AutoTuningKey("AlertDebounceWindowSeconds"), TimeSpan.FromMinutes(10));
             _alertConsecutiveWindows = GetPositiveIntOrDefault(configuration, AutoTuningKey("AlertConsecutiveWindows"), 1);
@@ -559,7 +559,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         }
 
         /// <summary>读取非负小数配置，非法值回退默认值。</summary>
-        private static decimal GetDecimalOrDefault(IConfiguration configuration, string key, decimal fallback) {
+        private static decimal GetNonNegativeDecimalOrDefault(IConfiguration configuration, string key, decimal fallback) {
             var value = configuration[key];
             return decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed) && parsed >= 0m ? parsed : fallback;
         }

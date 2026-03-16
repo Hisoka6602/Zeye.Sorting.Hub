@@ -13,7 +13,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
     /// EF Core 仓储基类（Infrastructure 层实现细节）
     /// 说明：
     /// 1) 使用 IDbContextFactory，每次操作独立创建和释放 DbContext，降低生命周期耦合
-    /// 2) 每次变更操作自动调用 SaveChangesAsync 提交；如需多步原子操作，请在应用层使用显式事务
+    /// 2) 每次变更操作自动调用 SaveChangesAsync 提交；由于每次调用均使用独立 DbContext，
+    ///    跨多个仓储调用的原子事务无法通过普通 db.Database.BeginTransaction() 实现，
+    ///    需改用 TransactionScope 或在调用处直接共享同一 DbContext 实例来完成多步事务
     /// 3) 通过 Result 返回错误信息，隔离异常，不影响调用链
     /// </summary>
     public abstract class RepositoryBase<TEntity, TContext>
