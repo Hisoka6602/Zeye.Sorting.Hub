@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
+using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
@@ -39,6 +40,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             @"\b(create|alter|drop)\b",
             RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
         private readonly ILogger<DatabaseAutoTuningHostedService> _logger;
+        private readonly IAutoTuningObservability _observability;
+        private readonly IExecutionPlanRegressionProbe _planRegressionProbe;
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly IDatabaseDialect _dialect;
         private readonly SlowQueryAutoTuningPipeline _pipeline;
@@ -49,6 +52,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private readonly TimeSpan _peakStartTime;
         private readonly TimeSpan _peakEndTime;
         private readonly bool _enableAutoRollback;
+        private readonly bool _enableDangerousActionIsolator;
+        private readonly bool _allowDangerousActionExecution;
+        private readonly bool _enableActionDryRun;
         private readonly HashSet<string> _whitelistedTables;
         private readonly Dictionary<string, PendingRollbackAction> _pendingRollbackByFingerprint = new(StringComparer.OrdinalIgnoreCase);
         private readonly int _baselineCommandTimeoutSeconds;
@@ -73,18 +79,34 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private readonly int _capacityProjectionDays;
         private readonly int _capacityGrowthAlertRows;
         private readonly int _capacityHotLayeringRows;
+        private readonly int _configuredSlowQueryThresholdMilliseconds;
+        private readonly int _configuredTriggerCount;
+        private readonly int _configuredMaxSuggestionsPerCycle;
+        private readonly int _configuredAlertP99Milliseconds;
+        private readonly decimal _configuredAlertTimeoutRatePercent;
+        private readonly int _configuredAlertDeadlockCount;
+        private readonly decimal _severeRollbackP99IncreasePercent;
+        private readonly decimal _severeRollbackTimeoutIncreasePercent;
+        private readonly int _pauseActionCyclesOnRegression;
         private readonly Dictionary<string, int> _tableHeatByTable = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, Queue<TableCapacitySnapshot>> _capacitySnapshotsByTable = new(StringComparer.OrdinalIgnoreCase);
         private int _analysisCycleCounter;
+        private int _pauseExecutionUntilCycle;
+        private AutoTuningClosedLoopStage _currentStage = AutoTuningClosedLoopStage.Monitor;
+        private readonly AutoTuningClosedLoopTracker _closedLoopTracker = new();
 
         /// <summary>初始化数据库自动调谐后台服务及其运行策略参数。</summary>
         public DatabaseAutoTuningHostedService(
             ILogger<DatabaseAutoTuningHostedService> logger,
+            IAutoTuningObservability observability,
+            IExecutionPlanRegressionProbe planRegressionProbe,
             IServiceScopeFactory scopeFactory,
             IDatabaseDialect dialect,
             SlowQueryAutoTuningPipeline pipeline,
             IConfiguration configuration) {
             _logger = logger;
+            _observability = observability;
+            _planRegressionProbe = planRegressionProbe;
             _scopeFactory = scopeFactory;
             _dialect = dialect;
             _pipeline = pipeline;
@@ -94,6 +116,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _skipExecutionDuringPeak = GetBoolOrDefault(configuration, AutonomousKey("Execution:SkipExecutionDuringPeak"), true);
             _peakStartTime = GetTimeOfDayOrDefault(configuration, AutonomousKey("Execution:PeakStartLocalTime"), new TimeSpan(8, 0, 0));
             _peakEndTime = GetTimeOfDayOrDefault(configuration, AutonomousKey("Execution:PeakEndLocalTime"), new TimeSpan(21, 0, 0));
+            _enableDangerousActionIsolator = GetBoolOrDefault(configuration, AutonomousKey("Execution:Isolator:EnableGuard"), true);
+            _allowDangerousActionExecution = GetBoolOrDefault(configuration, AutonomousKey("Execution:Isolator:AllowDangerousActionExecution"), false);
+            _enableActionDryRun = GetBoolOrDefault(configuration, AutonomousKey("Execution:Isolator:DryRun"), false);
             _enableAutoRollback = GetBoolOrDefault(configuration, AutonomousKey("Validation:EnableAutoRollback"), true);
             _whitelistedTables = LoadWhitelistedTables(configuration.GetSection(AutonomousKey("Execution:WhitelistedTables")));
             if (_whitelistedTables.Count == 0) {
@@ -105,6 +130,12 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _configuredCommandTimeoutSeconds = GetPositiveIntOrDefault(configuration, $"{PerformanceConfigPrefix}:CommandTimeoutSeconds", 30);
             _configuredMaxRetryCount = GetPositiveIntOrDefault(configuration, $"{PerformanceConfigPrefix}:MaxRetryCount", 5);
             _configuredMaxRetryDelaySeconds = GetPositiveIntOrDefault(configuration, $"{PerformanceConfigPrefix}:MaxRetryDelaySeconds", 10);
+            _configuredSlowQueryThresholdMilliseconds = GetPositiveIntOrDefault(configuration, AutoTuningKey("SlowQueryThresholdMilliseconds"), 500);
+            _configuredTriggerCount = GetPositiveIntOrDefault(configuration, AutoTuningKey("TriggerCount"), 3);
+            _configuredMaxSuggestionsPerCycle = GetPositiveIntOrDefault(configuration, AutoTuningKey("MaxActionsPerCycle"), 3);
+            _configuredAlertP99Milliseconds = GetPositiveIntOrDefault(configuration, AutoTuningKey("AlertP99Milliseconds"), 500);
+            _configuredAlertTimeoutRatePercent = GetNonNegativeDecimalOrDefault(configuration, AutoTuningKey("AlertTimeoutRatePercent"), 1m);
+            _configuredAlertDeadlockCount = GetPositiveIntOrDefault(configuration, AutoTuningKey("AlertDeadlockCount"), 1);
             _enableFullAutomation = GetBoolOrDefault(configuration, AutonomousKey("EnableFullAutomation"), true);
             _policyMinTableHeatCalls = GetPositiveIntOrDefault(configuration, AutonomousKey("Policy:MinTableHeatCalls"), 10);
             _policyMaxRiskScore = GetDecimalInRangeOrDefault(configuration, AutonomousKey("Policy:MaxRiskScore"), 0.85m, 0m, 1m);
@@ -121,6 +152,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _capacityProjectionDays = GetPositiveIntOrDefault(configuration, AutonomousKey("CapacityPrediction:ProjectionDays"), 7);
             _capacityGrowthAlertRows = GetPositiveIntOrDefault(configuration, AutonomousKey("CapacityPrediction:GrowthAlertRows"), 50000);
             _capacityHotLayeringRows = GetPositiveIntOrDefault(configuration, AutonomousKey("CapacityPrediction:HotLayeringRows"), 200000);
+            _severeRollbackP99IncreasePercent = GetNonNegativeDecimalOrDefault(configuration, AutonomousKey("Validation:SevereRollback:P99IncreasePercent"), 25m);
+            _severeRollbackTimeoutIncreasePercent = GetNonNegativeDecimalOrDefault(configuration, AutonomousKey("Validation:SevereRollback:TimeoutRateIncreasePercent"), 2m);
+            _pauseActionCyclesOnRegression = GetPositiveIntOrDefault(configuration, AutonomousKey("Validation:PauseActionCyclesOnRegression"), 2);
         }
 
         /// <summary>后台循环：按固定周期分析慢 SQL，并执行自治策略/验证/清理。</summary>
@@ -129,6 +163,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
             while (!stoppingToken.IsCancellationRequested) {
                 await Task.Delay(TimeSpan.FromSeconds(_analyzeIntervalSeconds), stoppingToken);
+                MoveToStage(AutoTuningClosedLoopStage.Monitor, "analysis-cycle-start");
 
                 var result = _pipeline.Analyze(_dialect);
                 if (result.Metrics.Count == 0) {
@@ -138,6 +173,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     continue;
                 }
                 _analysisCycleCounter++;
+                MoveToStage(AutoTuningClosedLoopStage.Diagnose, "metrics-aggregated");
 
                 _logger.LogInformation(
                     "慢 SQL 分析窗口完成，Provider={Provider}, GeneratedTime={GeneratedTime}, Groups={Groups}, DroppedSamples={DroppedSamples}",
@@ -145,6 +181,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     result.GeneratedTime,
                     result.Metrics.Count,
                     result.DroppedSamples);
+                _observability.EmitMetric("autotuning.analysis.group_count", result.Metrics.Count);
 
                 foreach (var metric in result.Metrics) {
                     _logger.LogInformation(
@@ -164,10 +201,15 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 foreach (var alert in result.Alerts) {
                     _logger.LogWarning("慢 SQL 阈值告警：Provider={Provider}, Alert={Alert}", _dialect.ProviderName, alert);
                 }
+                foreach (var recovery in result.RecoveryNotifications) {
+                    _logger.LogInformation("慢 SQL 告警恢复：Provider={Provider}, Recovery={Recovery}", _dialect.ProviderName, recovery);
+                }
 
                 var metricsByFingerprint = result.Metrics.ToDictionary(static metric => metric.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
                 UpdateAutonomousSignals(result, result.GeneratedTime, metricsByFingerprint);
+                MoveToStage(AutoTuningClosedLoopStage.Execute, "execute-candidates");
                 await ExecuteAutoTuningActionsAsync(result, metricsByFingerprint, stoppingToken);
+                MoveToStage(AutoTuningClosedLoopStage.Verify, "validate-actions");
                 await ValidateAutonomousActionsAsync(result, metricsByFingerprint, stoppingToken);
                 PruneTrackingState();
 
@@ -192,7 +234,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
             foreach (var metric in result.Metrics) {
                 _logger.LogInformation(
-                    "每日慢 SQL Top：Fingerprint={Fingerprint}, Calls={Calls}, Rows={Rows}, P95Ms={P95Ms}, P99Ms={P99Ms}, ErrorRatePercent={ErrorRatePercent}, TimeoutRatePercent={TimeoutRatePercent}, DeadlockCount={DeadlockCount}",
+                    "每日慢 SQL Top（按 P99/P95 排序）：Fingerprint={Fingerprint}, Calls={Calls}, Rows={Rows}, P95Ms={P95Ms}, P99Ms={P99Ms}, ErrorRatePercent={ErrorRatePercent}, TimeoutRatePercent={TimeoutRatePercent}, DeadlockCount={DeadlockCount}",
                     metric.SqlFingerprint,
                     metric.CallCount,
                     metric.TotalAffectedRows,
@@ -203,11 +245,15 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     metric.DeadlockCount);
             }
 
-            foreach (var suggestion in result.ReadOnlySuggestions) {
+            foreach (var suggestion in result.SuggestionInsights) {
                 _logger.LogInformation(
-                    "每日慢 SQL 索引建议（只读，不自动执行，需人工确认）：Provider={Provider}, Suggestion={Suggestion}",
+                    "每日慢 SQL 索引建议（只读，不自动执行，需人工确认）：Provider={Provider}, Fingerprint={Fingerprint}, Suggestion={Suggestion}, Reason={Reason}, RiskLevel={RiskLevel}, Confidence={Confidence:F2}",
                     _dialect.ProviderName,
-                    suggestion);
+                    suggestion.SqlFingerprint,
+                    suggestion.SuggestionSql,
+                    suggestion.Reason,
+                    suggestion.RiskLevel,
+                    suggestion.Confidence);
             }
         }
 
@@ -218,6 +264,14 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             CancellationToken cancellationToken) {
             // 步骤 1：先判断总开关与执行窗口。
             if (!_enableFullAutomation) {
+                return;
+            }
+            if (_analysisCycleCounter < _pauseExecutionUntilCycle) {
+                _logger.LogWarning(
+                    "闭环自治执行暂停中：Provider={Provider}, CurrentCycle={CurrentCycle}, ResumeCycle={ResumeCycle}",
+                    _dialect.ProviderName,
+                    _analysisCycleCounter,
+                    _pauseExecutionUntilCycle);
                 return;
             }
 
@@ -266,11 +320,16 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
                     var rollbackSql = BuildRollbackSql(actionSql);
                     var actionId = Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
-                    if (!await TryExecuteSqlAsync(actionSql, candidate.SqlFingerprint, isRollback: false, cancellationToken)) {
+                    if (!await ExecuteThroughIsolatorAsync(
+                            actionId,
+                            candidate,
+                            actionSql,
+                            rollbackSql,
+                            reason: $"execute-action, risk={policyDecision.RiskScore:F2}",
+                            isRollback: false,
+                            cancellationToken)) {
                         continue;
                     }
-
-                    EmitAuditLog(actionId, candidate, actionSql, rollbackSql, executed: true, dryRun: false, reason: $"executed, risk={policyDecision.RiskScore:F2}");
                     executedCount++;
 
                     // 步骤 3：登记可回滚动作，并执行自治维护 SQL。
@@ -295,11 +354,16 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                         inPeakWindow,
                         policyDecision.RiskScore > _policyMaxRiskScore);
                     foreach (var maintenance in maintenanceSql) {
-                        if (!await TryExecuteSqlAsync(maintenance, candidate.SqlFingerprint, isRollback: false, cancellationToken)) {
+                        if (!await ExecuteThroughIsolatorAsync(
+                                $"{actionId}-maintenance",
+                                candidate,
+                                maintenance,
+                                rollbackSql: null,
+                                reason: "autonomous-maintenance",
+                                isRollback: false,
+                                cancellationToken)) {
                             continue;
                         }
-
-                        EmitAuditLog($"{actionId}-maintenance", candidate, maintenance, rollbackSql: null, executed: true, dryRun: false, reason: "autonomous-maintenance");
                     }
                 }
             }
@@ -330,17 +394,20 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 var errorRateIncrease = currentMetric.ErrorRatePercent - rollback.BaselineErrorRatePercent;
                 var timeoutRateIncrease = currentMetric.TimeoutRatePercent - rollback.BaselineTimeoutRatePercent;
                 var deadlockIncrease = currentMetric.DeadlockCount - rollback.BaselineDeadlockCount;
+                var lockWaitStatus = currentMetric.LockWaitCount.HasValue ? currentMetric.LockWaitCount.Value.ToString(CultureInfo.InvariantCulture) : "unavailable";
+                var planRegression = _planRegressionProbe.Evaluate(rollback.Fingerprint);
 
                 var regressed = (_validationP95IncreasePercent > 0m && p95IncreasePercent >= _validationP95IncreasePercent)
                     || (_validationP99IncreasePercent > 0m && p99IncreasePercent >= _validationP99IncreasePercent)
                     || (_validationErrorRateIncreasePercent > 0m && errorRateIncrease >= _validationErrorRateIncreasePercent)
                     || (_validationTimeoutRateIncreasePercent > 0m && timeoutRateIncrease >= _validationTimeoutRateIncreasePercent)
-                    || (_validationDeadlockIncreaseCount > 0 && deadlockIncrease >= _validationDeadlockIncreaseCount);
+                    || (_validationDeadlockIncreaseCount > 0 && deadlockIncrease >= _validationDeadlockIncreaseCount)
+                    || (planRegression.IsAvailable && planRegression.IsRegressed);
 
                 if (!regressed) {
                     _pendingRollbackByFingerprint.Remove(rollback.Fingerprint);
                     _logger.LogInformation(
-                        "闭环自治自动验证通过：Provider={Provider}, Fingerprint={Fingerprint}, Table={Table}, P95Increase={P95Increase:F2}, P99Increase={P99Increase:F2}, ErrorRateIncrease={ErrorRateIncrease:F2}, TimeoutRateIncrease={TimeoutRateIncrease:F2}, DeadlockIncrease={DeadlockIncrease}",
+                        "闭环自治自动验证通过：Provider={Provider}, Fingerprint={Fingerprint}, Table={Table}, P95Increase={P95Increase:F2}, P99Increase={P99Increase:F2}, ErrorRateIncrease={ErrorRateIncrease:F2}, TimeoutRateIncrease={TimeoutRateIncrease:F2}, DeadlockIncrease={DeadlockIncrease}, LockWaitStatus={LockWaitStatus}, PlanRegressionSummary={PlanRegressionSummary}",
                         _dialect.ProviderName,
                         rollback.Fingerprint,
                         rollback.TableKey,
@@ -348,12 +415,23 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                         p99IncreasePercent,
                         errorRateIncrease,
                         timeoutRateIncrease,
-                        deadlockIncrease);
+                        deadlockIncrease,
+                        lockWaitStatus,
+                        planRegression.Summary);
                     continue;
                 }
 
+                var regressionDecision = AutoRollbackDecisionEngine.Evaluate(
+                    p99IncreasePercent,
+                    timeoutRateIncrease,
+                    lockWaitStatus,
+                    _severeRollbackP99IncreasePercent,
+                    _severeRollbackTimeoutIncreasePercent,
+                    regressed,
+                    "threshold-regression-detected");
+                var severeRegression = regressionDecision.IsSevereRegression;
                 _logger.LogWarning(
-                    "闭环自治自动验证失败：Provider={Provider}, Fingerprint={Fingerprint}, Table={Table}, P95Increase={P95Increase:F2}, P99Increase={P99Increase:F2}, ErrorRateIncrease={ErrorRateIncrease:F2}, TimeoutRateIncrease={TimeoutRateIncrease:F2}, DeadlockIncrease={DeadlockIncrease}",
+                    "闭环自治自动验证失败：Provider={Provider}, Fingerprint={Fingerprint}, Table={Table}, P95Increase={P95Increase:F2}, P99Increase={P99Increase:F2}, ErrorRateIncrease={ErrorRateIncrease:F2}, TimeoutRateIncrease={TimeoutRateIncrease:F2}, DeadlockIncrease={DeadlockIncrease}, LockWaitStatus={LockWaitStatus}, PlanRegressionSummary={PlanRegressionSummary}, SevereRegression={SevereRegression}",
                     _dialect.ProviderName,
                     rollback.Fingerprint,
                     rollback.TableKey,
@@ -361,10 +439,31 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     p99IncreasePercent,
                     errorRateIncrease,
                     timeoutRateIncrease,
-                    deadlockIncrease);
+                    deadlockIncrease,
+                    regressionDecision.LockWaitStatus,
+                    planRegression.Summary,
+                    severeRegression);
 
-                // 步骤 3：在允许条件下执行回滚并移除追踪记录。
-                if (_enableAutoRollback && await TryExecuteSqlAsync(rollback.RollbackSql, rollback.Fingerprint, isRollback: true, cancellationToken)) {
+                // 步骤 3：分级动作（暂停后续动作 / 立即回滚）。
+                if (!severeRegression) {
+                    _pauseExecutionUntilCycle = Math.Max(_pauseExecutionUntilCycle, _analysisCycleCounter + _pauseActionCyclesOnRegression);
+                    _logger.LogWarning(
+                        "闭环自治触发保护暂停：Provider={Provider}, Fingerprint={Fingerprint}, PauseUntilCycle={PauseUntilCycle}",
+                        _dialect.ProviderName,
+                        rollback.Fingerprint,
+                        _pauseExecutionUntilCycle);
+                }
+
+                // 步骤 4：在允许条件下执行回滚并移除追踪记录。
+                if (_enableAutoRollback && await ExecuteThroughIsolatorAsync(
+                        rollback.ActionId,
+                        new SlowQueryTuningCandidate(rollback.Fingerprint, null, rollback.TableKey, Array.Empty<string>(), Array.Empty<string>()),
+                        rollback.RollbackSql,
+                        rollbackSql: null,
+                        reason: severeRegression ? "severe-regression-immediate-rollback" : "regression-rollback",
+                        isRollback: true,
+                        cancellationToken)) {
+                    MoveToStage(AutoTuningClosedLoopStage.Rollback, "validation-rollback-executed");
                     _logger.LogWarning(
                         "闭环自治自动验证回滚执行完成：Provider={Provider}, Fingerprint={Fingerprint}, ActionId={ActionId}, RollbackSql={RollbackSql}",
                         _dialect.ProviderName,
@@ -375,6 +474,58 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
                 _pendingRollbackByFingerprint.Remove(rollback.Fingerprint);
             }
+        }
+
+        /// <summary>统一危险动作隔离入口（开关、dry-run、审计、执行）。</summary>
+        private async Task<bool> ExecuteThroughIsolatorAsync(
+            string actionId,
+            SlowQueryTuningCandidate candidate,
+            string actionSql,
+            string? rollbackSql,
+            string reason,
+            bool isRollback,
+            CancellationToken cancellationToken) {
+            var dangerous = IsDangerousAction(actionSql);
+            var isolationDecision = ActionIsolationPolicy.Evaluate(
+                _enableDangerousActionIsolator,
+                _allowDangerousActionExecution,
+                _enableActionDryRun,
+                dangerous,
+                isRollback);
+            if (isolationDecision == ActionIsolationDecision.BlockedByGuard) {
+                EmitAuditLog(actionId, candidate, actionSql, rollbackSql, executed: false, dryRun: false, reason: $"{reason}, blocked-by-guard");
+                _logger.LogWarning(
+                    "危险动作隔离器拦截动作：Provider={Provider}, ActionId={ActionId}, Fingerprint={Fingerprint}, Sql={Sql}",
+                    _dialect.ProviderName,
+                    actionId,
+                    candidate.SqlFingerprint,
+                    actionSql);
+                return false;
+            }
+
+            if (isolationDecision == ActionIsolationDecision.DryRunOnly) {
+                EmitAuditLog(actionId, candidate, actionSql, rollbackSql, executed: false, dryRun: true, reason: $"{reason}, dry-run");
+                _observability.EmitEvent(
+                    "autotuning.isolator.dry_run",
+                    LogLevel.Information,
+                    $"Dry-run blocked SQL execution: {candidate.SqlFingerprint}",
+                    new Dictionary<string, string> {
+                        ["provider"] = _dialect.ProviderName,
+                        ["action_id"] = actionId
+                    });
+                return false;
+            }
+
+            var executed = await TryExecuteSqlAsync(actionSql, candidate.SqlFingerprint, isRollback, cancellationToken);
+            EmitAuditLog(actionId, candidate, actionSql, rollbackSql, executed: executed, dryRun: false, reason: reason);
+            if (executed) {
+                _observability.EmitMetric("autotuning.action.executed", 1d, new Dictionary<string, string> {
+                    ["provider"] = _dialect.ProviderName,
+                    ["is_rollback"] = isRollback ? "true" : "false"
+                });
+            }
+
+            return executed;
         }
 
         /// <summary>在独立作用域中执行单条 SQL。</summary>
@@ -445,6 +596,30 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 reason,
                 actionSql,
                 rollbackSql ?? string.Empty);
+        }
+
+        private void MoveToStage(AutoTuningClosedLoopStage stage, string reason) {
+            if (_currentStage == stage) {
+                return;
+            }
+
+            var previousStage = _currentStage;
+            _currentStage = stage;
+            _closedLoopTracker.MoveTo(stage);
+            _logger.LogInformation(
+                "闭环自治阶段迁移：Provider={Provider}, PreviousStage={PreviousStage}, CurrentStage={CurrentStage}, Reason={Reason}",
+                _dialect.ProviderName,
+                previousStage,
+                _currentStage,
+                reason);
+            _observability.EmitEvent(
+                "autotuning.closed_loop.stage_transition",
+                LogLevel.Information,
+                $"stage moved: {previousStage} -> {_currentStage}",
+                new Dictionary<string, string> {
+                    ["provider"] = _dialect.ProviderName,
+                    ["reason"] = reason
+                });
         }
 
         /// <summary>判断候选表是否命中执行白名单。</summary>
@@ -680,16 +855,42 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             AuditBaselineItem("CommandTimeoutSeconds", _configuredCommandTimeoutSeconds, _baselineCommandTimeoutSeconds);
             AuditBaselineItem("MaxRetryCount", _configuredMaxRetryCount, _baselineMaxRetryCount);
             AuditBaselineItem("MaxRetryDelaySeconds", _configuredMaxRetryDelaySeconds, _baselineMaxRetryDelaySeconds);
+            AuditBaselineItem("SlowQueryThresholdMilliseconds", _configuredSlowQueryThresholdMilliseconds, 500);
+            AuditBaselineItem("TriggerCount", _configuredTriggerCount, 3);
+            AuditBaselineItem("MaxActionsPerCycle", _configuredMaxSuggestionsPerCycle, 3);
+            AuditBaselineItem("AlertP99Milliseconds", _configuredAlertP99Milliseconds, 500);
+            AuditBaselineItem("AlertTimeoutRatePercent", (double)_configuredAlertTimeoutRatePercent, 1d);
+            AuditBaselineItem("AlertDeadlockCount", _configuredAlertDeadlockCount, 1);
         }
 
         /// <summary>输出单个参数的基线审计结果。</summary>
         private void AuditBaselineItem(string key, int configured, int baseline) {
-            if (configured == baseline) {
+            AuditBaselineItem(key, (double)configured, baseline);
+        }
+
+        private void AuditBaselineItem(string key, double configured, double baseline) {
+            if (Math.Abs(configured - baseline) < 0.0001d) {
                 _logger.LogInformation("运行参数基线审计通过：Key={Key}, Current={Current}, Baseline={Baseline}", key, configured, baseline);
                 return;
             }
 
-            _logger.LogWarning("运行参数基线审计告警：Key={Key}, Current={Current}, Baseline={Baseline}", key, configured, baseline);
+            var ratio = baseline <= 0d ? 1d : Math.Abs(configured - baseline) / baseline;
+            var level = ratio >= 0.5d ? "high" : ratio >= 0.2d ? "medium" : "low";
+            _logger.LogWarning(
+                "运行参数基线审计告警：Key={Key}, Current={Current}, Baseline={Baseline}, DeviationLevel={DeviationLevel}, Recommended={Recommended}",
+                key,
+                configured,
+                baseline,
+                level,
+                baseline);
+            _observability.EmitEvent(
+                "autotuning.baseline.deviation",
+                LogLevel.Warning,
+                $"baseline deviation: {key}",
+                new Dictionary<string, string> {
+                    ["key"] = key,
+                    ["level"] = level
+                });
         }
 
         /// <summary>读取正整数配置，非法值回退默认值。</summary>

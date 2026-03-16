@@ -8,6 +8,7 @@ using EFCore.Sharding;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
@@ -61,6 +62,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             services.AddSingleton<SlowQueryAutoTuningPipeline>();
             services.AddSingleton<SlowQueryCommandInterceptor>();
             services.AddSingleton<MySqlSessionBootstrapConnectionInterceptor>();
+            services.TryAddSingleton<IAutoTuningObservability, NullAutoTuningObservability>();
+            services.TryAddSingleton<IExecutionPlanRegressionProbe, LoggingOnlyExecutionPlanRegressionProbe>();
 
             if (string.IsNullOrWhiteSpace(provider)) {
                 throw new InvalidOperationException("缺少配置：Persistence:Provider，可选值：MySql / SqlServer");

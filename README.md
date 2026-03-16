@@ -47,8 +47,10 @@
 │   │       └── ParcelScannedEventArgs.cs（包裹扫描事件参数）
 │   ├── Enums（领域枚举目录）
 │   │   ├── ActionType.cs（动作类型枚举）
+│   │   ├── ActionIsolationDecision.cs（自动调优危险动作隔离决策枚举）
 │   │   ├── ApiRequestStatus.cs（接口请求状态枚举）
 │   │   ├── ApiRequestType.cs（接口请求类型枚举）
+│   │   ├── AutoTuningClosedLoopStage.cs（自动调优闭环阶段枚举）
 │   │   ├── BarCodeType.cs（条码类型枚举）
 │   │   ├── CommandDirection.cs（命令方向枚举）
 │   │   ├── ImageCaptureType.cs（图像采集方式枚举）
@@ -65,6 +67,7 @@
 │   └── Zeye.Sorting.Hub.Domain.csproj（Domain 项目定义）
 ├── Zeye.Sorting.Hub.Host（宿主层）
 │   ├── HostedServices（托管服务目录）
+│   │   ├── AutoTuningLoggerObservability.cs（自动调优观测默认日志实现）
 │   │   ├── DatabaseAutoTuningHostedService.cs（数据库自动调谐托管服务（慢查询分析、阈值告警、闭环自治执行验证回退与变更审计））
 │   │   └── DatabaseInitializerHostedService.cs（数据库初始化与迁移托管服务）
 │   ├── Program.cs（应用入口与 Host 构建流程）
@@ -74,6 +77,9 @@
 │   ├── Zeye.Sorting.Hub.Host.csproj（Host 项目定义）
 │   ├── appsettings.Development.json（开发环境配置）
 │   └── appsettings.json（默认运行配置）
+├── Zeye.Sorting.Hub.Host.Tests（自动调优行为测试工程）
+│   ├── AutoTuningProductionControlTests.cs（自动调优生产可控能力测试：dry-run/隔离器/告警恢复/回滚/闭环链路）
+│   └── Zeye.Sorting.Hub.Host.Tests.csproj（xUnit 测试项目定义）
 ├── Zeye.Sorting.Hub.Infrastructure（基础设施层）
 │   ├── DependencyInjection（依赖注入扩展目录）
 │   │   └── PersistenceServiceCollectionExtensions.cs（持久化服务注册扩展（数据库提供器选择、连接字符串校验、DbContext 注册、性能参数读取配置、Parcel 按 CreatedTime 月分表））
@@ -82,6 +88,7 @@
 │   │   └── ParcelEntityTypeConfiguration.cs（Parcel 映射配置）
 │   ├── Persistence（持久化核心目录）
 │   │   ├── AutoTuning（自动调谐核心目录）
+│   │   │   ├── AutoTuningAbstractions.cs（自动调优观测抽象、闭环阶段、隔离/回滚策略与执行计划回退探针抽象）
 │   │   │   ├── MySqlSessionBootstrapConnectionInterceptor.cs（MySQL 连接会话初始化拦截器）
 │   │   │   ├── SlowQueryAutoTuningPipeline.cs（慢查询采集、TopN 聚合、阈值告警（含基础防抖）与闭环自治结构化建议编排管道）
 │   │   │   ├── SlowQueryCommandInterceptor.cs（EF Core 慢查询采集拦截器）
@@ -180,8 +187,10 @@
 
 #### `Zeye.Sorting.Hub.Domain/Enums/`：领域枚举与业务语义常量目录
 - `ActionType.cs`：动作类型枚举定义。
+- `ActionIsolationDecision.cs`：自动调优危险动作隔离决策枚举定义。
 - `ApiRequestStatus.cs`：接口请求状态枚举定义。
 - `ApiRequestType.cs`：接口请求类型枚举定义。
+- `AutoTuningClosedLoopStage.cs`：自动调优闭环阶段枚举定义。
 - `BarCodeType.cs`：条码类型枚举定义。
 - `CommandDirection.cs`：命令方向枚举定义。
 - `ImageCaptureType.cs`：图像采集方式枚举定义。
@@ -206,6 +215,7 @@
 - `appsettings.Development.json`：开发环境配置覆盖文件。
 
 #### `Zeye.Sorting.Hub.Host/HostedServices/`：启动/常驻托管服务目录
+- `AutoTuningLoggerObservability.cs`：自动调优观测默认日志实现（统一日志 + 指标抽象默认落地）。
 - `DatabaseAutoTuningHostedService.cs`：数据库自动调谐托管服务（慢查询分析、阈值告警、闭环自治执行验证回退与变更审计）。
 - `DatabaseInitializerHostedService.cs`：数据库初始化与迁移托管服务。
 
@@ -232,6 +242,7 @@
 - `SqlServerDialect.cs`：SQL Server 方言实现。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/`：自动调谐核心目录
+- `AutoTuningAbstractions.cs`：自动调优观测抽象、闭环阶段模型、危险动作隔离策略、自动回滚决策与执行计划回退探针抽象。
 - `MySqlSessionBootstrapConnectionInterceptor.cs`：MySQL 连接会话初始化拦截器。
 - `SlowQueryAutoTuningPipeline.cs`：慢查询采集、TopN 聚合、阈值告警（含基础防抖）与闭环自治结构化建议编排管道。
 - `SlowQueryCommandInterceptor.cs`：EF Core 慢查询采集拦截器。
@@ -256,3 +267,7 @@
 ### `Zeye.Sorting.Hub.SharedKernel/`：跨模块共享内核（当前为占位工程）
 - `Zeye.Sorting.Hub.SharedKernel.csproj`：SharedKernel 项目定义。
 - `Class1.cs`：占位类，预留通用基础能力实现位置。
+
+### `Zeye.Sorting.Hub.Host.Tests/`：自动调优测试层
+- `Zeye.Sorting.Hub.Host.Tests.csproj`：xUnit 测试项目定义。
+- `AutoTuningProductionControlTests.cs`：覆盖 dry-run、危险动作隔离、告警防抖与恢复、自动回滚触发、闭环阶段链路。

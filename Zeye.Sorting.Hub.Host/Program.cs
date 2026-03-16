@@ -1,10 +1,12 @@
 using Zeye.Sorting.Hub.Host;
 using Zeye.Sorting.Hub.Host.HostedServices;
 using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 
 var builder = Host.CreateApplicationBuilder(args);
 builder.Services.AddHostedService<Worker>();
 builder.Services.AddSortingHubPersistence(builder.Configuration);
+builder.Services.AddSingleton<IAutoTuningObservability, AutoTuningLoggerObservability>();
 
 // Host 启动时执行持久化初始化
 builder.Services.AddHostedService<DatabaseInitializerHostedService>();
