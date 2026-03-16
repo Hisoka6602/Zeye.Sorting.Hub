@@ -42,27 +42,47 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         public async Task StartAsync(CancellationToken cancellationToken) {
-            await _retryPolicy.ExecuteAsync(async () => {
-                await using var scope = _serviceProvider.CreateAsyncScope();
-                var db = scope.ServiceProvider.GetRequiredService<SortingHubDbContext>();
+            try {
+                await _retryPolicy.ExecuteAsync(async () => {
+                    await using var scope = _serviceProvider.CreateAsyncScope();
+                    var db = scope.ServiceProvider.GetRequiredService<SortingHubDbContext>();
 
-                _logger.LogInformation("开始执行数据库迁移，Provider={Provider}", _dialect.ProviderName);
-                await db.Database.MigrateAsync(cancellationToken);
-                _logger.LogInformation("数据库迁移完成，Provider={Provider}", _dialect.ProviderName);
+                    _logger.LogInformation("开始执行数据库迁移，Provider={Provider}", _dialect.ProviderName);
+                    await db.Database.MigrateAsync(cancellationToken);
+                    _logger.LogInformation("数据库迁移完成，Provider={Provider}", _dialect.ProviderName);
 
-                await AssertMigrationConsistencyAsync(db, cancellationToken);
+                    await AssertMigrationConsistencyAsync(db, cancellationToken);
 
-                foreach (var sql in _dialect.GetOptionalBootstrapSql()) {
-                    try {
-                        await db.Database.ExecuteSqlRawAsync(sql, cancellationToken);
+                    foreach (var sql in _dialect.GetOptionalBootstrapSql()) {
+                        try {
+                            await db.Database.ExecuteSqlRawAsync(sql, cancellationToken);
+                        }
+                        catch (Exception ex) {
+                            _logger.LogWarning(ex,
+                                "可选初始化 SQL 执行失败，已降级忽略，Provider={Provider}, Sql={Sql}",
+                                _dialect.ProviderName, sql);
+                        }
                     }
-                    catch (Exception ex) {
-                        _logger.LogWarning(ex,
-                            "可选初始化 SQL 执行失败，已降级忽略，Provider={Provider}, Sql={Sql}",
-                            _dialect.ProviderName, sql);
-                    }
-                }
-            });
+                });
+            }
+            catch (OperationCanceledException) {
+                // 宿主正常停止时触发，不计为错误
+                _logger.LogInformation("数据库初始化已因取消令牌中止，Provider={Provider}", _dialect.ProviderName);
+            }
+            catch (Exception ex) {
+                // 重试耗尽或不可恢复异常：记录 Critical 日志，不重新抛出，避免宿主崩溃。
+                //
+                // 降级模式行为：
+                //   - 应用继续运行，IHostedService 生命周期正常完成
+                //   - 后续业务请求若访问数据库，将在 Repository/DbContext 层收到
+                //     连接异常（如 MySqlException / SqlException），需在业务层自行处理
+                //   - 应尽快修复数据库连接问题并重启应用以恢复正常
+                //   - 请监控 logs/database-*.log 文件中的 Critical/Error 日志
+                _logger.LogCritical(ex,
+                    "[数据库初始化] 所有重试均失败，数据库连接不可用，服务将以降级模式运行。" +
+                    "请检查连接字符串与数据库服务状态，Provider={Provider}",
+                    _dialect.ProviderName);
+            }
         }
 
         /// <summary>
@@ -106,10 +126,19 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             // 检查 1：MigrateAsync 之后不应再有待应用迁移
             var pending = (await db.Database.GetPendingMigrationsAsync(cancellationToken)).ToList();
             if (pending.Count > 0) {
-                throw new InvalidOperationException(
-                    $"[CodeFirst 守卫] MigrateAsync 完成后仍存在 {pending.Count} 个未应用迁移，" +
-                    $"可能是并发写入或迁移文件缺失导致的不一致状态。" +
-                    $"未应用迁移：{string.Join(", ", pending)}");
+                // 迁移后仍有未应用项：记录 Critical 日志，继续执行后续可选 SQL。
+                // 实际迁移 (MigrateAsync) 已运行完毕，该情况通常发生在：
+                //   - 迁移文件在部署时被意外删除（History 表有记录但文件不存在）
+                //   - 并发部署竞争导致 History 记录异常
+                // 不抛出异常，以免阻止应用启动；但需运维人员关注 Critical 日志并排查原因。
+                _logger.LogCritical(
+                    "[CodeFirst 守卫] MigrateAsync 完成后仍存在 {PendingCount} 个未应用迁移，" +
+                    "可能是并发写入或迁移文件缺失导致的不一致状态。" +
+                    "未应用迁移：{PendingMigrations}，Provider={Provider}",
+                    pending.Count,
+                    string.Join(", ", pending),
+                    _dialect.ProviderName);
+                return;
             }
 
             // 检查 2：__EFMigrationsHistory 记录数应与代码中定义的迁移总数一致

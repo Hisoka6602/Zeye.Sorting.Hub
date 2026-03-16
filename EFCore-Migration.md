@@ -196,7 +196,7 @@ dotnet ef migrations script \
 
 | 检查项 | 行为 |
 |--------|------|
-| `GetPendingMigrationsAsync()` 不为空 | **抛出异常，阻止启动** — 说明迁移未全部应用 |
+| `GetPendingMigrationsAsync()` 不为空 | **输出 Critical 日志** — 说明迁移未全部应用，不阻止程序启动 |
 | 代码迁移数 ≠ `__EFMigrationsHistory` 记录数 | **输出 Critical 日志** — 提示迁移历史与代码不一致，可能存在人工干预 |
 
 #### 手工 DDL 修改的正确处理方式
@@ -209,7 +209,20 @@ dotnet ef migrations script \
 
 ### Q：部署时数据库还未就绪怎么办？
 
-`DatabaseInitializerHostedService` 内置 Polly 重试策略（最多 6 次，指数退避），数据库容器延迟启动时仍可稳定连接。
+`DatabaseInitializerHostedService` 内置 Polly 重试策略（最多 6 次，指数退避），数据库容器延迟启动时仍可稳定连接。重试耗尽后，数据库异常会记录为 `Critical` 日志，**程序不会崩溃**，将以降级模式运行。
+
+### Q：数据库日志在哪里可以找到？
+
+本项目使用 **Serilog** 实现双路日志落盘：
+
+| 日志文件 | 内容 | 滚动策略 |
+|----------|------|----------|
+| `logs/app-<日期>.log` | 全量应用日志（所有级别） | 按天，保留 30 天 |
+| `logs/database-<日期>.log` | 数据库专属日志：EF Core 迁移、`DatabaseInitializerHostedService`、`DatabaseAutoTuningHostedService`、`Persistence` 层 | 按天，保留 30 天 |
+
+**保证原则**：
+- 任何数据库异常（连接失败、迁移失败、一致性警告等）均记录到 `database-*.log`
+- 无任何数据库异常会导致程序崩溃，最坏情况是降级运行并输出 `Critical` 日志
 
 ### Q：如何针对 SQL Server 使用迁移？
 
