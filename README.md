@@ -255,7 +255,7 @@
 
 #### `Zeye.Sorting.Hub.Infrastructure/Repositories/`：仓储基类与结果模型目录
 - `MemoryCacheRepositoryBase.cs`：带内存缓存失效逻辑的仓储基类。
-- `RepositoryBase.cs`：通用仓储基类（增删改查基础实现）。
+- `RepositoryBase.cs`：通用仓储基类（增删改查 + 自动持久化实现）。
 - `RepositoryResult.cs`：仓储调用结果封装模型。
 
 ### `Zeye.Sorting.Hub.Realtime/`：实时通信子域（当前为占位工程）
@@ -274,55 +274,14 @@
 - `Zeye.Sorting.Hub.Host.Tests.csproj`：xUnit 测试项目定义。
 - `AutoTuningProductionControlTests.cs`：覆盖 dry-run、危险动作隔离、告警防抖与恢复、普通/严重回归、unavailable 指标处理、执行计划探针 available/unavailable 双路径与闭环链路。
 
-## 本次更新内容（L3 闭环自治最小可验证增强）
+## 本次更新内容（代码质量审查与缺陷修复）
 
-1. 为 plan probe 增加配置化最小控制面：`Persistence:AutoTuning:Autonomous:Validation:PlanProbe:Enable/SampleRate`，并在 `DatabaseAutoTuningHostedService` 中通过强类型配置绑定读取与生效。
-2. 增加 `evidence_id/correlation_id` 证据链字段，并贯穿 `stage_transition`、`validation.result`、`validation.metric_unavailable`、`validation.rollback_triggered` 的日志与事件标签。
-3. unavailable 原因枚举化：新增 `AutoTuningUnavailableReason`，统一覆盖 lock-wait unavailable、plan probe unavailable、metric-window-miss 等原因标签。
-4. 继续保持危险动作统一走 isolator 入口：执行动作与回滚动作均通过 `ExecuteThroughIsolatorAsync`，不新增旁路执行链路。
-5. 测试扩充：新增 plan probe 采样关闭路径测试，并增强闭环测试对 `evidence_id/correlation_id` 事件标签断言。
-
-## 配置示例（默认值 / 推荐值 / 生产保守值）
-
-```json
-{
-  "Persistence": {
-    "AutoTuning": {
-      "Autonomous": {
-        "Validation": {
-          "PlanProbe": {
-            "Enable": true,
-            "SampleRate": 1
-          }
-        }
-      }
-    }
-  }
-}
-```
-
-- 默认值：`Enable=true`，`SampleRate=1`（每次验证都探测，便于验收）。
-- 推荐值：`Enable=true`，`SampleRate=0.5`（平衡可观测性与探测开销）。
-- 生产保守值：`Enable=true`，`SampleRate=0.2`（优先控制探测负载）。
-
-## 变更清单
-
-1. 新增 `Zeye.Sorting.Hub.Domain/Enums/AutoTuningUnavailableReason.cs`。
-2. `DatabaseAutoTuningHostedService` 增加 PlanProbe 强类型配置读取、采样判定、证据链标签贯穿。
-3. `AutoTuningAbstractions` 改为使用 unavailable 枚举标签映射，减少自由字符串。
-4. `AutoTuningProductionControlTests` 增加证据链标签断言与采样关闭分支验证。
-5. `appsettings.json` 新增 `Validation:PlanProbe` 配置段与注释。
-
-## 风险清单
-
-1. 新增 `evidence_id` 由 `action_id:fingerprint` 拼接，若后端指标系统把该标签用于聚合，存在潜在高基数风险。
-2. `SampleRate` 过低时会提高 plan-probe unavailable（sampling-skipped）占比，可能降低短周期异常发现概率。
-
-## 回滚清单
-
-1. 配置层回滚：将 `Validation:PlanProbe` 恢复为 `Enable=true, SampleRate=1`（或删除配置段走默认）。
-2. 代码层回滚：回退 `DatabaseAutoTuningHostedService` 与 `AutoTuningAbstractions` 本次提交。
-3. 枚举层回滚：移除 `AutoTuningUnavailableReason` 并恢复历史字符串原因（不推荐）。
+1. **RepositoryBase（逻辑 Bug 修复）**：`AddAsync`/`AddRangeAsync`/`UpdateAsync`/`RemoveAsync` 原本在创建 `DbContext` 后不调用 `SaveChangesAsync` 即释放，所有变更静默丢失。现已在每个变更操作结束前正确调用 `await db.SaveChangesAsync(cancellationToken)`，确保数据持久化。
+2. **SlowQueryAutoTuningPipeline.Collect（死代码移除）**：`while` 循环结束后的 `if (_slowQueries.Count >= _maxQueueSize)` 分支永远不可达（循环保证退出时队列 Count < max），已移除该冗余分支。
+3. **AutoTuningClosedLoopTracker（内存泄漏修复）**：`_stages` 列表在长时运行场景下无上限增长，每天可累积数万条记录。现增加 `MaxStageHistory = 1000` 上限，超出时从列表头部淘汰最旧记录，防止内存泄漏。
+4. **Parcel（注释与错误消息对调修复）**：`TargetChuteId` 的 XML 注释为"实际落格 Id"（实为"目标格口"）、`ActualChuteId` 的注释为"理论落格 Id"（实为"实际落格"），两者语义相反；`Create()` 工厂方法中对应的校验错误消息同样互换。现已修正为正确语义："目标格口 Id（系统路由分配的理论落格位置）"与"实际落格 Id（包裹实际到达的格口位置）"。
+5. **Parcel.Create（CreatedTime 未初始化修复）**：`AuditableEntity.CreatedTime` 为 `protected set` 属性，但 `Parcel.Create()` 工厂方法从未赋值，导致所有新建包裹的 `CreatedTime` 永远为 `DateTime.MinValue`。现已在工厂方法中补充 `CreatedTime = DateTime.Now` 赋值。
+6. **SlowQueryAutoTuningPipeline.GetDecimalOrDefault（文化敏感与语义修复）**：原方法使用不带 `CultureInfo` 的 `decimal.TryParse`（文化敏感），在非英文系统可能解析失败；且 `parsed > 0` 条件错误拒绝 0 值，与同类方法（`GetNonNegativeDecimalOrDefault`）行为不一致。现已修正为 `NumberStyles.Number, CultureInfo.InvariantCulture` 且条件改为 `>= 0m`。
 
 ## 后续可继续完善项
 
@@ -330,3 +289,4 @@
 2. 将自动验证 snapshot diff 输出落地到结构化审计表（而非仅日志），支持长周期追踪与可视化报表。
 3. 引入按表/按业务域的动态阈值学习（结合历史分位数），降低统一阈值在不同负载模型下的误报率。
 4. 为闭环动作增加端到端压测回放（离线流量）验证门禁，进一步提升生产变更安全性。
+5. `IParcelRepository`、`ParcelScannedEventArgs`、`ParcelChuteAssignedEventArgs`、`MySqlContextFactory` 等占位类后续应补充完整实现。

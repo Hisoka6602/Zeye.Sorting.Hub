@@ -53,12 +53,12 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         public long? LifecycleMilliseconds { get; private set; }
 
         /// <summary>
-        /// 实际落格 Id
+        /// 目标格口 Id（系统路由分配的理论落格位置）
         /// </summary>
         public long TargetChuteId { get; private set; }
 
         /// <summary>
-        /// 理论落格 Id
+        /// 实际落格 Id（包裹实际到达的格口位置）
         /// </summary>
         public long ActualChuteId { get; private set; }
 
@@ -225,11 +225,11 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
             }
 
             if (targetChuteId <= 0) {
-                throw new ArgumentOutOfRangeException(nameof(targetChuteId), "实际 Chute Id 必须大于 0");
+                throw new ArgumentOutOfRangeException(nameof(targetChuteId), "目标 Chute Id 必须大于 0");
             }
 
             if (actualChuteId <= 0) {
-                throw new ArgumentOutOfRangeException(nameof(actualChuteId), "理论 Chute Id 必须大于 0");
+                throw new ArgumentOutOfRangeException(nameof(actualChuteId), "实际 Chute Id 必须大于 0");
             }
 
             var entity = new Parcel {
@@ -257,8 +257,8 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
                 HasImages = hasImages,
                 HasVideos = hasVideos,
                 Coordinate = coordinate ?? string.Empty,
+                CreatedTime = DateTime.Now,
             };
-
             return entity;
         }
 

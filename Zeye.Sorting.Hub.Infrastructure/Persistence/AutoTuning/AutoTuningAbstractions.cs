@@ -76,8 +76,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         }
     }
 
-    /// <summary>闭环阶段跟踪器（显式阶段流转）。</summary>
+    /// <summary>闭环阶段跟踪器（显式阶段流转，最多保留最近 <see cref="MaxStageHistory"/> 条记录）。</summary>
     public sealed class AutoTuningClosedLoopTracker {
+        private const int MaxStageHistory = 1000;
         private readonly List<AutoTuningClosedLoopStage> _stages = new();
 
         public AutoTuningClosedLoopTracker() {
@@ -89,6 +90,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         public void MoveTo(AutoTuningClosedLoopStage stage) {
             if (_stages[^1] == stage) {
                 return;
+            }
+
+            if (_stages.Count >= MaxStageHistory) {
+                _stages.RemoveAt(0);
             }
 
             _stages.Add(stage);

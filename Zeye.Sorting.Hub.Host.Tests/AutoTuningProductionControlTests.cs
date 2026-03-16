@@ -461,6 +461,30 @@ public sealed class AutoTuningProductionControlTests {
             tracker.Stages);
     }
 
+    [Fact]
+    public void ClosedLoopTracker_CapsAt1000AndDropsOldestWhenOverflow() {
+        var tracker = new AutoTuningClosedLoopTracker();
+        // Fill exactly to the cap (1000 entries: 1 initial Monitor + 999 alternating Diagnose/Monitor).
+        for (var i = 0; i < 999; i++) {
+            tracker.MoveTo(i % 2 == 0 ? AutoTuningClosedLoopStage.Diagnose : AutoTuningClosedLoopStage.Monitor);
+        }
+        Assert.Equal(1000, tracker.Stages.Count);
+
+        // The initial Monitor entry added by the constructor is still the oldest.
+        Assert.Equal(AutoTuningClosedLoopStage.Monitor, tracker.Stages[0]);
+
+        // Push one more entry beyond the cap.
+        tracker.MoveTo(AutoTuningClosedLoopStage.Execute);
+
+        // Count must stay at the cap.
+        Assert.Equal(1000, tracker.Stages.Count);
+        // The newest entry is the one just added.
+        Assert.Equal(AutoTuningClosedLoopStage.Execute, tracker.Stages[^1]);
+        // The initial Monitor entry has been evicted; the oldest is now index 0 of the previous cycle.
+        Assert.NotEqual(AutoTuningClosedLoopStage.Monitor, tracker.Stages[0]);
+    }
+
+
     private sealed class TestDialect : IDatabaseDialect {
         public string ProviderName => "Test";
         public IReadOnlyList<string> GetOptionalBootstrapSql() => Array.Empty<string>();
