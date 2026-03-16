@@ -162,7 +162,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _severeRollbackTimeoutIncreasePercent = GetNonNegativeDecimalOrDefault(configuration, AutonomousKey("Validation:SevereRollback:TimeoutRateIncreasePercent"), 2m);
             _pauseActionCyclesOnRegression = GetPositiveIntOrDefault(configuration, AutonomousKey("Validation:PauseActionCyclesOnRegression"), 2);
             _enablePlanProbe = GetBoolOrDefault(configuration, AutonomousKey("Validation:PlanProbe:Enable"), true);
-            _planProbeSampleRate = GetDecimalInRangeOrDefault(configuration, AutonomousKey("Validation:PlanProbe:SampleRate"), 1m, 0m, 1m);
+            _planProbeSampleRate = GetDecimalClampedOrDefault(configuration, AutonomousKey("Validation:PlanProbe:SampleRate"), 1m, 0m, 1m);
         }
 
         /// <summary>后台循环：按固定周期分析慢 SQL，并执行自治策略/验证/清理。</summary>
@@ -1157,6 +1157,16 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
 
             return parsed;
+        }
+
+        /// <summary>读取小数配置，非法值回退默认值，合法值按区间截断。</summary>
+        private static decimal GetDecimalClampedOrDefault(IConfiguration configuration, string key, decimal fallback, decimal min, decimal max) {
+            var value = configuration[key];
+            if (!decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)) {
+                return decimal.Clamp(fallback, min, max);
+            }
+
+            return decimal.Clamp(parsed, min, max);
         }
 
         /// <summary>读取布尔配置，非法值回退默认值。</summary>
