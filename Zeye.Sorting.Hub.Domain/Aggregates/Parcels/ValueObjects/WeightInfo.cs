@@ -3,6 +3,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 
 namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
     /// <summary>
@@ -13,11 +14,13 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
         /// <summary>
         /// 原始重量字符串（设备传入原始格式）
         /// </summary>
+        [MaxLength(512)]
         public string RawWeight { get; init; } = string.Empty;
 
         /// <summary>
         /// 取证依据（如图像编号、传感器采样编号等）
         /// </summary>
+        [MaxLength(128)]
         public string EvidenceCode { get; init; } = string.Empty;
 
         /// <summary>

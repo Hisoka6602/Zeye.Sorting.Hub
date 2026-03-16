@@ -33,7 +33,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
         /// 此值仅用于 <c>dotnet ef</c> 工具链的设计时模型分析，不影响运行时连接。
         /// </summary>
         private const string FallbackConnectionString =
-            "Server=127.0.0.1,1433;Database=zeye_sorting_hub;User Id={SQLSERVER_USER};Password={SQLSERVER_PASSWORD};TrustServerCertificate=True;Encrypt=False;";
+            "Server=127.0.0.1,1433;Database=zeye_sorting_hub;User Id=sa;Password=Admin@1234;TrustServerCertificate=True;Encrypt=False;";
 
         /// <summary>
         /// 向上遍历父目录时的最大层级数，防止无限递归到文件系统根目录。

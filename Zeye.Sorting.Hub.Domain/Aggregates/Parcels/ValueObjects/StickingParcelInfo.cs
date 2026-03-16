@@ -3,6 +3,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 
 namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
     /// <summary>
@@ -23,6 +24,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
         /// <summary>
         /// 判断源数据内容（原始字符串或 JSON 格式数据）
         /// </summary>
+        [MaxLength(2048)]
         public string RawData { get; init; } = string.Empty;
 
         /// <summary>

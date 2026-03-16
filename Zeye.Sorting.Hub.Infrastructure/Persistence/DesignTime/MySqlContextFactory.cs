@@ -34,7 +34,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
         /// 此值仅用于 <c>dotnet ef</c> 工具链的设计时模型分析，不影响运行时连接。
         /// </summary>
         private const string FallbackConnectionString =
-            "server=127.0.0.1;port=3306;database=zeye_sorting_hub;uid={MYSQL_USER};pwd={MYSQL_PASSWORD};SslMode=None;";
+            "server=127.0.0.1;port=3306;database=zeye_sorting_hub;uid=root;pwd=Admin@1234;SslMode=None;";
 
         /// <summary>
         /// 向上遍历父目录时的最大层级数，防止无限递归到文件系统根目录。

@@ -3,6 +3,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using Zeye.Sorting.Hub.Domain.Enums;
 
 namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
@@ -19,11 +20,13 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
         /// <summary>
         /// 原始体积字符串（设备返回的原始格式）
         /// </summary>
+        [MaxLength(512)]
         public string RawVolume { get; init; } = string.Empty;
 
         /// <summary>
         /// 取证依据（如图像编号、3D 模型编号等）
         /// </summary>
+        [MaxLength(128)]
         public string EvidenceCode { get; init; } = string.Empty;
 
         /// <summary>
