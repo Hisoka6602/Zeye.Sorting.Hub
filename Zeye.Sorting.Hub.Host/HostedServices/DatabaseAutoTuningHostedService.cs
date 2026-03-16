@@ -1,4 +1,7 @@
+using System.Buffers.Binary;
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Zeye.Sorting.Hub.Domain.Enums;
@@ -158,16 +161,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _severeRollbackP99IncreasePercent = GetNonNegativeDecimalOrDefault(configuration, AutonomousKey("Validation:SevereRollback:P99IncreasePercent"), 25m);
             _severeRollbackTimeoutIncreasePercent = GetNonNegativeDecimalOrDefault(configuration, AutonomousKey("Validation:SevereRollback:TimeoutRateIncreasePercent"), 2m);
             _pauseActionCyclesOnRegression = GetPositiveIntOrDefault(configuration, AutonomousKey("Validation:PauseActionCyclesOnRegression"), 2);
-            var planProbeSection = configuration.GetSection(AutonomousKey("Validation:PlanProbe"));
-            var planProbeOptions = planProbeSection.Get<PlanProbeOptions>();
-            if (planProbeOptions is null) {
-                if (planProbeSection.Exists()) {
-                    _logger.LogWarning("PlanProbe 配置绑定失败，将使用默认值：Enable=true, SampleRate=1。");
-                }
-                planProbeOptions = new PlanProbeOptions();
-            }
-            _enablePlanProbe = planProbeOptions.Enable;
-            _planProbeSampleRate = decimal.Clamp(planProbeOptions.SampleRate, 0m, 1m);
+            _enablePlanProbe = GetBoolOrDefault(configuration, AutonomousKey("Validation:PlanProbe:Enable"), true);
+            _planProbeSampleRate = GetDecimalClampedOrDefault(configuration, AutonomousKey("Validation:PlanProbe:SampleRate"), 1m, 0m, 1m);
         }
 
         /// <summary>后台循环：按固定周期分析慢 SQL，并执行自治策略/验证/清理。</summary>
@@ -839,8 +834,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
 
             var seed = $"{rollback.ActionId}:{rollback.Fingerprint}";
-            var normalizedHash = (uint)seed.GetHashCode(StringComparison.Ordinal);
-            var bucket = normalizedHash % 10000u;
+            var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(seed));
+            var bucket = BinaryPrimitives.ReadUInt32LittleEndian(hashBytes) % 10000u;
             var threshold = (int)Math.Round((double)(_planProbeSampleRate * 10000m), MidpointRounding.AwayFromZero);
             return bucket < (uint)threshold;
         }
@@ -1164,6 +1159,16 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return parsed;
         }
 
+        /// <summary>读取小数配置，非法值回退默认值，合法值按区间钳制。</summary>
+        private static decimal GetDecimalClampedOrDefault(IConfiguration configuration, string key, decimal fallback, decimal min, decimal max) {
+            var value = configuration[key];
+            if (!decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)) {
+                return fallback;
+            }
+
+            return decimal.Clamp(parsed, min, max);
+        }
+
         /// <summary>读取布尔配置，非法值回退默认值。</summary>
         private static bool GetBoolOrDefault(IConfiguration configuration, string key, bool fallback) {
             var value = configuration[key];
@@ -1286,11 +1291,6 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             DateTime CapturedLocalTime,
             long AffectedRows,
             int CallCount);
-
-        private sealed class PlanProbeOptions {
-            public bool Enable { get; init; } = true;
-            public decimal SampleRate { get; init; } = 1m;
-        }
 
         private readonly record struct EvidenceContext(string EvidenceId, string CorrelationId);
 

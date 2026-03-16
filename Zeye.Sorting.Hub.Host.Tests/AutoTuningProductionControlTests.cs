@@ -1,3 +1,6 @@
+using System.Buffers.Binary;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -291,6 +294,155 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     [Fact]
+    public async Task WhenPlanProbeSampleRateInvalid_FallsBackToDefaultAndInvokesProbe() {
+        var logger = new TestLogger<DatabaseAutoTuningHostedService>();
+        var observability = new TestObservability();
+        var probe = new CountingPlanProbe();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:AutoTuning:Autonomous:EnableFullAutomation"] = "true",
+                ["Persistence:AutoTuning:Autonomous:Validation:EnableAutoValidation"] = "true",
+                ["Persistence:AutoTuning:Autonomous:Validation:EnableAutoRollback"] = "false",
+                ["Persistence:AutoTuning:Autonomous:Validation:DelayCycles"] = "1",
+                ["Persistence:AutoTuning:Autonomous:Validation:PlanProbe:Enable"] = "true",
+                ["Persistence:AutoTuning:Autonomous:Validation:PlanProbe:SampleRate"] = "not-a-number"
+            })
+            .Build();
+        var pipeline = new SlowQueryAutoTuningPipeline(configuration, observability);
+        var service = new DatabaseAutoTuningHostedService(
+            logger,
+            observability,
+            probe,
+            new EmptyServiceScopeFactory(),
+            new TestDialect(),
+            pipeline,
+            configuration);
+
+        SetField(service, "_analysisCycleCounter", 2);
+        SeedPendingRollback(service);
+        var validate = typeof(DatabaseAutoTuningHostedService).GetMethod("ValidateAutonomousActionsAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        var result = new SlowQueryAnalysisResult(
+            DateTime.Now,
+            0,
+            [
+                new SlowQueryMetric(
+                    "fingerprint-001",
+                    "select * from parcels where code = @p0",
+                    2,
+                    10,
+                    2m,
+                    3m,
+                    2,
+                    1200d,
+                    1800d,
+                    1800d,
+                    null)
+            ],
+            Array.Empty<SlowQueryTuningCandidate>(),
+            Array.Empty<string>(),
+            Array.Empty<SlowQuerySuggestionInsight>(),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            Array.Empty<SlowQueryAlertNotification>(),
+            false);
+        var metricsByFingerprint = result.Metrics.ToDictionary(static x => x.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
+        var validateTask = (Task)validate.Invoke(service, [result, metricsByFingerprint, CancellationToken.None])!;
+        await validateTask;
+
+        Assert.Equal(1, probe.CallCount);
+    }
+
+    [Theory]
+    [InlineData("-0.1", 0)]
+    [InlineData("1.8", 1)]
+    public async Task WhenPlanProbeSampleRateOutOfRange_ClampsToLegacyBehavior(string sampleRate, int expectedCallCount) {
+        var logger = new TestLogger<DatabaseAutoTuningHostedService>();
+        var observability = new TestObservability();
+        var probe = new CountingPlanProbe();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:AutoTuning:Autonomous:EnableFullAutomation"] = "true",
+                ["Persistence:AutoTuning:Autonomous:Validation:EnableAutoValidation"] = "true",
+                ["Persistence:AutoTuning:Autonomous:Validation:EnableAutoRollback"] = "false",
+                ["Persistence:AutoTuning:Autonomous:Validation:DelayCycles"] = "1",
+                ["Persistence:AutoTuning:Autonomous:Validation:PlanProbe:Enable"] = "true",
+                ["Persistence:AutoTuning:Autonomous:Validation:PlanProbe:SampleRate"] = sampleRate
+            })
+            .Build();
+        var pipeline = new SlowQueryAutoTuningPipeline(configuration, observability);
+        var service = new DatabaseAutoTuningHostedService(
+            logger,
+            observability,
+            probe,
+            new EmptyServiceScopeFactory(),
+            new TestDialect(),
+            pipeline,
+            configuration);
+
+        SetField(service, "_analysisCycleCounter", 2);
+        SeedPendingRollback(service);
+        var validate = typeof(DatabaseAutoTuningHostedService).GetMethod("ValidateAutonomousActionsAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        var result = new SlowQueryAnalysisResult(
+            DateTime.Now,
+            0,
+            [
+                new SlowQueryMetric(
+                    "fingerprint-001",
+                    "select * from parcels where code = @p0",
+                    2,
+                    10,
+                    2m,
+                    3m,
+                    2,
+                    1200d,
+                    1800d,
+                    1800d,
+                    null)
+            ],
+            Array.Empty<SlowQueryTuningCandidate>(),
+            Array.Empty<string>(),
+            Array.Empty<SlowQuerySuggestionInsight>(),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            Array.Empty<SlowQueryAlertNotification>(),
+            false);
+        var metricsByFingerprint = result.Metrics.ToDictionary(static x => x.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
+        var validateTask = (Task)validate.Invoke(service, [result, metricsByFingerprint, CancellationToken.None])!;
+        await validateTask;
+
+        Assert.Equal(expectedCallCount, probe.CallCount);
+    }
+
+    [Fact]
+    public void WhenShouldSamplePlanProbeInvoked_UsesStableHashBucket() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:AutoTuning:Autonomous:Validation:PlanProbe:Enable"] = "true",
+                ["Persistence:AutoTuning:Autonomous:Validation:PlanProbe:SampleRate"] = "0.1234"
+            })
+            .Build();
+        var service = new DatabaseAutoTuningHostedService(
+            new TestLogger<DatabaseAutoTuningHostedService>(),
+            new TestObservability(),
+            new FixedPlanProbe(),
+            new EmptyServiceScopeFactory(),
+            new TestDialect(),
+            new SlowQueryAutoTuningPipeline(configuration, new TestObservability()),
+            configuration);
+
+        SeedPendingRollback(service);
+        var rollback = GetSeededRollbackAction(service);
+        var shouldSample = typeof(DatabaseAutoTuningHostedService).GetMethod("ShouldSamplePlanProbe", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        var sampled = (bool)shouldSample.Invoke(service, [rollback])!;
+
+        const string seed = "action-001:fingerprint-001";
+        var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(seed));
+        var bucket = BinaryPrimitives.ReadUInt32LittleEndian(hashBytes) % 10000u;
+        var threshold = (uint)Math.Round(0.1234d * 10000d, MidpointRounding.AwayFromZero);
+        Assert.Equal(bucket < threshold, sampled);
+    }
+
+    [Fact]
     public void ClosedLoopTracker_RecordsMonitorExecuteVerifyRollbackChain() {
         var tracker = new AutoTuningClosedLoopTracker();
         tracker.MoveTo(AutoTuningClosedLoopStage.Diagnose);
@@ -355,6 +507,16 @@ public sealed class AutoTuningProductionControlTests {
             null)!;
         var addMethod = map.GetType().GetMethod("Add")!;
         addMethod.Invoke(map, ["fingerprint-001", record]);
+    }
+
+    private static object GetSeededRollbackAction(DatabaseAutoTuningHostedService service) {
+        var mapField = typeof(DatabaseAutoTuningHostedService).GetField("_pendingRollbackByFingerprint", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        var map = mapField.GetValue(service)!;
+        var valuesProperty = map.GetType().GetProperty("Values")!;
+        var values = (System.Collections.IEnumerable)valuesProperty.GetValue(map)!;
+        var enumerator = values.GetEnumerator();
+        Assert.True(enumerator.MoveNext());
+        return enumerator.Current!;
     }
 
     private sealed class TestObservability : IAutoTuningObservability {
