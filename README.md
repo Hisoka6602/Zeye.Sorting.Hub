@@ -118,6 +118,7 @@
 │   ├── Class1.cs（占位类，预留通用基础能力）
 │   └── Zeye.Sorting.Hub.SharedKernel.csproj（SharedKernel 项目定义）
 ├── Zeye.Sorting.Hub.sln（.NET 解决方案入口）
+├── Parcel属性新增操作指南.md（Parcel 聚合新增属性时的文件修改操作指南）
 └── 项目完成度与推进计划.md（项目阶段评估与路线图文档）
 ```
 
@@ -137,6 +138,7 @@
 - `.gitignore`：Git 忽略规则（如 `bin/`、`obj/`、IDE 临时文件）。
 - `README.md`：仓库总览、结构清单与维护规范文档。
 - `Zeye.Sorting.Hub.sln`：.NET 解决方案入口，聚合全部项目。
+- `Parcel属性新增操作指南.md`：当 Parcel 聚合需要新增属性时，需要修改哪些文件、如何修改的操作指南（含三种情形：主表标量属性、现有值对象属性、新增值对象）。
 - `项目完成度与推进计划.md`：项目阶段评估与路线图文档。
 
 ### `.github/`：Copilot 仓库级指令目录
@@ -275,6 +277,10 @@
 ### `Zeye.Sorting.Hub.Host.Tests/`：自动调优测试层
 - `Zeye.Sorting.Hub.Host.Tests.csproj`：xUnit 测试项目定义。
 - `AutoTuningProductionControlTests.cs`：覆盖 dry-run、危险动作隔离、告警防抖与恢复、普通/严重回归、unavailable 指标处理、执行计划探针 available/unavailable 双路径与闭环链路。
+
+## 本次更新内容（新增 Parcel 属性操作指南文档）
+
+1. **新增 `Parcel属性新增操作指南.md`**：详细说明当 Parcel 聚合需要新增属性时，需要修改哪些文件及如何修改。文档涵盖三种情形：①在聚合根主表新增标量属性（修改 `Parcel.cs` + `ParcelEntityTypeConfiguration.cs` + 执行迁移）；②在现有值对象中新增属性（修改对应值对象文件 + `ParcelEntityTypeConfiguration.cs` + 执行迁移）；③新增全新值对象（新建值对象文件 + 修改 `Parcel.cs` + 修改 `ParcelEntityTypeConfiguration.cs` + 更新 `README.md` + 执行迁移）。附完整检查清单与当前 Parcel 主表字段一览。
 
 ## 本次更新内容（代码质量审查与缺陷修复）
 
