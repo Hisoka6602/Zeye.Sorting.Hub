@@ -112,30 +112,35 @@ dotnet ef migrations script \
 
 ---
 
-## 5. 设计时工厂说明（`MySqlContextFactory`）
+## 5. 设计时工厂说明（`MySqlContextFactory` / `SqlServerContextFactory`）
 
 `IDesignTimeDbContextFactory<SortingHubDbContext>` 的作用是让 `dotnet ef` 工具在没有宿主进程的情况下也能构建 `SortingHubDbContext`。
 
-### 5.1 版本解析策略（三级优先级，不主动锁定版本）
+### 5.1 版本解析策略（两级优先级，不主动锁定版本）
 
 `MySqlContextFactory` 通过 `ResolveServerVersion()` 按以下顺序确定 MySQL 版本，**不会硬性锁定版本号**：
 
 | 优先级 | 机制 | 触发条件 | 说明 |
 |--------|------|----------|------|
 | 1 | `ServerVersion.AutoDetect` | 数据库可连通 | 最准确，无任何版本限制 |
-| 2 | 环境变量 `MYSQL_SERVER_VERSION`（格式 `8.4.0`）| AutoDetect 失败且环境变量已设置 | 适用于 CI/CD 或本地无数据库场景 |
-| 3 | 兜底 `8.0.0` | 前两步均失败 | **仅影响 `dotnet ef` 工具链模型分析，不影响运行时行为**；选用 8.0 是因其为 Pomelo 当前最主流 LTS 基准，不限制实际部署的数据库版本 |
+| 2 | 兜底 `8.0.0` | AutoDetect 失败 | **仅影响 `dotnet ef` 工具链模型分析，不影响运行时行为**；选用 8.0 是因其为 Pomelo 当前最主流 LTS 基准，不限制实际部署的数据库版本 |
 
-> **说明**：步骤 3 的兜底版本仅用于 EF Core 在设计时推断 MySQL 方言特性（如是否支持 JSON 列、生成列等），不会限制实际部署时所连接的 MySQL 版本。运行时 `PersistenceServiceCollectionExtensions` 会独立调用 `ServerVersion.AutoDetect` 探测真实版本。
+> **说明**：步骤 2 的兜底版本仅用于 EF Core 在设计时推断 MySQL 方言特性，不会限制实际部署时所连接的 MySQL 版本。
 
 ### 5.2 连接字符串配置
 
-| 优先级 | 来源 | 说明 |
-|--------|------|------|
-| 1 | 环境变量 `MYSQL_CONNECTION_STRING` | 推荐用于 CI/CD 及有数据库的开发环境 |
-| 2 | 代码内占位值 | 设计时无数据库时使用，`dotnet ef migrations add` 不需要真实连接 |
+连接字符串从 `appsettings.json` 中的 `ConnectionStrings:MySql`（MySQL）或 `ConnectionStrings:SqlServer`（SQL Server）读取。
 
-执行 `dotnet ef database update` 时，务必通过 `--connection` 参数或 `MYSQL_CONNECTION_STRING` 环境变量传入真实连接字符串。
+工厂按以下顺序搜索 `appsettings.json`：
+
+| 优先级 | 搜索路径 | 适用场景 |
+|--------|----------|----------|
+| 1 | 当前工作目录 | 从 Host 项目目录或解决方案根运行 `dotnet ef` |
+| 2 | 相邻的 `Zeye.Sorting.Hub.Host/` 子目录 | 从 Infrastructure 项目目录运行 `dotnet ef` |
+| 3 | 向上遍历父目录寻找 `Zeye.Sorting.Hub.Host/` | 从任意子目录运行 `dotnet ef` |
+| 4 | 代码内占位值（兜底） | 无法找到 `appsettings.json` 时，仅用于工具链模型分析 |
+
+> **推荐运行方式**：在解决方案根目录运行 `dotnet ef`，工厂会自动找到 `Zeye.Sorting.Hub.Host/appsettings.json` 中的连接字符串。
 
 ---
 
@@ -213,12 +218,17 @@ dotnet ef migrations script \
 
 ### Q：数据库日志在哪里可以找到？
 
-本项目使用 **Serilog** 实现双路日志落盘：
+本项目使用 **NLog** 实现双路日志落盘（详见 `nlog.config`）：
 
-| 日志文件 | 内容 | 滚动策略 |
+| 日志文件 | 内容 | 归档策略 |
 |----------|------|----------|
 | `logs/app-<日期>.log` | 全量应用日志（所有级别） | 按天，保留 30 天 |
 | `logs/database-<日期>.log` | 数据库专属日志：EF Core 迁移、`DatabaseInitializerHostedService`、`DatabaseAutoTuningHostedService`、`Persistence` 层 | 按天，保留 30 天 |
+
+**NLog 低开销配置**：
+- `targets async="true"` — 异步队列，写盘不阻塞业务线程
+- `keepFileOpen="true"` — 文件句柄常开，避免每行重复 open/close
+- `optimizeBufferReuse="true"` — 复用内存缓冲区，减少 GC 分配
 
 **保证原则**：
 - 任何数据库异常（连接失败、迁移失败、一致性警告等）均记录到 `database-*.log`
@@ -226,16 +236,14 @@ dotnet ef migrations script \
 
 ### Q：如何针对 SQL Server 使用迁移？
 
-`SqlServerContextFactory.cs` 已在 `Persistence/DesignTime/` 目录下创建。使用以下命令生成 SQL Server 迁移：
+`SqlServerContextFactory.cs` 已在 `Persistence/DesignTime/` 目录下创建，连接字符串从 `appsettings.json` 中的 `ConnectionStrings:SqlServer` 读取。使用以下命令生成 SQL Server 迁移：
 
 ```bash
-# 设置 SQL Server 连接字符串（可选，未设置时使用占位值）
-export SQLSERVER_CONNECTION_STRING="Server=127.0.0.1,1433;Database=zeye_sorting_hub;..."
-
-# 生成迁移
+# 1. 在 appsettings.json 中确认 ConnectionStrings:SqlServer 配置了真实连接字符串
+# 2. 在解决方案根目录运行（工厂会自动找到 Zeye.Sorting.Hub.Host/appsettings.json）
 dotnet ef migrations add <迁移名称> \
   --project Zeye.Sorting.Hub.Infrastructure \
-  --startup-project Zeye.Sorting.Hub.Infrastructure \
+  --startup-project Zeye.Sorting.Hub.Host \
   --output-dir Persistence/Migrations \
   --context SortingHubDbContext
 ```

@@ -1,11 +1,12 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
+using Microsoft.Extensions.Configuration;
 using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
 
     /// <summary>
-    /// 设计时 DbContext 工厂，供 <c>dotnet ef</c> 迁移工具在无宿主进程时构建 <see cref="SortingHubDbContext"/>。
+    /// MySQL 设计时 DbContext 工厂，供 <c>dotnet ef</c> 迁移工具在无宿主进程时构建 <see cref="SortingHubDbContext"/>。
     /// </summary>
     /// <remarks>
     /// <para>该工厂仅在以下场景被调用：</para>
@@ -16,23 +17,34 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
     ///   <item><description><c>dotnet ef dbcontext script</c> — 生成 DDL SQL 脚本</description></item>
     /// </list>
     /// <para>
-    /// 连接字符串优先读取环境变量 <c>MYSQL_CONNECTION_STRING</c>，未设置时使用本地占位值。
-    /// 若需执行 <c>database update</c>，请通过 <c>--connection</c> 参数传入真实连接字符串，或设置上述环境变量。
+    /// 连接字符串从 <c>appsettings.json</c>（<c>ConnectionStrings:MySql</c>）读取。
+    /// 工厂按以下顺序搜索 <c>appsettings.json</c>：
+    /// <list type="number">
+    ///   <item><description>当前工作目录（适用于从 Host 或解决方案根目录运行 <c>dotnet ef</c>）</description></item>
+    ///   <item><description>当前工作目录的相邻 <c>Zeye.Sorting.Hub.Host</c> 子目录（适用于从 Infrastructure 目录运行）</description></item>
+    ///   <item><description>向上遍历父目录寻找 <c>Zeye.Sorting.Hub.Host</c> 子目录</description></item>
+    ///   <item><description>以上均未找到时使用硬编码占位连接字符串（仅影响设计时工具链，不影响运行时）</description></item>
+    /// </list>
     /// </para>
     /// </remarks>
     internal sealed class MySqlContextFactory : IDesignTimeDbContextFactory<SortingHubDbContext> {
 
         /// <summary>
-        /// 设计时占位连接字符串，仅在未设置 <c>MYSQL_CONNECTION_STRING</c> 环境变量时使用。
+        /// 设计时兜底占位连接字符串，仅在无法从 <c>appsettings.json</c> 读取时使用。
+        /// 此值仅用于 <c>dotnet ef</c> 工具链的设计时模型分析，不影响运行时连接。
         /// </summary>
         private const string FallbackConnectionString =
-            "server=127.0.0.1;port=3306;database=zeye_sorting_hub;uid=root;pwd=root;SslMode=None;";
+            "server=127.0.0.1;port=3306;database=zeye_sorting_hub;uid={MYSQL_USER};pwd={MYSQL_PASSWORD};SslMode=None;";
+
+        /// <summary>
+        /// 向上遍历父目录时的最大层级数，防止无限递归到文件系统根目录。
+        /// </summary>
+        private const int MaxParentDirectorySearchDepth = 6;
 
         /// <inheritdoc />
         public SortingHubDbContext CreateDbContext(string[] args) {
-            var connectionString = Environment.GetEnvironmentVariable("MYSQL_CONNECTION_STRING")
-                ?? FallbackConnectionString;
-
+            var config = LoadConfiguration();
+            var connectionString = config.GetConnectionString("MySql") ?? FallbackConnectionString;
             var serverVersion = ResolveServerVersion(connectionString);
 
             var options = new DbContextOptionsBuilder<SortingHubDbContext>()
@@ -43,41 +55,68 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
         }
 
         /// <summary>
+        /// 从 <c>appsettings.json</c> 加载配置。
+        /// 按优先级搜索以下路径：当前工作目录 → 相邻 Host 目录 → 向上遍历父目录中的 Host 子目录。
+        /// </summary>
+        private static IConfiguration LoadConfiguration() {
+            var basePath = FindAppsettingsDirectory();
+            if (basePath is null) {
+                return new ConfigurationBuilder().Build();
+            }
+
+            return new ConfigurationBuilder()
+                .SetBasePath(basePath)
+                .AddJsonFile("appsettings.json", optional: true)
+                .AddJsonFile("appsettings.Development.json", optional: true)
+                .Build();
+        }
+
+        /// <summary>
+        /// 按优先级搜索包含 <c>appsettings.json</c> 的目录。
+        /// </summary>
+        private static string? FindAppsettingsDirectory() {
+            var cwd = Directory.GetCurrentDirectory();
+
+            // 优先级 1：当前目录直接包含 appsettings.json（从 Host 或解决方案根运行）
+            if (File.Exists(Path.Combine(cwd, "appsettings.json"))) {
+                return cwd;
+            }
+
+            // 优先级 2 & 3：向上遍历，寻找包含 Zeye.Sorting.Hub.Host/appsettings.json 的目录
+            var dir = new DirectoryInfo(cwd);
+            for (var i = 0; i < MaxParentDirectorySearchDepth && dir != null; i++) {
+                var hostAppsettings = Path.Combine(dir.FullName, "Zeye.Sorting.Hub.Host", "appsettings.json");
+                if (File.Exists(hostAppsettings)) {
+                    return Path.Combine(dir.FullName, "Zeye.Sorting.Hub.Host");
+                }
+
+                dir = dir.Parent;
+            }
+
+            return null;
+        }
+
+        /// <summary>
         /// 按优先级解析 MySQL 服务端版本，不主动锁定版本号：
         /// <list type="number">
         ///   <item><description>
         ///     <c>ServerVersion.AutoDetect</c> — 最优先；数据库可连通时自动探测，无任何版本限制。
         ///   </description></item>
         ///   <item><description>
-        ///     环境变量 <c>MYSQL_SERVER_VERSION</c>（格式：<c>8.4.0</c>）— 设计时无数据库时的可配置项，
-        ///     适用于 CI/CD 流水线或本地无数据库环境。
-        ///   </description></item>
-        ///   <item><description>
-        ///     兜底 MySQL 8.0 — 仅当前两步均失败时使用。
-        ///     此处选用 8.0 是因为它是 Pomelo EF Core MySQL 提供程序当前最主流的 LTS 基准版本；
-        ///     该值仅影响 <c>dotnet ef</c> 设计时模型分析，不影响运行时的 <c>ServerVersion.AutoDetect</c> 行为。
+        ///     兜底 MySQL 8.0 — 仅当 AutoDetect 失败时使用（设计时无数据库为正常场景）。
+        ///     该值仅影响 <c>dotnet ef</c> 设计时模型分析，不影响运行时的 AutoDetect 行为。
         ///   </description></item>
         /// </list>
         /// </summary>
         private static ServerVersion ResolveServerVersion(string connectionString) {
-            // 步骤 1：优先 AutoDetect，数据库可连通时最准确且无版本限制
             try {
                 return ServerVersion.AutoDetect(connectionString);
             }
             catch {
-                // 设计时无数据库连接属正常情况，静默降级到下一步
+                // 设计时无数据库连接属正常情况，静默降级到兜底版本
             }
 
-            // 步骤 2：环境变量覆盖，适用于 CI/CD 或本地无数据库场景
-            var envVersion = Environment.GetEnvironmentVariable("MYSQL_SERVER_VERSION");
-            if (!string.IsNullOrWhiteSpace(envVersion) &&
-                Version.TryParse(envVersion, out var parsedVersion)) {
-                return new MySqlServerVersion(parsedVersion);
-            }
-
-            // 步骤 3：兜底最小版本，仅用于 dotnet ef 工具链模型分析
             return new MySqlServerVersion(new Version(8, 0, 0));
         }
     }
 }
-

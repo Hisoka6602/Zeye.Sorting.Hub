@@ -76,6 +76,7 @@
 │   │   └── launchSettings.json（本地启动配置）
 │   ├── Worker.cs（后台轮询任务示例服务）
 │   ├── Zeye.Sorting.Hub.Host.csproj（Host 项目定义）
+│   ├── nlog.config（NLog 日志配置：双路落盘，低开销异步写盘）
 │   ├── appsettings.Development.json（开发环境配置）
 │   └── appsettings.json（默认运行配置）
 ├── Zeye.Sorting.Hub.Host.Tests（自动调优行为测试工程）
@@ -221,10 +222,11 @@
 - `IParcelRepository.cs`：包裹仓储接口（当前为占位接口定义）。
 
 ### `Zeye.Sorting.Hub.Host/`：宿主层（程序入口、后台服务、启动配置）
-- `Program.cs`：应用入口与 Host 构建流程。
+- `Program.cs`：应用入口与 Host 构建流程；使用 NLog 替换默认日志提供器，任何启动期异常均记录后再退出。
 - `Worker.cs`：后台轮询任务示例服务。
 - `Zeye.Sorting.Hub.Host.csproj`：Host 项目定义。
-- `appsettings.json`：默认运行配置。
+- `nlog.config`：NLog 日志配置，双路落盘（`logs/app-*.log` 全量 + `logs/database-*.log` 数据库专属），低开销设计（异步队列 + keepFileOpen + optimizeBufferReuse），保留 30 天。
+- `appsettings.json`：默认运行配置（包含连接字符串、持久化参数、日志级别）。
 - `appsettings.Development.json`：开发环境配置覆盖文件。
 
 #### `Zeye.Sorting.Hub.Host/HostedServices/`：启动/常驻托管服务目录
@@ -326,7 +328,7 @@
 1. **`MySqlContextFactory` 实现（`IDesignTimeDbContextFactory<SortingHubDbContext>`）**：将原本的空占位类补充为完整的设计时工厂实现，连接字符串优先读取环境变量 `MYSQL_CONNECTION_STRING`，版本采用 AutoDetect → 环境变量 → 兜底 8.0 三级策略。
 2. **`SqlServerContextFactory` 新建**：新增 SQL Server 设计时工厂，连接字符串读取环境变量 `SQLSERVER_CONNECTION_STRING`，确保两种数据库均可通过 `dotnet ef` CLI 生成迁移。
 3. **初始迁移 `InitialCreate` 生成**：执行 `dotnet ef migrations add InitialCreate` 生成三个迁移文件（`20260316184030_InitialCreate.cs`、`20260316184030_InitialCreate.Designer.cs`、`SortingHubDbContextModelSnapshot.cs`），覆盖全部实体表（Parcels 主表及 14 个值对象属性表），建表与回滚逻辑完整。
-4. **Serilog 双路日志落盘**：引入 Serilog，`logs/app-*.log` 记录全量日志，`logs/database-*.log` 记录数据库专属日志（EF Core 迁移、`DatabaseInitializerHostedService`、`DatabaseAutoTuningHostedService`、Persistence 层），按天滚动，保留 30 天。任何数据库异常均记录，不导致程序崩溃。
+4. **NLog 双路日志落盘**：使用 NLog 替换 Serilog，`logs/app-*.log` 记录全量日志，`logs/database-*.log` 记录数据库专属日志（EF Core 迁移、`DatabaseInitializerHostedService`、`DatabaseAutoTuningHostedService`、Persistence 层），按天归档，保留 30 天。低开销设计：异步队列 + keepFileOpen + optimizeBufferReuse。任何数据库异常均记录，不导致程序崩溃。
 5. **CodeFirst 迁移一致性守卫（`AssertMigrationConsistencyAsync`）**：每次启动后检测未应用迁移与迁移历史差异，输出具体差异的迁移名称（在代码中但未应用 / 已应用但代码中不存在），不抛出异常，不阻止程序运行。
 6. **`EFCore-Migration.md` 新增**：创建迁移使用说明文档，涵盖迁移架构总览、运行时自动迁移流程、CLI 命令速查、设计时工厂说明、分表与迁移的职责分离说明、数据库日志落盘说明及常见问题。
 7. **`NewDatabaseProvider-Guide.md` 新增**：以 SQLite 为例，逐步说明接入第三种数据库提供器时需修改的文件（NuGet 包、方言实现、设计时工厂、DI 注册、appsettings、迁移生成），并附接入核查清单与常见注意事项。

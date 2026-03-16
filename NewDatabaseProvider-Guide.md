@@ -96,26 +96,47 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
 ```csharp
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
+using Microsoft.Extensions.Configuration;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
 
     /// <summary>
     /// SQLite 设计时 DbContext 工厂，供 dotnet ef 迁移工具使用。
-    /// 连接字符串优先读取环境变量 SQLITE_CONNECTION_STRING，未设置时使用本地占位文件。
+    /// 连接字符串从 appsettings.json 中的 ConnectionStrings:Sqlite 读取。
     /// </summary>
     internal sealed class SqliteContextFactory : IDesignTimeDbContextFactory<SortingHubDbContext> {
 
         private const string FallbackConnectionString = "Data Source=zeye_sorting_hub_dev.db";
 
         public SortingHubDbContext CreateDbContext(string[] args) {
-            var connectionString = Environment.GetEnvironmentVariable("SQLITE_CONNECTION_STRING")
-                ?? FallbackConnectionString;
+            var config = LoadConfiguration();
+            var connectionString = config.GetConnectionString("Sqlite") ?? FallbackConnectionString;
 
             var options = new DbContextOptionsBuilder<SortingHubDbContext>()
                 .UseSqlite(connectionString)
                 .Options;
 
             return new SortingHubDbContext(options);
+        }
+
+        private static IConfiguration LoadConfiguration() {
+            var cwd = Directory.GetCurrentDirectory();
+            if (File.Exists(Path.Combine(cwd, "appsettings.json")))
+                return new ConfigurationBuilder().SetBasePath(cwd)
+                    .AddJsonFile("appsettings.json", optional: true)
+                    .AddJsonFile("appsettings.Development.json", optional: true).Build();
+
+            var dir = new DirectoryInfo(cwd);
+            for (var i = 0; i < 6 && dir != null; i++) {
+                var hostPath = Path.Combine(dir.FullName, "Zeye.Sorting.Hub.Host", "appsettings.json");
+                if (File.Exists(hostPath))
+                    return new ConfigurationBuilder()
+                        .SetBasePath(Path.Combine(dir.FullName, "Zeye.Sorting.Hub.Host"))
+                        .AddJsonFile("appsettings.json", optional: true)
+                        .AddJsonFile("appsettings.Development.json", optional: true).Build();
+                dir = dir.Parent;
+            }
+            return new ConfigurationBuilder().Build();
         }
     }
 }
@@ -248,5 +269,5 @@ dotnet ef migrations add InitialCreate \
 ### 连接字符串安全
 
 - 禁止在代码或 `appsettings.json` 中提交真实数据库凭据
-- 生产环境通过环境变量（`MYSQL_CONNECTION_STRING` / `SQLSERVER_CONNECTION_STRING` / `SQLITE_CONNECTION_STRING`）或 Secrets Manager 注入连接字符串
-- `appsettings.json` 中的连接字符串仅作格式示例，使用 `{PLACEHOLDER}` 标记敏感字段
+- 生产环境在 `appsettings.json` 中使用 `{PLACEHOLDER}` 标记敏感字段，通过 .NET User Secrets（本地开发）或运维部署流程中的配置注入替换为真实值
+- `appsettings.json` 中的连接字符串仅作格式示例，避免提交真实用户名/密码到版本控制
