@@ -108,11 +108,16 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <list type="number">
         ///   <item><description>
         ///     调用 <c>GetPendingMigrationsAsync()</c>：若 <c>MigrateAsync()</c> 后仍有未应用迁移，
-        ///     说明存在异常，立即抛出异常阻止启动。
+        ///     说明存在异常，记录 Critical 日志。
         ///   </description></item>
         ///   <item><description>
         ///     对比代码程序集中的迁移总数与 <c>__EFMigrationsHistory</c> 中的记录数：
         ///     若记录数多于代码（迁移历史被外部污染）或少于代码（迁移历史记录丢失），记录 Critical 日志。
+        ///   </description></item>
+        ///   <item><description>
+        ///     调用 EF Core 9+ 提供的 <c>HasPendingModelChanges()</c>：检测当前代码模型是否存在
+        ///     尚未通过 <c>dotnet ef migrations add</c> 生成迁移的变更（即模型快照与实体模型不一致），
+        ///     若存在则记录 Critical 日志。这是 EF Core 8 所不具备的模型级一致性检测能力。
         ///   </description></item>
         /// </list>
         /// <para>
@@ -180,6 +185,23 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 _logger.LogInformation(
                     "[CodeFirst 守卫] 迁移一致性验证通过：共 {Count} 个迁移均已应用，Provider={Provider}",
                     appliedMigrations.Count,
+                    _dialect.ProviderName);
+            }
+
+            // 检查 3（EF Core 9+）：检测代码模型是否存在尚未生成迁移的变更
+            // HasPendingModelChanges() 对比当前 DbContext 的实体模型与最新迁移快照（ModelSnapshot），
+            // 可发现手工修改实体类/配置后忘记执行 dotnet ef migrations add 的情况，
+            // 这是 EF Core 8 所不具备的能力——EF Core 9 首次提供此 API。
+            if (db.Database.HasPendingModelChanges()) {
+                _logger.LogCritical(
+                    "[CodeFirst 守卫] 检测到代码模型存在尚未生成迁移的变更（HasPendingModelChanges=true）。" +
+                    "当前实体模型与最新迁移快照不一致，请执行 'dotnet ef migrations add <名称>' 生成新迁移，" +
+                    "以维护 CodeFirst 原则。Provider={Provider}",
+                    _dialect.ProviderName);
+            }
+            else {
+                _logger.LogInformation(
+                    "[CodeFirst 守卫] 模型变更检测通过（HasPendingModelChanges=false）：代码模型与迁移快照完全一致，Provider={Provider}",
                     _dialect.ProviderName);
             }
         }

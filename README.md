@@ -125,7 +125,7 @@
 │   └── Zeye.Sorting.Hub.SharedKernel.csproj（SharedKernel 项目定义）
 ├── Zeye.Sorting.Hub.sln（.NET 解决方案入口）
 ├── EFCore-Migration.md（EF Core CodeFirst 迁移使用说明文档）
-├── EFCore9-UpgradePlan.md（EF Core 8 → 9 升级计划：可行性、步骤、HasPendingModelChanges 守卫增强）
+├── EFCore9-UpgradePlan.md（EF Core 8 → 9 升级记录：已完成，EFCore 9.0.14 / Pomelo 9.0.0 / HasPendingModelChanges 守卫已集成）
 ├── NewDatabaseProvider-Guide.md（接入新数据库提供器（如 SQLite / PostgreSQL）的逐步操作指南）
 ├── Parcel属性新增操作指南.md（Parcel 聚合新增属性时的文件修改操作指南）
 └── 项目完成度与推进计划.md（项目阶段评估与路线图文档）
@@ -150,7 +150,7 @@
 - `Parcel属性新增操作指南.md`：当 Parcel 聚合需要新增属性时，需要修改哪些文件、如何修改的操作指南（含三种情形：主表标量属性、现有值对象属性、新增值对象）。
 - `项目完成度与推进计划.md`：项目阶段评估与路线图文档。
 - `EFCore-Migration.md`：EF Core CodeFirst 迁移使用说明（迁移架构总览、运行时自动迁移、CLI 命令、设计时工厂、分表与迁移关系、常见问题）。
-- `EFCore9-UpgradePlan.md`：EF Core 8 → 9 升级计划，包含可行性结论（无需升级 .NET 框架）、NuGet 包清单、升级步骤、`HasPendingModelChanges()` 守卫增强示例及回滚方案。
+- `EFCore9-UpgradePlan.md`：EF Core 8 → 9 升级记录（**已完成**：EF Core 9.0.14、Pomelo 9.0.0、EFCore.Sharding 9.0.10），包含已升级包清单、版本对照表、`HasPendingModelChanges()` 集成说明及核查清单。
 
 ### `.github/`：Copilot 仓库级指令目录
 - `copilot-instructions.md`：Copilot 自定义指令，硬性要求禁止 UTC 时间 API，统一使用本地时间语义。
@@ -342,3 +342,12 @@
 2. **数据模型添加 `[MaxLength]` ORM 特征标记**：在 `AuditableEntity`、`Parcel` 聚合根及所有值对象（`BagInfo`、`BarCodeInfo`、`WeightInfo`、`VolumeInfo`、`ParcelDeviceInfo`、`GrayDetectorInfo`、`StickingParcelInfo`、`ApiRequestInfo`、`CommandInfo`、`ImageInfo`、`VideoInfo`）的字符串属性上添加 `System.ComponentModel.DataAnnotations.MaxLength` 特征标记，无需在 Domain 层引入 EF Core 依赖。
 3. **实体配置精简**：`ParcelEntityTypeConfiguration`（468 行 → 203 行）和 `BagInfoEntityTypeConfiguration` 移除所有冗余的 `HasColumnName()`（列名与属性名相同）、`IsRequired()`（非可空类型自动推断）、`HasMaxLength()`（已由 Domain 层特征标记承担）配置，仅保留 EF Core 专属配置（`HasPrecision`、影子属性、关系、索引、表名）。
 4. **`EFCore9-UpgradePlan.md` 新增**：详细说明 EF Core 8 → 9 的升级计划，包含可行性结论（EF Core 9 支持 .NET 8，无需升级运行时框架）、受影响 NuGet 包列表、升级步骤、`HasPendingModelChanges()` 守卫增强代码示例、重要变更说明及回滚方案。
+
+
+## 本次更新内容（EF Core 9 升级完成 + HasPendingModelChanges() 守卫增强）
+
+1. **EF Core 9 升级完成**：`Zeye.Sorting.Hub.Infrastructure.csproj` 中所有 EF Core 相关包升级至 9.0.14（EF Core 核心 + SqlServer + Design），Pomelo 升级至 9.0.0，EFCore.Sharding 升级至 9.0.10；同时显式覆盖 `Pomelo.EntityFrameworkCore.MySql.NetTopologySuite 9.0.0` 消除传递依赖版本警告。运行时框架仍为 `.NET 8`，无需升级框架。
+2. **`HasPendingModelChanges()` 守卫集成**：`DatabaseInitializerHostedService.AssertMigrationConsistencyAsync()` 新增第三项检查：调用 EF Core 9 专属 API `db.Database.HasPendingModelChanges()`，检测代码实体模型是否存在尚未通过 `dotnet ef migrations add` 生成迁移的变更。一旦检测到差异，立即输出 Critical 日志，提示执行 `dotnet ef migrations add` 对齐模型。
+3. **迁移快照 `ProductVersion` 更新**：`SortingHubDbContextModelSnapshot.cs` 与 `20260316184030_InitialCreate.Designer.cs` 的 `ProductVersion` 注解从 `8.0.23` 更新至 `9.0.14`，与安装的 EF Core 版本保持一致。
+4. **`EFCore9-UpgradePlan.md` 更新**：状态从"计划"更新为"✅ 已完成"，附实际升级前后版本对照表，第三项守卫检查代码示例替换为实际集成代码，核查清单全部标注为已完成。
+5. **`EFCore-Migration.md` 更新**：CodeFirst 守卫说明从"两项检查"更新为"三项检查（EF Core 9）"，新增 `HasPendingModelChanges()` 说明行，移除"EF Core 8 局限性"提示。

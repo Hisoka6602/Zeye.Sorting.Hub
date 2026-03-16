@@ -195,22 +195,23 @@ dotnet ef migrations script \
 
 `MigrateAsync()` 仅根据 `__EFMigrationsHistory` 决定哪些迁移需要执行，**不会自动检测或修复手工 DDL（`ALTER TABLE`、`DROP COLUMN` 等）导致的表结构偏差**。
 
-#### 运行时守卫（已实现）
+#### 运行时守卫（EF Core 9，三项检查）
 
-`DatabaseInitializerHostedService.AssertMigrationConsistencyAsync()` 在每次启动时执行两项检查：
+`DatabaseInitializerHostedService.AssertMigrationConsistencyAsync()` 在每次启动时执行三项检查：
 
 | 检查项 | 行为 |
 |--------|------|
 | `GetPendingMigrationsAsync()` 不为空 | **输出 Critical 日志，列出具体迁移名称** — 说明迁移未全部应用，不阻止程序启动 |
 | 代码迁移 ≠ `__EFMigrationsHistory` 记录 | **输出 Critical 日志，分别列出"在代码中但未应用"与"已应用但代码中不存在"的迁移名称** — 精确定位不一致来源 |
+| `HasPendingModelChanges()` 返回 `true` | **输出 Critical 日志** — 说明代码实体模型与最新迁移快照不一致（实体类已修改但未执行 `dotnet ef migrations add`），需立即生成新迁移 |
+
+> **`HasPendingModelChanges()` 为 EF Core 9 新增 API**：可检测出手工修改实体类/配置后遗漏执行 `dotnet ef migrations add` 的情况，是 EF Core 8 所不具备的模型级一致性检测能力。本项目已升级至 EF Core 9.0.14，该检查已启用。
 
 #### 手工 DDL 修改的正确处理方式
 
 1. **切勿直接修改数据库表结构**（`ALTER TABLE`、`DROP TABLE` 等）
 2. 若已发生，通过 `dotnet ef migrations add <Name>` 生成新迁移来描述"将当前 DB 对齐到代码模型"的变更
 3. 提交迁移文件，部署时 `MigrateAsync()` 自动执行
-
-> **注意**：EF Core 8 不具备自动检测实际列结构偏差的能力（该能力在 EF Core 9 的 `HasPendingModelChanges()` 中提供部分支持）。项目在升级到 EF Core 9 后可增强此守卫。
 
 ### Q：部署时数据库还未就绪怎么办？
 
