@@ -1,0 +1,201 @@
+# EF Core 迁移说明（CodeFirst + 自动迁移）
+
+## 1. 项目迁移架构总览
+
+本项目采用 **EF Core CodeFirst** 模式：实体类与值对象定义在代码中，数据库结构由 EF Core 根据模型自动生成，通过迁移文件管理演进历史。
+
+| 关键角色 | 所在位置 |
+|----------|----------|
+| DbContext | `Zeye.Sorting.Hub.Infrastructure/Persistence/SortingHubDbContext.cs` |
+| 实体映射配置 | `Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/` |
+| 设计时工厂 | `Zeye.Sorting.Hub.Infrastructure/Persistence/DesignTime/MySqlContextFactory.cs` |
+| 迁移文件存放目录 | `Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/` |
+| 运行时自动迁移服务 | `Zeye.Sorting.Hub.Host/HostedServices/DatabaseInitializerHostedService.cs` |
+
+---
+
+## 2. 当前迁移状态
+
+| 项目 | 状态 |
+|------|------|
+| CodeFirst 模式 | ✅ 是 |
+| 设计时工厂 (`IDesignTimeDbContextFactory`) | ✅ 已实现 |
+| 初始迁移 (`InitialCreate`) | ✅ 已生成 |
+| 运行时自动应用 (`Database.MigrateAsync`) | ✅ 已配置 |
+
+初始迁移文件：`Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/20260316184030_InitialCreate.cs`
+
+---
+
+## 3. 运行时自动迁移（生产/开发环境默认行为）
+
+应用程序启动时，`DatabaseInitializerHostedService` 会自动执行所有待应用的迁移，无需手动干预：
+
+```
+Host 启动
+  └─► DatabaseInitializerHostedService.StartAsync()
+        ├─ 创建 SortingHubDbContext 实例
+        ├─ 调用 db.Database.MigrateAsync()   ← 自动应用全部 Pending 迁移
+        └─ 执行方言特定的可选初始化 SQL
+```
+
+**重试策略**：最多 6 次，指数退避，最大间隔 30 秒，确保数据库容器尚未就绪时仍能稳定启动。
+
+---
+
+## 4. 迁移 CLI 使用方法
+
+> **前提条件**：安装 `dotnet-ef` 全局工具
+>
+> ```bash
+> dotnet tool install --global dotnet-ef
+> # 或升级
+> dotnet tool update --global dotnet-ef
+> ```
+
+所有命令均在**解决方案根目录**下执行，通过 `--project` 指定迁移所在项目。
+
+### 4.1 新增迁移
+
+```bash
+dotnet ef migrations add <迁移名称> \
+  --project Zeye.Sorting.Hub.Infrastructure \
+  --startup-project Zeye.Sorting.Hub.Infrastructure \
+  --output-dir Persistence/Migrations \
+  --context SortingHubDbContext
+```
+
+**命名建议**：使用 PascalCase 动词短语，描述本次变更内容，例如：
+- `AddParcelIndex`
+- `AddChuteInfoLandedTimeIndex`
+- `RenameParcelStatusColumn`
+
+### 4.2 删除最新迁移（仅限尚未应用到数据库的迁移）
+
+```bash
+dotnet ef migrations remove \
+  --project Zeye.Sorting.Hub.Infrastructure \
+  --startup-project Zeye.Sorting.Hub.Infrastructure \
+  --context SortingHubDbContext
+```
+
+### 4.3 查看迁移列表
+
+```bash
+dotnet ef migrations list \
+  --project Zeye.Sorting.Hub.Infrastructure \
+  --startup-project Zeye.Sorting.Hub.Infrastructure \
+  --context SortingHubDbContext
+```
+
+### 4.4 手动推送迁移到数据库（可选，通常由自动迁移替代）
+
+```bash
+dotnet ef database update \
+  --project Zeye.Sorting.Hub.Infrastructure \
+  --startup-project Zeye.Sorting.Hub.Infrastructure \
+  --context SortingHubDbContext \
+  --connection "server=<HOST>;port=3306;database=zeye_sorting_hub;uid=<USER>;pwd=<PWD>;SslMode=None;"
+```
+
+> ⚠️ `MySqlContextFactory` 中的连接字符串为设计时占位值，执行 `database update` 时务必通过 `--connection` 参数传入真实连接字符串。
+
+### 4.5 生成 DDL SQL 脚本（离线审计/DBA 审查）
+
+```bash
+dotnet ef migrations script \
+  --project Zeye.Sorting.Hub.Infrastructure \
+  --startup-project Zeye.Sorting.Hub.Infrastructure \
+  --context SortingHubDbContext \
+  --output migration.sql
+```
+
+---
+
+## 5. 设计时工厂说明（`MySqlContextFactory`）
+
+`IDesignTimeDbContextFactory<SortingHubDbContext>` 的作用是让 `dotnet ef` 工具在没有宿主进程的情况下也能构建 `SortingHubDbContext`。
+
+```csharp
+// 位置：Zeye.Sorting.Hub.Infrastructure/Persistence/DesignTime/MySqlContextFactory.cs
+internal sealed class MySqlContextFactory : IDesignTimeDbContextFactory<SortingHubDbContext> {
+    // 固定使用 MySQL 8.0，避免 ServerVersion.AutoDetect 在设计时无法连接数据库时报错
+    private static readonly MySqlServerVersion DesignTimeServerVersion =
+        new MySqlServerVersion(new Version(8, 0, 0));
+
+    // 设计时占位连接字符串（仅供 dotnet ef 分析模型使用，不实际执行 SQL）
+    private const string DesignTimeConnectionString =
+        "server=127.0.0.1;port=3306;database=zeye_sorting_hub;uid=root;pwd=root;SslMode=None;";
+
+    public SortingHubDbContext CreateDbContext(string[] args) {
+        var options = new DbContextOptionsBuilder<SortingHubDbContext>()
+            .UseMySql(DesignTimeConnectionString, DesignTimeServerVersion)
+            .Options;
+        return new SortingHubDbContext(options);
+    }
+}
+```
+
+---
+
+## 6. 新增/修改实体后的迁移流程
+
+当 `Parcel` 聚合或相关值对象发生结构变化时，按以下步骤生成并应用迁移：
+
+```
+1. 修改 Domain 层实体 / 值对象
+        ↓
+2. 修改对应的 EntityTypeConfiguration
+        ↓
+3. 执行 dotnet ef migrations add <Name>（见 4.1）
+        ↓
+4. 检查生成的迁移文件，确认 Up/Down 方法符合预期
+        ↓
+5. 提交迁移文件到版本控制
+        ↓
+6. 部署时 DatabaseInitializerHostedService 自动执行迁移
+```
+
+> 详细的 Parcel 属性新增流程，请参阅 [`Parcel属性新增操作指南.md`](./Parcel属性新增操作指南.md)。
+
+---
+
+## 7. 分表（Sharding）与迁移的关系
+
+本项目通过 **EFCore.Sharding** 库实现按月/按哈希分表（见 `PersistenceServiceCollectionExtensions.cs`）。
+
+**迁移只负责"基表"结构**，分表变体（如 `Parcels_202601`、`Parcels_202602`）由 EFCore.Sharding 在运行时按需创建。两者职责分离：
+
+| 职责 | 负责方 |
+|------|--------|
+| 创建/变更表结构（列、索引、约束） | EF Core 迁移 |
+| 按月/按哈希创建分片表 | EFCore.Sharding 运行时 |
+| `__EFMigrationsHistory` 版本记录 | EF Core |
+
+---
+
+## 8. 常见问题
+
+### Q：`Database.MigrateAsync` 和 `Database.EnsureCreated` 有什么区别？
+
+| 方法 | 行为 |
+|------|------|
+| `MigrateAsync()` | 应用所有待执行的迁移文件，维护 `__EFMigrationsHistory`，支持增量变更 ✅ |
+| `EnsureCreated()` | 若数据库不存在则按当前模型直接建库，不记录迁移历史，**不支持后续迁移** ❌ |
+
+**本项目使用 `MigrateAsync()`**，是生产环境正确选择。
+
+### Q：部署时数据库还未就绪怎么办？
+
+`DatabaseInitializerHostedService` 内置 Polly 重试策略（最多 6 次，指数退避），数据库容器延迟启动时仍可稳定连接。
+
+### Q：如何针对 SQL Server 使用迁移？
+
+`MySqlContextFactory` 仅为 MySQL 的设计时工厂。若需要 SQL Server 迁移，可新增：
+
+```bash
+# 在 Persistence/DesignTime/ 目录下新增 SqlServerContextFactory.cs
+# 并使用 --context SortingHubDbContext 指定同一 DbContext
+```
+
+运行时 SQL Server 路径通过 `Persistence:Provider = SqlServer` 配置启用，其 DbContext 配置与 MySQL 完全相同（仅 provider 不同），生成的迁移文件可同时服务两个提供器（需要在 DbContext 选项中指定 `MigrationsAssembly`）。

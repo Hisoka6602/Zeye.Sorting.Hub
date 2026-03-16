@@ -101,7 +101,11 @@
 │   │   │   ├── MySqlDialect.cs（MySQL 方言实现）
 │   │   │   └── SqlServerDialect.cs（SQL Server 方言实现）
 │   │   ├── DesignTime（EF 设计时支持目录）
-│   │   │   └── MySqlContextFactory.cs（设计时 DbContext 工厂）
+│   │   │   └── MySqlContextFactory.cs（设计时 DbContext 工厂，IDesignTimeDbContextFactory<SortingHubDbContext> 实现）
+│   │   ├── Migrations（EF Core 迁移文件目录）
+│   │   │   ├── 20260316184030_InitialCreate.cs（初始迁移：全部表建表与回滚逻辑）
+│   │   │   ├── 20260316184030_InitialCreate.Designer.cs（迁移元数据，自动生成）
+│   │   │   └── SortingHubDbContextModelSnapshot.cs（当前模型快照，自动生成）
 │   │   └── SortingHubDbContext.cs（EF Core DbContext）
 │   ├── Repositories（仓储基类与结果模型目录）
 │   │   ├── MemoryCacheRepositoryBase.cs（缓存仓储基类）
@@ -118,6 +122,7 @@
 │   ├── Class1.cs（占位类，预留通用基础能力）
 │   └── Zeye.Sorting.Hub.SharedKernel.csproj（SharedKernel 项目定义）
 ├── Zeye.Sorting.Hub.sln（.NET 解决方案入口）
+├── EFCore-Migration.md（EF Core CodeFirst 迁移使用说明文档）
 ├── Parcel属性新增操作指南.md（Parcel 聚合新增属性时的文件修改操作指南）
 └── 项目完成度与推进计划.md（项目阶段评估与路线图文档）
 ```
@@ -140,6 +145,7 @@
 - `Zeye.Sorting.Hub.sln`：.NET 解决方案入口，聚合全部项目。
 - `Parcel属性新增操作指南.md`：当 Parcel 聚合需要新增属性时，需要修改哪些文件、如何修改的操作指南（含三种情形：主表标量属性、现有值对象属性、新增值对象）。
 - `项目完成度与推进计划.md`：项目阶段评估与路线图文档。
+- `EFCore-Migration.md`：EF Core CodeFirst 迁移使用说明（迁移架构总览、运行时自动迁移、CLI 命令、设计时工厂、分表与迁移关系、常见问题）。
 
 ### `.github/`：Copilot 仓库级指令目录
 - `copilot-instructions.md`：Copilot 自定义指令，硬性要求禁止 UTC 时间 API，统一使用本地时间语义。
@@ -255,7 +261,12 @@
 - `SlowQuerySample.cs`：慢查询采样记录模型。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/DesignTime/`：EF 设计时支持目录
-- `MySqlContextFactory.cs`：设计时 DbContext 工厂（迁移工具使用）。
+- `MySqlContextFactory.cs`：设计时 DbContext 工厂（实现 `IDesignTimeDbContextFactory<SortingHubDbContext>`），供 `dotnet ef migrations add/remove/list` 等 CLI 命令在无宿主进程时构建 DbContext；使用固定 MySQL 8.0 版本与占位连接字符串，避免设计时依赖真实数据库。
+
+##### `Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/`：EF Core 迁移文件目录
+- `20260316184030_InitialCreate.cs`：初始迁移，包含全部表（Parcels、Bags 及各值对象属性表）的 `Up`（建表）与 `Down`（回滚）逻辑。
+- `20260316184030_InitialCreate.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
+- `SortingHubDbContextModelSnapshot.cs`：当前模型快照，EF Core 用于计算下次迁移的差量（自动生成，勿手动修改）。
 
 #### `Zeye.Sorting.Hub.Infrastructure/Repositories/`：仓储基类与结果模型目录
 - `MemoryCacheRepositoryBase.cs`：带内存缓存失效逻辑的仓储基类。
@@ -305,4 +316,11 @@
 2. 将自动验证 snapshot diff 输出落地到结构化审计表（而非仅日志），支持长周期追踪与可视化报表。
 3. 引入按表/按业务域的动态阈值学习（结合历史分位数），降低统一阈值在不同负载模型下的误报率。
 4. 为闭环动作增加端到端压测回放（离线流量）验证门禁，进一步提升生产变更安全性。
-5. `IParcelRepository`、`ParcelScannedEventArgs`、`ParcelChuteAssignedEventArgs`、`MySqlContextFactory` 等占位类后续应补充完整实现。
+5. `IParcelRepository`、`ParcelScannedEventArgs`、`ParcelChuteAssignedEventArgs` 等占位类后续应补充完整实现。
+
+## 本次更新内容（EF Core CodeFirst 迁移完成）
+
+1. **`MySqlContextFactory` 实现（`IDesignTimeDbContextFactory<SortingHubDbContext>`）**：将原本的空占位类补充为完整的设计时工厂实现，使用固定 MySQL 8.0 版本与占位连接字符串，确保 `dotnet ef migrations add/remove/list` 等 CLI 命令无需宿主进程即可运行。
+2. **初始迁移 `InitialCreate` 生成**：执行 `dotnet ef migrations add InitialCreate` 生成三个迁移文件（`20260316184030_InitialCreate.cs`、`20260316184030_InitialCreate.Designer.cs`、`SortingHubDbContextModelSnapshot.cs`），覆盖全部实体表（Parcels 主表及 14 个值对象属性表），建表与回滚逻辑完整。
+3. **`EFCore-Migration.md` 新增**：创建迁移使用说明文档，内容涵盖迁移架构总览、运行时自动迁移流程、`dotnet ef` CLI 命令速查（新增/删除/列表/推送/导出 SQL）、设计时工厂说明、实体变更后的迁移流程、分表与迁移的职责分离说明，以及常见问题解答。
+4. **`README.md` 同步更新**：在文件树与"各层级与各文件作用说明（逐项）"章节中新增 `Migrations/` 目录及三个迁移文件的描述，更新 `MySqlContextFactory.cs` 条目为完整实现说明，更新根目录条目新增 `EFCore-Migration.md` 说明，并从"后续可完善项"中移除已完成的 `MySqlContextFactory` 占位项。
