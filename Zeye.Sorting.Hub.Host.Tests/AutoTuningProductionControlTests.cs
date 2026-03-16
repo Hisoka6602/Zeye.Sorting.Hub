@@ -216,8 +216,8 @@ public sealed class AutoTuningProductionControlTests {
 
         Assert.Contains(logger.Messages, message => message.Contains("闭环自治阶段迁移") && message.Contains("CurrentStage=Execute"));
         Assert.Contains(logger.Messages, message => message.Contains("闭环自治阶段迁移") && message.Contains("CurrentStage=Verify"));
-        Assert.Contains(logger.Messages, message => message.Contains("闭环自治阶段迁移") && message.Contains("CurrentStage=Rollback"));
         Assert.Contains(logger.Messages, message => message.Contains("自动调优变更审计"));
+        Assert.Contains(logger.Messages, message => message.Contains("闭环自治自动验证触发回滚"));
         Assert.Contains(logger.Messages, message => message.Contains("rollback-triggered"));
     }
 

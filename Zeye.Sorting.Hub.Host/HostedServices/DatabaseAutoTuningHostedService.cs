@@ -508,11 +508,35 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
                 // 步骤 4：在允许条件下执行回滚并移除追踪记录。
                 if (_enableAutoRollback) {
-                    MoveToStage(
-                        AutoTuningClosedLoopStage.Rollback,
-                        severeRegression ? "validation-severe-rollback-triggered" : "validation-regression-rollback-triggered",
+                    var triggerReason = severeRegression ? "validation-severe-rollback-triggered" : "validation-regression-rollback-triggered";
+                    _observability.EmitMetric(
+                        "autotuning.validation.rollback_triggered",
+                        1d,
+                        new Dictionary<string, string> {
+                            ["provider"] = _dialect.ProviderName,
+                            ["stage"] = AutoTuningClosedLoopStage.Verify.ToString(),
+                            ["action_id"] = rollback.ActionId,
+                            ["fingerprint"] = rollback.Fingerprint,
+                            ["reason"] = triggerReason
+                        });
+                    _observability.EmitEvent(
+                        "autotuning.validation.rollback_triggered",
+                        LogLevel.Warning,
+                        $"rollback triggered: {rollback.Fingerprint}",
+                        new Dictionary<string, string> {
+                            ["provider"] = _dialect.ProviderName,
+                            ["stage"] = AutoTuningClosedLoopStage.Verify.ToString(),
+                            ["action_id"] = rollback.ActionId,
+                            ["fingerprint"] = rollback.Fingerprint,
+                            ["reason"] = triggerReason
+                        });
+                    _logger.LogWarning(
+                        "闭环自治自动验证触发回滚：Provider={Provider}, Stage={Stage}, ActionId={ActionId}, Fingerprint={Fingerprint}, Reason={Reason}",
+                        _dialect.ProviderName,
+                        AutoTuningClosedLoopStage.Verify,
                         rollback.ActionId,
-                        rollback.Fingerprint);
+                        rollback.Fingerprint,
+                        triggerReason);
                 }
 
                 if (_enableAutoRollback && await ExecuteThroughIsolatorAsync(
@@ -745,7 +769,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         private static string NormalizeTagValue(string? value) {
-            return string.IsNullOrWhiteSpace(value) ? "n/a" : value;
+            return string.IsNullOrWhiteSpace(value) ? "n/a" : value.Trim();
         }
 
         /// <summary>判断候选表是否命中执行白名单。</summary>
