@@ -73,15 +73,28 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
             for (var i = 0; i < args.Length; i++) {
                 var arg = args[i];
                 if (string.Equals(arg, ProviderArgumentName, StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length) {
-                    return args[i + 1];
+                    return NormalizeProvider(args[i + 1]);
                 }
 
                 if (arg.StartsWith($"{ProviderArgumentName}=", StringComparison.OrdinalIgnoreCase)) {
-                    return arg[(ProviderArgumentName.Length + 1)..];
+                    if (arg.Length == ProviderArgumentName.Length + 1) {
+                        return MySqlProviderName;
+                    }
+
+                    var provided = arg[(ProviderArgumentName.Length + 1)..];
+                    return NormalizeProvider(provided);
                 }
             }
 
-            return config["Persistence:Provider"] ?? MySqlProviderName;
+            return NormalizeProvider(config["Persistence:Provider"]);
+        }
+
+        private static string NormalizeProvider(string? provider) {
+            if (string.Equals(provider, SqlServerProviderName, StringComparison.OrdinalIgnoreCase)) {
+                return SqlServerProviderName;
+            }
+
+            return MySqlProviderName;
         }
 
         /// <summary>

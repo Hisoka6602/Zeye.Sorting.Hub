@@ -8,6 +8,9 @@ on:
       - "Zeye.Sorting.Hub.Infrastructure/**"
       - "Zeye.Sorting.Hub.Host/**"
 
+permissions:
+  contents: read
+
 jobs:
   mysql-ef-validation:
     runs-on: ubuntu-latest
@@ -39,7 +42,7 @@ jobs:
 
       - name: Validate EF migrations (list / update / script)
         env:
-          PATH: ${{ env.PATH }}:/home/runner/.dotnet/tools
+          PATH: ${{ env.PATH }}:${{ env.HOME }}/.dotnet/tools
           MYSQL_CONNECTION: "server=127.0.0.1;port=3306;database=zeye_sorting_hub_ci;uid=root;pwd=Admin@1234;SslMode=None;"
         run: |
           dotnet ef migrations list \
