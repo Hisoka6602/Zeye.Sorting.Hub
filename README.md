@@ -9,7 +9,7 @@
 ├── .github（Copilot 仓库级指令目录）
 │   ├── copilot-instructions.md（Copilot 自定义指令：禁止 UTC、统一本地时间）
 │   └── workflows（CI 工作流目录）
-│       └── ef-migration-validation.yml（EF 迁移验收流水线：dotnet ef list/update/script）
+│       └── ef-migration-validation.yml（EF 迁移验收流水线：MySQL+SQL Server 双 Provider 执行 dotnet ef list/update/script）
 ├── .gitattributes（Git 属性配置）
 ├── .gitignore（Git 忽略规则）
 ├── README.md（仓库总览、结构清单与维护规范）
@@ -59,6 +59,7 @@
 │   │   ├── ImageCaptureType.cs（图像采集方式枚举）
 │   │   ├── ImageType.cs（图像类型枚举）
 │   │   ├── NoReadType.cs（无码/难码类型枚举）
+│   │   ├── ParcelExceptionType.cs（包裹异常类型枚举）
 │   │   ├── ParcelStatus.cs（包裹状态枚举）
 │   │   ├── ParcelType.cs（包裹类别枚举）
 │   │   ├── VideoNodeType.cs（视频节点类型枚举）
@@ -111,6 +112,8 @@
 │   │   │   ├── 20260316184030_InitialCreate.Designer.cs（迁移元数据，自动生成）
 │   │   │   ├── 20260317024345_UseAttributeBasedIndexesAndPrecision.cs（索引/精度特征标记对齐迁移）
 │   │   │   ├── 20260317024345_UseAttributeBasedIndexesAndPrecision.Designer.cs（迁移元数据，自动生成）
+│   │   │   ├── 20260317062930_SplitParcelStatusAndExceptionType.cs（Parcel 状态拆分与异常类型字段迁移）
+│   │   │   ├── 20260317062930_SplitParcelStatusAndExceptionType.Designer.cs（迁移元数据，自动生成）
 │   │   │   └── SortingHubDbContextModelSnapshot.cs（当前模型快照，自动生成）
 │   │   └── SortingHubDbContext.cs（EF Core DbContext）
 │   ├── Repositories（仓储基类与结果模型目录）
@@ -160,7 +163,7 @@
 - `copilot-instructions.md`：Copilot 自定义指令，硬性要求禁止 UTC 时间 API，统一使用本地时间语义。
 
 ### `.github/workflows/`：CI 工作流目录
-- `ef-migration-validation.yml`：EF 迁移验收流水线（MySQL 容器环境），真实执行 `dotnet ef migrations list`、`dotnet ef database update`、`dotnet ef migrations script` 三项门禁命令。
+- `ef-migration-validation.yml`：EF 迁移验收流水线（MySQL + SQL Server 容器环境），真实执行 `dotnet ef migrations list`、`dotnet ef database update`、`dotnet ef migrations script` 三项门禁命令。
 
 ### `Zeye.Sorting.Hub.Analytics/`：分析与报表子域（当前为占位工程）
 - `Zeye.Sorting.Hub.Analytics.csproj`：Analytics 项目定义。
@@ -219,6 +222,7 @@
 - `ImageCaptureType.cs`：图像采集方式枚举定义。
 - `ImageType.cs`：图像类型枚举定义。
 - `NoReadType.cs`：无码/难码类型枚举定义。
+- `ParcelExceptionType.cs`：包裹异常类型枚举定义（分拣异常细分原因）。
 - `ParcelStatus.cs`：包裹状态枚举定义。
 - `ParcelType.cs`：包裹类别枚举定义。
 - `VideoNodeType.cs`：视频节点类型枚举定义。
@@ -282,6 +286,8 @@
 - `20260316184030_InitialCreate.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
 - `20260317024345_UseAttributeBasedIndexesAndPrecision.cs`：索引/精度特征标记对齐迁移（空 `Up/Down`，用于同步模型快照）。
 - `20260317024345_UseAttributeBasedIndexesAndPrecision.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
+- `20260317062930_SplitParcelStatusAndExceptionType.cs`：Parcel 状态三态收敛后新增 `ExceptionType` 可空字段迁移。
+- `20260317062930_SplitParcelStatusAndExceptionType.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
 - `SortingHubDbContextModelSnapshot.cs`：当前模型快照，EF Core 用于计算下次迁移的差量（自动生成，勿手动修改）。
 
 #### `Zeye.Sorting.Hub.Infrastructure/Repositories/`：仓储基类与结果模型目录
@@ -366,11 +372,24 @@
 
 1. **设计时工厂冲突修复**：保留单一 `IDesignTimeDbContextFactory<SortingHubDbContext>` 入口（`MySqlContextFactory`），支持通过 `-- --provider SqlServer` 切换到 SQL Server，避免双工厂导致 `dotnet ef` 枚举 `DbContext` 时报键冲突。
 2. **SQL Server 迁移策略明确**：`EFCore-Migration.md` 明确当前采用“单迁移目录（同程序集）”策略，迁移统一放在 `Persistence/Migrations/`；通过 `-- --provider SqlServer` / `-- --provider MySql` 区分执行路径。
-3. **发布策略明确**：文档明确“运行时迁移失败不阻断启动（降级运行）”，但“发布前 EF 验收未通过则阻断发布”。
-4. **新增 CI 门禁工作流**：新增 `.github/workflows/ef-migration-validation.yml`，在 MySQL 容器上真实执行 `dotnet ef migrations list` / `dotnet ef database update` / `dotnet ef migrations script`。
+3. **发布策略配置化**：新增 `Persistence:Migration:FailStartupOnError`，支持“迁移失败降级运行（false）/ 失败即阻断启动（true）”双模式；发布前 EF 验收未通过仍阻断发布。
+4. **新增 CI 门禁工作流**：新增 `.github/workflows/ef-migration-validation.yml`，在 MySQL + SQL Server 容器上真实执行 `dotnet ef migrations list` / `dotnet ef database update` / `dotnet ef migrations script`。
 5. **索引与精度特征标记收敛**：`Parcel`、`BagInfo` 索引改为类级别 `[Index]` 声明，`decimal(18,3)` 统一改为 `[Precision(18,3)]`；同步生成 `UseAttributeBasedIndexesAndPrecision` 迁移以消除 PendingModelChanges。
 
 ## 后续可完善点（迁移治理）
 
 1. 若后续 SQL Server 与 MySQL 的迁移演进差异持续扩大，可升级为“独立迁移程序集”策略，进一步降低跨提供器误用风险。
 2. 在流水线上增加迁移脚本归档（artifact）与 DBA 审批节点，形成可追溯发布审计链路。
+3. 将“月度回滚演练 / 季度灾备升降级演练”接入流水线门禁，自动校验演练记录完备性。
+
+## 本次更新内容（Parcel 状态拆分 + 异常类型细分）
+
+1. **`ParcelStatus` 三态收敛**：`ParcelStatus` 仅保留 `Pending`（待操作）、`Completed`（已完成）、`SortingException`（分拣异常）三个状态，避免状态语义与异常原因混用。
+2. **新增 `ParcelExceptionType` 枚举**：在 `Zeye.Sorting.Hub.Domain/Enums/ParcelExceptionType.cs` 增加 12 类分拣异常原因（接口响应异常、等待 DWS 数据超时、等待目标格口超时、无效目标格口、速度不匹配、锁格、叠包、灰度仪响应异常、位置检测异常、包裹丢失、机械故障、飘格），并补齐 `Description` 与注释。
+3. **`Parcel` 聚合新增异常类型字段**：新增 `ExceptionType`（可空），仅在 `Status=SortingException` 时赋值；新增 `MarkSortingException` 领域方法统一维护状态与异常类型一致性。
+4. **新增迁移与测试验证**：补充字段变更迁移，并在现有测试工程中增加状态枚举与异常状态流转的最小回归测试。
+
+## 后续可完善点（Parcel 异常治理）
+
+1. 在 Application/Contracts 层补充 `ParcelExceptionType` 的对外 DTO/查询筛选条件，减少字符串化状态判断。
+2. 按异常类型建立告警分级策略（例如机械故障/包裹丢失优先级高于超时类），提升运维响应效率。

@@ -15,19 +15,23 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
     /// 数据库初始化后台服务：启动时迁移 + 可选方言初始化
     /// </summary>
     public sealed class DatabaseInitializerHostedService : IHostedService {
+        private const string FailStartupOnMigrationErrorConfigKey = "Persistence:Migration:FailStartupOnError";
         private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<DatabaseInitializerHostedService> _logger;
         private readonly IDatabaseDialect _dialect;
+        private readonly bool _failStartupOnMigrationError;
 
         private readonly AsyncRetryPolicy _retryPolicy;
 
         public DatabaseInitializerHostedService(
             IServiceProvider serviceProvider,
             ILogger<DatabaseInitializerHostedService> logger,
-            IDatabaseDialect dialect) {
+            IDatabaseDialect dialect,
+            IConfiguration configuration) {
             _serviceProvider = serviceProvider;
             _logger = logger;
             _dialect = dialect;
+            _failStartupOnMigrationError = ResolveFailStartupOnMigrationError(configuration);
 
             _retryPolicy = Policy
                 .Handle<Exception>(ex => ex is not OperationCanceledException)
@@ -70,8 +74,16 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 _logger.LogInformation("数据库初始化已因取消令牌中止，Provider={Provider}", _dialect.ProviderName);
             }
             catch (Exception ex) {
-                // 重试耗尽或不可恢复异常：记录 Critical 日志，不重新抛出，避免宿主崩溃。
-                //
+                // 重试耗尽或不可恢复异常：按配置决定是否阻断启动。
+                if (_failStartupOnMigrationError) {
+                    _logger.LogCritical(ex,
+                        "[数据库初始化] 所有重试均失败，数据库连接不可用，且已启用 FailStartupOnError，应用将终止启动。" +
+                        "请检查连接字符串与数据库服务状态，Provider={Provider}, ConfigKey={ConfigKey}",
+                        _dialect.ProviderName,
+                        FailStartupOnMigrationErrorConfigKey);
+                    throw;
+                }
+
                 // 降级模式行为：
                 //   - 应用继续运行，IHostedService 生命周期正常完成
                 //   - 后续业务请求若访问数据库，将在 Repository/DbContext 层收到
@@ -83,6 +95,25 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     "请检查连接字符串与数据库服务状态，Provider={Provider}",
                     _dialect.ProviderName);
             }
+        }
+
+        /// <summary>
+        /// 解析“迁移失败是否阻断启动”配置。
+        /// </summary>
+        /// <remarks>
+        /// 约定：
+        /// <list type="bullet">
+        ///   <item><description>未配置时默认 <c>false</c>，保持历史“降级启动”行为。</description></item>
+        ///   <item><description>仅当配置值可解析且为 <c>true</c> 时，迁移失败才会阻断启动。</description></item>
+        /// </list>
+        /// </remarks>
+        /// <returns>
+        /// 返回 <c>true</c> 表示迁移失败时阻断启动；返回 <c>false</c> 表示迁移失败后降级运行。
+        /// </returns>
+        internal static bool ResolveFailStartupOnMigrationError(IConfiguration configuration) {
+            ArgumentNullException.ThrowIfNull(configuration);
+            var raw = configuration[FailStartupOnMigrationErrorConfigKey];
+            return bool.TryParse(raw, out var value) && value;
         }
 
         /// <summary>

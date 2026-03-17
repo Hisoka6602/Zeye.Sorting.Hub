@@ -50,9 +50,21 @@ Host 启动
 
 ### 3.1 发布策略：迁移失败是否阻断启动（明确）
 
-- **运行时默认策略**：`DatabaseInitializerHostedService` 在迁移失败重试耗尽后仅记录 `Critical` 日志，**不阻断应用启动**（降级运行）。
+- **运行时策略可配置**：通过 `Persistence:Migration:FailStartupOnError` 控制迁移失败后的启动行为。
+  - `false`（默认）：重试耗尽后记录 `Critical` 并降级运行（不阻断启动）。
+  - `true`：重试耗尽后记录 `Critical` 并重新抛出异常，**阻断启动（fail-fast）**。
 - **发布门禁策略**：是否允许发布由发布流程决定，**发布前必须通过 CI 的 EF 验收流水线**（`dotnet ef migrations list / database update / migrations script`）。
-- **结论**：运行时“可降级不中断”，发布侧“未通过 EF 验收即阻断发布”。
+- **结论**：运行时支持“可降级不中断 / fail-fast”双模式，发布侧“未通过 EF 验收即阻断发布”。
+
+示例配置：
+
+```json
+"Persistence": {
+  "Migration": {
+    "FailStartupOnError": false
+  }
+}
+```
 
 ---
 
@@ -182,13 +194,31 @@ dotnet ef migrations script \
 
 ## 4.6 CI / 部署前 EF 验收流水线（真实执行）
 
-仓库已提供工作流：`.github/workflows/ef-migration-validation.yml`，在 MySQL 容器上执行以下三条真实命令：
+仓库已提供工作流：`.github/workflows/ef-migration-validation.yml`，分别在 **MySQL** 与 **SQL Server** 容器上执行以下三条真实命令：
 
 1. `dotnet ef migrations list`
 2. `dotnet ef database update`
 3. `dotnet ef migrations script`
 
-用途：作为发布前门禁，确保“迁移可枚举、可落库、可导出脚本”三项同时通过。
+用途：作为发布前门禁，确保“迁移可枚举、可落库、可导出脚本”三项在多 Provider 路径同时通过。
+
+---
+
+## 4.7 迁移基线与回滚演练制度（建议执行）
+
+为降低迁移回归与灾备切换风险，建议将以下流程纳入常态化制度：
+
+1. **迁移基线冻结（每次发布前）**
+   - 固定待发布迁移集合（迁移名 + 脚本哈希）。
+   - 同时导出 MySQL / SQL Server 的 `migrations script` 结果并存档审计。
+2. **定期回滚演练（建议每月至少一次）**
+   - 在灾备环境执行“升级 -> 验证 -> 回滚（`database update <旧迁移>`）-> 再验证”闭环。
+   - 记录耗时、失败点、人工介入步骤，形成可复用 Runbook。
+3. **灾备升降级演练（建议每季度至少一次）**
+   - 以生产同版本数据快照执行“升版本 + 降版本”双向演练。
+   - 演练报告必须包含：前置条件、回滚触发条件、回滚后数据一致性核验结果。
+4. **发布门禁联动**
+   - 任一演练未通过时，禁止进入生产发布窗口，优先修复迁移脚本与回滚路径。
 
 ---
 
@@ -296,7 +326,10 @@ dotnet ef migrations script \
 
 ### Q：部署时数据库还未就绪怎么办？
 
-`DatabaseInitializerHostedService` 内置 Polly 重试策略（最多 6 次，指数退避），数据库容器延迟启动时仍可稳定连接。重试耗尽后，数据库异常会记录为 `Critical` 日志，**程序不会崩溃**，将以降级模式运行。
+`DatabaseInitializerHostedService` 内置 Polly 重试策略（最多 6 次，指数退避），数据库容器延迟启动时仍可稳定连接。重试耗尽后，数据库异常会记录为 `Critical` 日志；行为由 `Persistence:Migration:FailStartupOnError` 决定：
+
+- `false`（默认）：程序继续运行（降级模式）
+- `true`：程序终止启动（fail-fast）
 
 ### Q：数据库日志在哪里可以找到？
 
@@ -314,7 +347,7 @@ dotnet ef migrations script \
 
 **保证原则**：
 - 任何数据库异常（连接失败、迁移失败、一致性警告等）均记录到 `database-*.log`
-- 无任何数据库异常会导致程序崩溃，最坏情况是降级运行并输出 `Critical` 日志
+- 当 `Persistence:Migration:FailStartupOnError=false` 时，数据库异常不会导致程序崩溃，最坏情况是降级运行并输出 `Critical` 日志
 
 ### Q：如何针对 SQL Server 使用迁移？
 

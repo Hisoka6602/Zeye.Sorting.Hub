@@ -40,6 +40,11 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         public ParcelStatus Status { get; private set; }
 
         /// <summary>
+        /// 包裹异常类型（仅当状态为分拣异常时有值）
+        /// </summary>
+        public ParcelExceptionType? ExceptionType { get; private set; }
+
+        /// <summary>
         /// NoRead 类型
         /// </summary>
         public NoReadType NoReadType { get; private set; } = NoReadType.None;
@@ -165,37 +170,79 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         // ------------------------------
 
         private readonly List<BarCodeInfo> _barCodeInfos = new();
+        /// <summary>
+        /// 条码明细集合（只读视图）
+        /// </summary>
         public IReadOnlyList<BarCodeInfo> BarCodeInfos => _barCodeInfos;
 
         private readonly List<WeightInfo> _weightInfos = new();
+        /// <summary>
+        /// 称重明细集合（只读视图）
+        /// </summary>
         public IReadOnlyList<WeightInfo> WeightInfos => _weightInfos;
 
+        /// <summary>
+        /// 体积信息（单值对象）
+        /// </summary>
         public VolumeInfo? VolumeInfo { get; private set; }
 
         private readonly List<ApiRequestInfo> _apiRequests = new();
+        /// <summary>
+        /// 外部接口请求记录集合（只读视图）
+        /// </summary>
         public IReadOnlyList<ApiRequestInfo> ApiRequests => _apiRequests;
 
+        /// <summary>
+        /// 格口信息（单值对象）
+        /// </summary>
         public ChuteInfo? ChuteInfo { get; private set; }
 
         private readonly List<CommandInfo> _commandInfos = new();
+        /// <summary>
+        /// 通信指令记录集合（只读视图）
+        /// </summary>
         public IReadOnlyList<CommandInfo> CommandInfos => _commandInfos;
 
         private readonly List<ImageInfo> _imageInfos = new();
+        /// <summary>
+        /// 图片信息集合（只读视图）
+        /// </summary>
         public IReadOnlyList<ImageInfo> ImageInfos => _imageInfos;
 
         private readonly List<VideoInfo> _videoInfos = new();
+        /// <summary>
+        /// 视频信息集合（只读视图）
+        /// </summary>
         public IReadOnlyList<VideoInfo> VideoInfos => _videoInfos;
 
+        /// <summary>
+        /// 小车信息（单值对象）
+        /// </summary>
         public SorterCarrierInfo? SorterCarrierInfo { get; private set; }
 
+        /// <summary>
+        /// 集包信息（单值对象）
+        /// </summary>
         public BagInfo? BagInfo { get; private set; }
 
+        /// <summary>
+        /// 设备信息（单值对象）
+        /// </summary>
         public ParcelDeviceInfo? DeviceInfo { get; private set; }
 
+        /// <summary>
+        /// 灰度仪判断信息（单值对象）
+        /// </summary>
         public GrayDetectorInfo? GrayDetectorInfo { get; private set; }
 
+        /// <summary>
+        /// 除叠仪判断信息（单值对象）
+        /// </summary>
         public StickingParcelInfo? StickingParcelInfo { get; private set; }
 
+        /// <summary>
+        /// 坐标检测信息（单值对象）
+        /// </summary>
         public ParcelPositionInfo? ParcelPositionInfo { get; private set; }
 
         private Parcel() {
@@ -253,6 +300,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
                 ParcelTimestamp = parcelTimestamp,
                 Type = type,
                 Status = ParcelStatus.Pending,
+                ExceptionType = null,
                 NoReadType = noReadType,
                 SorterCarrierId = sorterCarrierId,
                 SegmentCodes = segmentCodes,
@@ -282,9 +330,30 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         /// <summary>
         /// 标记包裹完结
         /// </summary>
+        /// <remarks>
+        /// 标记完成时会清空 <see cref="ExceptionType"/>，避免“已完成”与“异常类型”并存的状态歧义。
+        /// </remarks>
         public void MarkCompleted(DateTime completedTime) {
             CompletedTime = completedTime;
             Status = ParcelStatus.Completed;
+            ExceptionType = null;
+        }
+
+        /// <summary>
+        /// 标记包裹为分拣异常并记录异常类型。
+        /// </summary>
+        /// <param name="exceptionType">分拣异常的具体类型。</param>
+        public void MarkSortingException(ParcelExceptionType exceptionType) {
+            if (Status == ParcelStatus.Completed) {
+                throw new InvalidOperationException("已完成的包裹不允许再标记为分拣异常");
+            }
+
+            if (!Enum.IsDefined(exceptionType)) {
+                throw new ArgumentOutOfRangeException(nameof(exceptionType), "异常类型无效");
+            }
+
+            Status = ParcelStatus.SortingException;
+            ExceptionType = exceptionType;
         }
 
         /// <summary>

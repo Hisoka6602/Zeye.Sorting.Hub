@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Zeye.Sorting.Hub.Domain.Enums;
+using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Host.HostedServices;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
@@ -12,6 +13,85 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 namespace Zeye.Sorting.Hub.Host.Tests;
 
 public sealed class AutoTuningProductionControlTests {
+    [Fact]
+    public void ParcelStatus_ShouldOnlyContainThreeValues() {
+        var values = Enum.GetValues<ParcelStatus>();
+        Assert.Equal(3, values.Length);
+        Assert.Contains(ParcelStatus.Pending, values);
+        Assert.Contains(ParcelStatus.Completed, values);
+        Assert.Contains(ParcelStatus.SortingException, values);
+    }
+
+    [Fact]
+    public void Parcel_CreateAndMarkSortingException_ShouldKeepExceptionTypeConsistent() {
+        var parcel = Parcel.Create(
+            parcelTimestamp: 1,
+            type: ParcelType.Normal,
+            barCodes: "BC001",
+            weight: 1.1m,
+            workstationName: "WS-01",
+            scannedTime: DateTime.Now,
+            dischargeTime: DateTime.Now,
+            targetChuteId: 100,
+            actualChuteId: 101,
+            requestStatus: ApiRequestStatus.Success,
+            bagCode: "BAG-01",
+            isSticking: false,
+            length: 1,
+            width: 1,
+            height: 1,
+            volume: 1,
+            hasImages: false,
+            hasVideos: false,
+            coordinate: "0,0");
+
+        Assert.Equal(ParcelStatus.Pending, parcel.Status);
+        Assert.Null(parcel.ExceptionType);
+
+        parcel.MarkSortingException(ParcelExceptionType.WaitDwsDataTimeout);
+        Assert.Equal(ParcelStatus.SortingException, parcel.Status);
+        Assert.Equal(ParcelExceptionType.WaitDwsDataTimeout, parcel.ExceptionType);
+
+        parcel.MarkCompleted(DateTime.Now);
+        Assert.Equal(ParcelStatus.Completed, parcel.Status);
+        Assert.Null(parcel.ExceptionType);
+        Assert.Throws<InvalidOperationException>(() => parcel.MarkSortingException(ParcelExceptionType.ParcelLost));
+    }
+
+    [Fact]
+    public void MigrationFailStartupPolicy_DefaultsToFalse_WhenConfigMissing() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>())
+            .Build();
+
+        var failStartup = DatabaseInitializerHostedService.ResolveFailStartupOnMigrationError(configuration);
+        Assert.False(failStartup);
+    }
+
+    [Fact]
+    public void MigrationFailStartupPolicy_ReturnsTrue_WhenConfigEnabled() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:Migration:FailStartupOnError"] = "true"
+            })
+            .Build();
+
+        var failStartup = DatabaseInitializerHostedService.ResolveFailStartupOnMigrationError(configuration);
+        Assert.True(failStartup);
+    }
+
+    [Fact]
+    public void MigrationFailStartupPolicy_ReturnsFalse_WhenConfigIsInvalid() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:Migration:FailStartupOnError"] = "invalid"
+            })
+            .Build();
+
+        var failStartup = DatabaseInitializerHostedService.ResolveFailStartupOnMigrationError(configuration);
+        Assert.False(failStartup);
+    }
+
     [Fact]
     public void IsolationPolicy_DryRun_DoesNotExecuteSql() {
         var decision = ActionIsolationPolicy.Evaluate(

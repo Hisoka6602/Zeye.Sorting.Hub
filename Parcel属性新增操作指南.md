@@ -409,7 +409,8 @@ dotnet ef migrations add Add_Parcel_ScannerInfo \
 | `ModifyIp` | `string` | 否 | 修改来源 IP（审计字段） |
 | `ParcelTimestamp` | `long` | 否 | 包裹时间戳 |
 | `Type` | `ParcelType` | 否 | 包裹类型 |
-| `Status` | `ParcelStatus` | 否 | 包裹状态 |
+| `Status` | `ParcelStatus` | 否 | 包裹状态（待操作/已完成/分拣异常） |
+| `ExceptionType` | `ParcelExceptionType?` | 是 | 分拣异常类型（仅 `Status=SortingException` 时有值） |
 | `NoReadType` | `NoReadType` | 否 | 无码/难码类型 |
 | `SorterCarrierId` | `int?` | 是 | 小车编号 |
 | `SegmentCodes` | `string?` | 是 | 三段码 |
