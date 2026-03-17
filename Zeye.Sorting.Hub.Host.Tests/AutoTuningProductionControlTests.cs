@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Host.HostedServices;
+using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 
@@ -220,6 +221,19 @@ public sealed class AutoTuningProductionControlTests {
         Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hit_rate");
         Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.cross_table_query_ratio");
         Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hot_table_skew");
+    }
+
+    [Fact]
+    public void ParcelAggregateShardingCoverageGuard_ShouldCoverAllInfoValueObjects() {
+        var method = typeof(PersistenceServiceCollectionExtensions).GetMethod(
+            "AssertParcelAggregateShardingCoverage",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        var exception = Record.Exception(() => method.Invoke(null, null));
+        if (exception is System.Reflection.TargetInvocationException invocationException) {
+            exception = invocationException.InnerException;
+        }
+
+        Assert.Null(exception);
     }
 
     [Fact]

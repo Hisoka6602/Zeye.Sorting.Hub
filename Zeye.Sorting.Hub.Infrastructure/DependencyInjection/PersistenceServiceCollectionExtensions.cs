@@ -29,7 +29,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// 说明：
         /// 1) 这些表若直接按可空时间分表，插入时可能出现路由不稳定或无法命中分表；
         /// 2) 采用哈希分表可以确保“具备分表能力”，并在数据持续增长时横向分散压力；
-        /// 3) 取模值保持温和，兼顾分散效果与运维复杂度。
+        /// 3) 该常量仅作为默认值，实际模数可通过配置项 Persistence:Sharding:ParcelRelatedHashShardingMod 覆盖。
         /// </remarks>
         private const int DefaultParcelRelatedHashShardingMod = 16;
 
@@ -189,6 +189,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// - 对“无时间字段/时间可空”的表采用哈希分表，保证可路由且可扩展。
         /// </remarks>
         private static void ConfigureParcelAggregateSharding(IShardingBuilder shardingBuilder, DateTime parcelShardingStartTime, int parcelRelatedHashShardingMod) {
+            AssertParcelAggregateShardingCoverage();
+
             // 分表起始时间在进入规则注册前统一归一化为“本地时间语义”，
             // 避免外部配置传入未指定 Kind 的时间值时产生路由歧义。
             var localShardingStartTime = NormalizeToLocalTime(parcelShardingStartTime);
@@ -283,6 +285,58 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 shardingField: ParcelIdShadowField,
                 mod: parcelRelatedHashShardingMod,
                 sourceName: ShardingConstant.DefaultSource);
+        }
+
+        /// <summary>
+        /// 启动期分表覆盖守卫：校验 Parcel 值对象候选类型是否均已配置分表规则。
+        /// </summary>
+        /// <remarks>
+        /// 目的：当新增 ValueObjects 下的 *Info 类型时，若遗漏分表注册，启动期立即失败并给出缺失清单，
+        /// 避免运行期出现“路由命中但物理分表规则缺失”的异常。
+        /// </remarks>
+        internal static void AssertParcelAggregateShardingCoverage() {
+            var configured = new HashSet<Type> {
+                typeof(BagInfo),
+                typeof(VolumeInfo),
+                typeof(ChuteInfo),
+                typeof(SorterCarrierInfo),
+                typeof(GrayDetectorInfo),
+                typeof(ParcelDeviceInfo),
+                typeof(ParcelPositionInfo),
+                typeof(StickingParcelInfo),
+                typeof(ApiRequestInfo),
+                typeof(CommandInfo),
+                typeof(WeightInfo),
+                typeof(BarCodeInfo),
+                typeof(ImageInfo),
+                typeof(VideoInfo)
+            };
+            var discoveredCandidates = DiscoverParcelAggregateShardingCandidates();
+            var missing = discoveredCandidates
+                .Where(type => !configured.Contains(type))
+                .OrderBy(static type => type.Name, StringComparer.Ordinal)
+                .Select(static type => type.Name)
+                .ToArray();
+            if (missing.Length == 0) {
+                return;
+            }
+
+            throw new InvalidOperationException(
+                $"检测到 Parcel 值对象分表规则缺失：{string.Join(", ", missing)}。请在 ConfigureParcelAggregateSharding 中同步补充分表规则，并确认 EF Core 迁移与分表治理配置已对齐。");
+        }
+
+        /// <summary>发现 Parcel 值对象目录下需要分表治理的候选类型。</summary>
+        private static IReadOnlyList<Type> DiscoverParcelAggregateShardingCandidates() {
+            var valueObjectNamespace = typeof(BagInfo).Namespace;
+            return typeof(Parcel).Assembly
+                .GetTypes()
+                .Where(type =>
+                    type.IsClass
+                    && !type.IsAbstract
+                    && type.IsPublic
+                    && string.Equals(type.Namespace, valueObjectNamespace, StringComparison.Ordinal)
+                    && type.Name.EndsWith("Info", StringComparison.Ordinal))
+                .ToArray();
         }
 
         /// <summary>

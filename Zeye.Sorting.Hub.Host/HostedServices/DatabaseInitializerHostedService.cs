@@ -16,6 +16,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
     /// 数据库初始化后台服务：启动时迁移 + 可选方言初始化
     /// </summary>
     public sealed class DatabaseInitializerHostedService : IHostedService {
+        /// <summary>配置项缺失时用于占位展示的默认文本（与中文日志语境保持一致）。</summary>
+        private const string NotConfiguredPlaceholder = "未配置";
         private const string FailStartupOnMigrationErrorConfigKey = "Persistence:Migration:FailStartupOnError";
         private const string CreateShardingTableOnStartingConfigKey = "Persistence:Sharding:CreateShardingTableOnStarting";
         private const string ParcelRelatedHashShardingModConfigKey = "Persistence:Sharding:ParcelRelatedHashShardingMod";
@@ -55,9 +57,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _createShardingTableOnStarting = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, CreateShardingTableOnStartingConfigKey, false);
             _parcelRelatedHashShardingMod = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, ParcelRelatedHashShardingModConfigKey, 16);
             _hashShardingExpansionTriggerRatio = AutoTuningConfigurationHelper.GetDecimalInRangeOrDefault(configuration, HashShardingExpansionTriggerRatioConfigKey, 0.8m, 0m, 1m);
-            _hashShardingExpansionPlan = configuration[HashShardingExpansionPlanConfigKey]?.Trim() ?? "未配置";
+            _hashShardingExpansionPlan = configuration[HashShardingExpansionPlanConfigKey]?.Trim() ?? NotConfiguredPlaceholder;
             _shardingPrebuildWindowHours = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, ShardingPrebuildWindowHoursConfigKey, 72);
-            _shardingRunbook = configuration[ShardingRunbookConfigKey]?.Trim() ?? "未配置";
+            _shardingRunbook = configuration[ShardingRunbookConfigKey]?.Trim() ?? NotConfiguredPlaceholder;
 
             _retryPolicy = Policy
                 .Handle<Exception>(ex => ex is not OperationCanceledException)
@@ -292,7 +294,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     _shardingRunbook);
             }
 
-            if (string.Equals(_shardingRunbook, "未配置", StringComparison.Ordinal)) {
+            if (string.Equals(_shardingRunbook, NotConfiguredPlaceholder, StringComparison.Ordinal)) {
                 _logger.LogWarning(
                     "分表治理 Runbook 未配置：请补充配置项 {RunbookKey}，并在发布前完成预建窗口演练。",
                     ShardingRunbookConfigKey);

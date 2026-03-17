@@ -43,6 +43,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private static readonly Regex DangerousDdlRegex = new(
             @"\b(create|alter|drop)\b",
             RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        private static readonly Regex JoinKeywordRegex = new(
+            @"\b(?:left|right|inner|full|cross)?\s*join\b",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
         private readonly ILogger<DatabaseAutoTuningHostedService> _logger;
         private readonly IAutoTuningObservability _observability;
         private readonly IExecutionPlanRegressionProbe _planRegressionProbe;
@@ -1002,9 +1005,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
             var shardingHitCalls = tableSamples.Values.Sum(static sample => sample.Calls);
             var hitRate = Math.Clamp((double)shardingHitCalls / totalCalls, 0d, 1d);
-            var crossTableCalls = metrics
-                .Where(static metric => IsCrossTableQuery(metric.SampleSql))
-                .Sum(static metric => metric.CallCount);
+            var crossTableCalls = metrics.Sum(static metric => IsCrossTableQuery(metric.SampleSql) ? metric.CallCount : 0);
             var crossTableRatio = Math.Clamp((double)crossTableCalls / totalCalls, 0d, 1d);
 
             var hotTableSkew = 0d;
@@ -1081,9 +1082,14 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 : $"{schemaName.Trim().ToLowerInvariant()}.{tableName.Trim().ToLowerInvariant()}";
         }
 
-        /// <summary>基于 SQL 关键字判断是否为跨分表/跨表查询。</summary>
+        /// <summary>基于 JOIN 关键字判断是否为跨分表/跨表查询 (当前仅覆盖 JOIN 场景)。</summary>
         private static bool IsCrossTableQuery(string sql) {
-            return sql.Contains(" join ", StringComparison.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(sql)) {
+                return false;
+            }
+
+            var normalizedSql = TrimLeadingComments(sql);
+            return JoinKeywordRegex.IsMatch(normalizedSql);
         }
 
         /// <summary>判断当前时刻是否位于高峰执行窗口。</summary>
