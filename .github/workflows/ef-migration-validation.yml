@@ -5,8 +5,10 @@ on:
   pull_request:
     paths:
       - ".github/workflows/ef-migration-validation.yml"
+      - "Zeye.Sorting.Hub.Domain/**"
       - "Zeye.Sorting.Hub.Infrastructure/**"
       - "Zeye.Sorting.Hub.Host/**"
+      - "EFCore-Migration.md"
 
 permissions:
   contents: read
@@ -38,7 +40,7 @@ jobs:
           dotnet-version: "8.0.x"
 
       - name: Install dotnet-ef
-        run: dotnet tool install --global dotnet-ef
+        run: dotnet tool install --global dotnet-ef --version 9.0.14
 
       - name: Validate EF migrations (list / update / script)
         env:
@@ -48,14 +50,17 @@ jobs:
           dotnet ef migrations list \
             --project Zeye.Sorting.Hub.Infrastructure \
             --startup-project Zeye.Sorting.Hub.Infrastructure \
-            --context SortingHubDbContext
+            --context SortingHubDbContext \
+            -- --provider MySql
           dotnet ef database update \
             --project Zeye.Sorting.Hub.Infrastructure \
             --startup-project Zeye.Sorting.Hub.Infrastructure \
             --context SortingHubDbContext \
-            --connection "$MYSQL_CONNECTION"
+            --connection "$MYSQL_CONNECTION" \
+            -- --provider MySql
           dotnet ef migrations script \
             --project Zeye.Sorting.Hub.Infrastructure \
             --startup-project Zeye.Sorting.Hub.Infrastructure \
             --context SortingHubDbContext \
-            --output /tmp/ef-migration-validation.sql
+            --output /tmp/ef-migration-validation.sql \
+            -- --provider MySql

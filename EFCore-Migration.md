@@ -27,12 +27,10 @@
 
 ### 2.1 SQL Server 迁移策略（明确）
 
-- **策略选择**：采用“**独立迁移目录（同一程序集）**”策略，避免 SQL Server 与 MySQL 迁移脚本混用。
-- **目录约定**：
-  - MySQL：`Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/MySql/`
-  - SQL Server：`Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/SqlServer/`
-- **命令约定**：SQL Server 相关 `dotnet ef` 命令统一追加 `-- --provider SqlServer`，并将 `--output-dir` 指向 `Persistence/Migrations/SqlServer`。
-- **落地要求**：新增 SQL Server 迁移时必须走上述目录与参数约定；发布前必须通过 CI 的 `list/update/script` 验收流水线。
+- **当前落地策略**：采用“**单迁移目录（同一程序集）**”策略，迁移统一存放在 `Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/`。
+- **提供器约定**：SQL Server 相关 `dotnet ef` 命令统一追加 `-- --provider SqlServer`，MySQL 相关命令统一使用 `-- --provider MySql`（或默认值）。
+- **发布门禁**：发布前必须通过 CI 的 `list/update/script` 验收流水线。
+- **演进预留**：若后续出现明显的跨提供器分叉，再升级为“独立迁移目录/独立迁移程序集”策略。
 
 ---
 
@@ -72,12 +70,26 @@ Host 启动
 
 ### 4.1 新增迁移
 
+**MySQL（默认）**
+
 ```bash
 dotnet ef migrations add <迁移名称> \
   --project Zeye.Sorting.Hub.Infrastructure \
   --startup-project Zeye.Sorting.Hub.Infrastructure \
   --output-dir Persistence/Migrations \
-  --context SortingHubDbContext
+  --context SortingHubDbContext \
+  -- --provider MySql
+```
+
+**SQL Server**
+
+```bash
+dotnet ef migrations add <迁移名称> \
+  --project Zeye.Sorting.Hub.Infrastructure \
+  --startup-project Zeye.Sorting.Hub.Infrastructure \
+  --output-dir Persistence/Migrations \
+  --context SortingHubDbContext \
+  -- --provider SqlServer
 ```
 
 **命名建议**：使用 PascalCase 动词短语，描述本次变更内容，例如：
@@ -96,6 +108,18 @@ dotnet ef migrations remove \
 
 ### 4.3 查看迁移列表
 
+**MySQL（默认）**
+
+```bash
+dotnet ef migrations list \
+  --project Zeye.Sorting.Hub.Infrastructure \
+  --startup-project Zeye.Sorting.Hub.Infrastructure \
+  --context SortingHubDbContext \
+  -- --provider MySql
+```
+
+**SQL Server**
+
 ```bash
 dotnet ef migrations list \
   --project Zeye.Sorting.Hub.Infrastructure \
@@ -105,6 +129,19 @@ dotnet ef migrations list \
 ```
 
 ### 4.4 手动推送迁移到数据库（可选，通常由自动迁移替代）
+
+**MySQL（默认）**
+
+```bash
+dotnet ef database update \
+  --project Zeye.Sorting.Hub.Infrastructure \
+  --startup-project Zeye.Sorting.Hub.Infrastructure \
+  --context SortingHubDbContext \
+  --connection "server=<HOST>;port=3306;database=zeye_sorting_hub;uid=<USER>;Password=<PWD>;SslMode=None;" \
+  -- --provider MySql
+```
+
+**SQL Server**
 
 ```bash
 dotnet ef database update \
@@ -118,6 +155,19 @@ dotnet ef database update \
 > ⚠️ `MySqlContextFactory` 中的连接字符串为设计时占位值，执行 `database update` 时务必通过 `--connection` 参数传入真实连接字符串。
 
 ### 4.5 生成 DDL SQL 脚本（离线审计/DBA 审查）
+
+**MySQL（默认）**
+
+```bash
+dotnet ef migrations script \
+  --project Zeye.Sorting.Hub.Infrastructure \
+  --startup-project Zeye.Sorting.Hub.Infrastructure \
+  --context SortingHubDbContext \
+  --output migration.sql \
+  -- --provider MySql
+```
+
+**SQL Server**
 
 ```bash
 dotnet ef migrations script \
@@ -276,12 +326,12 @@ dotnet ef migrations script \
 dotnet ef migrations add <迁移名称> \
   --project Zeye.Sorting.Hub.Infrastructure \
   --startup-project Zeye.Sorting.Hub.Infrastructure \
-  --output-dir Persistence/Migrations/SqlServer \
+  --output-dir Persistence/Migrations \
   --context SortingHubDbContext \
   -- --provider SqlServer
 ```
 
-运行时 SQL Server 路径通过 `Persistence:Provider = SqlServer` 配置启用；迁移文件按提供器分目录维护（MySQL/SqlServer 独立），避免跨提供器脚本混用。
+运行时 SQL Server 路径通过 `Persistence:Provider = SqlServer` 配置启用；当前迁移文件统一维护在 `Persistence/Migrations/`，通过 provider 参数区分执行路径。
 
 ### Q：如何接入第三种数据库（如 SQLite、PostgreSQL）？
 

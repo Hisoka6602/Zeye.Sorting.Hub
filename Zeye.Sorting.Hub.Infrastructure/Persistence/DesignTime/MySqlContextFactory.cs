@@ -42,8 +42,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
         /// </summary>
         private const string FallbackConnectionString =
             "server=127.0.0.1;port=3306;database=zeye_sorting_hub;uid=root;pwd=Admin@1234;SslMode=None;";
-        private const string SqlServerFallbackConnectionString =
-            "Server=127.0.0.1,1433;Database=zeye_sorting_hub;User Id=sa;Password=Admin@1234;TrustServerCertificate=True;Encrypt=False;";
 
         /// <summary>
         /// 向上遍历父目录时的最大层级数，防止无限递归到文件系统根目录。
@@ -55,18 +53,17 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
             var config = LoadConfiguration();
             var provider = ResolveProvider(args, config);
 
-            var optionsBuilder = new DbContextOptionsBuilder<SortingHubDbContext>();
             if (string.Equals(provider, SqlServerProviderName, StringComparison.OrdinalIgnoreCase)) {
-                var sqlServerConnectionString = config.GetConnectionString(SqlServerProviderName) ?? SqlServerFallbackConnectionString;
-                optionsBuilder.UseSqlServer(sqlServerConnectionString);
-            }
-            else {
-                var connectionString = config.GetConnectionString(MySqlProviderName) ?? FallbackConnectionString;
-                var serverVersion = ResolveServerVersion(connectionString);
-                optionsBuilder.UseMySql(connectionString, serverVersion);
+                var factory = new SqlServerContextFactory();
+                return factory.CreateDbContext(args);
             }
 
-            return new SortingHubDbContext(optionsBuilder.Options);
+            var connectionString = config.GetConnectionString(MySqlProviderName) ?? FallbackConnectionString;
+            var serverVersion = ResolveServerVersion(connectionString);
+            var options = new DbContextOptionsBuilder<SortingHubDbContext>()
+                .UseMySql(connectionString, serverVersion)
+                .Options;
+            return new SortingHubDbContext(options);
         }
 
         private static string ResolveProvider(string[] args, IConfiguration config) {
@@ -78,7 +75,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
 
                 if (arg.StartsWith($"{ProviderArgumentName}=", StringComparison.OrdinalIgnoreCase)) {
                     if (arg.Length == ProviderArgumentName.Length + 1) {
-                        return MySqlProviderName;
+                        throw new InvalidOperationException("参数 '--provider=' 未提供值。可选值：MySql / SqlServer。");
                     }
 
                     var provided = arg[(ProviderArgumentName.Length + 1)..];
@@ -86,15 +83,23 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
                 }
             }
 
-            return NormalizeProvider(config["Persistence:Provider"]);
+            return NormalizeProvider(config["Persistence:Provider"] ?? MySqlProviderName);
         }
 
         private static string NormalizeProvider(string? provider) {
+            if (string.IsNullOrWhiteSpace(provider)) {
+                throw new InvalidOperationException("数据库提供器不能为空。可选值：MySql / SqlServer。");
+            }
+
             if (string.Equals(provider, SqlServerProviderName, StringComparison.OrdinalIgnoreCase)) {
                 return SqlServerProviderName;
             }
 
-            return MySqlProviderName;
+            if (string.Equals(provider, MySqlProviderName, StringComparison.OrdinalIgnoreCase)) {
+                return MySqlProviderName;
+            }
+
+            throw new InvalidOperationException($"不支持的数据库提供器：{provider}。可选值：MySql / SqlServer。");
         }
 
         /// <summary>
