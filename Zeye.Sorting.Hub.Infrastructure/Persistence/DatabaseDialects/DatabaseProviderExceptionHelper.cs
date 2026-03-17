@@ -1,6 +1,9 @@
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
 
     internal static class DatabaseProviderExceptionHelper {
+        /// <summary>
+        /// 方法：TryGetProviderErrorNumber。
+        /// </summary>
         public static bool TryGetProviderErrorNumber(Exception exception, out int errorNumber) {
             for (Exception? current = exception; current is not null; current = current.InnerException) {
                 var numberProperty = current.GetType().GetProperty("Number");

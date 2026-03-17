@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -175,6 +175,9 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         /// </summary>
         public IReadOnlyList<BarCodeInfo> BarCodeInfos => _barCodeInfos;
 
+        /// <summary>
+        /// 字段：_weightInfos。
+        /// </summary>
         private readonly List<WeightInfo> _weightInfos = new();
         /// <summary>
         /// 称重明细集合（只读视图）
@@ -186,6 +189,9 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         /// </summary>
         public VolumeInfo? VolumeInfo { get; private set; }
 
+        /// <summary>
+        /// 字段：_apiRequests。
+        /// </summary>
         private readonly List<ApiRequestInfo> _apiRequests = new();
         /// <summary>
         /// 外部接口请求记录集合（只读视图）
@@ -197,18 +203,27 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         /// </summary>
         public ChuteInfo? ChuteInfo { get; private set; }
 
+        /// <summary>
+        /// 字段：_commandInfos。
+        /// </summary>
         private readonly List<CommandInfo> _commandInfos = new();
         /// <summary>
         /// 通信指令记录集合（只读视图）
         /// </summary>
         public IReadOnlyList<CommandInfo> CommandInfos => _commandInfos;
 
+        /// <summary>
+        /// 字段：_imageInfos。
+        /// </summary>
         private readonly List<ImageInfo> _imageInfos = new();
         /// <summary>
         /// 图片信息集合（只读视图）
         /// </summary>
         public IReadOnlyList<ImageInfo> ImageInfos => _imageInfos;
 
+        /// <summary>
+        /// 字段：_videoInfos。
+        /// </summary>
         private readonly List<VideoInfo> _videoInfos = new();
         /// <summary>
         /// 视频信息集合（只读视图）
@@ -333,6 +348,9 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         /// <remarks>
         /// 标记完成时会清空 <see cref="ExceptionType"/>，避免“已完成”与“异常类型”并存的状态歧义。
         /// </remarks>
+        /// <summary>
+        /// 方法：MarkCompleted。
+        /// </summary>
         public void MarkCompleted(DateTime completedTime) {
             CompletedTime = completedTime;
             Status = ParcelStatus.Completed;
@@ -343,6 +361,9 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         /// 标记包裹为分拣异常并记录异常类型。
         /// </summary>
         /// <param name="exceptionType">分拣异常的具体类型。</param>
+        /// <summary>
+        /// 方法：MarkSortingException。
+        /// </summary>
         public void MarkSortingException(ParcelExceptionType exceptionType) {
             if (Status == ParcelStatus.Completed) {
                 throw new InvalidOperationException("已完成的包裹不允许再标记为分拣异常");

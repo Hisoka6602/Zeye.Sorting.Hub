@@ -1,4 +1,4 @@
-﻿using Polly;
+using Polly;
 using System;
 using System.Linq;
 using System.Text;
@@ -25,8 +25,14 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private const string HashShardingExpansionPlanConfigKey = "Persistence:Sharding:HashSharding:ExpansionPlan";
         private const string ShardingPrebuildWindowHoursConfigKey = "Persistence:Sharding:Governance:PrebuildWindowHours";
         private const string ShardingRunbookConfigKey = "Persistence:Sharding:Governance:Runbook";
+        /// <summary>
+        /// 字段：_serviceProvider。
+        /// </summary>
         private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<DatabaseInitializerHostedService> _logger;
+        /// <summary>
+        /// 字段：_dialect。
+        /// </summary>
         private readonly IDatabaseDialect _dialect;
         /// <summary>迁移失败是否阻断宿主启动。</summary>
         private readonly bool _failStartupOnMigrationError;
@@ -43,6 +49,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <summary>分表治理 Runbook 标识（文档路径或链接）。</summary>
         private readonly string _shardingRunbook;
 
+        /// <summary>
+        /// 字段：_retryPolicy。
+        /// </summary>
         private readonly AsyncRetryPolicy _retryPolicy;
 
         public DatabaseInitializerHostedService(
@@ -73,6 +82,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     });
         }
 
+        /// <summary>
+        /// 方法：StartAsync。
+        /// </summary>
         public async Task StartAsync(CancellationToken cancellationToken) {
             AuditShardingGovernance();
             try {
@@ -139,6 +151,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <returns>
         /// 返回 <c>true</c> 表示迁移失败时阻断启动；返回 <c>false</c> 表示迁移失败后降级运行。
         /// </returns>
+        /// <summary>
+        /// 方法：ResolveFailStartupOnMigrationError。
+        /// </summary>
         internal static bool ResolveFailStartupOnMigrationError(IConfiguration configuration) {
             ArgumentNullException.ThrowIfNull(configuration);
             var raw = configuration[FailStartupOnMigrationErrorConfigKey];
@@ -272,6 +287,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
         }
 
+        /// <summary>
+        /// 方法：StopAsync。
+        /// </summary>
         public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
         /// <summary>
@@ -283,6 +301,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// 2) 输出哈希分片模数、扩容触发阈值与迁移计划，降低“16→32”扩容认知断层；
         /// 3) 若未配置 Runbook，给出警告，推动制度化落地。
         /// </remarks>
+        /// <summary>
+        /// 方法：AuditShardingGovernance。
+        /// </summary>
         private void AuditShardingGovernance() {
             _logger.LogInformation(
                 "分表治理基线：Provider={Provider}, CreateShardingTableOnStarting={CreateShardingTableOnStarting}, ParcelRelatedHashShardingMod={ParcelRelatedHashShardingMod}, ExpansionTriggerRatio={ExpansionTriggerRatio:F2}, ExpansionPlan={ExpansionPlan}",

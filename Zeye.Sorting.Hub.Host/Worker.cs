@@ -2,6 +2,9 @@ namespace Zeye.Sorting.Hub.Host
 {
     public class Worker : BackgroundService
     {
+        /// <summary>
+        /// 字段：_logger。
+        /// </summary>
         private readonly ILogger<Worker> _logger;
 
         public Worker(ILogger<Worker> logger)

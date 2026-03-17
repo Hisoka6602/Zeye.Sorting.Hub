@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Linq.Expressions;
@@ -36,6 +36,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
         /// 获取 IQueryable（仅用于查询路径）
         /// 注意：返回的 IQueryable 绑定 DbContext 生命周期，建议仅在方法内部使用并立即物化
         /// </summary>
+        /// <summary>
+        /// 方法：Query。
+        /// </summary>
         protected IQueryable<TEntity> Query(TContext db, bool asNoTracking = true) {
             var set = db.Set<TEntity>();
             return asNoTracking ? set.AsNoTracking() : set;
@@ -55,7 +58,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
                 await db.SaveChangesAsync(cancellationToken);
                 return RepositoryResult.Success();
             }
-            catch (OperationCanceledException) {
+            catch (OperationCanceledException ex) {
+                Logger.LogWarning(ex, "新增实体操作被取消，实体类型={EntityType}", typeof(TEntity).Name);
                 return RepositoryResult.Fail("操作已取消");
             }
             catch (Exception ex) {
@@ -80,7 +84,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
                 await db.SaveChangesAsync(cancellationToken);
                 return RepositoryResult.Success();
             }
-            catch (OperationCanceledException) {
+            catch (OperationCanceledException ex) {
+                Logger.LogWarning(ex, "批量新增操作被取消，实体类型={EntityType}", typeof(TEntity).Name);
                 return RepositoryResult.Fail("操作已取消");
             }
             catch (Exception ex) {
@@ -103,7 +108,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
                 await db.SaveChangesAsync(cancellationToken);
                 return RepositoryResult.Success();
             }
-            catch (OperationCanceledException) {
+            catch (OperationCanceledException ex) {
+                Logger.LogWarning(ex, "更新实体操作被取消，实体类型={EntityType}", typeof(TEntity).Name);
                 return RepositoryResult.Fail("操作已取消");
             }
             catch (Exception ex) {
@@ -126,7 +132,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
                 await db.SaveChangesAsync(cancellationToken);
                 return RepositoryResult.Success();
             }
-            catch (OperationCanceledException) {
+            catch (OperationCanceledException ex) {
+                Logger.LogWarning(ex, "删除实体操作被取消，实体类型={EntityType}", typeof(TEntity).Name);
                 return RepositoryResult.Fail("操作已取消");
             }
             catch (Exception ex) {
@@ -154,7 +161,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
 
                 return RepositoryResult<List<TEntity>>.Success(list);
             }
-            catch (OperationCanceledException) {
+            catch (OperationCanceledException ex) {
+                Logger.LogWarning(ex, "查询列表操作被取消，实体类型={EntityType}", typeof(TEntity).Name);
                 return RepositoryResult<List<TEntity>>.Fail("操作已取消");
             }
             catch (Exception ex) {
@@ -181,7 +189,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
 
                 return RepositoryResult<TEntity?>.Success(entity);
             }
-            catch (OperationCanceledException) {
+            catch (OperationCanceledException ex) {
+                Logger.LogWarning(ex, "查询单条操作被取消，实体类型={EntityType}", typeof(TEntity).Name);
                 return RepositoryResult<TEntity?>.Fail("操作已取消");
             }
             catch (Exception ex) {

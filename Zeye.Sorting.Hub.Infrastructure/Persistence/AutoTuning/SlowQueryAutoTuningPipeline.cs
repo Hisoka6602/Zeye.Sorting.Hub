@@ -21,24 +21,54 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         private static readonly Regex WhereRegex = new(@"\bwhere\b(?<where>.+?)(\border\s+by\b|\bgroup\s+by\b|\blimit\b|;|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
         private static readonly Regex WhereColumnRegex = new(@"(?:[A-Za-z_][A-Za-z0-9_]*\.)?[`""\[]?([A-Za-z_][A-Za-z0-9_]*)[`""\]]?\s*(=|>|<|>=|<=|like\b|in\b)", RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
         private static readonly Regex SafeIdentifierRegex = new(@"^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        /// <summary>
+        /// 字段：_slowQueries。
+        /// </summary>
         private readonly Queue<SlowQuerySample> _slowQueries = new();
         private readonly int _slowQueryThresholdMilliseconds;
+        /// <summary>
+        /// 字段：_analysisBatchSize。
+        /// </summary>
         private readonly int _analysisBatchSize;
         private readonly int _triggerCount;
+        /// <summary>
+        /// 字段：_maxSuggestionsPerCycle。
+        /// </summary>
         private readonly int _maxSuggestionsPerCycle;
         private readonly int _maxQueueSize;
+        /// <summary>
+        /// 字段：_aggregationTopN。
+        /// </summary>
         private readonly int _aggregationTopN;
         private readonly int _alertDebounceMinCallCount;
+        /// <summary>
+        /// 字段：_alertP99Milliseconds。
+        /// </summary>
         private readonly int _alertP99Milliseconds;
         private readonly decimal _alertTimeoutRatePercent;
+        /// <summary>
+        /// 字段：_alertDeadlockCount。
+        /// </summary>
         private readonly int _alertDeadlockCount;
         private readonly TimeSpan _alertDebounceWindow;
+        /// <summary>
+        /// 字段：_alertConsecutiveWindows。
+        /// </summary>
         private readonly int _alertConsecutiveWindows;
         private readonly int _alertRecoveryConsecutiveWindows;
+        /// <summary>
+        /// 字段：_dailyReportTime。
+        /// </summary>
         private readonly TimeSpan _dailyReportTime;
         private readonly IAutoTuningObservability _observability;
+        /// <summary>
+        /// 字段：_queueSync。
+        /// </summary>
         private readonly object _queueSync = new();
         private readonly Dictionary<string, AlertTrackingState> _alertStates = new(StringComparer.OrdinalIgnoreCase);
+        /// <summary>
+        /// 字段：_droppedCount。
+        /// </summary>
         private int _droppedCount;
         private DateTime _nextDailyReportTime;
 
@@ -381,6 +411,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             PruneAlertStateCapacity();
         }
 
+        /// <summary>
+        /// 方法：PruneAlertStateCapacity。
+        /// </summary>
         private void PruneAlertStateCapacity() {
             var overflow = _alertStates.Count - MaxAlertTrackingStates;
             if (overflow <= 0) {
@@ -570,13 +603,22 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             return (riskLevel, confidence, reason);
         }
 
+        /// <summary>
+        /// 方法：BuildAlertKey。
+        /// </summary>
         private static string BuildAlertKey(string fingerprint, string type) => $"{fingerprint}|{type}";
 
+        /// <summary>
+        /// 方法：TryExtractFingerprintFromAlertKey。
+        /// </summary>
         private static string TryExtractFingerprintFromAlertKey(string alertKey) {
             var separatorIndex = alertKey.IndexOf('|');
             return separatorIndex < 0 ? alertKey : alertKey[..separatorIndex];
         }
 
+        /// <summary>
+        /// 方法：TryExtractTypeFromAlertKey。
+        /// </summary>
         private static string TryExtractTypeFromAlertKey(string alertKey) {
             var separatorIndex = alertKey.IndexOf('|');
             return separatorIndex < 0 ? "UNKNOWN" : alertKey[(separatorIndex + 1)..];

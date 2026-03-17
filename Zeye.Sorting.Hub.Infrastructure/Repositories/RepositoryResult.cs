@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -19,8 +19,14 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
         /// </summary>
         public string? ErrorMessage { get; init; }
 
+        /// <summary>
+        /// 方法：Success。
+        /// </summary>
         public static RepositoryResult Success() => new() { IsSuccess = true };
 
+        /// <summary>
+        /// 方法：Fail。
+        /// </summary>
         public static RepositoryResult Fail(string errorMessage) => new() {
             IsSuccess = false,
             ErrorMessage = string.IsNullOrWhiteSpace(errorMessage) ? "仓储操作失败" : errorMessage
@@ -46,8 +52,14 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
         /// </summary>
         public string? ErrorMessage { get; init; }
 
+        /// <summary>
+        /// 方法：Success。
+        /// </summary>
         public static RepositoryResult<T> Success(T value) => new() { IsSuccess = true, Value = value };
 
+        /// <summary>
+        /// 方法：Fail。
+        /// </summary>
         public static RepositoryResult<T> Fail(string errorMessage) => new() {
             IsSuccess = false,
             ErrorMessage = string.IsNullOrWhiteSpace(errorMessage) ? "仓储操作失败" : errorMessage

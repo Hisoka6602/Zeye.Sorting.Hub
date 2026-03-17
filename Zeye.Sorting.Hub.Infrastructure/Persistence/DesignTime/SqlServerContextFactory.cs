@@ -52,6 +52,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
             return CreateDbContext(config);
         }
 
+        /// <summary>
+        /// 方法：CreateDbContext。
+        /// </summary>
         internal SortingHubDbContext CreateDbContext(IConfiguration config) {
             var connectionString = config.GetConnectionString("SqlServer") ?? FallbackConnectionString;
 
@@ -65,6 +68,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
         /// <summary>
         /// 从 <c>appsettings.json</c> 加载配置。
         /// 按优先级搜索以下路径：当前工作目录 → 相邻 Host 目录 → 向上遍历父目录中的 Host 子目录。
+        /// </summary>
+        /// <summary>
+        /// 方法：LoadConfiguration。
         /// </summary>
         private static IConfiguration LoadConfiguration() {
             var basePath = FindAppsettingsDirectory();

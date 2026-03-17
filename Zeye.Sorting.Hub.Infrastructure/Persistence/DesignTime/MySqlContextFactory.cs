@@ -49,6 +49,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
         private const int MaxParentDirectorySearchDepth = 6;
 
         /// <inheritdoc />
+        /// <summary>
+        /// 方法：CreateDbContext。
+        /// </summary>
         public SortingHubDbContext CreateDbContext(string[] args) {
             var config = LoadConfiguration();
             var provider = ResolveProvider(args, config);
@@ -66,6 +69,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
             return new SortingHubDbContext(options);
         }
 
+        /// <summary>
+        /// 方法：ResolveProvider。
+        /// </summary>
         private static string ResolveProvider(string[] args, IConfiguration config) {
             for (var i = 0; i < args.Length; i++) {
                 var arg = args[i];
@@ -86,6 +92,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
             return NormalizeProvider(config["Persistence:Provider"] ?? MySqlProviderName);
         }
 
+        /// <summary>
+        /// 方法：NormalizeProvider。
+        /// </summary>
         private static string NormalizeProvider(string? provider) {
             if (string.IsNullOrWhiteSpace(provider)) {
                 throw new InvalidOperationException("数据库提供器不能为空。可选值：MySql / SqlServer。");
@@ -105,6 +114,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
         /// <summary>
         /// 从 <c>appsettings.json</c> 加载配置。
         /// 按优先级搜索以下路径：当前工作目录 → 相邻 Host 目录 → 向上遍历父目录中的 Host 子目录。
+        /// </summary>
+        /// <summary>
+        /// 方法：LoadConfiguration。
         /// </summary>
         private static IConfiguration LoadConfiguration() {
             var basePath = FindAppsettingsDirectory();
@@ -155,6 +167,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
         ///     该值仅影响 <c>dotnet ef</c> 设计时模型分析，不影响运行时的 AutoDetect 行为。
         ///   </description></item>
         /// </list>
+        /// </summary>
+        /// <summary>
+        /// 方法：ResolveServerVersion。
         /// </summary>
         private static ServerVersion ResolveServerVersion(string connectionString) {
             try {

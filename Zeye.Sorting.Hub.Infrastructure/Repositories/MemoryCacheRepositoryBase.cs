@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -31,6 +31,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
         /// </summary>
         protected abstract IEnumerable<string> GetRelatedCacheKeys(TEntity entity);
 
+        /// <summary>
+        /// 方法：AddAsync。
+        /// </summary>
         public override async Task<RepositoryResult> AddAsync(TEntity entity, CancellationToken cancellationToken) {
             var result = await base.AddAsync(entity, cancellationToken);
             if (result.IsSuccess) {
@@ -40,6 +43,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
             return result;
         }
 
+        /// <summary>
+        /// 方法：UpdateAsync。
+        /// </summary>
         public override async Task<RepositoryResult> UpdateAsync(TEntity entity, CancellationToken cancellationToken) {
             var result = await base.UpdateAsync(entity, cancellationToken);
             if (result.IsSuccess) {
@@ -49,6 +55,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
             return result;
         }
 
+        /// <summary>
+        /// 方法：RemoveAsync。
+        /// </summary>
         public override async Task<RepositoryResult> RemoveAsync(TEntity entity, CancellationToken cancellationToken) {
             var result = await base.RemoveAsync(entity, cancellationToken);
             if (result.IsSuccess) {
@@ -58,6 +67,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
             return result;
         }
 
+        /// <summary>
+        /// 方法：InvalidateCache。
+        /// </summary>
         private void InvalidateCache(TEntity entity) {
             try {
                 foreach (var key in GetRelatedCacheKeys(entity)) {

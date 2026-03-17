@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -15,6 +15,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence {
         public SortingHubDbContext(DbContextOptions<SortingHubDbContext> options) : base(options) {
         }
 
+        /// <summary>
+        /// 方法：OnModelCreating。
+        /// </summary>
         protected override void OnModelCreating(ModelBuilder modelBuilder) {
             // 统一应用所有 IEntityTypeConfiguration
             modelBuilder.ApplyConfigurationsFromAssembly(typeof(SortingHubDbContext).Assembly);

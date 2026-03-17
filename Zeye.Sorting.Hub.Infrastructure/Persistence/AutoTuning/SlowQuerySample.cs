@@ -40,6 +40,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             OccurredTime = NormalizeToLocalTime(occurredTime);
         }
 
+        /// <summary>
+        /// 方法：NormalizeToLocalTime。
+        /// </summary>
         private static DateTime NormalizeToLocalTime(DateTime value) {
             return value.Kind switch {
                 DateTimeKind.Unspecified => DateTime.SpecifyKind(value, DateTimeKind.Local),

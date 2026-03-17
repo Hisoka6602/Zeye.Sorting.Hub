@@ -14,6 +14,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         public void EmitMetric(string name, double value, IReadOnlyDictionary<string, string>? tags = null) {
         }
 
+        /// <summary>
+        /// 方法：EmitEvent。
+        /// </summary>
         public void EmitEvent(string name, LogLevel level, string message, IReadOnlyDictionary<string, string>? tags = null) {
         }
     }
@@ -79,6 +82,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
     /// <summary>闭环阶段跟踪器（显式阶段流转，最多保留最近 <see cref="MaxStageHistory"/> 条记录）。</summary>
     public sealed class AutoTuningClosedLoopTracker {
         private const int MaxStageHistory = 1000;
+        /// <summary>
+        /// 字段：_stages。
+        /// </summary>
         private readonly List<AutoTuningClosedLoopStage> _stages = new();
 
         public AutoTuningClosedLoopTracker() {
@@ -87,6 +93,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
 
         public IReadOnlyList<AutoTuningClosedLoopStage> Stages => _stages;
 
+        /// <summary>
+        /// 方法：MoveTo。
+        /// </summary>
         public void MoveTo(AutoTuningClosedLoopStage stage) {
             if (_stages[^1] == stage) {
                 return;
@@ -165,6 +174,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                 ]);
         }
 
+        /// <summary>
+        /// 方法：BuildVerdict。
+        /// </summary>
         private static string BuildVerdict(bool regressed, bool severeRegressed) {
             if (severeRegressed) {
                 return "severe-regressed";
@@ -177,6 +189,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             return "pass";
         }
 
+        /// <summary>
+        /// 方法：CalculateLockWaitDelta。
+        /// </summary>
         private static string CalculateLockWaitDelta(int? lockWaitBaseline, int? lockWaitCurrent, bool lockWaitUnavailable) {
             if (lockWaitUnavailable || !lockWaitBaseline.HasValue || !lockWaitCurrent.HasValue) {
                 return "unavailable";
@@ -185,6 +200,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             return (lockWaitCurrent.Value - lockWaitBaseline.Value).ToString();
         }
 
+        /// <summary>
+        /// 方法：BuildPercentMetric。
+        /// </summary>
         private static AutoTuningVerificationMetricDiff BuildPercentMetric(string name, decimal increasePercent) {
             return new AutoTuningVerificationMetricDiff(
                 Name: name,
@@ -199,6 +217,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
     /// <summary>默认执行计划探针：结构化输出 unavailable/available 状态，并发出观测指标。</summary>
     public sealed class LoggingOnlyExecutionPlanRegressionProbe : IExecutionPlanRegressionProbe {
         private readonly ILogger<LoggingOnlyExecutionPlanRegressionProbe> _logger;
+        /// <summary>
+        /// 字段：_observability。
+        /// </summary>
         private readonly IAutoTuningObservability _observability;
 
         public LoggingOnlyExecutionPlanRegressionProbe(
@@ -208,6 +229,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             _observability = observability;
         }
 
+        /// <summary>
+        /// 方法：Evaluate。
+        /// </summary>
         public PlanRegressionSnapshot Evaluate(string providerName, string sqlFingerprint) {
             var normalizedProvider = NormalizeParameter(providerName);
             var normalizedFingerprint = NormalizeParameter(sqlFingerprint);
@@ -242,10 +266,16 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             return snapshot;
         }
 
+        /// <summary>
+        /// 方法：NormalizeParameter。
+        /// </summary>
         private static string NormalizeParameter(string? value) {
             return string.IsNullOrWhiteSpace(value) ? "unknown" : value.Trim();
         }
 
+        /// <summary>
+        /// 方法：BuildSnapshot。
+        /// </summary>
         private static PlanRegressionSnapshot BuildSnapshot(string providerName, string sqlFingerprint) {
             if (string.Equals(sqlFingerprint, "plan-probe-query-failed", StringComparison.OrdinalIgnoreCase)) {
                 return new PlanRegressionSnapshot(
