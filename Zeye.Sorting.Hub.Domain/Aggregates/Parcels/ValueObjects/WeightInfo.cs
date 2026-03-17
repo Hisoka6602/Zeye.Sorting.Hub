@@ -3,6 +3,8 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
     /// <summary>
@@ -13,16 +15,19 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
         /// <summary>
         /// 原始重量字符串（设备传入原始格式）
         /// </summary>
+        [MaxLength(512)]
         public string RawWeight { get; init; } = string.Empty;
 
         /// <summary>
         /// 取证依据（如图像编号、传感器采样编号等）
         /// </summary>
+        [MaxLength(128)]
         public string EvidenceCode { get; init; } = string.Empty;
 
         /// <summary>
         /// 格式化后重量（单位：kg）
         /// </summary>
+        [Column(TypeName = "decimal(18,3)")]
         public required decimal FormattedWeight { get; init; }
 
         /// <summary>
@@ -33,6 +38,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
         /// <summary>
         /// 调整后的重量（单位：kg；为空表示未调整）
         /// </summary>
+        [Column(TypeName = "decimal(18,3)")]
         public decimal? AdjustedWeight { get; init; }
 
         /// <summary>

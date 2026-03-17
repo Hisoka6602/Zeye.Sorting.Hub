@@ -361,3 +361,5 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# 运行时日志文件（Serilog 落盘，不提交到版本库）
+logs/

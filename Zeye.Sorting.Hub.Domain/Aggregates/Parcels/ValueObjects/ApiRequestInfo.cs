@@ -3,6 +3,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using Zeye.Sorting.Hub.Domain.Enums;
 
 namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
@@ -26,16 +27,19 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
         /// <summary>
         /// 请求地址
         /// </summary>
+        [MaxLength(512)]
         public required string RequestUrl { get; init; }
 
         /// <summary>
         /// 参数（URL 或 Query 参数）
         /// </summary>
+        [MaxLength(1024)]
         public string QueryParams { get; init; } = string.Empty;
 
         /// <summary>
         /// 协议头
         /// </summary>
+        [MaxLength(2048)]
         public string Headers { get; init; } = string.Empty;
 
         /// <summary>
@@ -66,6 +70,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
         /// <summary>
         /// 异常信息（如发生异常则记录）
         /// </summary>
+        [MaxLength(2048)]
         public string Exception { get; init; } = string.Empty;
 
         /// <summary>
@@ -76,6 +81,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
         /// <summary>
         /// 格式化后的业务消息（如用于界面展示的提示文本）
         /// </summary>
+        [MaxLength(1024)]
         public string FormattedMessage { get; init; } = string.Empty;
 
         /// <summary>

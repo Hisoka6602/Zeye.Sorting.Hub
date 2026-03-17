@@ -3,6 +3,8 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using Zeye.Sorting.Hub.Domain.Enums;
 
 namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
@@ -19,51 +21,61 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
         /// <summary>
         /// 原始体积字符串（设备返回的原始格式）
         /// </summary>
+        [MaxLength(512)]
         public string RawVolume { get; init; } = string.Empty;
 
         /// <summary>
         /// 取证依据（如图像编号、3D 模型编号等）
         /// </summary>
+        [MaxLength(128)]
         public string EvidenceCode { get; init; } = string.Empty;
 
         /// <summary>
         /// 格式化后的长度（单位：毫米）
         /// </summary>
+        [Column(TypeName = "decimal(18,3)")]
         public required decimal FormattedLength { get; init; }
 
         /// <summary>
         /// 格式化后的宽度（单位：毫米）
         /// </summary>
+        [Column(TypeName = "decimal(18,3)")]
         public required decimal FormattedWidth { get; init; }
 
         /// <summary>
         /// 格式化后的高度（单位：毫米）
         /// </summary>
+        [Column(TypeName = "decimal(18,3)")]
         public required decimal FormattedHeight { get; init; }
 
         /// <summary>
         /// 格式化后的体积（单位：立方厘米）
         /// </summary>
+        [Column(TypeName = "decimal(18,3)")]
         public required decimal FormattedVolume { get; init; }
 
         /// <summary>
         /// 长度调整值（单位：毫米；为空表示未调整）
         /// </summary>
+        [Column(TypeName = "decimal(18,3)")]
         public decimal? AdjustedLength { get; init; }
 
         /// <summary>
         /// 宽度调整值（单位：毫米；为空表示未调整）
         /// </summary>
+        [Column(TypeName = "decimal(18,3)")]
         public decimal? AdjustedWidth { get; init; }
 
         /// <summary>
         /// 高度调整值（单位：毫米；为空表示未调整）
         /// </summary>
+        [Column(TypeName = "decimal(18,3)")]
         public decimal? AdjustedHeight { get; init; }
 
         /// <summary>
         /// 体积调整值（单位：立方厘米；为空表示未调整）
         /// </summary>
+        [Column(TypeName = "decimal(18,3)")]
         public decimal? AdjustedVolume { get; init; }
 
         /// <summary>

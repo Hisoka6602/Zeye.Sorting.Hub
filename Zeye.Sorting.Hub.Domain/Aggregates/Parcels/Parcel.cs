@@ -3,6 +3,8 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Primitives;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects;
@@ -12,8 +14,8 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
     /// <summary>
     /// 包裹实体（领域层聚合根）
     /// 说明：
-    /// 1) 仅包含领域语义与状态，不包含任何 EF Core 映射特性
-    /// 2) 持久化映射（表名、列名、索引、关系）应在 Infrastructure/EntityConfigurations 中完成
+    /// 1) 仅包含领域语义与状态，仅使用标准库特征标记（System.ComponentModel.DataAnnotations）
+    /// 2) EF Core 专有持久化映射（表名、架构、索引、关系、decimal 精度）在 Infrastructure/EntityConfigurations 中完成
     /// </summary>
     public sealed class Parcel : AuditableEntity {
 
@@ -45,6 +47,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         /// <summary>
         /// 三段码
         /// </summary>
+        [MaxLength(512)]
         public string? SegmentCodes { get; private set; }
 
         /// <summary>
@@ -65,11 +68,13 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         /// <summary>
         /// 条码（主条码）
         /// </summary>
+        [MaxLength(1024)]
         public string BarCodes { get; private set; } = string.Empty;
 
         /// <summary>
         /// 重量
         /// </summary>
+        [Column(TypeName = "decimal(18,3)")]
         public decimal Weight { get; private set; }
 
         /// <summary>
@@ -80,11 +85,13 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         /// <summary>
         /// 集包号
         /// </summary>
+        [MaxLength(128)]
         public string BagCode { get; private set; } = string.Empty;
 
         /// <summary>
         /// 工作台
         /// </summary>
+        [MaxLength(128)]
         public string WorkstationName { get; private set; } = string.Empty;
 
         /// <summary>
@@ -95,21 +102,25 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         /// <summary>
         /// 长度
         /// </summary>
+        [Column(TypeName = "decimal(18,3)")]
         public decimal Length { get; private set; }
 
         /// <summary>
         /// 宽度
         /// </summary>
+        [Column(TypeName = "decimal(18,3)")]
         public decimal Width { get; private set; }
 
         /// <summary>
         /// 高度
         /// </summary>
+        [Column(TypeName = "decimal(18,3)")]
         public decimal Height { get; private set; }
 
         /// <summary>
         /// 体积
         /// </summary>
+        [Column(TypeName = "decimal(18,3)")]
         public decimal Volume { get; private set; }
 
         /// <summary>
@@ -140,6 +151,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         /// <summary>
         /// 包裹坐标位置（原始字符串表达）
         /// </summary>
+        [MaxLength(1024)]
         public string Coordinate { get; private set; } = string.Empty;
 
         // ------------------------------

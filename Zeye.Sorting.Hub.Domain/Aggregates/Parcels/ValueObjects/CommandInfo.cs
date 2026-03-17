@@ -4,6 +4,7 @@ using System.Text;
 using System.Net.Sockets;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using Zeye.Sorting.Hub.Domain.Enums;
 
 namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
@@ -22,11 +23,13 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
         /// <summary>
         /// 协议名称（如 Scs-V1、ChuteLock-Protocol 等）
         /// </summary>
+        [MaxLength(128)]
         public required string ProtocolName { get; init; }
 
         /// <summary>
         /// 连接名称（如串口号、TCP 连接标识、设备编号等）
         /// </summary>
+        [MaxLength(128)]
         public string ConnectionName { get; init; } = string.Empty;
 
         /// <summary>
@@ -47,6 +50,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
         /// <summary>
         /// 格式化说明（如“锁定目标格口 A12，超时30秒”）
         /// </summary>
+        [MaxLength(1024)]
         public string FormattedMessage { get; init; } = string.Empty;
 
         /// <summary>

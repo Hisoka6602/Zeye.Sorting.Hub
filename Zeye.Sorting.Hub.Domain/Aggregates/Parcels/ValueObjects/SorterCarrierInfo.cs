@@ -3,6 +3,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
     /// <summary>
@@ -23,6 +24,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
         /// <summary>
         /// 上车时输送带速度（单位：mm/s）
         /// </summary>
+        [Column(TypeName = "decimal(18,3)")]
         public required decimal ConveyorSpeedWhenLoaded { get; init; }
 
         /// <summary>

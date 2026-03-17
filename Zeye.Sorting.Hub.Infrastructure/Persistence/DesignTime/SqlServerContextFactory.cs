@@ -1,12 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.Extensions.Configuration;
-using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
 
     /// <summary>
-    /// MySQL 设计时 DbContext 工厂，供 <c>dotnet ef</c> 迁移工具在无宿主进程时构建 <see cref="SortingHubDbContext"/>。
+    /// SQL Server 设计时 DbContext 工厂，供 <c>dotnet ef</c> 迁移工具在无宿主进程时构建 <see cref="SortingHubDbContext"/>。
     /// </summary>
     /// <remarks>
     /// <para>该工厂仅在以下场景被调用：</para>
@@ -17,7 +16,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
     ///   <item><description><c>dotnet ef dbcontext script</c> — 生成 DDL SQL 脚本</description></item>
     /// </list>
     /// <para>
-    /// 连接字符串从 <c>appsettings.json</c>（<c>ConnectionStrings:MySql</c>）读取。
+    /// 连接字符串从 <c>appsettings.json</c>（<c>ConnectionStrings:SqlServer</c>）读取。
     /// 工厂按以下顺序搜索 <c>appsettings.json</c>：
     /// <list type="number">
     ///   <item><description>当前工作目录（适用于从 Host 或解决方案根目录运行 <c>dotnet ef</c>）</description></item>
@@ -27,14 +26,14 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
     /// </list>
     /// </para>
     /// </remarks>
-    internal sealed class MySqlContextFactory : IDesignTimeDbContextFactory<SortingHubDbContext> {
+    internal sealed class SqlServerContextFactory : IDesignTimeDbContextFactory<SortingHubDbContext> {
 
         /// <summary>
         /// 设计时兜底占位连接字符串，仅在无法从 <c>appsettings.json</c> 读取时使用。
         /// 此值仅用于 <c>dotnet ef</c> 工具链的设计时模型分析，不影响运行时连接。
         /// </summary>
         private const string FallbackConnectionString =
-            "server=127.0.0.1;port=3306;database=zeye_sorting_hub;uid=root;pwd=Admin@1234;SslMode=None;";
+            "Server=127.0.0.1,1433;Database=zeye_sorting_hub;User Id=sa;Password=Admin@1234;TrustServerCertificate=True;Encrypt=False;";
 
         /// <summary>
         /// 向上遍历父目录时的最大层级数，防止无限递归到文件系统根目录。
@@ -44,11 +43,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
         /// <inheritdoc />
         public SortingHubDbContext CreateDbContext(string[] args) {
             var config = LoadConfiguration();
-            var connectionString = config.GetConnectionString("MySql") ?? FallbackConnectionString;
-            var serverVersion = ResolveServerVersion(connectionString);
+            var connectionString = config.GetConnectionString("SqlServer") ?? FallbackConnectionString;
 
             var options = new DbContextOptionsBuilder<SortingHubDbContext>()
-                .UseMySql(connectionString, serverVersion)
+                .UseSqlServer(connectionString)
                 .Options;
 
             return new SortingHubDbContext(options);
@@ -94,29 +92,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
             }
 
             return null;
-        }
-
-        /// <summary>
-        /// 按优先级解析 MySQL 服务端版本，不主动锁定版本号：
-        /// <list type="number">
-        ///   <item><description>
-        ///     <c>ServerVersion.AutoDetect</c> — 最优先；数据库可连通时自动探测，无任何版本限制。
-        ///   </description></item>
-        ///   <item><description>
-        ///     兜底 MySQL 8.0 — 仅当 AutoDetect 失败时使用（设计时无数据库为正常场景）。
-        ///     该值仅影响 <c>dotnet ef</c> 设计时模型分析，不影响运行时的 AutoDetect 行为。
-        ///   </description></item>
-        /// </list>
-        /// </summary>
-        private static ServerVersion ResolveServerVersion(string connectionString) {
-            try {
-                return ServerVersion.AutoDetect(connectionString);
-            }
-            catch {
-                // 设计时无数据库连接属正常情况，静默降级到兜底版本
-            }
-
-            return new MySqlServerVersion(new Version(8, 0, 0));
         }
     }
 }

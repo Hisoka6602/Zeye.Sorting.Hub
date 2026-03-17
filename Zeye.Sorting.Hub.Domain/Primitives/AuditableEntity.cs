@@ -3,6 +3,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using Zeye.Sorting.Hub.Domain.Abstractions;
 
 namespace Zeye.Sorting.Hub.Domain.Primitives {
@@ -31,6 +32,7 @@ namespace Zeye.Sorting.Hub.Domain.Primitives {
         /// <summary>
         /// 修改 IP
         /// </summary>
+        [MaxLength(64)]
         public string ModifyIp { get; set; } = string.Empty;
     }
 }
