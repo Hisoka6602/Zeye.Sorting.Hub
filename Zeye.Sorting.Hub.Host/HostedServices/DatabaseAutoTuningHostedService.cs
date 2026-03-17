@@ -47,6 +47,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             @"\b(?:left|right|inner|full|cross)?\s*join\b",
             RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
         private static readonly Regex TableReferenceRegex = new(
+            // 识别 FROM 后的主表引用，支持常见 MySQL(`table`/`schema`.`table`) 与 SQL Server([table]/[schema].[table]) 书写形式。
+            // 该表达式仅用于分表命中率估算，不承担完整 SQL 语法解析职责。
             @"\bfrom\s+(?:`[^`]+`|\[[^\]]+\]|\w+)(?:\.(?:`[^`]+`|\[[^\]]+\]|\w+))?",
             RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
         private readonly ILogger<DatabaseAutoTuningHostedService> _logger;

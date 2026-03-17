@@ -14,6 +14,7 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 namespace Zeye.Sorting.Hub.Host.Tests;
 
 public sealed class AutoTuningProductionControlTests {
+    private const double DoublePrecisionTolerance = 0.0001d;
     [Fact]
     public void ParcelStatus_ShouldOnlyContainThreeValues() {
         var values = Enum.GetValues<ParcelStatus>();
@@ -240,7 +241,66 @@ public sealed class AutoTuningProductionControlTests {
         Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hit_rate");
         Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.cross_table_query_ratio");
         Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hot_table_skew");
-        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hit_rate" && Math.Abs(entry.Value - 1d) < 0.0001d);
+        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hit_rate" && Math.Abs(entry.Value - 1d) < DoublePrecisionTolerance);
+    }
+
+    [Fact]
+    public void UpdateAutonomousSignals_HitRateSupportsPartialAndNoTableReferenceCases() {
+        var logger = new TestLogger<DatabaseAutoTuningHostedService>();
+        var observability = new TestObservability();
+        var fixedNow = new DateTime(2026, 3, 17, 10, 0, 0, DateTimeKind.Local);
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:AutoTuning:Autonomous:EnableFullAutomation"] = "true",
+                ["Persistence:AutoTuning:Autonomous:CapacityPrediction:EnableCapacityPrediction"] = "true"
+            })
+            .Build();
+        var pipeline = new SlowQueryAutoTuningPipeline(configuration, observability);
+        var service = new DatabaseAutoTuningHostedService(
+            logger,
+            observability,
+            new FixedPlanProbe(),
+            new EmptyServiceScopeFactory(),
+            new TestDialect(),
+            pipeline,
+            configuration);
+        var updateAutonomousSignals = typeof(DatabaseAutoTuningHostedService).GetMethod("UpdateAutonomousSignals", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+
+        var partial = new SlowQueryAnalysisResult(
+            fixedNow,
+            0,
+            [
+                new SlowQueryMetric("partial-1", "select * from parcels where code=@p0", 10, 100, 0m, 0m, 0, 10d, 20d, 30d, null),
+                new SlowQueryMetric("partial-2", "show status", 10, 0, 0m, 0m, 0, 10d, 20d, 30d, null)
+            ],
+            Array.Empty<SlowQueryTuningCandidate>(),
+            Array.Empty<string>(),
+            Array.Empty<SlowQuerySuggestionInsight>(),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            Array.Empty<SlowQueryAlertNotification>(),
+            false);
+        var partialMetrics = partial.Metrics.ToDictionary(static metric => metric.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
+        updateAutonomousSignals.Invoke(service, [partial, fixedNow, partialMetrics]);
+        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hit_rate" && Math.Abs(entry.Value - 0.5d) < DoublePrecisionTolerance);
+
+        observability.MetricEntries.Clear();
+        var none = new SlowQueryAnalysisResult(
+            fixedNow,
+            0,
+            [
+                new SlowQueryMetric("none-1", "show status", 7, 0, 0m, 0m, 0, 10d, 20d, 30d, null)
+            ],
+            Array.Empty<SlowQueryTuningCandidate>(),
+            Array.Empty<string>(),
+            Array.Empty<SlowQuerySuggestionInsight>(),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            Array.Empty<SlowQueryAlertNotification>(),
+            false);
+        var noneMetrics = none.Metrics.ToDictionary(static metric => metric.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
+        updateAutonomousSignals.Invoke(service, [none, fixedNow, noneMetrics]);
+        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hit_rate" && Math.Abs(entry.Value) < DoublePrecisionTolerance);
     }
 
     [Fact]
