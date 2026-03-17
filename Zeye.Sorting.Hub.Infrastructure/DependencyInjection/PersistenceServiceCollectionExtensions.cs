@@ -54,7 +54,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             options: RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         /// <summary>
-        /// 执行逻辑：AddSortingHubPersistence。
+        /// 注册持久化层核心能力（EF Core、分表规则、自动调优拦截器与观测组件），并按 <c>Persistence:Provider</c> 选择数据库方言实现。
         /// </summary>
         public static IServiceCollection AddSortingHubPersistence(this IServiceCollection services, IConfiguration configuration) {
             var provider = configuration["Persistence:Provider"];

@@ -15,7 +15,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         }
 
         /// <summary>
-        /// 执行逻辑：EmitEvent。
+        /// 空实现：不输出任何事件观测数据，用于禁用观测链路时保持调用兼容。
         /// </summary>
         public void EmitEvent(string name, LogLevel level, string message, IReadOnlyDictionary<string, string>? tags = null) {
         }

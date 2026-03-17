@@ -609,7 +609,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         private static string BuildAlertKey(string fingerprint, string type) => $"{fingerprint}|{type}";
 
         /// <summary>
-        /// 执行逻辑：TryExtractFingerprintFromAlertKey。
+        /// 从告警键 <c>fingerprint|type</c> 中提取 <c>fingerprint</c>；若缺少分隔符 <c>|</c> 则返回原始键值。
         /// </summary>
         private static string TryExtractFingerprintFromAlertKey(string alertKey) {
             var separatorIndex = alertKey.IndexOf('|');
@@ -617,7 +617,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         }
 
         /// <summary>
-        /// 执行逻辑：TryExtractTypeFromAlertKey。
+        /// 从告警键 <c>fingerprint|type</c> 中提取 <c>type</c>；若缺少分隔符 <c>|</c> 则返回默认值 <c>UNKNOWN</c>，且不额外做大小写转换。
         /// </summary>
         private static string TryExtractTypeFromAlertKey(string alertKey) {
             var separatorIndex = alertKey.IndexOf('|');
