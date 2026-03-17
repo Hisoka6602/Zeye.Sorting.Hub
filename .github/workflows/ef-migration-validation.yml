@@ -47,7 +47,7 @@ jobs:
         run: dotnet tool install --global dotnet-ef --version 9.0.14
 
       - name: Add dotnet tools to PATH
-        run: echo "~/.dotnet/tools" >> "$GITHUB_PATH"
+        run: echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
 
       - name: Validate EF migrations (list / update / script)
         env:
@@ -101,7 +101,7 @@ jobs:
         run: dotnet tool install --global dotnet-ef --version 9.0.14
 
       - name: Add dotnet tools to PATH
-        run: echo "~/.dotnet/tools" >> "$GITHUB_PATH"
+        run: echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
 
       - name: Validate EF migrations (list / update / script)
         env:

@@ -75,7 +75,15 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
             catch (Exception ex) {
                 // 重试耗尽或不可恢复异常：按配置决定是否阻断启动。
-                //
+                if (_failStartupOnMigrationError) {
+                    _logger.LogCritical(ex,
+                        "[数据库初始化] 所有重试均失败，数据库连接不可用，且已启用 FailStartupOnError，应用将终止启动。" +
+                        "请检查连接字符串与数据库服务状态，Provider={Provider}, ConfigKey={ConfigKey}",
+                        _dialect.ProviderName,
+                        FailStartupOnMigrationErrorConfigKey);
+                    throw;
+                }
+
                 // 降级模式行为：
                 //   - 应用继续运行，IHostedService 生命周期正常完成
                 //   - 后续业务请求若访问数据库，将在 Repository/DbContext 层收到
@@ -86,14 +94,6 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     "[数据库初始化] 所有重试均失败，数据库连接不可用，服务将以降级模式运行。" +
                     "请检查连接字符串与数据库服务状态，Provider={Provider}",
                     _dialect.ProviderName);
-
-                if (_failStartupOnMigrationError) {
-                    _logger.LogCritical(
-                        "[数据库初始化] 已启用 FailStartupOnError，应用将终止启动。Provider={Provider}, ConfigKey={ConfigKey}",
-                        _dialect.ProviderName,
-                        FailStartupOnMigrationErrorConfigKey);
-                    throw;
-                }
             }
         }
 
