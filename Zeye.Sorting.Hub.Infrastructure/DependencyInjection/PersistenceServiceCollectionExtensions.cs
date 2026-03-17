@@ -31,7 +31,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// 2) 采用哈希分表可以确保“具备分表能力”，并在数据持续增长时横向分散压力；
         /// 3) 取模值保持温和，兼顾分散效果与运维复杂度。
         /// </remarks>
-        private const int ParcelRelatedHashShardingMod = 16;
+        private const int DefaultParcelRelatedHashShardingMod = 16;
 
         /// <summary>
         /// Parcel 关联属性表使用的影子外键字段名。
@@ -58,6 +58,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             var commandTimeoutSeconds = GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
             var minCommandElapsedMilliseconds = GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:MinCommandElapsedMilliseconds", 50);
             var parcelShardingStartTime = GetShardingStartTime(configuration);
+            var createShardingTableOnStarting = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, "Persistence:Sharding:CreateShardingTableOnStarting", false);
+            var parcelRelatedHashShardingMod = GetPositiveIntOrDefault(configuration, "Persistence:Sharding:ParcelRelatedHashShardingMod", DefaultParcelRelatedHashShardingMod);
 
             services.AddSingleton<SlowQueryAutoTuningPipeline>();
             services.AddSingleton<SlowQueryCommandInterceptor>();
@@ -111,10 +113,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                         .SetEntityAssemblies(typeof(SortingHubDbContext).Assembly)
                         .SetCommandTimeout(commandTimeoutSeconds)
                         .SetMinCommandElapsedMilliseconds(minCommandElapsedMilliseconds)
-                        .CreateShardingTableOnStarting(false)
+                        .CreateShardingTableOnStarting(createShardingTableOnStarting)
                         .UseDatabase(connectionString, DatabaseType.MySql, typeof(Parcel).Namespace!, static _ => { });
 
-                    ConfigureParcelAggregateSharding(shardingBuilder, parcelShardingStartTime);
+                    ConfigureParcelAggregateSharding(shardingBuilder, parcelShardingStartTime, parcelRelatedHashShardingMod);
                 });
 
                 services.AddSingleton<IDatabaseDialect, MySqlDialect>();
@@ -152,10 +154,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                         .SetEntityAssemblies(typeof(SortingHubDbContext).Assembly)
                         .SetCommandTimeout(commandTimeoutSeconds)
                         .SetMinCommandElapsedMilliseconds(minCommandElapsedMilliseconds)
-                        .CreateShardingTableOnStarting(false)
+                        .CreateShardingTableOnStarting(createShardingTableOnStarting)
                         .UseDatabase(connectionString, DatabaseType.SqlServer, typeof(Parcel).Namespace!, static _ => { });
 
-                    ConfigureParcelAggregateSharding(shardingBuilder, parcelShardingStartTime);
+                    ConfigureParcelAggregateSharding(shardingBuilder, parcelShardingStartTime, parcelRelatedHashShardingMod);
                 });
 
                 services.AddSingleton<IDatabaseDialect, SqlServerDialect>();
@@ -178,6 +180,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// </summary>
         /// <param name="shardingBuilder">分表构建器。</param>
         /// <param name="parcelShardingStartTime">Parcel 月分表起始时间。</param>
+        /// <param name="parcelRelatedHashShardingMod">Parcel 关联属性表哈希分片模数。</param>
         /// <remarks>
         /// 设计目标：
         /// - Parcel 主表已经采用按月分表；
@@ -185,7 +188,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// - 对“有稳定必填时间字段”的表优先采用按月分表；
         /// - 对“无时间字段/时间可空”的表采用哈希分表，保证可路由且可扩展。
         /// </remarks>
-        private static void ConfigureParcelAggregateSharding(IShardingBuilder shardingBuilder, DateTime parcelShardingStartTime) {
+        private static void ConfigureParcelAggregateSharding(IShardingBuilder shardingBuilder, DateTime parcelShardingStartTime, int parcelRelatedHashShardingMod) {
             // 分表起始时间在进入规则注册前统一归一化为“本地时间语义”，
             // 避免外部配置传入未指定 Kind 的时间值时产生路由歧义。
             var localShardingStartTime = NormalizeToLocalTime(parcelShardingStartTime);
@@ -205,7 +208,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             // BagInfo 的 BaggingTime 可为空，采用 BagCode 哈希分表以保证路由稳定。
             shardingBuilder.SetHashModSharding<BagInfo>(
                 shardingField: nameof(BagInfo.BagCode),
-                mod: ParcelRelatedHashShardingMod,
+                mod: parcelRelatedHashShardingMod,
                 sourceName: ShardingConstant.DefaultSource);
 
             // ------------------------------
@@ -236,15 +239,15 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             // 无稳定时间字段或时间可空 -> 按 ParcelId 哈希分表
             shardingBuilder.SetHashModSharding<ParcelDeviceInfo>(
                 shardingField: ParcelIdShadowField,
-                mod: ParcelRelatedHashShardingMod,
+                mod: parcelRelatedHashShardingMod,
                 sourceName: ShardingConstant.DefaultSource);
             shardingBuilder.SetHashModSharding<ParcelPositionInfo>(
                 shardingField: ParcelIdShadowField,
-                mod: ParcelRelatedHashShardingMod,
+                mod: parcelRelatedHashShardingMod,
                 sourceName: ShardingConstant.DefaultSource);
             shardingBuilder.SetHashModSharding<StickingParcelInfo>(
                 shardingField: ParcelIdShadowField,
-                mod: ParcelRelatedHashShardingMod,
+                mod: parcelRelatedHashShardingMod,
                 sourceName: ShardingConstant.DefaultSource);
 
             // ------------------------------
@@ -270,15 +273,15 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             // 可空时间或无时间字段 -> 按 ParcelId 哈希分表
             shardingBuilder.SetHashModSharding<BarCodeInfo>(
                 shardingField: ParcelIdShadowField,
-                mod: ParcelRelatedHashShardingMod,
+                mod: parcelRelatedHashShardingMod,
                 sourceName: ShardingConstant.DefaultSource);
             shardingBuilder.SetHashModSharding<ImageInfo>(
                 shardingField: ParcelIdShadowField,
-                mod: ParcelRelatedHashShardingMod,
+                mod: parcelRelatedHashShardingMod,
                 sourceName: ShardingConstant.DefaultSource);
             shardingBuilder.SetHashModSharding<VideoInfo>(
                 shardingField: ParcelIdShadowField,
-                mod: ParcelRelatedHashShardingMod,
+                mod: parcelRelatedHashShardingMod,
                 sourceName: ShardingConstant.DefaultSource);
         }
 

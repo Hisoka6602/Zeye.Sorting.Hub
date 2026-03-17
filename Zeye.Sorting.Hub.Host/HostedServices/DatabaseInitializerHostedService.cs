@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 
 namespace Zeye.Sorting.Hub.Host.HostedServices {
@@ -16,10 +17,29 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
     /// </summary>
     public sealed class DatabaseInitializerHostedService : IHostedService {
         private const string FailStartupOnMigrationErrorConfigKey = "Persistence:Migration:FailStartupOnError";
+        private const string CreateShardingTableOnStartingConfigKey = "Persistence:Sharding:CreateShardingTableOnStarting";
+        private const string ParcelRelatedHashShardingModConfigKey = "Persistence:Sharding:ParcelRelatedHashShardingMod";
+        private const string HashShardingExpansionTriggerRatioConfigKey = "Persistence:Sharding:HashSharding:ExpansionTriggerRatio";
+        private const string HashShardingExpansionPlanConfigKey = "Persistence:Sharding:HashSharding:ExpansionPlan";
+        private const string ShardingPrebuildWindowHoursConfigKey = "Persistence:Sharding:Governance:PrebuildWindowHours";
+        private const string ShardingRunbookConfigKey = "Persistence:Sharding:Governance:Runbook";
         private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<DatabaseInitializerHostedService> _logger;
         private readonly IDatabaseDialect _dialect;
+        /// <summary>迁移失败是否阻断宿主启动。</summary>
         private readonly bool _failStartupOnMigrationError;
+        /// <summary>启动时是否自动创建分表。</summary>
+        private readonly bool _createShardingTableOnStarting;
+        /// <summary>Parcel 关联哈希分片模数。</summary>
+        private readonly int _parcelRelatedHashShardingMod;
+        /// <summary>哈希扩容触发阈值（0~1）。</summary>
+        private readonly decimal _hashShardingExpansionTriggerRatio;
+        /// <summary>哈希扩容迁移计划说明。</summary>
+        private readonly string _hashShardingExpansionPlan;
+        /// <summary>分表预建窗口（小时）。</summary>
+        private readonly int _shardingPrebuildWindowHours;
+        /// <summary>分表治理 Runbook 标识（文档路径或链接）。</summary>
+        private readonly string _shardingRunbook;
 
         private readonly AsyncRetryPolicy _retryPolicy;
 
@@ -32,6 +52,12 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _logger = logger;
             _dialect = dialect;
             _failStartupOnMigrationError = ResolveFailStartupOnMigrationError(configuration);
+            _createShardingTableOnStarting = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, CreateShardingTableOnStartingConfigKey, false);
+            _parcelRelatedHashShardingMod = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, ParcelRelatedHashShardingModConfigKey, 16);
+            _hashShardingExpansionTriggerRatio = AutoTuningConfigurationHelper.GetDecimalInRangeOrDefault(configuration, HashShardingExpansionTriggerRatioConfigKey, 0.8m, 0m, 1m);
+            _hashShardingExpansionPlan = configuration[HashShardingExpansionPlanConfigKey]?.Trim() ?? "未配置";
+            _shardingPrebuildWindowHours = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, ShardingPrebuildWindowHoursConfigKey, 72);
+            _shardingRunbook = configuration[ShardingRunbookConfigKey]?.Trim() ?? "未配置";
 
             _retryPolicy = Policy
                 .Handle<Exception>(ex => ex is not OperationCanceledException)
@@ -46,6 +72,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         public async Task StartAsync(CancellationToken cancellationToken) {
+            AuditShardingGovernance();
             try {
                 await _retryPolicy.ExecuteAsync(async (ct) => {
                     await using var scope = _serviceProvider.CreateAsyncScope();
@@ -238,5 +265,38 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        /// <summary>
+        /// 启动期输出分表治理与容量预测相关审计信息。
+        /// </summary>
+        /// <remarks>
+        /// 目标：
+        /// 1) 显式提示 CreateShardingTableOnStarting=false 时必须执行预建流程；
+        /// 2) 输出哈希分片模数、扩容触发阈值与迁移计划，降低“16→32”扩容认知断层；
+        /// 3) 若未配置 Runbook，给出警告，推动制度化落地。
+        /// </remarks>
+        private void AuditShardingGovernance() {
+            _logger.LogInformation(
+                "分表治理基线：Provider={Provider}, CreateShardingTableOnStarting={CreateShardingTableOnStarting}, ParcelRelatedHashShardingMod={ParcelRelatedHashShardingMod}, ExpansionTriggerRatio={ExpansionTriggerRatio:F2}, ExpansionPlan={ExpansionPlan}",
+                _dialect.ProviderName,
+                _createShardingTableOnStarting,
+                _parcelRelatedHashShardingMod,
+                _hashShardingExpansionTriggerRatio,
+                _hashShardingExpansionPlan);
+
+            if (!_createShardingTableOnStarting) {
+                _logger.LogWarning(
+                    "分表自动创建已关闭，必须依赖外部预建流程：Provider={Provider}, PrebuildWindowHours={PrebuildWindowHours}, Runbook={Runbook}",
+                    _dialect.ProviderName,
+                    _shardingPrebuildWindowHours,
+                    _shardingRunbook);
+            }
+
+            if (string.Equals(_shardingRunbook, "未配置", StringComparison.Ordinal)) {
+                _logger.LogWarning(
+                    "分表治理 Runbook 未配置：请补充配置项 {RunbookKey}，并在发布前完成预建窗口演练。",
+                    ShardingRunbookConfigKey);
+            }
+        }
     }
 }

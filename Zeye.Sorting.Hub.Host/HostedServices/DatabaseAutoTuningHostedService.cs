@@ -983,6 +983,43 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     EmitCapacityForecast(pair.Key, queue);
                 }
             }
+
+            EmitShardingObservabilityMetrics(result.Metrics, tableSamples);
+        }
+
+        /// <summary>输出分表命中率、跨分表查询占比与热点倾斜三类观测指标。</summary>
+        private void EmitShardingObservabilityMetrics(
+            IReadOnlyList<SlowQueryMetric> metrics,
+            IReadOnlyDictionary<string, (long Rows, int Calls)> tableSamples) {
+            if (metrics.Count == 0) {
+                return;
+            }
+
+            var totalCalls = metrics.Sum(static metric => metric.CallCount);
+            if (totalCalls <= 0) {
+                return;
+            }
+
+            var shardingHitCalls = tableSamples.Values.Sum(static sample => sample.Calls);
+            var hitRate = Math.Clamp((double)shardingHitCalls / totalCalls, 0d, 1d);
+            var crossTableCalls = metrics
+                .Where(static metric => IsCrossTableQuery(metric.SampleSql))
+                .Sum(static metric => metric.CallCount);
+            var crossTableRatio = Math.Clamp((double)crossTableCalls / totalCalls, 0d, 1d);
+
+            var hotTableSkew = 0d;
+            if (tableSamples.Count > 0) {
+                var maxCalls = tableSamples.Values.Max(static sample => sample.Calls);
+                var averageCalls = tableSamples.Values.Average(static sample => sample.Calls);
+                hotTableSkew = averageCalls > 0d ? maxCalls / averageCalls : 0d;
+            }
+
+            var tags = new Dictionary<string, string> {
+                ["provider"] = _dialect.ProviderName
+            };
+            _observability.EmitMetric("autotuning.sharding.hit_rate", hitRate, tags);
+            _observability.EmitMetric("autotuning.sharding.cross_table_query_ratio", crossTableRatio, tags);
+            _observability.EmitMetric("autotuning.sharding.hot_table_skew", hotTableSkew, tags);
         }
 
         /// <summary>根据表级样本序列估算查询体量增长趋势并告警。</summary>
@@ -1042,6 +1079,11 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return string.IsNullOrWhiteSpace(schemaName)
                 ? tableName.Trim().ToLowerInvariant()
                 : $"{schemaName.Trim().ToLowerInvariant()}.{tableName.Trim().ToLowerInvariant()}";
+        }
+
+        /// <summary>基于 SQL 关键字判断是否为跨分表/跨表查询。</summary>
+        private static bool IsCrossTableQuery(string sql) {
+            return sql.Contains(" join ", StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>判断当前时刻是否位于高峰执行窗口。</summary>

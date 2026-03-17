@@ -154,6 +154,75 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     [Fact]
+    public void UpdateAutonomousSignals_EmitsShardingObservabilityMetrics() {
+        var logger = new TestLogger<DatabaseAutoTuningHostedService>();
+        var observability = new TestObservability();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:AutoTuning:Autonomous:EnableFullAutomation"] = "true",
+                ["Persistence:AutoTuning:Autonomous:CapacityPrediction:EnableCapacityPrediction"] = "true"
+            })
+            .Build();
+        var pipeline = new SlowQueryAutoTuningPipeline(configuration, observability);
+        var service = new DatabaseAutoTuningHostedService(
+            logger,
+            observability,
+            new FixedPlanProbe(),
+            new EmptyServiceScopeFactory(),
+            new TestDialect(),
+            pipeline,
+            configuration);
+
+        var result = new SlowQueryAnalysisResult(
+            DateTime.Now,
+            0,
+            [
+                new SlowQueryMetric(
+                    "fp-1",
+                    "select * from parcels p join parcel_positions pp on p.id = pp.parcel_id where p.code = @p0",
+                    10,
+                    1000,
+                    0m,
+                    0m,
+                    0,
+                    100d,
+                    120d,
+                    150d,
+                    null),
+                new SlowQueryMetric(
+                    "fp-2",
+                    "select * from parcels where code = @p1",
+                    5,
+                    300,
+                    0m,
+                    0m,
+                    0,
+                    80d,
+                    100d,
+                    110d,
+                    null)
+            ],
+            [
+                new SlowQueryTuningCandidate("fp-1", "dbo", "parcels", Array.Empty<string>(), Array.Empty<string>()),
+                new SlowQueryTuningCandidate("fp-2", "dbo", "parcel_positions", Array.Empty<string>(), Array.Empty<string>())
+            ],
+            Array.Empty<string>(),
+            Array.Empty<SlowQuerySuggestionInsight>(),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            Array.Empty<SlowQueryAlertNotification>(),
+            false);
+        var metricsByFingerprint = result.Metrics.ToDictionary(static metric => metric.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
+
+        var updateAutonomousSignals = typeof(DatabaseAutoTuningHostedService).GetMethod("UpdateAutonomousSignals", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        updateAutonomousSignals.Invoke(service, [result, DateTime.Now, metricsByFingerprint]);
+
+        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hit_rate");
+        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.cross_table_query_ratio");
+        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hot_table_skew");
+    }
+
+    [Fact]
     public void AutoRollbackDecisionEngine_TriggersSevereRollback() {
         var result = AutoRollbackDecisionEngine.Evaluate(
             p99IncreasePercent: 32m,
