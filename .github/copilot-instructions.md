@@ -13,6 +13,7 @@
 11. 事件载荷需要使用 `readonly record struct`（确保不可变、值语义与更优内存性能）。
 12. 所有的异常都必须输出日志。
 13. Copilot的回答/描述/交流都需要使用中文
+14. 所有的类的字段都必须有注释
 
 # Copilot Repository Instructions
 
