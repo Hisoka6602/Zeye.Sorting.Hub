@@ -72,8 +72,8 @@
 ├── Zeye.Sorting.Hub.Host（宿主层）
 │   ├── HostedServices（托管服务目录）
 │   │   ├── AutoTuningLoggerObservability.cs（自动调优观测默认日志实现）
-│   │   ├── DatabaseAutoTuningHostedService.cs（数据库自动调谐托管服务（闭环阶段流转、执行隔离、自动验证标准化输出与回滚审计））
-│   │   └── DatabaseInitializerHostedService.cs（数据库初始化与迁移托管服务）
+│   │   ├── DatabaseAutoTuningHostedService.cs（数据库自动调谐托管服务（闭环阶段流转、执行隔离、自动验证标准化输出与回滚审计，并输出分表命中率/跨分表占比/热点倾斜指标））
+│   │   └── DatabaseInitializerHostedService.cs（数据库初始化与迁移托管服务（含分表治理基线与 Runbook 审计））
 │   ├── Program.cs（应用入口与 Host 构建流程）
 │   ├── Properties（运行调试属性目录）
 │   │   └── launchSettings.json（本地启动配置）
@@ -87,7 +87,7 @@
 │   └── Zeye.Sorting.Hub.Host.Tests.csproj（xUnit 测试项目定义）
 ├── Zeye.Sorting.Hub.Infrastructure（基础设施层）
 │   ├── DependencyInjection（依赖注入扩展目录）
-│   │   └── PersistenceServiceCollectionExtensions.cs（持久化服务注册扩展（数据库提供器选择、连接字符串校验、DbContext 注册、性能参数读取配置、Parcel 按 CreatedTime 月分表））
+│   │   └── PersistenceServiceCollectionExtensions.cs（持久化服务注册扩展（数据库提供器选择、连接字符串校验、DbContext 注册、性能参数读取配置、Parcel 按 CreatedTime 月分表、可配置哈希分片模数与分表自动创建开关，并内置分表覆盖守卫））
 │   ├── EntityConfigurations（EF Core 映射配置目录）
 │   │   ├── BagInfoEntityTypeConfiguration.cs（BagInfo 映射配置）
 │   │   └── ParcelEntityTypeConfiguration.cs（Parcel 映射配置）
@@ -239,13 +239,13 @@
 - `Worker.cs`：后台轮询任务示例服务。
 - `Zeye.Sorting.Hub.Host.csproj`：Host 项目定义。
 - `nlog.config`：NLog 日志配置，双路落盘（`logs/app-*.log` 全量 + `logs/database-*.log` 数据库专属），低开销设计（异步队列 + keepFileOpen + optimizeBufferReuse），保留 30 天。
-- `appsettings.json`：默认运行配置（包含连接字符串、持久化参数、日志级别）。
+- `appsettings.json`：默认运行配置（包含连接字符串、持久化参数、日志级别、分表治理窗口与扩容计划配置）。
 - `appsettings.Development.json`：开发环境配置覆盖文件。
 
 #### `Zeye.Sorting.Hub.Host/HostedServices/`：启动/常驻托管服务目录
 - `AutoTuningLoggerObservability.cs`：自动调优观测默认日志实现（统一日志 + 指标抽象默认落地）。
-- `DatabaseAutoTuningHostedService.cs`：数据库自动调谐托管服务（显式闭环阶段迁移、执行隔离、标准化自动验证结果、回滚触发与审计日志）。
-- `DatabaseInitializerHostedService.cs`：数据库初始化与迁移托管服务。
+- `DatabaseAutoTuningHostedService.cs`：数据库自动调谐托管服务（显式闭环阶段迁移、执行隔离、标准化自动验证结果、回滚触发与审计日志，并输出分表命中率/跨分表查询占比/热点倾斜指标）。
+- `DatabaseInitializerHostedService.cs`：数据库初始化与迁移托管服务（启动期输出分表治理基线审计，提示预建窗口与 Runbook 完整性）。
 
 #### `Zeye.Sorting.Hub.Host/Properties/`：项目运行调试属性目录
 - `launchSettings.json`：本地启动配置（Profile、环境变量等）。
@@ -254,7 +254,7 @@
 - `Zeye.Sorting.Hub.Infrastructure.csproj`：Infrastructure 项目定义。
 
 #### `Zeye.Sorting.Hub.Infrastructure/DependencyInjection/`：依赖注入扩展目录
-- `PersistenceServiceCollectionExtensions.cs`：持久化服务注册扩展（数据库提供器选择、连接字符串校验、DbContext 注册、性能参数读取配置、Parcel 按 CreatedTime 月分表）。
+- `PersistenceServiceCollectionExtensions.cs`：持久化服务注册扩展（数据库提供器选择、连接字符串校验、DbContext 注册、性能参数读取配置、Parcel 按 CreatedTime 月分表，支持 `CreateShardingTableOnStarting` 与 `ParcelRelatedHashShardingMod` 配置化，并在启动期执行 ValueObjects 分表覆盖守卫）。
 
 #### `Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/`：EF Core 实体映射配置目录
 - `BagInfoEntityTypeConfiguration.cs`：BagInfo 映射配置。
@@ -309,11 +309,25 @@
 
 ### `Zeye.Sorting.Hub.Host.Tests/`：自动调优测试层
 - `Zeye.Sorting.Hub.Host.Tests.csproj`：xUnit 测试项目定义。
-- `AutoTuningProductionControlTests.cs`：覆盖 dry-run、危险动作隔离、告警防抖与恢复、普通/严重回归、unavailable 指标处理、执行计划探针 available/unavailable 双路径与闭环链路。
+- `AutoTuningProductionControlTests.cs`：覆盖 dry-run、危险动作隔离、告警防抖与恢复、普通/严重回归、unavailable 指标处理、执行计划探针 available/unavailable 双路径、闭环链路与分表覆盖守卫校验。
 
 ## 本次更新内容（新增 Parcel 属性操作指南文档）
 
 1. **新增 `Parcel属性新增操作指南.md`**：详细说明当 Parcel 聚合需要新增属性时，需要修改哪些文件及如何修改。文档涵盖三种情形：①在聚合根主表新增标量属性（修改 `Parcel.cs` + `ParcelEntityTypeConfiguration.cs` + 执行迁移）；②在现有值对象中新增属性（修改对应值对象文件 + `ParcelEntityTypeConfiguration.cs` + 执行迁移）；③新增全新值对象（新建值对象文件 + 修改 `Parcel.cs` + 修改 `ParcelEntityTypeConfiguration.cs` + 更新 `README.md` + 执行迁移）。附完整检查清单与当前 Parcel 主表字段一览。
+
+## 本次更新内容（分表治理与观测补强）
+
+1. **分表自动创建默认关闭但制度化补强**：`Persistence:Sharding:CreateShardingTableOnStarting` 默认 `false`，并在启动期审计输出预建窗口（`Governance:PrebuildWindowHours`）与 Runbook（`Governance:Runbook`），降低“路由命中但物理表缺失”风险。
+2. **哈希分片模数配置化并沉淀扩容计划**：`ParcelRelatedHashShardingMod` 从硬编码改为配置驱动（默认 16）；新增 `HashSharding:ExpansionTriggerRatio` 与 `HashSharding:ExpansionPlan`，显式记录 16→32 的触发阈值与切换步骤。
+3. **分表观测指标显式沉淀**：`DatabaseAutoTuningHostedService` 新增三项指标输出：`autotuning.sharding.hit_rate`、`autotuning.sharding.cross_table_query_ratio`、`autotuning.sharding.hot_table_skew`，用于持续观察命中率、跨分表查询占比与热点倾斜。
+4. **治理与容量预测绑定策略文档化**：通过 `appsettings.json` 的 Sharding/Governance/HashSharding 段将扩容触发阈值、预建窗口与 Runbook 配置显式化，便于纳入演练制度。
+5. **新增自动审查守卫（EF + 分表联动）**：在现有 `HasPendingModelChanges()` 守卫基础上，新增 `AssertParcelAggregateShardingCoverage`（启动期 + 测试期双校验），当 ValueObjects 新增 `*Info` 类型但未配置分表规则时立即失败，阻断遗漏进入运行期。
+
+## 后续可完善点（分表治理）
+
+1. 在 CI 中增加“下周期分表预建校验”门禁（按 PrebuildWindowHours 自动检查）。
+2. 为 `ExpansionPlan` 增加结构化字段（阶段、窗口、回滚脚本路径），替代纯文本描述。
+3. 将三项分表指标接入 Prometheus/Grafana 告警面板，补齐阈值化运营闭环。
 
 ## 本次更新内容（代码质量审查与缺陷修复）
 

@@ -7,12 +7,14 @@ using Microsoft.Extensions.Logging;
 using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Host.HostedServices;
+using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 
 namespace Zeye.Sorting.Hub.Host.Tests;
 
 public sealed class AutoTuningProductionControlTests {
+    private const double DoublePrecisionTolerance = 0.0001d;
     [Fact]
     public void ParcelStatus_ShouldOnlyContainThreeValues() {
         var values = Enum.GetValues<ParcelStatus>();
@@ -93,6 +95,13 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     [Fact]
+    public void ShardingGovernanceTextNormalization_UsesPlaceholderForWhitespace() {
+        var normalized = DatabaseInitializerHostedService.NormalizeOptionalTextOrPlaceholder("   ", "未配置");
+        Assert.Equal("未配置", normalized);
+        Assert.Equal("runbook-path", DatabaseInitializerHostedService.NormalizeOptionalTextOrPlaceholder("  runbook-path  ", "未配置"));
+    }
+
+    [Fact]
     public void IsolationPolicy_DryRun_DoesNotExecuteSql() {
         var decision = ActionIsolationPolicy.Evaluate(
             enableGuard: true,
@@ -151,6 +160,160 @@ public sealed class AutoTuningProductionControlTests {
         pipeline.Collect(sql, TimeSpan.FromMilliseconds(100));
         var fourth = pipeline.Analyze(dialect);
         Assert.Single(fourth.RecoveryNotifications);
+    }
+
+    [Fact]
+    public void UpdateAutonomousSignals_EmitsShardingObservabilityMetrics() {
+        var logger = new TestLogger<DatabaseAutoTuningHostedService>();
+        var observability = new TestObservability();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:AutoTuning:Autonomous:EnableFullAutomation"] = "true",
+                ["Persistence:AutoTuning:Autonomous:CapacityPrediction:EnableCapacityPrediction"] = "true"
+            })
+            .Build();
+        var pipeline = new SlowQueryAutoTuningPipeline(configuration, observability);
+        var service = new DatabaseAutoTuningHostedService(
+            logger,
+            observability,
+            new FixedPlanProbe(),
+            new EmptyServiceScopeFactory(),
+            new TestDialect(),
+            pipeline,
+            configuration);
+
+        var result = new SlowQueryAnalysisResult(
+            DateTime.Now,
+            0,
+            [
+                new SlowQueryMetric(
+                    "fp-1",
+                    "select * from parcels p join parcel_positions pp on p.id = pp.parcel_id where p.code = @p0",
+                    10,
+                    1000,
+                    0m,
+                    0m,
+                    0,
+                    100d,
+                    120d,
+                    150d,
+                    null),
+                new SlowQueryMetric(
+                    "fp-2",
+                    "select * from parcels where code = @p1",
+                    5,
+                    300,
+                    0m,
+                    0m,
+                    0,
+                    80d,
+                    100d,
+                    110d,
+                    null),
+                new SlowQueryMetric(
+                    "fp-3",
+                    "select * from parcels where id = @p2",
+                    20,
+                    500,
+                    0m,
+                    0m,
+                    0,
+                    90d,
+                    110d,
+                    130d,
+                    null)
+            ],
+            [
+                new SlowQueryTuningCandidate("fp-1", "dbo", "parcels", Array.Empty<string>(), Array.Empty<string>()),
+                new SlowQueryTuningCandidate("fp-2", "dbo", "parcel_positions", Array.Empty<string>(), Array.Empty<string>())
+            ],
+            Array.Empty<string>(),
+            Array.Empty<SlowQuerySuggestionInsight>(),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            Array.Empty<SlowQueryAlertNotification>(),
+            false);
+        var metricsByFingerprint = result.Metrics.ToDictionary(static metric => metric.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
+
+        var updateAutonomousSignals = typeof(DatabaseAutoTuningHostedService).GetMethod("UpdateAutonomousSignals", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        updateAutonomousSignals.Invoke(service, [result, DateTime.Now, metricsByFingerprint]);
+
+        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hit_rate");
+        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.cross_table_query_ratio");
+        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hot_table_skew");
+        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hit_rate" && Math.Abs(entry.Value - 1d) < DoublePrecisionTolerance);
+    }
+
+    [Fact]
+    public void UpdateAutonomousSignals_HitRateSupportsPartialAndNoTableReferenceCases() {
+        var logger = new TestLogger<DatabaseAutoTuningHostedService>();
+        var observability = new TestObservability();
+        var fixedNow = new DateTime(2026, 3, 17, 10, 0, 0, DateTimeKind.Local);
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:AutoTuning:Autonomous:EnableFullAutomation"] = "true",
+                ["Persistence:AutoTuning:Autonomous:CapacityPrediction:EnableCapacityPrediction"] = "true"
+            })
+            .Build();
+        var pipeline = new SlowQueryAutoTuningPipeline(configuration, observability);
+        var service = new DatabaseAutoTuningHostedService(
+            logger,
+            observability,
+            new FixedPlanProbe(),
+            new EmptyServiceScopeFactory(),
+            new TestDialect(),
+            pipeline,
+            configuration);
+        var updateAutonomousSignals = typeof(DatabaseAutoTuningHostedService).GetMethod("UpdateAutonomousSignals", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+
+        var partial = new SlowQueryAnalysisResult(
+            fixedNow,
+            0,
+            [
+                new SlowQueryMetric("partial-1", "select * from parcels where code=@p0", 10, 100, 0m, 0m, 0, 10d, 20d, 30d, null),
+                new SlowQueryMetric("partial-2", "show status", 10, 0, 0m, 0m, 0, 10d, 20d, 30d, null)
+            ],
+            Array.Empty<SlowQueryTuningCandidate>(),
+            Array.Empty<string>(),
+            Array.Empty<SlowQuerySuggestionInsight>(),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            Array.Empty<SlowQueryAlertNotification>(),
+            false);
+        var partialMetrics = partial.Metrics.ToDictionary(static metric => metric.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
+        updateAutonomousSignals.Invoke(service, [partial, fixedNow, partialMetrics]);
+        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hit_rate" && Math.Abs(entry.Value - 0.5d) < DoublePrecisionTolerance);
+
+        observability.MetricEntries.Clear();
+        var none = new SlowQueryAnalysisResult(
+            fixedNow,
+            0,
+            [
+                new SlowQueryMetric("none-1", "show status", 7, 0, 0m, 0m, 0, 10d, 20d, 30d, null)
+            ],
+            Array.Empty<SlowQueryTuningCandidate>(),
+            Array.Empty<string>(),
+            Array.Empty<SlowQuerySuggestionInsight>(),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            Array.Empty<SlowQueryAlertNotification>(),
+            false);
+        var noneMetrics = none.Metrics.ToDictionary(static metric => metric.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
+        updateAutonomousSignals.Invoke(service, [none, fixedNow, noneMetrics]);
+        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hit_rate" && Math.Abs(entry.Value) < DoublePrecisionTolerance);
+    }
+
+    [Fact]
+    public void ParcelAggregateShardingCoverageGuard_ShouldCoverAllInfoValueObjects() {
+        var method = typeof(PersistenceServiceCollectionExtensions).GetMethod(
+            "AssertParcelAggregateShardingCoverage",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        var exception = Record.Exception(() => method.Invoke(null, null));
+        if (exception is System.Reflection.TargetInvocationException invocationException) {
+            exception = invocationException.InnerException;
+        }
+
+        Assert.Null(exception);
     }
 
     [Fact]
@@ -630,11 +793,11 @@ public sealed class AutoTuningProductionControlTests {
         public readonly List<ObservabilityEntry> EventEntries = new();
         public void EmitMetric(string name, double value, IReadOnlyDictionary<string, string>? tags = null) {
             Metrics.Add(name);
-            MetricEntries.Add(new ObservabilityEntry(name, CloneTags(tags)));
+            MetricEntries.Add(new ObservabilityEntry(name, value, CloneTags(tags)));
         }
         public void EmitEvent(string name, LogLevel level, string message, IReadOnlyDictionary<string, string>? tags = null) {
             Events.Add($"{name}:{message}");
-            EventEntries.Add(new ObservabilityEntry(name, CloneTags(tags)));
+            EventEntries.Add(new ObservabilityEntry(name, 0d, CloneTags(tags)));
         }
         private static IReadOnlyDictionary<string, string> CloneTags(IReadOnlyDictionary<string, string>? tags) {
             return tags is null
@@ -643,7 +806,7 @@ public sealed class AutoTuningProductionControlTests {
         }
     }
 
-    private sealed record ObservabilityEntry(string Name, IReadOnlyDictionary<string, string> Tags);
+    private sealed record ObservabilityEntry(string Name, double Value, IReadOnlyDictionary<string, string> Tags);
 
     private sealed class TestLogger<T> : ILogger<T> {
         public readonly List<string> Messages = new();

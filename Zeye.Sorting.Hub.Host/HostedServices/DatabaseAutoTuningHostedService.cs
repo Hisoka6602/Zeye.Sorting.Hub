@@ -43,6 +43,14 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private static readonly Regex DangerousDdlRegex = new(
             @"\b(create|alter|drop)\b",
             RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        private static readonly Regex JoinKeywordRegex = new(
+            @"\b(?:left|right|inner|full|cross)?\s*join\b",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        private static readonly Regex TableReferenceRegex = new(
+            // 识别 FROM 后的主表引用，支持常见 MySQL(`table`/`schema`.`table`) 与 SQL Server([table]/[schema].[table]) 书写形式。
+            // 该表达式仅用于分表命中率估算，不承担完整 SQL 语法解析职责。
+            @"\bfrom\s+(?:`[^`]+`|\[[^\]]+\]|\w+)(?:\.(?:`[^`]+`|\[[^\]]+\]|\w+))?",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
         private readonly ILogger<DatabaseAutoTuningHostedService> _logger;
         private readonly IAutoTuningObservability _observability;
         private readonly IExecutionPlanRegressionProbe _planRegressionProbe;
@@ -983,6 +991,41 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     EmitCapacityForecast(pair.Key, queue);
                 }
             }
+
+            EmitShardingObservabilityMetrics(result.Metrics, tableSamples);
+        }
+
+        /// <summary>输出分表命中率、跨分表查询占比与热点倾斜三类观测指标。</summary>
+        private void EmitShardingObservabilityMetrics(
+            IReadOnlyList<SlowQueryMetric> metrics,
+            IReadOnlyDictionary<string, (long Rows, int Calls)> tableSamples) {
+            if (metrics.Count == 0) {
+                return;
+            }
+
+            var totalCalls = metrics.Sum(static metric => metric.CallCount);
+            if (totalCalls <= 0) {
+                return;
+            }
+
+            var shardingHitCalls = metrics.Sum(static metric => HasTableReference(metric.SampleSql) ? metric.CallCount : 0);
+            var hitRate = Math.Clamp((double)shardingHitCalls / totalCalls, 0d, 1d);
+            var crossTableCalls = metrics.Sum(static metric => IsCrossTableQuery(metric.SampleSql) ? metric.CallCount : 0);
+            var crossTableRatio = Math.Clamp((double)crossTableCalls / totalCalls, 0d, 1d);
+
+            var hotTableSkew = 0d;
+            if (tableSamples.Count > 0) {
+                var maxCalls = tableSamples.Values.Max(static sample => sample.Calls);
+                var averageCalls = tableSamples.Values.Average(static sample => sample.Calls);
+                hotTableSkew = averageCalls > 0d ? maxCalls / averageCalls : 0d;
+            }
+
+            var tags = new Dictionary<string, string> {
+                ["provider"] = _dialect.ProviderName
+            };
+            _observability.EmitMetric("autotuning.sharding.hit_rate", hitRate, tags);
+            _observability.EmitMetric("autotuning.sharding.cross_table_query_ratio", crossTableRatio, tags);
+            _observability.EmitMetric("autotuning.sharding.hot_table_skew", hotTableSkew, tags);
         }
 
         /// <summary>根据表级样本序列估算查询体量增长趋势并告警。</summary>
@@ -1042,6 +1085,26 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return string.IsNullOrWhiteSpace(schemaName)
                 ? tableName.Trim().ToLowerInvariant()
                 : $"{schemaName.Trim().ToLowerInvariant()}.{tableName.Trim().ToLowerInvariant()}";
+        }
+
+        /// <summary>基于 JOIN 关键字判断是否为跨分表/跨表查询 (当前仅覆盖 JOIN 场景)。</summary>
+        private static bool IsCrossTableQuery(string sql) {
+            if (string.IsNullOrWhiteSpace(sql)) {
+                return false;
+            }
+
+            var normalizedSql = TrimLeadingComments(sql);
+            return JoinKeywordRegex.IsMatch(normalizedSql);
+        }
+
+        /// <summary>判断 SQL 是否可识别出主表引用（用于分表命中率估算）。</summary>
+        private static bool HasTableReference(string sql) {
+            if (string.IsNullOrWhiteSpace(sql)) {
+                return false;
+            }
+
+            var normalizedSql = TrimLeadingComments(sql);
+            return TableReferenceRegex.IsMatch(normalizedSql);
         }
 
         /// <summary>判断当前时刻是否位于高峰执行窗口。</summary>
