@@ -46,6 +46,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private static readonly Regex JoinKeywordRegex = new(
             @"\b(?:left|right|inner|full|cross)?\s*join\b",
             RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        private static readonly Regex TableReferenceRegex = new(
+            @"\bfrom\s+(?:`[^`]+`|\[[^\]]+\]|\w+)(?:\.(?:`[^`]+`|\[[^\]]+\]|\w+))?",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
         private readonly ILogger<DatabaseAutoTuningHostedService> _logger;
         private readonly IAutoTuningObservability _observability;
         private readonly IExecutionPlanRegressionProbe _planRegressionProbe;
@@ -1003,7 +1006,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 return;
             }
 
-            var shardingHitCalls = tableSamples.Values.Sum(static sample => sample.Calls);
+            var shardingHitCalls = metrics.Sum(static metric => HasTableReference(metric.SampleSql) ? metric.CallCount : 0);
             var hitRate = Math.Clamp((double)shardingHitCalls / totalCalls, 0d, 1d);
             var crossTableCalls = metrics.Sum(static metric => IsCrossTableQuery(metric.SampleSql) ? metric.CallCount : 0);
             var crossTableRatio = Math.Clamp((double)crossTableCalls / totalCalls, 0d, 1d);
@@ -1090,6 +1093,16 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
             var normalizedSql = TrimLeadingComments(sql);
             return JoinKeywordRegex.IsMatch(normalizedSql);
+        }
+
+        /// <summary>判断 SQL 是否可识别出主表引用（用于分表命中率估算）。</summary>
+        private static bool HasTableReference(string sql) {
+            if (string.IsNullOrWhiteSpace(sql)) {
+                return false;
+            }
+
+            var normalizedSql = TrimLeadingComments(sql);
+            return TableReferenceRegex.IsMatch(normalizedSql);
         }
 
         /// <summary>判断当前时刻是否位于高峰执行窗口。</summary>

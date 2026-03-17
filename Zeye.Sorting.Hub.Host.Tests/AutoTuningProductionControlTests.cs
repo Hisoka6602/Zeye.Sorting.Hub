@@ -94,6 +94,13 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     [Fact]
+    public void ShardingGovernanceTextNormalization_UsesPlaceholderForWhitespace() {
+        var normalized = DatabaseInitializerHostedService.NormalizeOptionalTextOrPlaceholder("   ", "未配置");
+        Assert.Equal("未配置", normalized);
+        Assert.Equal("runbook-path", DatabaseInitializerHostedService.NormalizeOptionalTextOrPlaceholder("  runbook-path  ", "未配置"));
+    }
+
+    [Fact]
     public void IsolationPolicy_DryRun_DoesNotExecuteSql() {
         var decision = ActionIsolationPolicy.Evaluate(
             enableGuard: true,
@@ -201,6 +208,18 @@ public sealed class AutoTuningProductionControlTests {
                     80d,
                     100d,
                     110d,
+                    null),
+                new SlowQueryMetric(
+                    "fp-3",
+                    "select * from parcels where id = @p2",
+                    20,
+                    500,
+                    0m,
+                    0m,
+                    0,
+                    90d,
+                    110d,
+                    130d,
                     null)
             ],
             [
@@ -221,6 +240,7 @@ public sealed class AutoTuningProductionControlTests {
         Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hit_rate");
         Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.cross_table_query_ratio");
         Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hot_table_skew");
+        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hit_rate" && Math.Abs(entry.Value - 1d) < 0.0001d);
     }
 
     [Fact]
@@ -713,11 +733,11 @@ public sealed class AutoTuningProductionControlTests {
         public readonly List<ObservabilityEntry> EventEntries = new();
         public void EmitMetric(string name, double value, IReadOnlyDictionary<string, string>? tags = null) {
             Metrics.Add(name);
-            MetricEntries.Add(new ObservabilityEntry(name, CloneTags(tags)));
+            MetricEntries.Add(new ObservabilityEntry(name, value, CloneTags(tags)));
         }
         public void EmitEvent(string name, LogLevel level, string message, IReadOnlyDictionary<string, string>? tags = null) {
             Events.Add($"{name}:{message}");
-            EventEntries.Add(new ObservabilityEntry(name, CloneTags(tags)));
+            EventEntries.Add(new ObservabilityEntry(name, 0d, CloneTags(tags)));
         }
         private static IReadOnlyDictionary<string, string> CloneTags(IReadOnlyDictionary<string, string>? tags) {
             return tags is null
@@ -726,7 +746,7 @@ public sealed class AutoTuningProductionControlTests {
         }
     }
 
-    private sealed record ObservabilityEntry(string Name, IReadOnlyDictionary<string, string> Tags);
+    private sealed record ObservabilityEntry(string Name, double Value, IReadOnlyDictionary<string, string> Tags);
 
     private sealed class TestLogger<T> : ILogger<T> {
         public readonly List<string> Messages = new();

@@ -57,9 +57,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _createShardingTableOnStarting = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, CreateShardingTableOnStartingConfigKey, false);
             _parcelRelatedHashShardingMod = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, ParcelRelatedHashShardingModConfigKey, 16);
             _hashShardingExpansionTriggerRatio = AutoTuningConfigurationHelper.GetDecimalInRangeOrDefault(configuration, HashShardingExpansionTriggerRatioConfigKey, 0.8m, 0m, 1m);
-            _hashShardingExpansionPlan = configuration[HashShardingExpansionPlanConfigKey]?.Trim() ?? NotConfiguredPlaceholder;
+            _hashShardingExpansionPlan = NormalizeOptionalTextOrPlaceholder(configuration[HashShardingExpansionPlanConfigKey], NotConfiguredPlaceholder);
             _shardingPrebuildWindowHours = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, ShardingPrebuildWindowHoursConfigKey, 72);
-            _shardingRunbook = configuration[ShardingRunbookConfigKey]?.Trim() ?? NotConfiguredPlaceholder;
+            _shardingRunbook = NormalizeOptionalTextOrPlaceholder(configuration[ShardingRunbookConfigKey], NotConfiguredPlaceholder);
 
             _retryPolicy = Policy
                 .Handle<Exception>(ex => ex is not OperationCanceledException)
@@ -143,6 +143,12 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             ArgumentNullException.ThrowIfNull(configuration);
             var raw = configuration[FailStartupOnMigrationErrorConfigKey];
             return bool.TryParse(raw, out var value) && value;
+        }
+
+        /// <summary>将可选文本配置标准化为“非空白值或占位符”。</summary>
+        internal static string NormalizeOptionalTextOrPlaceholder(string? value, string placeholder) {
+            var normalized = value?.Trim();
+            return string.IsNullOrWhiteSpace(normalized) ? placeholder : normalized;
         }
 
         /// <summary>
