@@ -9,7 +9,7 @@
 ├── .github（Copilot 仓库级指令目录）
 │   ├── copilot-instructions.md（Copilot 自定义指令：禁止 UTC、统一本地时间）
 │   └── workflows（CI 工作流目录）
-│       └── ef-migration-validation.yml（EF 迁移验收流水线：dotnet ef list/update/script）
+│       └── ef-migration-validation.yml（EF 迁移验收流水线：MySQL+SQL Server 双 Provider 执行 dotnet ef list/update/script）
 ├── .gitattributes（Git 属性配置）
 ├── .gitignore（Git 忽略规则）
 ├── README.md（仓库总览、结构清单与维护规范）
@@ -160,7 +160,7 @@
 - `copilot-instructions.md`：Copilot 自定义指令，硬性要求禁止 UTC 时间 API，统一使用本地时间语义。
 
 ### `.github/workflows/`：CI 工作流目录
-- `ef-migration-validation.yml`：EF 迁移验收流水线（MySQL 容器环境），真实执行 `dotnet ef migrations list`、`dotnet ef database update`、`dotnet ef migrations script` 三项门禁命令。
+- `ef-migration-validation.yml`：EF 迁移验收流水线（MySQL + SQL Server 容器环境），真实执行 `dotnet ef migrations list`、`dotnet ef database update`、`dotnet ef migrations script` 三项门禁命令。
 
 ### `Zeye.Sorting.Hub.Analytics/`：分析与报表子域（当前为占位工程）
 - `Zeye.Sorting.Hub.Analytics.csproj`：Analytics 项目定义。
@@ -366,11 +366,12 @@
 
 1. **设计时工厂冲突修复**：保留单一 `IDesignTimeDbContextFactory<SortingHubDbContext>` 入口（`MySqlContextFactory`），支持通过 `-- --provider SqlServer` 切换到 SQL Server，避免双工厂导致 `dotnet ef` 枚举 `DbContext` 时报键冲突。
 2. **SQL Server 迁移策略明确**：`EFCore-Migration.md` 明确当前采用“单迁移目录（同程序集）”策略，迁移统一放在 `Persistence/Migrations/`；通过 `-- --provider SqlServer` / `-- --provider MySql` 区分执行路径。
-3. **发布策略明确**：文档明确“运行时迁移失败不阻断启动（降级运行）”，但“发布前 EF 验收未通过则阻断发布”。
-4. **新增 CI 门禁工作流**：新增 `.github/workflows/ef-migration-validation.yml`，在 MySQL 容器上真实执行 `dotnet ef migrations list` / `dotnet ef database update` / `dotnet ef migrations script`。
+3. **发布策略配置化**：新增 `Persistence:Migration:FailStartupOnError`，支持“迁移失败降级运行（false）/ 失败即阻断启动（true）”双模式；发布前 EF 验收未通过仍阻断发布。
+4. **新增 CI 门禁工作流**：新增 `.github/workflows/ef-migration-validation.yml`，在 MySQL + SQL Server 容器上真实执行 `dotnet ef migrations list` / `dotnet ef database update` / `dotnet ef migrations script`。
 5. **索引与精度特征标记收敛**：`Parcel`、`BagInfo` 索引改为类级别 `[Index]` 声明，`decimal(18,3)` 统一改为 `[Precision(18,3)]`；同步生成 `UseAttributeBasedIndexesAndPrecision` 迁移以消除 PendingModelChanges。
 
 ## 后续可完善点（迁移治理）
 
 1. 若后续 SQL Server 与 MySQL 的迁移演进差异持续扩大，可升级为“独立迁移程序集”策略，进一步降低跨提供器误用风险。
 2. 在流水线上增加迁移脚本归档（artifact）与 DBA 审批节点，形成可追溯发布审计链路。
+3. 将“月度回滚演练 / 季度灾备升降级演练”接入流水线门禁，自动校验演练记录完备性。

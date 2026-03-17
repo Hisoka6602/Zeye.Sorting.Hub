@@ -13,6 +13,40 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 
 public sealed class AutoTuningProductionControlTests {
     [Fact]
+    public void MigrationFailStartupPolicy_DefaultsToFalse_WhenConfigMissing() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>())
+            .Build();
+
+        var failStartup = DatabaseInitializerHostedService.ResolveFailStartupOnMigrationError(configuration);
+        Assert.False(failStartup);
+    }
+
+    [Fact]
+    public void MigrationFailStartupPolicy_ReturnsTrue_WhenConfigEnabled() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:Migration:FailStartupOnError"] = "true"
+            })
+            .Build();
+
+        var failStartup = DatabaseInitializerHostedService.ResolveFailStartupOnMigrationError(configuration);
+        Assert.True(failStartup);
+    }
+
+    [Fact]
+    public void MigrationFailStartupPolicy_ReturnsFalse_WhenConfigIsInvalid() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:Migration:FailStartupOnError"] = "invalid"
+            })
+            .Build();
+
+        var failStartup = DatabaseInitializerHostedService.ResolveFailStartupOnMigrationError(configuration);
+        Assert.False(failStartup);
+    }
+
+    [Fact]
     public void IsolationPolicy_DryRun_DoesNotExecuteSql() {
         var decision = ActionIsolationPolicy.Evaluate(
             enableGuard: true,

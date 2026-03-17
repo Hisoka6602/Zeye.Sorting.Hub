@@ -165,37 +165,79 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         // ------------------------------
 
         private readonly List<BarCodeInfo> _barCodeInfos = new();
+        /// <summary>
+        /// 条码明细集合（只读视图）
+        /// </summary>
         public IReadOnlyList<BarCodeInfo> BarCodeInfos => _barCodeInfos;
 
         private readonly List<WeightInfo> _weightInfos = new();
+        /// <summary>
+        /// 称重明细集合（只读视图）
+        /// </summary>
         public IReadOnlyList<WeightInfo> WeightInfos => _weightInfos;
 
+        /// <summary>
+        /// 体积信息（单值对象）
+        /// </summary>
         public VolumeInfo? VolumeInfo { get; private set; }
 
         private readonly List<ApiRequestInfo> _apiRequests = new();
+        /// <summary>
+        /// 外部接口请求记录集合（只读视图）
+        /// </summary>
         public IReadOnlyList<ApiRequestInfo> ApiRequests => _apiRequests;
 
+        /// <summary>
+        /// 格口信息（单值对象）
+        /// </summary>
         public ChuteInfo? ChuteInfo { get; private set; }
 
         private readonly List<CommandInfo> _commandInfos = new();
+        /// <summary>
+        /// 通信指令记录集合（只读视图）
+        /// </summary>
         public IReadOnlyList<CommandInfo> CommandInfos => _commandInfos;
 
         private readonly List<ImageInfo> _imageInfos = new();
+        /// <summary>
+        /// 图片信息集合（只读视图）
+        /// </summary>
         public IReadOnlyList<ImageInfo> ImageInfos => _imageInfos;
 
         private readonly List<VideoInfo> _videoInfos = new();
+        /// <summary>
+        /// 视频信息集合（只读视图）
+        /// </summary>
         public IReadOnlyList<VideoInfo> VideoInfos => _videoInfos;
 
+        /// <summary>
+        /// 小车信息（单值对象）
+        /// </summary>
         public SorterCarrierInfo? SorterCarrierInfo { get; private set; }
 
+        /// <summary>
+        /// 集包信息（单值对象）
+        /// </summary>
         public BagInfo? BagInfo { get; private set; }
 
+        /// <summary>
+        /// 设备信息（单值对象）
+        /// </summary>
         public ParcelDeviceInfo? DeviceInfo { get; private set; }
 
+        /// <summary>
+        /// 灰度仪判断信息（单值对象）
+        /// </summary>
         public GrayDetectorInfo? GrayDetectorInfo { get; private set; }
 
+        /// <summary>
+        /// 除叠仪判断信息（单值对象）
+        /// </summary>
         public StickingParcelInfo? StickingParcelInfo { get; private set; }
 
+        /// <summary>
+        /// 坐标检测信息（单值对象）
+        /// </summary>
         public ParcelPositionInfo? ParcelPositionInfo { get; private set; }
 
         private Parcel() {
