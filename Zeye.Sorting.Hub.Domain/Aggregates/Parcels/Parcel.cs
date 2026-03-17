@@ -3,8 +3,8 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
 using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Primitives;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects;
@@ -14,9 +14,14 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
     /// <summary>
     /// 包裹实体（领域层聚合根）
     /// 说明：
-    /// 1) 仅包含领域语义与状态，仅使用标准库特征标记（System.ComponentModel.DataAnnotations）
-    /// 2) EF Core 专有持久化映射（表名、架构、索引、关系、decimal 精度）在 Infrastructure/EntityConfigurations 中完成
+    /// 1) 仅包含领域语义与状态；
+    /// 2) 主表索引与 decimal 精度通过 EF Core 特征标记就近声明；
+    /// 3) 其余持久化映射（表名、架构、关系、影子属性等）在 Infrastructure/EntityConfigurations 中完成。
     /// </summary>
+    [Index(nameof(ParcelTimestamp))]
+    [Index(nameof(BagCode))]
+    [Index(nameof(WorkstationName))]
+    [Index(nameof(ScannedTime))]
     public sealed class Parcel : AuditableEntity {
 
         /// <summary>
@@ -74,7 +79,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         /// <summary>
         /// 重量
         /// </summary>
-        [Column(TypeName = "decimal(18,3)")]
+        [Precision(18, 3)]
         public decimal Weight { get; private set; }
 
         /// <summary>
@@ -102,25 +107,25 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         /// <summary>
         /// 长度
         /// </summary>
-        [Column(TypeName = "decimal(18,3)")]
+        [Precision(18, 3)]
         public decimal Length { get; private set; }
 
         /// <summary>
         /// 宽度
         /// </summary>
-        [Column(TypeName = "decimal(18,3)")]
+        [Precision(18, 3)]
         public decimal Width { get; private set; }
 
         /// <summary>
         /// 高度
         /// </summary>
-        [Column(TypeName = "decimal(18,3)")]
+        [Precision(18, 3)]
         public decimal Height { get; private set; }
 
         /// <summary>
         /// 体积
         /// </summary>
-        [Column(TypeName = "decimal(18,3)")]
+        [Precision(18, 3)]
         public decimal Volume { get; private set; }
 
         /// <summary>

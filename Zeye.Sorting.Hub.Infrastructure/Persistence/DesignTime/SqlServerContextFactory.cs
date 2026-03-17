@@ -5,10 +5,14 @@ using Microsoft.Extensions.Configuration;
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
 
     /// <summary>
-    /// SQL Server 设计时 DbContext 工厂，供 <c>dotnet ef</c> 迁移工具在无宿主进程时构建 <see cref="SortingHubDbContext"/>。
+    /// SQL Server 设计时 DbContext 构建器。
     /// </summary>
     /// <remarks>
-    /// <para>该工厂仅在以下场景被调用：</para>
+    /// <para>
+    /// 实际的 <c>dotnet ef</c> 入口工厂为 <see cref="MySqlContextFactory"/>（统一入口，按 provider 分发）。
+    /// 本类型保留 SQL Server 场景下的配置装配逻辑，便于独立验证与后续扩展。
+    /// </para>
+    /// <para>SQL Server 路径支持以下场景：</para>
     /// <list type="bullet">
     ///   <item><description><c>dotnet ef migrations add &lt;Name&gt;</c> — 新增迁移</description></item>
     ///   <item><description><c>dotnet ef migrations remove</c> — 回退最新迁移</description></item>
@@ -26,7 +30,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
     /// </list>
     /// </para>
     /// </remarks>
-    internal sealed class SqlServerContextFactory : IDesignTimeDbContextFactory<SortingHubDbContext> {
+    internal sealed class SqlServerContextFactory {
 
         /// <summary>
         /// 设计时兜底占位连接字符串，仅在无法从 <c>appsettings.json</c> 读取时使用。
@@ -40,9 +44,15 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
         /// </summary>
         private const int MaxParentDirectorySearchDepth = 6;
 
-        /// <inheritdoc />
+        /// <summary>
+        /// 为 SQL Server 场景构建设计时 DbContext（供统一设计时工厂内部复用）。
+        /// </summary>
         public SortingHubDbContext CreateDbContext(string[] args) {
             var config = LoadConfiguration();
+            return CreateDbContext(config);
+        }
+
+        internal SortingHubDbContext CreateDbContext(IConfiguration config) {
             var connectionString = config.GetConnectionString("SqlServer") ?? FallbackConnectionString;
 
             var options = new DbContextOptionsBuilder<SortingHubDbContext>()

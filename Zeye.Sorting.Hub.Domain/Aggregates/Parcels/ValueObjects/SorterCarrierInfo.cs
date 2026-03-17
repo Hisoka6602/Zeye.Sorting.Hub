@@ -3,12 +3,12 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations.Schema;
+using Microsoft.EntityFrameworkCore;
 
 namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
     /// <summary>
     /// 小车信息（值对象）
-    /// 说明：仅表达领域语义，不包含 ORM 映射与序列化特性
+    /// 说明：仅表达领域语义，decimal 精度通过特征标记声明
     /// </summary>
     public sealed record class SorterCarrierInfo {
         /// <summary>
@@ -24,7 +24,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
         /// <summary>
         /// 上车时输送带速度（单位：mm/s）
         /// </summary>
-        [Column(TypeName = "decimal(18,3)")]
+        [Precision(18, 3)]
         public required decimal ConveyorSpeedWhenLoaded { get; init; }
 
         /// <summary>

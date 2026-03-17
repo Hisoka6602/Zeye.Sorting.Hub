@@ -1,0 +1,66 @@
+name: ef-migration-validation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/ef-migration-validation.yml"
+      - "Zeye.Sorting.Hub.Domain/**"
+      - "Zeye.Sorting.Hub.Infrastructure/**"
+      - "Zeye.Sorting.Hub.Host/**"
+      - "EFCore-Migration.md"
+
+permissions:
+  contents: read
+
+jobs:
+  mysql-ef-validation:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: "Admin@1234"
+          MYSQL_DATABASE: "zeye_sorting_hub_ci"
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -pAdmin@1234 --silent"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Install dotnet-ef
+        run: dotnet tool install --global dotnet-ef --version 9.0.14
+
+      - name: Validate EF migrations (list / update / script)
+        env:
+          PATH: ${{ env.PATH }}:${{ env.HOME }}/.dotnet/tools
+          MYSQL_CONNECTION: "server=127.0.0.1;port=3306;database=zeye_sorting_hub_ci;uid=root;pwd=Admin@1234;SslMode=None;"
+        run: |
+          dotnet ef migrations list \
+            --project Zeye.Sorting.Hub.Infrastructure \
+            --startup-project Zeye.Sorting.Hub.Infrastructure \
+            --context SortingHubDbContext \
+            -- --provider MySql
+          dotnet ef database update \
+            --project Zeye.Sorting.Hub.Infrastructure \
+            --startup-project Zeye.Sorting.Hub.Infrastructure \
+            --context SortingHubDbContext \
+            --connection "$MYSQL_CONNECTION" \
+            -- --provider MySql
+          dotnet ef migrations script \
+            --project Zeye.Sorting.Hub.Infrastructure \
+            --startup-project Zeye.Sorting.Hub.Infrastructure \
+            --context SortingHubDbContext \
+            --output /tmp/ef-migration-validation.sql \
+            -- --provider MySql

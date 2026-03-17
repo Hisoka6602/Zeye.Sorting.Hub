@@ -29,10 +29,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
             builder.Property<long>("BagId").ValueGeneratedOnAdd();
             builder.HasKey("BagId");
 
-            // 索引：每个格口同一时刻只能存在一条袋信息
-            builder.HasIndex(x => x.ChuteId).IsUnique();
-            // 袋号通常也应唯一（如允许重复，可移除 IsUnique()）
-            builder.HasIndex(x => x.BagCode).IsUnique();
+            // 索引由 Domain 层 [Index] 特征标记声明，配置层不重复声明。
         }
     }
 }

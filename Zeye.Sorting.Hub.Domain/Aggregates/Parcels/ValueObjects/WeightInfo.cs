@@ -3,13 +3,13 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
     /// <summary>
     /// 称重信息（值对象）
-    /// 说明：仅表达领域语义，不包含 ORM 映射与序列化特性
+    /// 说明：仅表达领域语义，decimal 精度通过特征标记声明
     /// </summary>
     public sealed record class WeightInfo {
         /// <summary>
@@ -27,7 +27,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
         /// <summary>
         /// 格式化后重量（单位：kg）
         /// </summary>
-        [Column(TypeName = "decimal(18,3)")]
+        [Precision(18, 3)]
         public required decimal FormattedWeight { get; init; }
 
         /// <summary>
@@ -38,7 +38,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
         /// <summary>
         /// 调整后的重量（单位：kg；为空表示未调整）
         /// </summary>
-        [Column(TypeName = "decimal(18,3)")]
+        [Precision(18, 3)]
         public decimal? AdjustedWeight { get; init; }
 
         /// <summary>
