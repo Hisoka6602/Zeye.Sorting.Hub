@@ -55,7 +55,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
 
             if (string.Equals(provider, SqlServerProviderName, StringComparison.OrdinalIgnoreCase)) {
                 var factory = new SqlServerContextFactory();
-                return factory.CreateDbContext(args);
+                return factory.CreateDbContext(config);
             }
 
             var connectionString = config.GetConnectionString(MySqlProviderName) ?? FallbackConnectionString;
