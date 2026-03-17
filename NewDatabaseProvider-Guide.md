@@ -40,10 +40,10 @@ dotnet add Zeye.Sorting.Hub.Infrastructure/Zeye.Sorting.Hub.Infrastructure.cspro
 或手动在 `.csproj` 中添加：
 
 ```xml
-<PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.*" />
+<PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.14" />
 ```
 
-> ⚠️ 不要锁定具体 patch 版本号，使用 `8.0.*` 允许安全更新。
+> 💡 Sqlite 包版本必须与主项目 EF Core 主版本保持一致（当前为 `9.x`），否则会引入主版本不匹配的包依赖冲突。
 
 ---
 
@@ -195,11 +195,11 @@ throw new InvalidOperationException(
     "Provider": "Sqlite"
   },
   "ConnectionStrings": {
-    // 新增 Sqlite 连接字符串（使用占位符，禁止提交真实凭据）
+    // 新增 Sqlite 连接字符串（本地开发可直接填写真实值，私有库由专属技术人员维护）
     "Sqlite": "Data Source=zeye_sorting_hub.db",
     // 保留原有连接字符串（切换时注释或删除不用的即可）
-    "MySql": "server=127.0.0.1;port=3306;database=zeye_sorting_hub;uid={MYSQL_USER};password={MYSQL_PASSWORD};SslMode=None;",
-    "SqlServer": "Server=127.0.0.1,1433;Database=zeye_sorting_hub;User Id={SQLSERVER_USER};Password={SQLSERVER_PASSWORD};TrustServerCertificate=True;Encrypt=False;"
+    "MySql": "server=127.0.0.1;port=3306;database=zeye_sorting_hub;uid=root;password=Admin@1234;SslMode=None;",
+    "SqlServer": "Server=127.0.0.1,1433;Database=zeye_sorting_hub;User Id=sa;Password=Admin@1234;TrustServerCertificate=True;Encrypt=False;"
   }
 }
 ```
@@ -268,6 +268,6 @@ dotnet ef migrations add InitialCreate \
 
 ### 连接字符串安全
 
-- 禁止在代码或 `appsettings.json` 中提交真实数据库凭据
-- 生产环境在 `appsettings.json` 中使用 `{PLACEHOLDER}` 标记敏感字段，通过 .NET User Secrets（本地开发）或运维部署流程中的配置注入替换为真实值
-- `appsettings.json` 中的连接字符串仅作格式示例，避免提交真实用户名/密码到版本控制
+- 本项目为私有库，由专属技术人员维护，允许在 `appsettings.json` 中提交本地开发默认凭据
+- 生产环境部署时建议通过运维部署流程（如 K8s Secret、Azure KeyVault、CI/CD 参数注入）覆盖连接字符串
+- 可使用 .NET User Secrets（`dotnet user-secrets set`）在不影响版本控制的情况下覆盖本地连接参数

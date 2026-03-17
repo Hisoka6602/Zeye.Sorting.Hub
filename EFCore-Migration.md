@@ -8,7 +8,7 @@
 |----------|----------|
 | DbContext | `Zeye.Sorting.Hub.Infrastructure/Persistence/SortingHubDbContext.cs` |
 | 实体映射配置 | `Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/` |
-| 设计时工厂 | `Zeye.Sorting.Hub.Infrastructure/Persistence/DesignTime/MySqlContextFactory.cs` |
+| 设计时工厂 | `Zeye.Sorting.Hub.Infrastructure/Persistence/DesignTime/MySqlContextFactory.cs`<br>`Zeye.Sorting.Hub.Infrastructure/Persistence/DesignTime/SqlServerContextFactory.cs` |
 | 迁移文件存放目录 | `Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/` |
 | 运行时自动迁移服务 | `Zeye.Sorting.Hub.Host/HostedServices/DatabaseInitializerHostedService.cs` |
 

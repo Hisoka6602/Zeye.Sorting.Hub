@@ -267,8 +267,8 @@
 - `SlowQuerySample.cs`：慢查询采样记录模型。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/DesignTime/`：EF 设计时支持目录
-- `MySqlContextFactory.cs`：MySQL 设计时 DbContext 工厂（实现 `IDesignTimeDbContextFactory<SortingHubDbContext>`），供 `dotnet ef migrations add/remove/list` 等 CLI 命令在无宿主进程时构建 DbContext；连接字符串优先读取环境变量 `MYSQL_CONNECTION_STRING`，版本采用 AutoDetect → 环境变量 → 兜底 8.0 三级策略。
-- `SqlServerContextFactory.cs`：SQL Server 设计时 DbContext 工厂（实现 `IDesignTimeDbContextFactory<SortingHubDbContext>`），供 `dotnet ef` CLI 命令在 SQL Server 环境下构建 DbContext；连接字符串优先读取环境变量 `SQLSERVER_CONNECTION_STRING`。
+- `MySqlContextFactory.cs`：MySQL 设计时 DbContext 工厂（实现 `IDesignTimeDbContextFactory<SortingHubDbContext>`），供 `dotnet ef migrations add/remove/list` 等 CLI 命令在无宿主进程时构建 DbContext；连接字符串从 `appsettings.json` 的 `ConnectionStrings:MySql` 读取，版本采用 AutoDetect → 兜底 8.0 两级策略。
+- `SqlServerContextFactory.cs`：SQL Server 设计时 DbContext 工厂（实现 `IDesignTimeDbContextFactory<SortingHubDbContext>`），供 `dotnet ef` CLI 命令在 SQL Server 环境下构建 DbContext；连接字符串从 `appsettings.json` 的 `ConnectionStrings:SqlServer` 读取。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/`：EF Core 迁移文件目录
 - `20260316184030_InitialCreate.cs`：初始迁移，包含全部表（Parcels、Bags 及各值对象属性表）的 `Up`（建表）与 `Down`（回滚）逻辑。
@@ -327,8 +327,8 @@
 
 ## 本次更新内容（EF Core CodeFirst 迁移完成 + 数据库日志落盘 + SqlServer 设计时支持）
 
-1. **`MySqlContextFactory` 实现（`IDesignTimeDbContextFactory<SortingHubDbContext>`）**：将原本的空占位类补充为完整的设计时工厂实现，连接字符串优先读取环境变量 `MYSQL_CONNECTION_STRING`，版本采用 AutoDetect → 环境变量 → 兜底 8.0 三级策略。
-2. **`SqlServerContextFactory` 新建**：新增 SQL Server 设计时工厂，连接字符串读取环境变量 `SQLSERVER_CONNECTION_STRING`，确保两种数据库均可通过 `dotnet ef` CLI 生成迁移。
+1. **`MySqlContextFactory` 实现（`IDesignTimeDbContextFactory<SortingHubDbContext>`）**：将原本的空占位类补充为完整的设计时工厂实现，连接字符串从 `appsettings.json` 的 `ConnectionStrings:MySql` 读取（按目录树搜索），版本采用 AutoDetect → 兜底 8.0 两级策略。
+2. **`SqlServerContextFactory` 新建**：新增 SQL Server 设计时工厂，连接字符串从 `appsettings.json` 的 `ConnectionStrings:SqlServer` 读取，确保两种数据库均可通过 `dotnet ef` CLI 生成迁移。
 3. **初始迁移 `InitialCreate` 生成**：执行 `dotnet ef migrations add InitialCreate` 生成三个迁移文件（`20260316184030_InitialCreate.cs`、`20260316184030_InitialCreate.Designer.cs`、`SortingHubDbContextModelSnapshot.cs`），覆盖全部实体表（Parcels 主表及 14 个值对象属性表），建表与回滚逻辑完整。
 4. **NLog 双路日志落盘**：使用 NLog 替换 Serilog，`logs/app-*.log` 记录全量日志，`logs/database-*.log` 记录数据库专属日志（EF Core 迁移、`DatabaseInitializerHostedService`、`DatabaseAutoTuningHostedService`、Persistence 层），按天归档，保留 30 天。低开销设计：异步队列 + keepFileOpen + optimizeBufferReuse。任何数据库异常均记录，不导致程序崩溃。
 5. **CodeFirst 迁移一致性守卫（`AssertMigrationConsistencyAsync`）**：每次启动后检测未应用迁移与迁移历史差异，输出具体差异的迁移名称（在代码中但未应用 / 已应用但代码中不存在），不抛出异常，不阻止程序运行。

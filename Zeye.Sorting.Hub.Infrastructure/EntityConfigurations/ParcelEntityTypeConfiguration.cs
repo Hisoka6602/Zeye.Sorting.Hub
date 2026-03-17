@@ -167,6 +167,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
 
                 b.HasIndex("ParcelId");
                 b.HasIndex("NodeType");
+                b.HasIndex("NvrSerialNumber");
             });
         }
     }

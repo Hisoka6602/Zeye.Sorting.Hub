@@ -30,7 +30,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _dialect = dialect;
 
             _retryPolicy = Policy
-                .Handle<Exception>()
+                .Handle<Exception>(ex => ex is not OperationCanceledException)
                 .WaitAndRetryAsync(
                     retryCount: 6,
                     sleepDurationProvider: attempt => TimeSpan.FromSeconds(Math.Min(30, 2 * attempt)),
@@ -43,19 +43,19 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
         public async Task StartAsync(CancellationToken cancellationToken) {
             try {
-                await _retryPolicy.ExecuteAsync(async () => {
+                await _retryPolicy.ExecuteAsync(async (ct) => {
                     await using var scope = _serviceProvider.CreateAsyncScope();
                     var db = scope.ServiceProvider.GetRequiredService<SortingHubDbContext>();
 
                     _logger.LogInformation("开始执行数据库迁移，Provider={Provider}", _dialect.ProviderName);
-                    await db.Database.MigrateAsync(cancellationToken);
+                    await db.Database.MigrateAsync(ct);
                     _logger.LogInformation("数据库迁移完成，Provider={Provider}", _dialect.ProviderName);
 
-                    await AssertMigrationConsistencyAsync(db, cancellationToken);
+                    await AssertMigrationConsistencyAsync(db, ct);
 
                     foreach (var sql in _dialect.GetOptionalBootstrapSql()) {
                         try {
-                            await db.Database.ExecuteSqlRawAsync(sql, cancellationToken);
+                            await db.Database.ExecuteSqlRawAsync(sql, ct);
                         }
                         catch (Exception ex) {
                             _logger.LogWarning(ex,
@@ -63,7 +63,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                                 _dialect.ProviderName, sql);
                         }
                     }
-                });
+                }, cancellationToken);
             }
             catch (OperationCanceledException) {
                 // 宿主正常停止时触发，不计为错误
