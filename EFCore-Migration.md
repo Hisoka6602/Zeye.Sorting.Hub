@@ -25,6 +25,15 @@
 
 初始迁移文件：`Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/20260316184030_InitialCreate.cs`
 
+### 2.1 SQL Server 迁移策略（明确）
+
+- **策略选择**：采用“**独立迁移目录（同一程序集）**”策略，避免 SQL Server 与 MySQL 迁移脚本混用。
+- **目录约定**：
+  - MySQL：`Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/MySql/`
+  - SQL Server：`Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/SqlServer/`
+- **命令约定**：SQL Server 相关 `dotnet ef` 命令统一追加 `-- --provider SqlServer`，并将 `--output-dir` 指向 `Persistence/Migrations/SqlServer`。
+- **落地要求**：新增 SQL Server 迁移时必须走上述目录与参数约定；发布前必须通过 CI 的 `list/update/script` 验收流水线。
+
 ---
 
 ## 3. 运行时自动迁移（生产/开发环境默认行为）
@@ -40,6 +49,12 @@ Host 启动
 ```
 
 **重试策略**：最多 6 次，指数退避，最大间隔 30 秒，确保数据库容器尚未就绪时仍能稳定启动。
+
+### 3.1 发布策略：迁移失败是否阻断启动（明确）
+
+- **运行时默认策略**：`DatabaseInitializerHostedService` 在迁移失败重试耗尽后仅记录 `Critical` 日志，**不阻断应用启动**（降级运行）。
+- **发布门禁策略**：是否允许发布由发布流程决定，**发布前必须通过 CI 的 EF 验收流水线**（`dotnet ef migrations list / database update / migrations script`）。
+- **结论**：运行时“可降级不中断”，发布侧“未通过 EF 验收即阻断发布”。
 
 ---
 
@@ -85,7 +100,8 @@ dotnet ef migrations remove \
 dotnet ef migrations list \
   --project Zeye.Sorting.Hub.Infrastructure \
   --startup-project Zeye.Sorting.Hub.Infrastructure \
-  --context SortingHubDbContext
+  --context SortingHubDbContext \
+  -- --provider SqlServer
 ```
 
 ### 4.4 手动推送迁移到数据库（可选，通常由自动迁移替代）
@@ -95,7 +111,8 @@ dotnet ef database update \
   --project Zeye.Sorting.Hub.Infrastructure \
   --startup-project Zeye.Sorting.Hub.Infrastructure \
   --context SortingHubDbContext \
-  --connection "server=<HOST>;port=3306;database=zeye_sorting_hub;uid=<USER>;pwd=<PWD>;SslMode=None;"
+  --connection "Server=<HOST>,1433;Database=zeye_sorting_hub;User Id=<USER>;Password=<PWD>;TrustServerCertificate=True;Encrypt=False;" \
+  -- --provider SqlServer
 ```
 
 > ⚠️ `MySqlContextFactory` 中的连接字符串为设计时占位值，执行 `database update` 时务必通过 `--connection` 参数传入真实连接字符串。
@@ -107,14 +124,28 @@ dotnet ef migrations script \
   --project Zeye.Sorting.Hub.Infrastructure \
   --startup-project Zeye.Sorting.Hub.Infrastructure \
   --context SortingHubDbContext \
-  --output migration.sql
+  --output migration.sql \
+  -- --provider SqlServer
 ```
 
 ---
 
-## 5. 设计时工厂说明（`MySqlContextFactory` / `SqlServerContextFactory`）
+## 4.6 CI / 部署前 EF 验收流水线（真实执行）
+
+仓库已提供工作流：`.github/workflows/ef-migration-validation.yml`，在 MySQL 容器上执行以下三条真实命令：
+
+1. `dotnet ef migrations list`
+2. `dotnet ef database update`
+3. `dotnet ef migrations script`
+
+用途：作为发布前门禁，确保“迁移可枚举、可落库、可导出脚本”三项同时通过。
+
+---
+
+## 5. 设计时工厂说明（统一入口 + 提供器分发）
 
 `IDesignTimeDbContextFactory<SortingHubDbContext>` 的作用是让 `dotnet ef` 工具在没有宿主进程的情况下也能构建 `SortingHubDbContext`。
+本项目当前采用**统一入口工厂**（`MySqlContextFactory`）并支持通过 `-- --provider SqlServer` 分发到 SQL Server 配置路径。
 
 ### 5.1 版本解析策略（两级优先级，不主动锁定版本）
 
@@ -237,19 +268,20 @@ dotnet ef migrations script \
 
 ### Q：如何针对 SQL Server 使用迁移？
 
-`SqlServerContextFactory.cs` 已在 `Persistence/DesignTime/` 目录下创建，连接字符串从 `appsettings.json` 中的 `ConnectionStrings:SqlServer` 读取。使用以下命令生成 SQL Server 迁移：
+统一设计时工厂支持通过 `-- --provider SqlServer` 切换到 SQL Server 配置路径（连接字符串读取 `ConnectionStrings:SqlServer`）。使用以下命令生成 SQL Server 迁移：
 
 ```bash
 # 1. 在 appsettings.json 中确认 ConnectionStrings:SqlServer 配置了真实连接字符串
 # 2. 在解决方案根目录运行（工厂会自动找到 Zeye.Sorting.Hub.Host/appsettings.json）
 dotnet ef migrations add <迁移名称> \
   --project Zeye.Sorting.Hub.Infrastructure \
-  --startup-project Zeye.Sorting.Hub.Host \
-  --output-dir Persistence/Migrations \
-  --context SortingHubDbContext
+  --startup-project Zeye.Sorting.Hub.Infrastructure \
+  --output-dir Persistence/Migrations/SqlServer \
+  --context SortingHubDbContext \
+  -- --provider SqlServer
 ```
 
-运行时 SQL Server 路径通过 `Persistence:Provider = SqlServer` 配置启用，迁移文件可同时服务 MySQL 和 SQL Server（MySQL 专属 Annotation 在 SQL Server 运行时会被 EF Core 自动忽略）。
+运行时 SQL Server 路径通过 `Persistence:Provider = SqlServer` 配置启用；迁移文件按提供器分目录维护（MySQL/SqlServer 独立），避免跨提供器脚本混用。
 
 ### Q：如何接入第三种数据库（如 SQLite、PostgreSQL）？
 

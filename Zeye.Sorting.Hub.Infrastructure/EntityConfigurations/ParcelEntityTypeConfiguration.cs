@@ -22,12 +22,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
             builder.HasKey(x => x.Id);
             builder.Property(x => x.Id).ValueGeneratedOnAdd();
 
-            // 索引（按常用查询条件/时间维度加速）
-            builder.HasIndex(x => x.ParcelTimestamp);
-            builder.HasIndex(x => x.BagCode);
-            builder.HasIndex(x => x.WorkstationName);
-            builder.HasIndex(x => x.ScannedTime);
-
             // BagInfo：多 Parcel -> 1 BagInfo（独立表实体 + 影子外键）
             builder.Property<long?>("BagId").HasColumnName("BagId");
             builder.HasIndex("BagId");
