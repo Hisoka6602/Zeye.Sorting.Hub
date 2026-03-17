@@ -107,7 +107,11 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         ///   <item><description>仅当配置值可解析且为 <c>true</c> 时，迁移失败才会阻断启动。</description></item>
         /// </list>
         /// </remarks>
-        public static bool ResolveFailStartupOnMigrationError(IConfiguration configuration) {
+        /// <returns>
+        /// 返回 <c>true</c> 表示迁移失败时阻断启动；返回 <c>false</c> 表示迁移失败后降级运行。
+        /// </returns>
+        internal static bool ResolveFailStartupOnMigrationError(IConfiguration configuration) {
+            ArgumentNullException.ThrowIfNull(configuration);
             var raw = configuration[FailStartupOnMigrationErrorConfigKey];
             return bool.TryParse(raw, out var value) && value;
         }

@@ -13,6 +13,10 @@ on:
 permissions:
   contents: read
 
+env:
+  MYSQL_ROOT_PASSWORD: "Admin@1234"
+  MSSQL_SA_PASSWORD: "Admin@1234"
+
 jobs:
   mysql-ef-validation:
     runs-on: ubuntu-latest
@@ -20,12 +24,12 @@ jobs:
       mysql:
         image: mysql:8.0
         env:
-          MYSQL_ROOT_PASSWORD: "Admin@1234"
+          MYSQL_ROOT_PASSWORD: ${{ env.MYSQL_ROOT_PASSWORD }}
           MYSQL_DATABASE: "zeye_sorting_hub_ci"
         ports:
           - 3306:3306
         options: >-
-          --health-cmd "mysqladmin ping -h 127.0.0.1 -pAdmin@1234 --silent"
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -p${{ env.MYSQL_ROOT_PASSWORD }} --silent"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 30
@@ -43,11 +47,11 @@ jobs:
         run: dotnet tool install --global dotnet-ef --version 9.0.14
 
       - name: Add dotnet tools to PATH
-        run: echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+        run: echo "~/.dotnet/tools" >> "$GITHUB_PATH"
 
       - name: Validate EF migrations (list / update / script)
         env:
-          MYSQL_CONNECTION: "server=127.0.0.1;port=3306;database=zeye_sorting_hub_ci;uid=root;pwd=Admin@1234;SslMode=None;"
+          MYSQL_CONNECTION: "server=127.0.0.1;port=3306;database=zeye_sorting_hub_ci;uid=root;pwd=${{ env.MYSQL_ROOT_PASSWORD }};SslMode=None;"
         run: |
           dotnet ef migrations list \
             --project Zeye.Sorting.Hub.Infrastructure \
@@ -74,11 +78,12 @@ jobs:
         image: mcr.microsoft.com/mssql/server:2022-latest
         env:
           ACCEPT_EULA: "Y"
-          MSSQL_SA_PASSWORD: "Admin@1234"
+          MSSQL_SA_PASSWORD: ${{ env.MSSQL_SA_PASSWORD }}
         ports:
           - 1433:1433
+        # mcr.microsoft.com/mssql/server:2022-latest 镜像内 sqlcmd 默认位于 /opt/mssql-tools18/bin/sqlcmd
         options: >-
-          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"Admin@1234\" -Q \"SELECT 1\" -C"
+          --health-cmd "SQLCMDPASSWORD=$MSSQL_SA_PASSWORD /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -Q \"SELECT 1\" -C"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 30
@@ -96,11 +101,11 @@ jobs:
         run: dotnet tool install --global dotnet-ef --version 9.0.14
 
       - name: Add dotnet tools to PATH
-        run: echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+        run: echo "~/.dotnet/tools" >> "$GITHUB_PATH"
 
       - name: Validate EF migrations (list / update / script)
         env:
-          SQLSERVER_CONNECTION: "Server=127.0.0.1,1433;Database=zeye_sorting_hub_ci;User Id=sa;Password=Admin@1234;TrustServerCertificate=True;Encrypt=False;"
+          SQLSERVER_CONNECTION: "Server=127.0.0.1,1433;Database=zeye_sorting_hub_ci;User Id=sa;Password=${{ env.MSSQL_SA_PASSWORD }};TrustServerCertificate=True;Encrypt=False;"
         run: |
           dotnet ef migrations list \
             --project Zeye.Sorting.Hub.Infrastructure \

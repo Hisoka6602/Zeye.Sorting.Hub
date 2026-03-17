@@ -55,6 +55,7 @@ public sealed class AutoTuningProductionControlTests {
         parcel.MarkCompleted(DateTime.Now);
         Assert.Equal(ParcelStatus.Completed, parcel.Status);
         Assert.Null(parcel.ExceptionType);
+        Assert.Throws<InvalidOperationException>(() => parcel.MarkSortingException(ParcelExceptionType.ParcelLost));
     }
 
     [Fact]
