@@ -25,7 +25,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         /// <summary>
-        /// 方法：ExecuteAsync。
+        /// 执行逻辑：ExecuteAsync。
         /// </summary>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
             if (!_settings.Enabled) {
@@ -58,7 +58,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         /// <summary>
-        /// 方法：CleanupOldLogsAsync。
+        /// 执行逻辑：CleanupOldLogsAsync。
         /// </summary>
         private async Task CleanupOldLogsAsync() {
             var logDirectory = _settings.LogDirectory;

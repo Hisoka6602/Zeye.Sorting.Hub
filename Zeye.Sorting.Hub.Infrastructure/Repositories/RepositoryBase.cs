@@ -36,9 +36,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
         /// 获取 IQueryable（仅用于查询路径）
         /// 注意：返回的 IQueryable 绑定 DbContext 生命周期，建议仅在方法内部使用并立即物化
         /// </summary>
-        /// <summary>
-        /// 方法：Query。
-        /// </summary>
         protected IQueryable<TEntity> Query(TContext db, bool asNoTracking = true) {
             var set = db.Set<TEntity>();
             return asNoTracking ? set.AsNoTracking() : set;

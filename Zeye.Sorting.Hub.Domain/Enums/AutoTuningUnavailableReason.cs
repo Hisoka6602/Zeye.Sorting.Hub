@@ -65,7 +65,7 @@ public enum AutoTuningUnavailableReason {
 
 public static class AutoTuningUnavailableReasonExtensions {
     /// <summary>
-    /// 方法：ToTagValue。
+    /// 执行逻辑：ToTagValue。
     /// </summary>
     public static string ToTagValue(this AutoTuningUnavailableReason reason) {
         return reason switch {

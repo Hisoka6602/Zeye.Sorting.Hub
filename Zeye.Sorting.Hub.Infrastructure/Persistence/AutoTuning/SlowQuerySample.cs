@@ -41,7 +41,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         }
 
         /// <summary>
-        /// 方法：NormalizeToLocalTime。
+        /// 将时间值标准化为本地时间语义。
         /// </summary>
         private static DateTime NormalizeToLocalTime(DateTime value) {
             return value.Kind switch {

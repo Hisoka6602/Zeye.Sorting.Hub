@@ -782,7 +782,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         /// <summary>
-        /// 方法：DetermineLockWaitUnavailableReason。
+        /// 执行逻辑：DetermineLockWaitUnavailableReason。
         /// </summary>
         private static AutoTuningUnavailableReason DetermineLockWaitUnavailableReason(int? baselineLockWaitCount, int? currentLockWaitCount) {
             if (!baselineLockWaitCount.HasValue && !currentLockWaitCount.HasValue) {
@@ -823,7 +823,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         /// <summary>
-        /// 方法：MoveToStage。
+        /// 执行逻辑：MoveToStage。
         /// </summary>
         private void MoveToStage(AutoTuningClosedLoopStage stage, string reason, string? actionId = null, string? fingerprint = null) {
             if (_currentStage == stage) {
@@ -874,7 +874,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         /// <summary>
-        /// 方法：EmitValidationResult。
+        /// 执行逻辑：EmitValidationResult。
         /// </summary>
         private void EmitValidationResult(PendingRollbackAction rollback, AutoTuningVerificationResult result) {
             var level = string.Equals(result.Verdict, "pass", StringComparison.OrdinalIgnoreCase)
@@ -911,12 +911,12 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         /// <summary>
-        /// 方法：NormalizeTagValue。
+        /// 执行逻辑：NormalizeTagValue。
         /// </summary>
         private static string NormalizeTagValue(string? value) => string.IsNullOrWhiteSpace(value) ? NotAvailableTag : value.Trim();
 
         /// <summary>
-        /// 方法：EvaluatePlanRegression。
+        /// 执行逻辑：EvaluatePlanRegression。
         /// </summary>
         private PlanRegressionSnapshot EvaluatePlanRegression(PendingRollbackAction rollback) {
             var normalizedFingerprint = NormalizeTagValue(rollback.Fingerprint);
@@ -932,7 +932,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         /// <summary>
-        /// 方法：ShouldSamplePlanProbe。
+        /// 执行逻辑：ShouldSamplePlanProbe。
         /// </summary>
         private bool ShouldSamplePlanProbe(PendingRollbackAction rollback) {
             if (_planProbeSampleRate <= 0m) {
@@ -951,7 +951,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         /// <summary>
-        /// 方法：BuildUnavailablePlanRegressionSnapshot。
+        /// 执行逻辑：BuildUnavailablePlanRegressionSnapshot。
         /// </summary>
         private PlanRegressionSnapshot BuildUnavailablePlanRegressionSnapshot(string fingerprint, AutoTuningUnavailableReason reason) {
             return new PlanRegressionSnapshot(
@@ -962,7 +962,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         /// <summary>
-        /// 方法：BuildEvidenceContext。
+        /// 执行逻辑：BuildEvidenceContext。
         /// </summary>
         private static EvidenceContext BuildEvidenceContext(string? actionId, string? fingerprint, bool normalized = false) {
             var normalizedActionId = normalized ? actionId ?? NotAvailableTag : NormalizeTagValue(actionId);
@@ -1281,7 +1281,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         /// <summary>
-        /// 方法：AuditBaselineItem。
+        /// 执行逻辑：AuditBaselineItem。
         /// </summary>
         private void AuditBaselineItem(string key, double configured, double baseline) {
             if (Math.Abs(configured - baseline) < 0.0001d) {
@@ -1409,11 +1409,11 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             decimal RiskScore,
             string Reason) {
             /// <summary>
-            /// 方法：Execute。
+            /// 执行逻辑：Execute。
             /// </summary>
             public static PolicyDecision Execute(decimal riskScore, string reason) => new(true, riskScore, reason);
             /// <summary>
-            /// 方法：Skip。
+            /// 执行逻辑：Skip。
             /// </summary>
             public static PolicyDecision Skip(decimal riskScore, string reason) => new(false, riskScore, reason);
         }

@@ -17,7 +17,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
         private const string SchemaDbo = "dbo";
 
         /// <summary>
-        /// 方法：Configure。
+        /// 执行逻辑：Configure。
         /// </summary>
         public void Configure(EntityTypeBuilder<Parcel> builder) {
             builder.ToTable("Parcels", SchemaDbo);

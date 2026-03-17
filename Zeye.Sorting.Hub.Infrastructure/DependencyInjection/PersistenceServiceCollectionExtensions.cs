@@ -54,7 +54,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             options: RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         /// <summary>
-        /// 方法：AddSortingHubPersistence。
+        /// 执行逻辑：AddSortingHubPersistence。
         /// </summary>
         public static IServiceCollection AddSortingHubPersistence(this IServiceCollection services, IConfiguration configuration) {
             var provider = configuration["Persistence:Provider"];
@@ -176,7 +176,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         }
 
         /// <summary>
-        /// 方法：GetPositiveIntOrDefault。
+        /// 执行逻辑：GetPositiveIntOrDefault。
         /// </summary>
         private static int GetPositiveIntOrDefault(IConfiguration configuration, string key, int fallback) =>
             AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, key, fallback);
@@ -194,9 +194,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// - 对“有稳定必填时间字段”的表优先采用按月分表；
         /// - 对“无时间字段/时间可空”的表采用哈希分表，保证可路由且可扩展。
         /// </remarks>
-        /// <summary>
-        /// 方法：ConfigureParcelAggregateSharding。
-        /// </summary>
         private static void ConfigureParcelAggregateSharding(IShardingBuilder shardingBuilder, DateTime parcelShardingStartTime, int parcelRelatedHashShardingMod) {
             AssertParcelAggregateShardingCoverage();
 
@@ -303,9 +300,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// 目的：当新增 ValueObjects 下的 *Info 类型时，若遗漏分表注册，启动期立即失败并给出缺失清单，
         /// 避免运行期出现“路由命中但物理分表规则缺失”的异常。
         /// </remarks>
-        /// <summary>
-        /// 方法：AssertParcelAggregateShardingCoverage。
-        /// </summary>
         internal static void AssertParcelAggregateShardingCoverage() {
             var configured = new HashSet<Type> {
                 typeof(BagInfo),
@@ -362,9 +356,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// - Local：原样返回；
         /// - 其他：视为不合法输入并抛错（禁止 UTC/带 offset 的时间语义进入链路）。
         /// </remarks>
-        /// <summary>
-        /// 方法：NormalizeToLocalTime。
-        /// </summary>
         private static DateTime NormalizeToLocalTime(DateTime value) {
             return value.Kind switch {
                 DateTimeKind.Unspecified => DateTime.SpecifyKind(value, DateTimeKind.Local),
@@ -374,7 +365,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         }
 
         /// <summary>
-        /// 方法：GetShardingStartTime。
+        /// 执行逻辑：GetShardingStartTime。
         /// </summary>
         private static DateTime GetShardingStartTime(IConfiguration configuration) {
             var configured = configuration["Persistence:Sharding:ParcelStartTime"];
@@ -401,9 +392,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// </summary>
         /// <param name="configured">原始配置值。</param>
         /// <exception cref="InvalidOperationException">当配置包含 Z/offset 时抛出。</exception>
-        /// <summary>
-        /// 方法：EnsureNoTimeZoneSuffix。
-        /// </summary>
         private static void EnsureNoTimeZoneSuffix(string? configured) {
             if (string.IsNullOrWhiteSpace(configured)) {
                 return;
@@ -421,9 +409,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// </summary>
         /// <param name="configuredText">原始配置文本。</param>
         /// <returns>移除控制字符并截断后的预览文本。</returns>
-        /// <summary>
-        /// 方法：GetSafeConfigPreview。
-        /// </summary>
         private static string GetSafeConfigPreview(string configuredText) {
             var builder = new StringBuilder(configuredText.Length);
             foreach (var c in configuredText) {

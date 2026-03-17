@@ -83,7 +83,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         /// <summary>
-        /// 方法：StartAsync。
+        /// 执行逻辑：StartAsync。
         /// </summary>
         public async Task StartAsync(CancellationToken cancellationToken) {
             AuditShardingGovernance();
@@ -151,9 +151,6 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <returns>
         /// 返回 <c>true</c> 表示迁移失败时阻断启动；返回 <c>false</c> 表示迁移失败后降级运行。
         /// </returns>
-        /// <summary>
-        /// 方法：ResolveFailStartupOnMigrationError。
-        /// </summary>
         internal static bool ResolveFailStartupOnMigrationError(IConfiguration configuration) {
             ArgumentNullException.ThrowIfNull(configuration);
             var raw = configuration[FailStartupOnMigrationErrorConfigKey];
@@ -288,7 +285,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         /// <summary>
-        /// 方法：StopAsync。
+        /// 执行逻辑：StopAsync。
         /// </summary>
         public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
@@ -301,9 +298,6 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// 2) 输出哈希分片模数、扩容触发阈值与迁移计划，降低“16→32”扩容认知断层；
         /// 3) 若未配置 Runbook，给出警告，推动制度化落地。
         /// </remarks>
-        /// <summary>
-        /// 方法：AuditShardingGovernance。
-        /// </summary>
         private void AuditShardingGovernance() {
             _logger.LogInformation(
                 "分表治理基线：Provider={Provider}, CreateShardingTableOnStarting={CreateShardingTableOnStarting}, ParcelRelatedHashShardingMod={ParcelRelatedHashShardingMod}, ExpansionTriggerRatio={ExpansionTriggerRatio:F2}, ExpansionPlan={ExpansionPlan}",

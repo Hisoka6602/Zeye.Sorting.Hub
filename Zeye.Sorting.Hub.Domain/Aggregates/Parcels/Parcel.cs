@@ -348,9 +348,6 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         /// <remarks>
         /// 标记完成时会清空 <see cref="ExceptionType"/>，避免“已完成”与“异常类型”并存的状态歧义。
         /// </remarks>
-        /// <summary>
-        /// 方法：MarkCompleted。
-        /// </summary>
         public void MarkCompleted(DateTime completedTime) {
             CompletedTime = completedTime;
             Status = ParcelStatus.Completed;
@@ -361,9 +358,6 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         /// 标记包裹为分拣异常并记录异常类型。
         /// </summary>
         /// <param name="exceptionType">分拣异常的具体类型。</param>
-        /// <summary>
-        /// 方法：MarkSortingException。
-        /// </summary>
         public void MarkSortingException(ParcelExceptionType exceptionType) {
             if (Status == ParcelStatus.Completed) {
                 throw new InvalidOperationException("已完成的包裹不允许再标记为分拣异常");

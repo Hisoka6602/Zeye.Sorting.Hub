@@ -20,12 +20,12 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
         public string? ErrorMessage { get; init; }
 
         /// <summary>
-        /// 方法：Success。
+        /// 创建表示操作成功的结果对象。
         /// </summary>
         public static RepositoryResult Success() => new() { IsSuccess = true };
 
         /// <summary>
-        /// 方法：Fail。
+        /// 创建表示操作失败的结果对象，并附带错误消息。
         /// </summary>
         public static RepositoryResult Fail(string errorMessage) => new() {
             IsSuccess = false,
@@ -53,12 +53,12 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
         public string? ErrorMessage { get; init; }
 
         /// <summary>
-        /// 方法：Success。
+        /// 创建表示操作成功的泛型结果对象，并返回指定值。
         /// </summary>
         public static RepositoryResult<T> Success(T value) => new() { IsSuccess = true, Value = value };
 
         /// <summary>
-        /// 方法：Fail。
+        /// 创建表示操作失败的泛型结果对象，并附带错误消息。
         /// </summary>
         public static RepositoryResult<T> Fail(string errorMessage) => new() {
             IsSuccess = false,

@@ -16,7 +16,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence {
         }
 
         /// <summary>
-        /// 方法：OnModelCreating。
+        /// 应用程序集内全部实体类型配置。
         /// </summary>
         protected override void OnModelCreating(ModelBuilder modelBuilder) {
             // 统一应用所有 IEntityTypeConfiguration

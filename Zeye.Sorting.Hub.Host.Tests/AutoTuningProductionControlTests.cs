@@ -15,10 +15,10 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 
 public sealed class AutoTuningProductionControlTests {
     private const double DoublePrecisionTolerance = 0.0001d;
-    [Fact]
     /// <summary>
-    /// 测试方法：ParcelStatus_ShouldOnlyContainThreeValues。
+    /// 验证场景：ParcelStatus_ShouldOnlyContainThreeValues。
     /// </summary>
+    [Fact]
     public void ParcelStatus_ShouldOnlyContainThreeValues() {
         var values = Enum.GetValues<ParcelStatus>();
         Assert.Equal(3, values.Length);
@@ -27,10 +27,10 @@ public sealed class AutoTuningProductionControlTests {
         Assert.Contains(ParcelStatus.SortingException, values);
     }
 
-    [Fact]
     /// <summary>
-    /// 测试方法：Parcel_CreateAndMarkSortingException_ShouldKeepExceptionTypeConsistent。
+    /// 验证场景：Parcel_CreateAndMarkSortingException_ShouldKeepExceptionTypeConsistent。
     /// </summary>
+    [Fact]
     public void Parcel_CreateAndMarkSortingException_ShouldKeepExceptionTypeConsistent() {
         var parcel = Parcel.Create(
             parcelTimestamp: 1,
@@ -66,10 +66,10 @@ public sealed class AutoTuningProductionControlTests {
         Assert.Throws<InvalidOperationException>(() => parcel.MarkSortingException(ParcelExceptionType.ParcelLost));
     }
 
-    [Fact]
     /// <summary>
-    /// 测试方法：MigrationFailStartupPolicy_DefaultsToFalse_WhenConfigMissing。
+    /// 验证场景：MigrationFailStartupPolicy_DefaultsToFalse_WhenConfigMissing。
     /// </summary>
+    [Fact]
     public void MigrationFailStartupPolicy_DefaultsToFalse_WhenConfigMissing() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>())
@@ -79,10 +79,10 @@ public sealed class AutoTuningProductionControlTests {
         Assert.False(failStartup);
     }
 
-    [Fact]
     /// <summary>
-    /// 测试方法：MigrationFailStartupPolicy_ReturnsTrue_WhenConfigEnabled。
+    /// 验证场景：MigrationFailStartupPolicy_ReturnsTrue_WhenConfigEnabled。
     /// </summary>
+    [Fact]
     public void MigrationFailStartupPolicy_ReturnsTrue_WhenConfigEnabled() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
@@ -94,10 +94,10 @@ public sealed class AutoTuningProductionControlTests {
         Assert.True(failStartup);
     }
 
-    [Fact]
     /// <summary>
-    /// 测试方法：MigrationFailStartupPolicy_ReturnsFalse_WhenConfigIsInvalid。
+    /// 验证场景：MigrationFailStartupPolicy_ReturnsFalse_WhenConfigIsInvalid。
     /// </summary>
+    [Fact]
     public void MigrationFailStartupPolicy_ReturnsFalse_WhenConfigIsInvalid() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
@@ -109,20 +109,20 @@ public sealed class AutoTuningProductionControlTests {
         Assert.False(failStartup);
     }
 
-    [Fact]
     /// <summary>
-    /// 测试方法：ShardingGovernanceTextNormalization_UsesPlaceholderForWhitespace。
+    /// 验证场景：ShardingGovernanceTextNormalization_UsesPlaceholderForWhitespace。
     /// </summary>
+    [Fact]
     public void ShardingGovernanceTextNormalization_UsesPlaceholderForWhitespace() {
         var normalized = DatabaseInitializerHostedService.NormalizeOptionalTextOrPlaceholder("   ", "未配置");
         Assert.Equal("未配置", normalized);
         Assert.Equal("runbook-path", DatabaseInitializerHostedService.NormalizeOptionalTextOrPlaceholder("  runbook-path  ", "未配置"));
     }
 
-    [Fact]
     /// <summary>
-    /// 测试方法：IsolationPolicy_DryRun_DoesNotExecuteSql。
+    /// 验证场景：IsolationPolicy_DryRun_DoesNotExecuteSql。
     /// </summary>
+    [Fact]
     public void IsolationPolicy_DryRun_DoesNotExecuteSql() {
         var decision = ActionIsolationPolicy.Evaluate(
             enableGuard: true,
@@ -134,10 +134,10 @@ public sealed class AutoTuningProductionControlTests {
         Assert.Equal(ActionIsolationDecision.DryRunOnly, decision);
     }
 
-    [Fact]
     /// <summary>
-    /// 测试方法：IsolationPolicy_BlocksDangerousAction_WhenNotAllowed。
+    /// 验证场景：IsolationPolicy_BlocksDangerousAction_WhenNotAllowed。
     /// </summary>
+    [Fact]
     public void IsolationPolicy_BlocksDangerousAction_WhenNotAllowed() {
         var decision = ActionIsolationPolicy.Evaluate(
             enableGuard: true,
@@ -149,10 +149,10 @@ public sealed class AutoTuningProductionControlTests {
         Assert.Equal(ActionIsolationDecision.BlockedByGuard, decision);
     }
 
-    [Fact]
     /// <summary>
-    /// 测试方法：Pipeline_AlertsSupportDebounceAndRecovery。
+    /// 验证场景：Pipeline_AlertsSupportDebounceAndRecovery。
     /// </summary>
+    [Fact]
     public void Pipeline_AlertsSupportDebounceAndRecovery() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
@@ -189,10 +189,10 @@ public sealed class AutoTuningProductionControlTests {
         Assert.Single(fourth.RecoveryNotifications);
     }
 
-    [Fact]
     /// <summary>
-    /// 测试方法：UpdateAutonomousSignals_EmitsShardingObservabilityMetrics。
+    /// 验证场景：UpdateAutonomousSignals_EmitsShardingObservabilityMetrics。
     /// </summary>
+    [Fact]
     public void UpdateAutonomousSignals_EmitsShardingObservabilityMetrics() {
         var logger = new TestLogger<DatabaseAutoTuningHostedService>();
         var observability = new TestObservability();
@@ -274,10 +274,10 @@ public sealed class AutoTuningProductionControlTests {
         Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hit_rate" && Math.Abs(entry.Value - 1d) < DoublePrecisionTolerance);
     }
 
-    [Fact]
     /// <summary>
-    /// 测试方法：UpdateAutonomousSignals_HitRateSupportsPartialAndNoTableReferenceCases。
+    /// 验证场景：UpdateAutonomousSignals_HitRateSupportsPartialAndNoTableReferenceCases。
     /// </summary>
+    [Fact]
     public void UpdateAutonomousSignals_HitRateSupportsPartialAndNoTableReferenceCases() {
         var logger = new TestLogger<DatabaseAutoTuningHostedService>();
         var observability = new TestObservability();
@@ -336,10 +336,10 @@ public sealed class AutoTuningProductionControlTests {
         Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hit_rate" && Math.Abs(entry.Value) < DoublePrecisionTolerance);
     }
 
-    [Fact]
     /// <summary>
-    /// 测试方法：ParcelAggregateShardingCoverageGuard_ShouldCoverAllInfoValueObjects。
+    /// 验证场景：ParcelAggregateShardingCoverageGuard_ShouldCoverAllInfoValueObjects。
     /// </summary>
+    [Fact]
     public void ParcelAggregateShardingCoverageGuard_ShouldCoverAllInfoValueObjects() {
         var method = typeof(PersistenceServiceCollectionExtensions).GetMethod(
             "AssertParcelAggregateShardingCoverage",
@@ -352,10 +352,10 @@ public sealed class AutoTuningProductionControlTests {
         Assert.Null(exception);
     }
 
-    [Fact]
     /// <summary>
-    /// 测试方法：AutoRollbackDecisionEngine_TriggersSevereRollback。
+    /// 验证场景：AutoRollbackDecisionEngine_TriggersSevereRollback。
     /// </summary>
+    [Fact]
     public void AutoRollbackDecisionEngine_TriggersSevereRollback() {
         var result = AutoRollbackDecisionEngine.Evaluate(
             p99IncreasePercent: 32m,
@@ -370,10 +370,10 @@ public sealed class AutoTuningProductionControlTests {
         Assert.True(result.IsSevereRegression);
     }
 
-    [Fact]
     /// <summary>
-    /// 测试方法：AutoRollbackDecisionEngine_TriggersNormalRegressionWithoutSevere。
+    /// 验证场景：AutoRollbackDecisionEngine_TriggersNormalRegressionWithoutSevere。
     /// </summary>
+    [Fact]
     public void AutoRollbackDecisionEngine_TriggersNormalRegressionWithoutSevere() {
         var result = AutoRollbackDecisionEngine.Evaluate(
             p99IncreasePercent: 12m,
@@ -388,10 +388,10 @@ public sealed class AutoTuningProductionControlTests {
         Assert.False(result.IsSevereRegression);
     }
 
-    [Fact]
     /// <summary>
-    /// 测试方法：VerificationResultBuilder_ExplicitlyMarksUnavailableMetrics。
+    /// 验证场景：VerificationResultBuilder_ExplicitlyMarksUnavailableMetrics。
     /// </summary>
+    [Fact]
     public void VerificationResultBuilder_ExplicitlyMarksUnavailableMetrics() {
         var result = AutoTuningVerificationResultBuilder.Build(
             regressed: true,
@@ -413,10 +413,10 @@ public sealed class AutoTuningProductionControlTests {
         Assert.Contains(result.SnapshotDiff, diff => diff.Name == "plan-regression" && diff.Status == "unavailable");
     }
 
-    [Fact]
     /// <summary>
-    /// 测试方法：PlanRegressionProbe_SupportsUnavailableAndAvailablePaths。
+    /// 验证场景：PlanRegressionProbe_SupportsUnavailableAndAvailablePaths。
     /// </summary>
+    [Fact]
     public void PlanRegressionProbe_SupportsUnavailableAndAvailablePaths() {
         var observability = new TestObservability();
         var logger = new TestLogger<LoggingOnlyExecutionPlanRegressionProbe>();
@@ -432,10 +432,10 @@ public sealed class AutoTuningProductionControlTests {
         Assert.Equal("none", available.UnavailableReason);
     }
 
-    [Fact]
     /// <summary>
-    /// 测试方法：ClosedLoopFlow_TriggersMonitorExecuteVerifyRollback_WithAuditAndRollbackTrigger。
+    /// 验证场景：ClosedLoopFlow_TriggersMonitorExecuteVerifyRollback_WithAuditAndRollbackTrigger。
     /// </summary>
+    [Fact]
     public async Task ClosedLoopFlow_TriggersMonitorExecuteVerifyRollback_WithAuditAndRollbackTrigger() {
         var logger = new TestLogger<DatabaseAutoTuningHostedService>();
         var observability = new TestObservability();
@@ -527,10 +527,10 @@ public sealed class AutoTuningProductionControlTests {
             && entry.Tags.ContainsKey("correlation_id"));
     }
 
-    [Fact]
     /// <summary>
-    /// 测试方法：Validation_WhenPlanProbeDisabledOrSampleRateZero_MarksUnavailableWithoutInvokingProbe。
+    /// 验证场景：Validation_WhenPlanProbeDisabledOrSampleRateZero_MarksUnavailableWithoutInvokingProbe。
     /// </summary>
+    [Fact]
     public async Task Validation_WhenPlanProbeDisabledOrSampleRateZero_MarksUnavailableWithoutInvokingProbe() {
         var logger = new TestLogger<DatabaseAutoTuningHostedService>();
         var observability = new TestObservability();
@@ -590,10 +590,10 @@ public sealed class AutoTuningProductionControlTests {
         Assert.Contains(logger.Messages, message => message.Contains("plan-probe-sampling-skipped"));
     }
 
-    [Fact]
     /// <summary>
-    /// 测试方法：WhenPlanProbeSampleRateInvalid_FallsBackToDefaultAndInvokesProbe。
+    /// 验证场景：WhenPlanProbeSampleRateInvalid_FallsBackToDefaultAndInvokesProbe。
     /// </summary>
+    [Fact]
     public async Task WhenPlanProbeSampleRateInvalid_FallsBackToDefaultAndInvokesProbe() {
         var logger = new TestLogger<DatabaseAutoTuningHostedService>();
         var observability = new TestObservability();
@@ -652,12 +652,12 @@ public sealed class AutoTuningProductionControlTests {
         Assert.Equal(1, probe.CallCount);
     }
 
+    /// <summary>
+    /// 验证场景：WhenPlanProbeSampleRateOutOfRange_ClampsToLegacyBehavior。
+    /// </summary>
     [Theory]
     [InlineData("-0.1", 0)]
     [InlineData("1.8", 1)]
-    /// <summary>
-    /// 测试方法：WhenPlanProbeSampleRateOutOfRange_ClampsToLegacyBehavior。
-    /// </summary>
     public async Task WhenPlanProbeSampleRateOutOfRange_ClampsToLegacyBehavior(string sampleRate, int expectedCallCount) {
         var logger = new TestLogger<DatabaseAutoTuningHostedService>();
         var observability = new TestObservability();
@@ -716,10 +716,10 @@ public sealed class AutoTuningProductionControlTests {
         Assert.Equal(expectedCallCount, probe.CallCount);
     }
 
-    [Fact]
     /// <summary>
-    /// 测试方法：WhenShouldSamplePlanProbeInvoked_UsesStableHashBucket。
+    /// 验证场景：WhenShouldSamplePlanProbeInvoked_UsesStableHashBucket。
     /// </summary>
+    [Fact]
     public void WhenShouldSamplePlanProbeInvoked_UsesStableHashBucket() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
@@ -748,10 +748,10 @@ public sealed class AutoTuningProductionControlTests {
         Assert.Equal(bucket < threshold, sampled);
     }
 
-    [Fact]
     /// <summary>
-    /// 测试方法：ClosedLoopTracker_RecordsMonitorExecuteVerifyRollbackChain。
+    /// 验证场景：ClosedLoopTracker_RecordsMonitorExecuteVerifyRollbackChain。
     /// </summary>
+    [Fact]
     public void ClosedLoopTracker_RecordsMonitorExecuteVerifyRollbackChain() {
         var tracker = new AutoTuningClosedLoopTracker();
         tracker.MoveTo(AutoTuningClosedLoopStage.Diagnose);
@@ -770,10 +770,10 @@ public sealed class AutoTuningProductionControlTests {
             tracker.Stages);
     }
 
-    [Fact]
     /// <summary>
-    /// 测试方法：ClosedLoopTracker_CapsAt1000AndDropsOldestWhenOverflow。
+    /// 验证场景：ClosedLoopTracker_CapsAt1000AndDropsOldestWhenOverflow。
     /// </summary>
+    [Fact]
     public void ClosedLoopTracker_CapsAt1000AndDropsOldestWhenOverflow() {
         var tracker = new AutoTuningClosedLoopTracker();
         // Fill exactly to the cap (1000 entries: 1 initial Monitor + 999 alternating Diagnose/Monitor).
@@ -800,26 +800,26 @@ public sealed class AutoTuningProductionControlTests {
     private sealed class TestDialect : IDatabaseDialect {
         public string ProviderName => "Test";
         /// <summary>
-        /// 测试方法：GetOptionalBootstrapSql。
+        /// 验证场景：GetOptionalBootstrapSql。
         /// </summary>
         public IReadOnlyList<string> GetOptionalBootstrapSql() => Array.Empty<string>();
         /// <summary>
-        /// 测试方法：BuildAutomaticTuningSql。
+        /// 验证场景：BuildAutomaticTuningSql。
         /// </summary>
         public IReadOnlyList<string> BuildAutomaticTuningSql(string? schemaName, string tableName, IReadOnlyList<string> whereColumns) => Array.Empty<string>();
         /// <summary>
-        /// 测试方法：ShouldIgnoreAutoTuningException。
+        /// 验证场景：ShouldIgnoreAutoTuningException。
         /// </summary>
         public bool ShouldIgnoreAutoTuningException(Exception exception) => false;
         /// <summary>
-        /// 测试方法：BuildAutonomousMaintenanceSql。
+        /// 验证场景：BuildAutonomousMaintenanceSql。
         /// </summary>
         public IReadOnlyList<string> BuildAutonomousMaintenanceSql(string? schemaName, string tableName, bool inPeakWindow, bool highRisk) => Array.Empty<string>();
     }
 
     private sealed class FixedPlanProbe : IExecutionPlanRegressionProbe {
         /// <summary>
-        /// 测试方法：Evaluate。
+        /// 验证场景：Evaluate。
         /// </summary>
         public PlanRegressionSnapshot Evaluate(string providerName, string sqlFingerprint) =>
             new(true, false, $"probe available: {providerName}/{sqlFingerprint}", "none");
@@ -828,7 +828,7 @@ public sealed class AutoTuningProductionControlTests {
     private sealed class CountingPlanProbe : IExecutionPlanRegressionProbe {
         public int CallCount { get; private set; }
         /// <summary>
-        /// 测试方法：Evaluate。
+        /// 验证场景：Evaluate。
         /// </summary>
         public PlanRegressionSnapshot Evaluate(string providerName, string sqlFingerprint) {
             CallCount++;
@@ -837,7 +837,7 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 测试方法：SetField。
+    /// 验证场景：SetField。
     /// </summary>
     private static void SetField(object target, string fieldName, object value) {
         var field = target.GetType().GetField(fieldName, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
@@ -845,7 +845,7 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 测试方法：SeedPendingRollback。
+    /// 验证场景：SeedPendingRollback。
     /// </summary>
     private static void SeedPendingRollback(DatabaseAutoTuningHostedService service) {
         var mapField = typeof(DatabaseAutoTuningHostedService).GetField("_pendingRollbackByFingerprint", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
@@ -870,7 +870,7 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 测试方法：GetSeededRollbackAction。
+    /// 验证场景：GetSeededRollbackAction。
     /// </summary>
     private static object GetSeededRollbackAction(DatabaseAutoTuningHostedService service) {
         var mapField = typeof(DatabaseAutoTuningHostedService).GetField("_pendingRollbackByFingerprint", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
@@ -888,21 +888,21 @@ public sealed class AutoTuningProductionControlTests {
         public readonly List<ObservabilityEntry> MetricEntries = new();
         public readonly List<ObservabilityEntry> EventEntries = new();
         /// <summary>
-        /// 测试方法：EmitMetric。
+        /// 验证场景：EmitMetric。
         /// </summary>
         public void EmitMetric(string name, double value, IReadOnlyDictionary<string, string>? tags = null) {
             Metrics.Add(name);
             MetricEntries.Add(new ObservabilityEntry(name, value, CloneTags(tags)));
         }
         /// <summary>
-        /// 测试方法：EmitEvent。
+        /// 验证场景：EmitEvent。
         /// </summary>
         public void EmitEvent(string name, LogLevel level, string message, IReadOnlyDictionary<string, string>? tags = null) {
             Events.Add($"{name}:{message}");
             EventEntries.Add(new ObservabilityEntry(name, 0d, CloneTags(tags)));
         }
         /// <summary>
-        /// 测试方法：CloneTags。
+        /// 验证场景：CloneTags。
         /// </summary>
         private static IReadOnlyDictionary<string, string> CloneTags(IReadOnlyDictionary<string, string>? tags) {
             return tags is null
@@ -917,7 +917,7 @@ public sealed class AutoTuningProductionControlTests {
         public readonly List<string> Messages = new();
         public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
         /// <summary>
-        /// 测试方法：IsEnabled。
+        /// 验证场景：IsEnabled。
         /// </summary>
         public bool IsEnabled(LogLevel logLevel) => true;
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) {
@@ -926,7 +926,7 @@ public sealed class AutoTuningProductionControlTests {
         private sealed class NullScope : IDisposable {
             public static readonly NullScope Instance = new();
             /// <summary>
-            /// 测试方法：Dispose。
+            /// 验证场景：Dispose。
             /// </summary>
             public void Dispose() { }
         }
@@ -934,13 +934,13 @@ public sealed class AutoTuningProductionControlTests {
 
     private sealed class EmptyServiceScopeFactory : IServiceScopeFactory {
         /// <summary>
-        /// 测试方法：CreateScope。
+        /// 验证场景：CreateScope。
         /// </summary>
         public IServiceScope CreateScope() => new EmptyServiceScope();
         private sealed class EmptyServiceScope : IServiceScope {
             public IServiceProvider ServiceProvider { get; } = new ServiceCollection().BuildServiceProvider();
             /// <summary>
-            /// 测试方法：Dispose。
+            /// 验证场景：Dispose。
             /// </summary>
             public void Dispose() { }
         }

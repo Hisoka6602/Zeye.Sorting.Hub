@@ -15,7 +15,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         }
 
         /// <summary>
-        /// 方法：EmitEvent。
+        /// 执行逻辑：EmitEvent。
         /// </summary>
         public void EmitEvent(string name, LogLevel level, string message, IReadOnlyDictionary<string, string>? tags = null) {
         }
@@ -94,7 +94,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         public IReadOnlyList<AutoTuningClosedLoopStage> Stages => _stages;
 
         /// <summary>
-        /// 方法：MoveTo。
+        /// 执行逻辑：MoveTo。
         /// </summary>
         public void MoveTo(AutoTuningClosedLoopStage stage) {
             if (_stages[^1] == stage) {
@@ -175,7 +175,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         }
 
         /// <summary>
-        /// 方法：BuildVerdict。
+        /// 执行逻辑：BuildVerdict。
         /// </summary>
         private static string BuildVerdict(bool regressed, bool severeRegressed) {
             if (severeRegressed) {
@@ -190,7 +190,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         }
 
         /// <summary>
-        /// 方法：CalculateLockWaitDelta。
+        /// 执行逻辑：CalculateLockWaitDelta。
         /// </summary>
         private static string CalculateLockWaitDelta(int? lockWaitBaseline, int? lockWaitCurrent, bool lockWaitUnavailable) {
             if (lockWaitUnavailable || !lockWaitBaseline.HasValue || !lockWaitCurrent.HasValue) {
@@ -201,7 +201,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         }
 
         /// <summary>
-        /// 方法：BuildPercentMetric。
+        /// 执行逻辑：BuildPercentMetric。
         /// </summary>
         private static AutoTuningVerificationMetricDiff BuildPercentMetric(string name, decimal increasePercent) {
             return new AutoTuningVerificationMetricDiff(
@@ -230,7 +230,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         }
 
         /// <summary>
-        /// 方法：Evaluate。
+        /// 执行逻辑：Evaluate。
         /// </summary>
         public PlanRegressionSnapshot Evaluate(string providerName, string sqlFingerprint) {
             var normalizedProvider = NormalizeParameter(providerName);
@@ -267,14 +267,14 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         }
 
         /// <summary>
-        /// 方法：NormalizeParameter。
+        /// 执行逻辑：NormalizeParameter。
         /// </summary>
         private static string NormalizeParameter(string? value) {
             return string.IsNullOrWhiteSpace(value) ? "unknown" : value.Trim();
         }
 
         /// <summary>
-        /// 方法：BuildSnapshot。
+        /// 执行逻辑：BuildSnapshot。
         /// </summary>
         private static PlanRegressionSnapshot BuildSnapshot(string providerName, string sqlFingerprint) {
             if (string.Equals(sqlFingerprint, "plan-probe-query-failed", StringComparison.OrdinalIgnoreCase)) {
