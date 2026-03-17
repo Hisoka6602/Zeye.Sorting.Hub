@@ -1,7 +1,8 @@
 using NLog;
-using NLog.Extensions.Logging;
 using Zeye.Sorting.Hub.Host;
+using NLog.Extensions.Logging;
 using Zeye.Sorting.Hub.Host.HostedServices;
+using Zeye.Sorting.Hub.Domain.Options.LogCleanup;
 using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 
@@ -22,7 +23,9 @@ try {
     // ──────────────────────────────────────────────────────
     builder.Logging.ClearProviders();
     builder.Logging.AddNLog();
-
+    builder.Services.Configure<LogCleanupSettings>(
+        builder.Configuration.GetSection("LogCleanup"));
+    builder.Services.AddHostedService<LogCleanupService>();
     builder.Services.AddHostedService<Worker>();
     builder.Services.AddSortingHubPersistence(builder.Configuration);
     builder.Services.AddSingleton<IAutoTuningObservability, AutoTuningLoggerObservability>();
