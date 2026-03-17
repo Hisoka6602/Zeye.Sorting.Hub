@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Options;
 using Zeye.Sorting.Hub.SharedKernel.Utilities;
 using Zeye.Sorting.Hub.Domain.Options.LogCleanup;
 
@@ -9,6 +9,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
     /// </summary>
     public class LogCleanupService : BackgroundService {
         private readonly ILogger<LogCleanupService> _logger;
+        /// <summary>
+        /// 字段：_safeExecutor。
+        /// </summary>
         private readonly SafeExecutor _safeExecutor;
         private readonly LogCleanupSettings _settings;
 
@@ -21,6 +24,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _settings = settings.Value;
         }
 
+        /// <summary>
+        /// 执行逻辑：ExecuteAsync。
+        /// </summary>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
             if (!_settings.Enabled) {
                 _logger.LogInformation("日志清理服务已禁用");
@@ -51,6 +57,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
         }
 
+        /// <summary>
+        /// 执行逻辑：CleanupOldLogsAsync。
+        /// </summary>
         private async Task CleanupOldLogsAsync() {
             var logDirectory = _settings.LogDirectory;
 

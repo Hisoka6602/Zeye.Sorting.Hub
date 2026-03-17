@@ -43,10 +43,10 @@
 │   │           ├── VideoInfo.cs（视频信息值对象）
 │   │           ├── VolumeInfo.cs（体积信息值对象）
 │   │           └── WeightInfo.cs（重量信息值对象）
-│   ├── DomainEvents（领域事件目录）
-│   │   └── Parcels（包裹相关领域事件目录）
-│   │       ├── ParcelChuteAssignedEventArgs.cs（包裹分配格口事件参数）
-│   │       └── ParcelScannedEventArgs.cs（包裹扫描事件参数）
+│   ├── Events（领域事件载荷目录）
+│   │   └── Parcels（包裹相关领域事件载荷目录）
+│   │       ├── ParcelChuteAssignedEventArgs.cs（包裹分配格口事件载荷）
+│   │       └── ParcelScannedEventArgs.cs（包裹扫描事件载荷）
 │   ├── Enums（领域枚举目录）
 │   │   ├── ActionType.cs（动作类型枚举）
 │   │   ├── ActionIsolationDecision.cs（自动调优危险动作隔离决策枚举）
@@ -204,11 +204,11 @@
 - `VolumeInfo.cs`：体积信息值对象。
 - `WeightInfo.cs`：重量信息值对象。
 
-#### `Zeye.Sorting.Hub.Domain/DomainEvents/`：领域事件目录
+#### `Zeye.Sorting.Hub.Domain/Events/`：领域事件载荷目录
 
-##### `Zeye.Sorting.Hub.Domain/DomainEvents/Parcels/`：包裹相关领域事件目录
-- `ParcelChuteAssignedEventArgs.cs`：包裹分配格口事件参数（当前占位定义）。
-- `ParcelScannedEventArgs.cs`：包裹扫描事件参数（当前占位定义）。
+##### `Zeye.Sorting.Hub.Domain/Events/Parcels/`：包裹相关领域事件载荷目录
+- `ParcelChuteAssignedEventArgs.cs`：包裹分配格口事件载荷（`readonly record struct`，不可变值语义）。
+- `ParcelScannedEventArgs.cs`：包裹扫描事件载荷（`readonly record struct`，不可变值语义）。
 
 #### `Zeye.Sorting.Hub.Domain/Enums/`：领域枚举与业务语义常量目录
 - `ActionType.cs`：动作类型枚举定义。
@@ -352,7 +352,19 @@
 2. 将自动验证 snapshot diff 输出落地到结构化审计表（而非仅日志），支持长周期追踪与可视化报表。
 3. 引入按表/按业务域的动态阈值学习（结合历史分位数），降低统一阈值在不同负载模型下的误报率。
 4. 为闭环动作增加端到端压测回放（离线流量）验证门禁，进一步提升生产变更安全性。
-5. `IParcelRepository`、`ParcelScannedEventArgs`、`ParcelChuteAssignedEventArgs` 等占位类后续应补充完整实现。
+5. `IParcelRepository`、`ParcelScannedEventArgs`、`ParcelChuteAssignedEventArgs` 等占位结构体后续应按业务事件扩充字段定义与触发链路。
+
+## 本次更新内容（Copilot 限制规则全量整改）
+
+1. **事件载荷规范化**：将 `DomainEvents/Parcels` 下事件参数迁移到 `Domain/Events/Parcels`，并统一改为 `readonly record struct`，满足“事件载荷必须定义在 `Events` 子目录且使用不可变值语义”的规则。
+2. **枚举规范补齐**：补齐缺失的枚举类型注释；为 `AutoTuningUnavailableReason` 全部成员补齐 `Description` 与成员注释，避免语义漂移。
+3. **异常日志补齐**：`RepositoryBase` 中所有 `OperationCanceledException` 分支补充 `LogWarning`，确保异常路径均可观测。
+4. **注释覆盖补齐**：为生产代码中缺失的类字段与方法补齐 XML 注释，统一满足“字段必须有注释、方法必须有注释”的规则。
+
+## 后续可完善点（规则治理）
+
+1. 增加 CI 静态检查（如 Roslyn Analyzer 或自定义脚本）自动门禁“字段/方法注释、事件载荷目录与类型、枚举 Description 完整性”，避免回归。
+2. 为事件载荷结构体补充业务字段与对应单元测试，替换当前最小占位定义。
 
 ## 本次更新内容（EF Core CodeFirst 迁移完成 + 数据库日志落盘 + SqlServer 设计时支持）
 

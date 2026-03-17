@@ -11,14 +11,23 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _logger = logger;
         }
 
+        /// <summary>
+        /// 执行逻辑：EmitMetric。
+        /// </summary>
         public void EmitMetric(string name, double value, IReadOnlyDictionary<string, string>? tags = null) {
             _logger.LogDebug("AutoTuningMetric: Name={Name}, Value={Value}, Tags={Tags}", name, value, FormatTags(tags));
         }
 
+        /// <summary>
+        /// 执行逻辑：EmitEvent。
+        /// </summary>
         public void EmitEvent(string name, LogLevel level, string message, IReadOnlyDictionary<string, string>? tags = null) {
             _logger.Log(level, "AutoTuningEvent: Name={Name}, Message={Message}, Tags={Tags}", name, message, FormatTags(tags));
         }
 
+        /// <summary>
+        /// 执行逻辑：FormatTags。
+        /// </summary>
         private static string FormatTags(IReadOnlyDictionary<string, string>? tags) {
             if (tags is null || tags.Count == 0) {
                 return string.Empty;

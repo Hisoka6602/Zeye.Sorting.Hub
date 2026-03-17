@@ -1,4 +1,4 @@
-﻿using Polly;
+using Polly;
 using System;
 using System.Linq;
 using System.Text;
@@ -25,8 +25,14 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private const string HashShardingExpansionPlanConfigKey = "Persistence:Sharding:HashSharding:ExpansionPlan";
         private const string ShardingPrebuildWindowHoursConfigKey = "Persistence:Sharding:Governance:PrebuildWindowHours";
         private const string ShardingRunbookConfigKey = "Persistence:Sharding:Governance:Runbook";
+        /// <summary>
+        /// 字段：_serviceProvider。
+        /// </summary>
         private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<DatabaseInitializerHostedService> _logger;
+        /// <summary>
+        /// 字段：_dialect。
+        /// </summary>
         private readonly IDatabaseDialect _dialect;
         /// <summary>迁移失败是否阻断宿主启动。</summary>
         private readonly bool _failStartupOnMigrationError;
@@ -43,6 +49,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <summary>分表治理 Runbook 标识（文档路径或链接）。</summary>
         private readonly string _shardingRunbook;
 
+        /// <summary>
+        /// 字段：_retryPolicy。
+        /// </summary>
         private readonly AsyncRetryPolicy _retryPolicy;
 
         public DatabaseInitializerHostedService(
@@ -73,6 +82,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     });
         }
 
+        /// <summary>
+        /// 执行逻辑：StartAsync。
+        /// </summary>
         public async Task StartAsync(CancellationToken cancellationToken) {
             AuditShardingGovernance();
             try {
@@ -272,6 +284,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
         }
 
+        /// <summary>
+        /// 执行逻辑：StopAsync。
+        /// </summary>
         public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
         /// <summary>

@@ -51,61 +51,145 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             // 该表达式仅用于分表命中率估算，不承担完整 SQL 语法解析职责。
             @"\bfrom\s+(?:`[^`]+`|\[[^\]]+\]|\w+)(?:\.(?:`[^`]+`|\[[^\]]+\]|\w+))?",
             RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
+        /// <summary>
+        /// 字段：_logger。
+        /// </summary>
         private readonly ILogger<DatabaseAutoTuningHostedService> _logger;
         private readonly IAutoTuningObservability _observability;
+        /// <summary>
+        /// 字段：_planRegressionProbe。
+        /// </summary>
         private readonly IExecutionPlanRegressionProbe _planRegressionProbe;
         private readonly IServiceScopeFactory _scopeFactory;
+        /// <summary>
+        /// 字段：_dialect。
+        /// </summary>
         private readonly IDatabaseDialect _dialect;
         private readonly SlowQueryAutoTuningPipeline _pipeline;
+        /// <summary>
+        /// 字段：_analyzeIntervalSeconds。
+        /// </summary>
         private readonly int _analyzeIntervalSeconds;
         private readonly int _maxExecuteActionsPerCycle;
+        /// <summary>
+        /// 字段：_actionExecutionTimeoutSeconds。
+        /// </summary>
         private readonly int _actionExecutionTimeoutSeconds;
         private readonly bool _skipExecutionDuringPeak;
+        /// <summary>
+        /// 字段：_peakStartTime。
+        /// </summary>
         private readonly TimeSpan _peakStartTime;
         private readonly TimeSpan _peakEndTime;
+        /// <summary>
+        /// 字段：_enableAutoRollback。
+        /// </summary>
         private readonly bool _enableAutoRollback;
         private readonly bool _enableDangerousActionIsolator;
+        /// <summary>
+        /// 字段：_allowDangerousActionExecution。
+        /// </summary>
         private readonly bool _allowDangerousActionExecution;
         private readonly bool _enableActionDryRun;
+        /// <summary>
+        /// 字段：_whitelistedTables。
+        /// </summary>
         private readonly HashSet<string> _whitelistedTables;
         private readonly Dictionary<string, PendingRollbackAction> _pendingRollbackByFingerprint = new(StringComparer.OrdinalIgnoreCase);
+        /// <summary>
+        /// 字段：_baselineCommandTimeoutSeconds。
+        /// </summary>
         private readonly int _baselineCommandTimeoutSeconds;
         private readonly int _baselineMaxRetryCount;
+        /// <summary>
+        /// 字段：_baselineMaxRetryDelaySeconds。
+        /// </summary>
         private readonly int _baselineMaxRetryDelaySeconds;
         private readonly int _configuredCommandTimeoutSeconds;
+        /// <summary>
+        /// 字段：_configuredMaxRetryCount。
+        /// </summary>
         private readonly int _configuredMaxRetryCount;
         private readonly int _configuredMaxRetryDelaySeconds;
+        /// <summary>
+        /// 字段：_enableFullAutomation。
+        /// </summary>
         private readonly bool _enableFullAutomation;
         private readonly int _policyMinTableHeatCalls;
+        /// <summary>
+        /// 字段：_policyMaxRiskScore。
+        /// </summary>
         private readonly decimal _policyMaxRiskScore;
         private readonly decimal _policyPeakMaxRiskScore;
+        /// <summary>
+        /// 字段：_policyPeakMaxTableHeatCalls。
+        /// </summary>
         private readonly int _policyPeakMaxTableHeatCalls;
         private readonly bool _enableAutoValidation;
+        /// <summary>
+        /// 字段：_validationDelayCycles。
+        /// </summary>
         private readonly int _validationDelayCycles;
         private readonly decimal _validationP95IncreasePercent;
+        /// <summary>
+        /// 字段：_validationP99IncreasePercent。
+        /// </summary>
         private readonly decimal _validationP99IncreasePercent;
         private readonly decimal _validationErrorRateIncreasePercent;
+        /// <summary>
+        /// 字段：_validationTimeoutRateIncreasePercent。
+        /// </summary>
         private readonly decimal _validationTimeoutRateIncreasePercent;
         private readonly int _validationDeadlockIncreaseCount;
+        /// <summary>
+        /// 字段：_enableCapacityPrediction。
+        /// </summary>
         private readonly bool _enableCapacityPrediction;
         private readonly int _capacityProjectionDays;
+        /// <summary>
+        /// 字段：_capacityGrowthAlertRows。
+        /// </summary>
         private readonly int _capacityGrowthAlertRows;
         private readonly int _capacityHotLayeringRows;
+        /// <summary>
+        /// 字段：_configuredSlowQueryThresholdMilliseconds。
+        /// </summary>
         private readonly int _configuredSlowQueryThresholdMilliseconds;
         private readonly int _configuredTriggerCount;
+        /// <summary>
+        /// 字段：_configuredMaxSuggestionsPerCycle。
+        /// </summary>
         private readonly int _configuredMaxSuggestionsPerCycle;
         private readonly int _configuredAlertP99Milliseconds;
+        /// <summary>
+        /// 字段：_configuredAlertTimeoutRatePercent。
+        /// </summary>
         private readonly decimal _configuredAlertTimeoutRatePercent;
         private readonly int _configuredAlertDeadlockCount;
+        /// <summary>
+        /// 字段：_severeRollbackP99IncreasePercent。
+        /// </summary>
         private readonly decimal _severeRollbackP99IncreasePercent;
         private readonly decimal _severeRollbackTimeoutIncreasePercent;
+        /// <summary>
+        /// 字段：_pauseActionCyclesOnRegression。
+        /// </summary>
         private readonly int _pauseActionCyclesOnRegression;
         private readonly bool _enablePlanProbe;
+        /// <summary>
+        /// 字段：_planProbeSampleRate。
+        /// </summary>
         private readonly decimal _planProbeSampleRate;
         private readonly Dictionary<string, int> _tableHeatByTable = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, Queue<TableCapacitySnapshot>> _capacitySnapshotsByTable = new(StringComparer.OrdinalIgnoreCase);
+        /// <summary>
+        /// 字段：_analysisCycleCounter。
+        /// </summary>
         private int _analysisCycleCounter;
         private int _pauseExecutionUntilCycle;
+        /// <summary>
+        /// 字段：_currentStage。
+        /// </summary>
         private AutoTuningClosedLoopStage _currentStage = AutoTuningClosedLoopStage.Monitor;
         private readonly AutoTuningClosedLoopTracker _closedLoopTracker = new();
 
@@ -697,6 +781,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return (decimal)(increase / previousValue * 100d);
         }
 
+        /// <summary>
+        /// 执行逻辑：DetermineLockWaitUnavailableReason。
+        /// </summary>
         private static AutoTuningUnavailableReason DetermineLockWaitUnavailableReason(int? baselineLockWaitCount, int? currentLockWaitCount) {
             if (!baselineLockWaitCount.HasValue && !currentLockWaitCount.HasValue) {
                 return AutoTuningUnavailableReason.BaselineAndCurrentUnavailable;
@@ -735,6 +822,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 rollbackSql ?? string.Empty);
         }
 
+        /// <summary>
+        /// 执行逻辑：MoveToStage。
+        /// </summary>
         private void MoveToStage(AutoTuningClosedLoopStage stage, string reason, string? actionId = null, string? fingerprint = null) {
             if (_currentStage == stage) {
                 return;
@@ -783,6 +873,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 });
         }
 
+        /// <summary>
+        /// 执行逻辑：EmitValidationResult。
+        /// </summary>
         private void EmitValidationResult(PendingRollbackAction rollback, AutoTuningVerificationResult result) {
             var level = string.Equals(result.Verdict, "pass", StringComparison.OrdinalIgnoreCase)
                 ? LogLevel.Information
@@ -817,8 +910,14 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 string.Join(" | ", result.SnapshotDiff.Select(static diff => $"{diff.Name}:{diff.Status}:{diff.Delta}:{diff.Reason}")));
         }
 
+        /// <summary>
+        /// 执行逻辑：NormalizeTagValue。
+        /// </summary>
         private static string NormalizeTagValue(string? value) => string.IsNullOrWhiteSpace(value) ? NotAvailableTag : value.Trim();
 
+        /// <summary>
+        /// 执行逻辑：EvaluatePlanRegression。
+        /// </summary>
         private PlanRegressionSnapshot EvaluatePlanRegression(PendingRollbackAction rollback) {
             var normalizedFingerprint = NormalizeTagValue(rollback.Fingerprint);
             if (!_enablePlanProbe) {
@@ -832,6 +931,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return _planRegressionProbe.Evaluate(_dialect.ProviderName, rollback.Fingerprint);
         }
 
+        /// <summary>
+        /// 执行逻辑：ShouldSamplePlanProbe。
+        /// </summary>
         private bool ShouldSamplePlanProbe(PendingRollbackAction rollback) {
             if (_planProbeSampleRate <= 0m) {
                 return false;
@@ -848,6 +950,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return bucket < (uint)threshold;
         }
 
+        /// <summary>
+        /// 执行逻辑：BuildUnavailablePlanRegressionSnapshot。
+        /// </summary>
         private PlanRegressionSnapshot BuildUnavailablePlanRegressionSnapshot(string fingerprint, AutoTuningUnavailableReason reason) {
             return new PlanRegressionSnapshot(
                 IsAvailable: false,
@@ -856,6 +961,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 UnavailableReason: reason.ToTagValue());
         }
 
+        /// <summary>
+        /// 执行逻辑：BuildEvidenceContext。
+        /// </summary>
         private static EvidenceContext BuildEvidenceContext(string? actionId, string? fingerprint, bool normalized = false) {
             var normalizedActionId = normalized ? actionId ?? NotAvailableTag : NormalizeTagValue(actionId);
             var normalizedFingerprint = normalized ? fingerprint ?? NotAvailableTag : NormalizeTagValue(fingerprint);
@@ -1172,6 +1280,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             AuditBaselineItem(key, (double)configured, baseline);
         }
 
+        /// <summary>
+        /// 执行逻辑：AuditBaselineItem。
+        /// </summary>
         private void AuditBaselineItem(string key, double configured, double baseline) {
             if (Math.Abs(configured - baseline) < 0.0001d) {
                 _logger.LogInformation("运行参数基线审计通过：Key={Key}, Current={Current}, Baseline={Baseline}", key, configured, baseline);
@@ -1297,7 +1408,13 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             bool ShouldExecute,
             decimal RiskScore,
             string Reason) {
+            /// <summary>
+            /// 执行逻辑：Execute。
+            /// </summary>
             public static PolicyDecision Execute(decimal riskScore, string reason) => new(true, riskScore, reason);
+            /// <summary>
+            /// 执行逻辑：Skip。
+            /// </summary>
             public static PolicyDecision Skip(decimal riskScore, string reason) => new(false, riskScore, reason);
         }
     }

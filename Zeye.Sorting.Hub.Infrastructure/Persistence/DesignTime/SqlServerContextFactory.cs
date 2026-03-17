@@ -52,6 +52,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
             return CreateDbContext(config);
         }
 
+        /// <summary>
+        /// 根据配置创建 SQL Server 设计时 DbContext。
+        /// </summary>
         internal SortingHubDbContext CreateDbContext(IConfiguration config) {
             var connectionString = config.GetConnectionString("SqlServer") ?? FallbackConnectionString;
 

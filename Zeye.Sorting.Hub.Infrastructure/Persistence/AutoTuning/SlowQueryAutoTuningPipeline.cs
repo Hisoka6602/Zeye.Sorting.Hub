@@ -21,24 +21,54 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         private static readonly Regex WhereRegex = new(@"\bwhere\b(?<where>.+?)(\border\s+by\b|\bgroup\s+by\b|\blimit\b|;|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
         private static readonly Regex WhereColumnRegex = new(@"(?:[A-Za-z_][A-Za-z0-9_]*\.)?[`""\[]?([A-Za-z_][A-Za-z0-9_]*)[`""\]]?\s*(=|>|<|>=|<=|like\b|in\b)", RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
         private static readonly Regex SafeIdentifierRegex = new(@"^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        /// <summary>
+        /// 慢查询样本队列，用于聚合分析。
+        /// </summary>
         private readonly Queue<SlowQuerySample> _slowQueries = new();
         private readonly int _slowQueryThresholdMilliseconds;
+        /// <summary>
+        /// 单次分析批次大小。
+        /// </summary>
         private readonly int _analysisBatchSize;
         private readonly int _triggerCount;
+        /// <summary>
+        /// 每轮最多输出的调优建议数量。
+        /// </summary>
         private readonly int _maxSuggestionsPerCycle;
         private readonly int _maxQueueSize;
+        /// <summary>
+        /// 聚合分析 TopN 上限。
+        /// </summary>
         private readonly int _aggregationTopN;
         private readonly int _alertDebounceMinCallCount;
+        /// <summary>
+        /// P99 告警阈值（毫秒）。
+        /// </summary>
         private readonly int _alertP99Milliseconds;
         private readonly decimal _alertTimeoutRatePercent;
+        /// <summary>
+        /// 死锁告警阈值计数。
+        /// </summary>
         private readonly int _alertDeadlockCount;
         private readonly TimeSpan _alertDebounceWindow;
+        /// <summary>
+        /// 告警触发所需连续窗口数。
+        /// </summary>
         private readonly int _alertConsecutiveWindows;
         private readonly int _alertRecoveryConsecutiveWindows;
+        /// <summary>
+        /// 每日汇总输出本地时间点。
+        /// </summary>
         private readonly TimeSpan _dailyReportTime;
         private readonly IAutoTuningObservability _observability;
+        /// <summary>
+        /// 队列与状态访问同步锁。
+        /// </summary>
         private readonly object _queueSync = new();
         private readonly Dictionary<string, AlertTrackingState> _alertStates = new(StringComparer.OrdinalIgnoreCase);
+        /// <summary>
+        /// 队列溢出时的丢弃样本计数。
+        /// </summary>
         private int _droppedCount;
         private DateTime _nextDailyReportTime;
 
@@ -381,6 +411,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             PruneAlertStateCapacity();
         }
 
+        /// <summary>
+        /// 清理超过容量上限的最旧告警状态。
+        /// </summary>
         private void PruneAlertStateCapacity() {
             var overflow = _alertStates.Count - MaxAlertTrackingStates;
             if (overflow <= 0) {
@@ -570,13 +603,22 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             return (riskLevel, confidence, reason);
         }
 
+        /// <summary>
+        /// 构建告警唯一键（fingerprint|type）。
+        /// </summary>
         private static string BuildAlertKey(string fingerprint, string type) => $"{fingerprint}|{type}";
 
+        /// <summary>
+        /// 从告警键 <c>fingerprint|type</c> 中提取 <c>fingerprint</c>；若缺少分隔符 <c>|</c> 则返回原始键值。
+        /// </summary>
         private static string TryExtractFingerprintFromAlertKey(string alertKey) {
             var separatorIndex = alertKey.IndexOf('|');
             return separatorIndex < 0 ? alertKey : alertKey[..separatorIndex];
         }
 
+        /// <summary>
+        /// 从告警键 <c>fingerprint|type</c> 中提取 <c>type</c>；若缺少分隔符 <c>|</c> 则返回默认值 <c>UNKNOWN</c>，且不额外做大小写转换。
+        /// </summary>
         private static string TryExtractTypeFromAlertKey(string alertKey) {
             var separatorIndex = alertKey.IndexOf('|');
             return separatorIndex < 0 ? "UNKNOWN" : alertKey[(separatorIndex + 1)..];

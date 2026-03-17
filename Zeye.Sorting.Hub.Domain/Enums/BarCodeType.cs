@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Text;
 using System.ComponentModel;
@@ -7,6 +7,9 @@ using System.Collections.Generic;
 
 namespace Zeye.Sorting.Hub.Domain.Enums {
 
+    /// <summary>
+    /// BarCodeType 枚举。
+    /// </summary>
     public enum BarCodeType {
 
         /// <summary>

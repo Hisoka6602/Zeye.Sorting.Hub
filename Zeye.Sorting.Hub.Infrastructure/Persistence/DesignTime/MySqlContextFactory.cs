@@ -66,6 +66,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
             return new SortingHubDbContext(options);
         }
 
+        /// <summary>
+        /// 从命令行参数或配置中解析数据库提供器名称。
+        /// </summary>
         private static string ResolveProvider(string[] args, IConfiguration config) {
             for (var i = 0; i < args.Length; i++) {
                 var arg = args[i];
@@ -86,6 +89,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
             return NormalizeProvider(config["Persistence:Provider"] ?? MySqlProviderName);
         }
 
+        /// <summary>
+        /// 标准化并校验数据库提供器名称。
+        /// </summary>
         private static string NormalizeProvider(string? provider) {
             if (string.IsNullOrWhiteSpace(provider)) {
                 throw new InvalidOperationException("数据库提供器不能为空。可选值：MySql / SqlServer。");

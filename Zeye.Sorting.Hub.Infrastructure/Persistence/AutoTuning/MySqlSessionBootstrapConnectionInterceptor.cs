@@ -12,6 +12,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             "SET SESSION innodb_stats_on_metadata=OFF"
         };
 
+        /// <summary>
+        /// 字段：_logger。
+        /// </summary>
         private readonly ILogger<MySqlSessionBootstrapConnectionInterceptor> _logger;
 
         /// <summary>初始化 MySQL 会话级参数拦截器。</summary>

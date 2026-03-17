@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Text;
 using System.Threading.Tasks;
 using System.Collections.Generic;
@@ -53,6 +53,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             pattern: @"(Z|[+\-]\d{2}:\d{2}|[+\-]\d{4})$",
             options: RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+        /// <summary>
+        /// 注册持久化层核心能力（EF Core、分表规则、自动调优拦截器与观测组件），并按 <c>Persistence:Provider</c> 选择数据库方言实现。
+        /// </summary>
         public static IServiceCollection AddSortingHubPersistence(this IServiceCollection services, IConfiguration configuration) {
             var provider = configuration["Persistence:Provider"];
             var commandTimeoutSeconds = GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
@@ -172,6 +175,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             return services;
         }
 
+        /// <summary>
+        /// 执行逻辑：GetPositiveIntOrDefault。
+        /// </summary>
         private static int GetPositiveIntOrDefault(IConfiguration configuration, string key, int fallback) =>
             AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, key, fallback);
 
@@ -358,6 +364,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             };
         }
 
+        /// <summary>
+        /// 执行逻辑：GetShardingStartTime。
+        /// </summary>
         private static DateTime GetShardingStartTime(IConfiguration configuration) {
             var configured = configuration["Persistence:Sharding:ParcelStartTime"];
 
