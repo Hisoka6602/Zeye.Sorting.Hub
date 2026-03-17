@@ -158,6 +158,8 @@
 - `项目完成度与推进计划.md`：项目阶段评估与路线图文档。
 - `EFCore-Migration.md`：EF Core CodeFirst 迁移使用说明（迁移架构总览、运行时自动迁移、CLI 命令、设计时工厂、分表与迁移关系、常见问题）。
 - `EFCore9-UpgradePlan.md`：EF Core 8 → 9 升级记录（**已完成**：EF Core 9.0.14、Pomelo 9.0.0、EFCore.Sharding 9.0.10），包含已升级包清单、版本对照表、`HasPendingModelChanges()` 集成说明及核查清单。
+- `NewDatabaseProvider-Guide.md`：新数据库提供器接入指南（MySQL / SQL Server 切换、设计时工厂、方言扩展点）。
+- `数据库读写压力测试计划.md`：针对 MySQL + EFCore.Sharding 分表架构的数据库读写压力测试计划，覆盖纯写入、纯读取、混合读写、长时稳定性 4 大场景，含梯度加压方案、通过/失败验收矩阵、监控采集命令与结果记录模板。
 
 ### `.github/`：Copilot 仓库级指令目录
 - `copilot-instructions.md`：Copilot 自定义指令，硬性要求禁止 UTC 时间 API，统一使用本地时间语义。
@@ -419,3 +421,18 @@
 
 1. 在 Application/Contracts 层补充 `ParcelExceptionType` 的对外 DTO/查询筛选条件，减少字符串化状态判断。
 2. 按异常类型建立告警分级策略（例如机械故障/包裹丢失优先级高于超时类），提升运维响应效率。
+
+## 本次更新内容（数据库读写压力测试计划）
+
+1. **新增 `数据库读写压力测试计划.md`**：针对本项目 MySQL + EFCore.Sharding 分表架构制定完整压测方案，包含：
+   - **4 大测试场景**：纯写入（TPS 梯度加压）、纯读取（QPS 梯度加压）、混合读写（70% 写 + 30% 读）、30 分钟长时稳定性。
+   - **与项目配置对齐的通过标准**：P99 ≤ 500 ms（对齐 `Persistence:AutoTuning:AlertP99Milliseconds = 500`）、错误率 < 1%（对齐 `Persistence:AutoTuning:AlertTimeoutRatePercent = 1`）、死锁 = 0。
+   - **分表专项指标**：`autotuning.sharding.hit_rate ≥ 98%`、`hot_table_skew ≤ 2.0`（最热分片调用量 / 平均调用量，完全均匀时为 1.0）。
+   - **完整执行步骤清单、监控 SQL、日志采集命令与结果记录模板**。
+2. **更新 README 文件树章节**：在"各层级与各文件作用说明（逐项）"根目录节补充 `数据库读写压力测试计划.md` 与 `NewDatabaseProvider-Guide.md` 两个条目的职责说明（两文件均已存在，此前逐项说明缺失）。
+
+## 后续可完善点（压测治理）
+
+1. 在 CI 中增加"压测数据自动清理"步骤，防止种子数据影响正式环境。
+2. 将 sysbench 压测脚本封装为可复用的 Shell/Makefile 目标，纳入仓库 `scripts/` 目录管理。
+3. 接入 Prometheus + Grafana，将 AutoTuning 的分表观测指标（命中率、倾斜度、跨表查询占比）可视化，实现压测期间实时大盘监控。
