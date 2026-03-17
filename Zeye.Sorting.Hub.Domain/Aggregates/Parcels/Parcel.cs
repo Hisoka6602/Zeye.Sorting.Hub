@@ -40,6 +40,11 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         public ParcelStatus Status { get; private set; }
 
         /// <summary>
+        /// 包裹异常类型（仅当状态为分拣异常时有值）
+        /// </summary>
+        public ParcelExceptionType? ExceptionType { get; private set; }
+
+        /// <summary>
         /// NoRead 类型
         /// </summary>
         public NoReadType NoReadType { get; private set; } = NoReadType.None;
@@ -295,6 +300,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
                 ParcelTimestamp = parcelTimestamp,
                 Type = type,
                 Status = ParcelStatus.Pending,
+                ExceptionType = null,
                 NoReadType = noReadType,
                 SorterCarrierId = sorterCarrierId,
                 SegmentCodes = segmentCodes,
@@ -327,6 +333,15 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         public void MarkCompleted(DateTime completedTime) {
             CompletedTime = completedTime;
             Status = ParcelStatus.Completed;
+            ExceptionType = null;
+        }
+
+        /// <summary>
+        /// 标记包裹为分拣异常并记录异常类型。
+        /// </summary>
+        public void MarkSortingException(ParcelExceptionType exceptionType) {
+            Status = ParcelStatus.SortingException;
+            ExceptionType = exceptionType;
         }
 
         /// <summary>
