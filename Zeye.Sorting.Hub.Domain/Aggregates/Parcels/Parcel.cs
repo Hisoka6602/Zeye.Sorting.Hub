@@ -15,7 +15,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
     /// 包裹实体（领域层聚合根）
     /// 说明：
     /// 1) 仅包含领域语义与状态；
-    /// 2) 主表索引与 decimal 精度通过 EF Core 特征标记就近声明；
+    /// 2) 主表索引、字段精度与关系映射在 Infrastructure/EntityConfigurations 中通过 Fluent API 统一声明；
     /// 3) 其余持久化映射（表名、架构、关系、影子属性等）在 Infrastructure/EntityConfigurations 中完成。
     /// </summary>
     public sealed class Parcel : AuditableEntity {
