@@ -9,7 +9,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
 
     /// <summary>慢查询采集、分析与自动动作编排管道</summary>
     public sealed class SlowQueryAutoTuningPipeline {
-        private const string AutoTuningConfigPrefix = "Persistence:AutoTuning";
         private const string AutoTuningMarker = "AUTO_TUNING";
         private const int MaxWhereColumns = 3;
         private const int MaxAlertTrackingStates = 2048;
@@ -75,20 +74,20 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         /// <summary>初始化慢查询采集、分析和告警阈值配置。</summary>
         public SlowQueryAutoTuningPipeline(IConfiguration configuration, IAutoTuningObservability observability) {
             _observability = observability;
-            _slowQueryThresholdMilliseconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningKey("SlowQueryThresholdMilliseconds"), 500);
-            _analysisBatchSize = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningKey("AnalysisBatchSize"), 20);
-            _triggerCount = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningKey("TriggerCount"), 3);
-            _maxSuggestionsPerCycle = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningKey("MaxActionsPerCycle"), 3);
-            _maxQueueSize = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningKey("MaxQueueSize"), 1000);
-            _aggregationTopN = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningKey("AggregationTopN"), 10);
-            _alertDebounceMinCallCount = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningKey("AlertDebounceMinCallCount"), _triggerCount);
-            _alertP99Milliseconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningKey("AlertP99Milliseconds"), 500);
-            _alertTimeoutRatePercent = AutoTuningConfigurationHelper.GetNonNegativeDecimalOrDefault(configuration, AutoTuningKey("AlertTimeoutRatePercent"), 1m);
-            _alertDeadlockCount = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningKey("AlertDeadlockCount"), 1);
-            _alertDebounceWindow = AutoTuningConfigurationHelper.GetPositiveSecondsAsTimeSpanOrDefault(configuration, AutoTuningKey("AlertDebounceWindowSeconds"), TimeSpan.FromMinutes(10));
-            _alertConsecutiveWindows = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningKey("AlertConsecutiveWindows"), 1);
-            _alertRecoveryConsecutiveWindows = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningKey("AlertRecoveryConsecutiveWindows"), 1);
-            _dailyReportTime = AutoTuningConfigurationHelper.GetTimeOfDayOrDefault(configuration, AutoTuningKey("DailyReportLocalTime"), new TimeSpan(2, 30, 0));
+            _slowQueryThresholdMilliseconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("SlowQueryThresholdMilliseconds"), 500);
+            _analysisBatchSize = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("AnalysisBatchSize"), 20);
+            _triggerCount = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("TriggerCount"), 3);
+            _maxSuggestionsPerCycle = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("MaxActionsPerCycle"), 3);
+            _maxQueueSize = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("MaxQueueSize"), 1000);
+            _aggregationTopN = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("AggregationTopN"), 10);
+            _alertDebounceMinCallCount = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("AlertDebounceMinCallCount"), _triggerCount);
+            _alertP99Milliseconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("AlertP99Milliseconds"), 500);
+            _alertTimeoutRatePercent = AutoTuningConfigurationHelper.GetNonNegativeDecimalOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("AlertTimeoutRatePercent"), 1m);
+            _alertDeadlockCount = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("AlertDeadlockCount"), 1);
+            _alertDebounceWindow = AutoTuningConfigurationHelper.GetPositiveSecondsAsTimeSpanOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("AlertDebounceWindowSeconds"), TimeSpan.FromMinutes(10));
+            _alertConsecutiveWindows = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("AlertConsecutiveWindows"), 1);
+            _alertRecoveryConsecutiveWindows = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("AlertRecoveryConsecutiveWindows"), 1);
+            _dailyReportTime = AutoTuningConfigurationHelper.GetTimeOfDayOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("DailyReportLocalTime"), new TimeSpan(2, 30, 0));
             _nextDailyReportTime = BuildNextDailyReportTime(DateTime.Now);
         }
 
@@ -582,9 +581,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             whereColumns = columns;
             return true;
         }
-
-        /// <summary>生成 AutoTuning 配置全路径键名。</summary>
-        private static string AutoTuningKey(string suffix) => $"{AutoTuningConfigPrefix}:{suffix}";
 
         private static (string RiskLevel, decimal Confidence, string Reason) BuildSuggestionDiagnostics(SlowQueryMetric? metric) {
             if (metric is null) {

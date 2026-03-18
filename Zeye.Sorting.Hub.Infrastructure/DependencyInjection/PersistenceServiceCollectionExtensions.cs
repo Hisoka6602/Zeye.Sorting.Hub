@@ -58,11 +58,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// </summary>
         public static IServiceCollection AddSortingHubPersistence(this IServiceCollection services, IConfiguration configuration) {
             var provider = configuration["Persistence:Provider"];
-            var commandTimeoutSeconds = GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
-            var minCommandElapsedMilliseconds = GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:MinCommandElapsedMilliseconds", 50);
+            var commandTimeoutSeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
+            var minCommandElapsedMilliseconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:MinCommandElapsedMilliseconds", 50);
             var parcelShardingStartTime = GetShardingStartTime(configuration);
             var createShardingTableOnStarting = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, "Persistence:Sharding:CreateShardingTableOnStarting", false);
-            var parcelRelatedHashShardingMod = GetPositiveIntOrDefault(configuration, "Persistence:Sharding:ParcelRelatedHashShardingMod", DefaultParcelRelatedHashShardingMod);
+            var parcelRelatedHashShardingMod = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, "Persistence:Sharding:ParcelRelatedHashShardingMod", DefaultParcelRelatedHashShardingMod);
 
             services.AddSingleton<SlowQueryAutoTuningPipeline>();
             services.AddSingleton<SlowQueryCommandInterceptor>();
@@ -86,9 +86,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                     var interceptor = sp.GetRequiredService<SlowQueryCommandInterceptor>();
                     var mySqlSessionInterceptor = sp.GetRequiredService<MySqlSessionBootstrapConnectionInterceptor>();
                     var cs = cfg.GetConnectionString("MySql")!;
-                    var commandTimeoutSeconds = GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
-                    var maxRetryCount = GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryCount", 5);
-                    var maxRetryDelaySeconds = GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryDelaySeconds", 10);
+                    var commandTimeoutSeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
+                    var maxRetryCount = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryCount", 5);
+                    var maxRetryDelaySeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryDelaySeconds", 10);
 
                     // 建议：生产环境可改为固定版本，避免探测失败导致启动失败
                     var serverVersion = ServerVersion.AutoDetect(cs);
@@ -134,9 +134,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                     var cfg = sp.GetRequiredService<IConfiguration>();
                     var interceptor = sp.GetRequiredService<SlowQueryCommandInterceptor>();
                     var cs = cfg.GetConnectionString("SqlServer")!;
-                    var commandTimeoutSeconds = GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
-                    var maxRetryCount = GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryCount", 5);
-                    var maxRetryDelaySeconds = GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryDelaySeconds", 10);
+                    var commandTimeoutSeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
+                    var maxRetryCount = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryCount", 5);
+                    var maxRetryDelaySeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryDelaySeconds", 10);
 
                     options.UseSqlServer(cs, sqlServerOptions => {
                         // 迁移程序集通常指向 Host 或 Infrastructure，按你迁移放置位置调整
@@ -176,12 +176,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         }
 
         /// <summary>
-        /// 执行逻辑：GetPositiveIntOrDefault。
-        /// </summary>
-        private static int GetPositiveIntOrDefault(IConfiguration configuration, string key, int fallback) =>
-            AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, key, fallback);
-
-        /// <summary>
         /// 统一注册 Parcel 主表与属性表的分表规则。
         /// </summary>
         /// <param name="shardingBuilder">分表构建器。</param>
@@ -199,7 +193,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
 
             // 分表起始时间在进入规则注册前统一归一化为“本地时间语义”，
             // 避免外部配置传入未指定 Kind 的时间值时产生路由歧义。
-            var localShardingStartTime = NormalizeToLocalTime(parcelShardingStartTime);
+            var localShardingStartTime = AutoTuningConfigurationHelper.NormalizeToLocalTime(parcelShardingStartTime);
 
             // ------------------------------
             // 1) 主表：Parcel（按月分表）
@@ -346,25 +340,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         }
 
         /// <summary>
-        /// 将任意 <see cref="DateTime"/> 统一转换为本地时间语义。
-        /// </summary>
-        /// <param name="value">待归一化的时间值。</param>
-        /// <returns>带有 <see cref="DateTimeKind.Local"/> 语义的时间值。</returns>
-        /// <remarks>
-        /// 项目约束要求统一使用本地时间语义：
-        /// - Unspecified：按“本地时间”解释并补齐 Kind；
-        /// - Local：原样返回；
-        /// - 其他：视为不合法输入并抛错（禁止 UTC/带 offset 的时间语义进入链路）。
-        /// </remarks>
-        private static DateTime NormalizeToLocalTime(DateTime value) {
-            return value.Kind switch {
-                DateTimeKind.Unspecified => DateTime.SpecifyKind(value, DateTimeKind.Local),
-                DateTimeKind.Local => value,
-                _ => throw new InvalidOperationException("仅支持本地时间语义，请勿传入 UTC 或带 offset 的时间值。")
-            };
-        }
-
-        /// <summary>
         /// 执行逻辑：GetShardingStartTime。
         /// </summary>
         private static DateTime GetShardingStartTime(IConfiguration configuration) {
@@ -380,7 +355,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 DateTimeStyles.AssumeLocal,
                 out var parsed)) {
                 // 统一复用本地时间归一化入口，避免规则分叉。
-                return NormalizeToLocalTime(parsed);
+                return AutoTuningConfigurationHelper.NormalizeToLocalTime(parsed);
             }
 
             var now = DateTime.Now;

@@ -24,7 +24,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
 
         /// <summary>连接打开后同步执行会话初始化 SQL。</summary>
         public override void ConnectionOpened(DbConnection connection, ConnectionEndEventData eventData) {
-            if (!IsMySqlConnection(connection)) {
+            if (connection is not MySqlConnection) {
                 return;
             }
 
@@ -33,7 +33,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
 
         /// <summary>连接打开后异步执行会话初始化 SQL。</summary>
         public override async Task ConnectionOpenedAsync(DbConnection connection, ConnectionEndEventData eventData, CancellationToken cancellationToken = default) {
-            if (!IsMySqlConnection(connection)) {
+            if (connection is not MySqlConnection) {
                 return;
             }
 
@@ -68,9 +68,5 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             }
         }
 
-        /// <summary>判断当前连接是否为 MySQL 驱动连接。</summary>
-        private static bool IsMySqlConnection(DbConnection connection) {
-            return connection is MySqlConnection;
-        }
     }
 }

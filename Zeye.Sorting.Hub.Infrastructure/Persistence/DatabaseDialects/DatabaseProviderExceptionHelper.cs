@@ -1,3 +1,6 @@
+using System.Security.Cryptography;
+using System.Text;
+
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
 
     internal static class DatabaseProviderExceptionHelper {
@@ -15,6 +18,47 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
 
             errorNumber = 0;
             return false;
+        }
+
+        /// <summary>
+        /// 归一化候选 where 列：过滤空白、限制最大列数并裁剪空格。
+        /// </summary>
+        /// <param name="whereColumns">候选 where 列。</param>
+        /// <param name="maxColumnCount">允许参与索引构造的最大列数。</param>
+        /// <returns>归一化后的列数组。</returns>
+        public static string[] NormalizeWhereColumns(IReadOnlyList<string> whereColumns, int maxColumnCount) {
+            if (whereColumns.Count == 0 || maxColumnCount <= 0) {
+                return [];
+            }
+
+            return whereColumns
+                .Where(static c => !string.IsNullOrWhiteSpace(c))
+                .Take(maxColumnCount)
+                .Select(static c => c.Trim())
+                .ToArray();
+        }
+
+        /// <summary>
+        /// 构造长度受限且稳定的自动索引名称。
+        /// </summary>
+        /// <param name="schemaName">schema 名。</param>
+        /// <param name="tableName">表名。</param>
+        /// <param name="columns">索引列。</param>
+        /// <param name="maxLength">最大长度约束。</param>
+        /// <returns>稳定且可复现的索引名。</returns>
+        public static string BuildIndexName(string? schemaName, string tableName, IReadOnlyList<string> columns, int maxLength) {
+            var schemaPart = schemaName ?? string.Empty;
+            var seed = $"{schemaPart}:{tableName}:{string.Join(",", columns)}";
+            var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(seed));
+            var hash = Convert.ToHexString(hashBytes[..4]).ToLowerInvariant();
+            var tableSeed = string.IsNullOrWhiteSpace(schemaName) ? tableName : $"{schemaName}_{tableName}";
+            var prefix = $"idx_auto_{tableSeed}_{string.Join("_", columns)}";
+
+            var normalizedPrefix = prefix.Length > maxLength - hash.Length - 1
+                ? prefix[..(maxLength - hash.Length - 1)]
+                : prefix;
+
+            return $"{normalizedPrefix}_{hash}";
         }
     }
 }

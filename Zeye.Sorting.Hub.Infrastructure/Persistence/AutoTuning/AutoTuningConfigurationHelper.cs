@@ -5,6 +5,14 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
 
     /// <summary>自动调优配置读取辅助方法（集中管理，避免多处影分身副本）。</summary>
     public static class AutoTuningConfigurationHelper {
+        private const string AutoTuningConfigPrefix = "Persistence:AutoTuning";
+        private const string AutonomousConfigPrefix = $"{AutoTuningConfigPrefix}:Autonomous";
+
+        /// <summary>构建 AutoTuning 配置全路径键名。</summary>
+        public static string BuildAutoTuningKey(string suffix) => $"{AutoTuningConfigPrefix}:{suffix}";
+
+        /// <summary>构建 Autonomous 配置全路径键名。</summary>
+        public static string BuildAutonomousKey(string suffix) => $"{AutonomousConfigPrefix}:{suffix}";
 
         /// <summary>读取正整数配置，非法值回退默认值。</summary>
         public static int GetPositiveIntOrDefault(IConfiguration configuration, string key, int fallback) {
@@ -85,6 +93,25 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             }
 
             return parsed;
+        }
+
+        /// <summary>
+        /// 将时间值标准化为本地时间语义。
+        /// </summary>
+        /// <param name="value">待归一化的时间值。</param>
+        /// <returns>带 <see cref="DateTimeKind.Local"/> 的时间值。</returns>
+        /// <remarks>
+        /// 规则：
+        /// 1) Unspecified：按本地时间解释并补齐 Kind；
+        /// 2) Local：原样返回；
+        /// 3) 其他：视为非法输入并抛错（禁止 UTC/offset 语义进入链路）。
+        /// </remarks>
+        public static DateTime NormalizeToLocalTime(DateTime value) {
+            return value.Kind switch {
+                DateTimeKind.Unspecified => DateTime.SpecifyKind(value, DateTimeKind.Local),
+                DateTimeKind.Local => value,
+                _ => throw new InvalidOperationException("仅支持本地时间语义，请勿传入 UTC 或带 offset 的时间值。")
+            };
         }
     }
 }

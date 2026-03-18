@@ -1,7 +1,5 @@
-﻿using System;
+using System;
 using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 
@@ -23,17 +21,13 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
 
             var normalizedSchemaName = schemaName?.Trim();
             var normalizedTableName = tableName.Trim();
-            var indexColumns = whereColumns
-                .Where(static c => !string.IsNullOrWhiteSpace(c))
-                .Take(3)
-                .Select(static c => c.Trim())
-                .ToArray();
+            var indexColumns = DatabaseProviderExceptionHelper.NormalizeWhereColumns(whereColumns, 3);
 
             if (indexColumns.Length == 0) {
                 return Array.Empty<string>();
             }
 
-            var indexName = BuildIndexName(normalizedSchemaName, normalizedTableName, indexColumns, 60);
+            var indexName = DatabaseProviderExceptionHelper.BuildIndexName(normalizedSchemaName, normalizedTableName, indexColumns, 60);
 
             var escapedTable = string.IsNullOrWhiteSpace(normalizedSchemaName)
                 ? $"`{normalizedTableName}`"
@@ -72,20 +66,5 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
             return new[] { analyzeSql, $"OPTIMIZE TABLE {escapedTable}" };
         }
 
-        /// <summary>构造长度受限且稳定的自动索引名称。</summary>
-        private static string BuildIndexName(string? schemaName, string tableName, IReadOnlyList<string> columns, int maxLength) {
-            var schemaPart = schemaName ?? string.Empty;
-            var seed = $"{schemaPart}:{tableName}:{string.Join(",", columns)}";
-            var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(seed));
-            var hash = Convert.ToHexString(hashBytes[..4]).ToLowerInvariant();
-            var tableSeed = string.IsNullOrWhiteSpace(schemaName) ? tableName : $"{schemaName}_{tableName}";
-            var prefix = $"idx_auto_{tableSeed}_{string.Join("_", columns)}";
-
-            var normalizedPrefix = prefix.Length > maxLength - hash.Length - 1
-                ? prefix[..(maxLength - hash.Length - 1)]
-                : prefix;
-
-            return $"{normalizedPrefix}_{hash}";
-        }
     }
 }

@@ -87,20 +87,20 @@
 │   └── Zeye.Sorting.Hub.Host.Tests.csproj（xUnit 测试项目定义）
 ├── Zeye.Sorting.Hub.Infrastructure（基础设施层）
 │   ├── DependencyInjection（依赖注入扩展目录）
-│   │   └── PersistenceServiceCollectionExtensions.cs（持久化服务注册扩展（数据库提供器选择、连接字符串校验、DbContext 注册、性能参数读取配置、Parcel 按 CreatedTime 月分表、可配置哈希分片模数与分表自动创建开关，并内置分表覆盖守卫））
+│   │   └── PersistenceServiceCollectionExtensions.cs（持久化服务注册扩展（数据库提供器选择、连接字符串校验、DbContext 注册、分表规则与覆盖守卫；性能参数读取直接复用 AutoTuningConfigurationHelper，无中间转发））
 │   ├── EntityConfigurations（EF Core 映射配置目录）
 │   │   ├── BagInfoEntityTypeConfiguration.cs（BagInfo 映射配置）
 │   │   └── ParcelEntityTypeConfiguration.cs（Parcel 映射配置）
 │   ├── Persistence（持久化核心目录）
 │   │   ├── AutoTuning（自动调谐核心目录）
 │   │   │   ├── AutoTuningAbstractions.cs（自动调优观测抽象、标准化验证结果、隔离/回滚策略与可观测执行计划探针）
-│   │   │   ├── AutoTuningConfigurationHelper.cs（配置读取公共辅助类，集中管理正整数/小数/布尔/TimeSpan 等配置解析方法）
-│   │   │   ├── MySqlSessionBootstrapConnectionInterceptor.cs（MySQL 连接会话初始化拦截器）
-│   │   │   ├── SlowQueryAutoTuningPipeline.cs（慢查询采集、TopN 聚合、阈值告警（含基础防抖）与闭环自治结构化建议编排管道）
+│   │   │   ├── AutoTuningConfigurationHelper.cs（配置读取与本地时间语义归一化/配置键拼装公共辅助类，统一 AutoTuning 键名与时间语义）
+│   │   │   ├── MySqlSessionBootstrapConnectionInterceptor.cs（MySQL 连接会话初始化拦截器，直连类型判断，无额外转发）
+│   │   │   ├── SlowQueryAutoTuningPipeline.cs（慢查询采集、TopN 聚合、阈值告警（含基础防抖）与闭环自治结构化建议编排管道，配置键拼装复用公共 Helper）
 │   │   │   ├── SlowQueryCommandInterceptor.cs（EF Core 慢查询采集拦截器）
 │   │   │   └── SlowQuerySample.cs（慢查询采样记录模型）
 │   │   ├── DatabaseDialects（数据库方言目录）
-│   │   │   ├── DatabaseProviderExceptionHelper.cs（数据库异常错误码提取辅助类）
+│   │   │   ├── DatabaseProviderExceptionHelper.cs（数据库异常错误码提取与方言共享索引构造辅助类）
 │   │   │   ├── IDatabaseDialect.cs（数据库方言接口）
 │   │   │   ├── MySqlDialect.cs（MySQL 方言实现）
 │   │   │   └── SqlServerDialect.cs（SQL Server 方言实现）
@@ -258,7 +258,7 @@
 - `Zeye.Sorting.Hub.Infrastructure.csproj`：Infrastructure 项目定义。
 
 #### `Zeye.Sorting.Hub.Infrastructure/DependencyInjection/`：依赖注入扩展目录
-- `PersistenceServiceCollectionExtensions.cs`：持久化服务注册扩展（数据库提供器选择、连接字符串校验、DbContext 注册、性能参数读取配置、Parcel 按 CreatedTime 月分表，支持 `CreateShardingTableOnStarting` 与 `ParcelRelatedHashShardingMod` 配置化，并在启动期执行 ValueObjects 分表覆盖守卫）。
+- `PersistenceServiceCollectionExtensions.cs`：持久化服务注册扩展（数据库提供器选择、连接字符串校验、DbContext 注册、Parcel 按 CreatedTime 月分表，支持 `CreateShardingTableOnStarting` 与 `ParcelRelatedHashShardingMod` 配置化，并在启动期执行 ValueObjects 分表覆盖守卫；性能参数读取直接复用公共 Helper，无中间转发器）。
 
 #### `Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/`：EF Core 实体映射配置目录
 - `BagInfoEntityTypeConfiguration.cs`：BagInfo 映射配置。
@@ -268,16 +268,16 @@
 - `SortingHubDbContext.cs`：EF Core DbContext（实体集与模型构建入口）。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/DatabaseDialects/`：数据库方言抽象与实现目录
-- `DatabaseProviderExceptionHelper.cs`：数据库异常错误码提取辅助类。
+- `DatabaseProviderExceptionHelper.cs`：数据库异常错误码提取与方言共享索引列归一化/索引名构造辅助类。
 - `IDatabaseDialect.cs`：数据库方言抽象接口。
 - `MySqlDialect.cs`：MySQL 方言实现。
 - `SqlServerDialect.cs`：SQL Server 方言实现。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/`：自动调谐核心目录
 - `AutoTuningAbstractions.cs`：自动调优观测抽象、闭环阶段模型、危险动作隔离策略、自动回滚决策、标准化验证结果构造器与可观测执行计划探针。
-- `AutoTuningConfigurationHelper.cs`：配置读取公共辅助类，集中提供 `GetPositiveIntOrDefault`、`GetNonNegativeIntOrDefault`、`GetNonNegativeDecimalOrDefault`、`GetDecimalInRangeOrDefault`、`GetDecimalClampedOrDefault`、`GetBoolOrDefault`、`GetPositiveSecondsAsTimeSpanOrDefault`、`GetTimeOfDayOrDefault` 共八个方法，消除三处影分身副本。
-- `MySqlSessionBootstrapConnectionInterceptor.cs`：MySQL 连接会话初始化拦截器。
-- `SlowQueryAutoTuningPipeline.cs`：慢查询采集、TopN 聚合、阈值告警（含基础防抖）与闭环自治结构化建议编排管道。
+- `AutoTuningConfigurationHelper.cs`：配置读取公共辅助类，集中提供 `GetPositiveIntOrDefault`、`GetNonNegativeIntOrDefault`、`GetNonNegativeDecimalOrDefault`、`GetDecimalInRangeOrDefault`、`GetDecimalClampedOrDefault`、`GetBoolOrDefault`、`GetPositiveSecondsAsTimeSpanOrDefault`、`GetTimeOfDayOrDefault`，并统一 `BuildAutoTuningKey`、`BuildAutonomousKey` 与 `NormalizeToLocalTime`，消除重复键拼装与时间归一化实现。
+- `MySqlSessionBootstrapConnectionInterceptor.cs`：MySQL 连接会话初始化拦截器（类型判断逻辑内联，移除无意义 helper）。
+- `SlowQueryAutoTuningPipeline.cs`：慢查询采集、TopN 聚合、阈值告警（含基础防抖）与闭环自治结构化建议编排管道（配置键拼装复用 `AutoTuningConfigurationHelper`）。
 - `SlowQueryCommandInterceptor.cs`：EF Core 慢查询采集拦截器。
 - `SlowQuerySample.cs`：慢查询采样记录模型。
 
@@ -440,3 +440,17 @@
 1. 在 CI 中增加"压测数据自动清理"步骤，防止种子数据影响正式环境。
 2. 将 sysbench 压测脚本封装为可复用的 Shell/Makefile 目标，纳入仓库 `scripts/` 目录管理。
 3. 接入 Prometheus + Grafana，将 AutoTuning 的分表观测指标（命中率、倾斜度、跨表查询占比）可视化，实现压测期间实时大盘监控。
+
+## 本次更新内容（重复代码治理 PR：去重/收口/命名统一）
+
+1. **DatabaseDialects 去重收口**：将 `MySqlDialect.cs` 与 `SqlServerDialect.cs` 重复的索引列归一化和索引名构造逻辑收敛到 `DatabaseProviderExceptionHelper.cs`，方言类仅保留 SQL 拼装差异。
+2. **删除无意义转发器**：移除 `PersistenceServiceCollectionExtensions.cs` 中仅参数透传的 `GetPositiveIntOrDefault` 中间层，调用方直接复用 `AutoTuningConfigurationHelper`。
+3. **统一配置键拼装入口**：在 `AutoTuningConfigurationHelper.cs` 新增 `BuildAutoTuningKey` 与 `BuildAutonomousKey`，并替换 `DatabaseAutoTuningHostedService.cs`、`SlowQueryAutoTuningPipeline.cs` 内重复本地方法。
+4. **统一本地时间归一化入口**：在 `AutoTuningConfigurationHelper.cs` 新增 `NormalizeToLocalTime`，并替换 `SlowQuerySample.cs`、`PersistenceServiceCollectionExtensions.cs` 的重复实现，继续保持“仅本地时间语义”约束。
+5. **最小回归测试补充**：在 `AutoTuningProductionControlTests.cs` 增加键拼装、本地时间语义归一化与跨方言索引名哈希一致性的测试，保障去重重构不改变外部行为。
+6. **文件树与职责同步**：本次未新增/删除文件，已同步更新本 README 相关条目的职责描述，确保文档与当前实现一致。
+
+## 后续可完善点（重复治理）
+
+1. 可进一步抽取方言层“表名转义/限定名拼装”公共骨架，在不改变方言 SQL 细节的前提下继续降低重复率。
+2. 可在 AutoTuning 相关测试中增加配置键拼装的参数化覆盖，减少未来配置项扩展时的回归风险。

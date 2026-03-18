@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -187,6 +188,56 @@ public sealed class AutoTuningProductionControlTests {
         pipeline.Collect(sql, TimeSpan.FromMilliseconds(100));
         var fourth = pipeline.Analyze(dialect);
         Assert.Single(fourth.RecoveryNotifications);
+    }
+
+    /// <summary>
+    /// 验证场景：AutoTuningConfigurationHelper_BuildKeys_ShouldUseExpectedPrefix。
+    /// </summary>
+    [Fact]
+    public void AutoTuningConfigurationHelper_BuildKeys_ShouldUseExpectedPrefix() {
+        var autoTuningKey = AutoTuningConfigurationHelper.BuildAutoTuningKey("TriggerCount");
+        var autonomousKey = AutoTuningConfigurationHelper.BuildAutonomousKey("Validation:DelayCycles");
+
+        Assert.Equal("Persistence:AutoTuning:TriggerCount", autoTuningKey);
+        Assert.Equal("Persistence:AutoTuning:Autonomous:Validation:DelayCycles", autonomousKey);
+    }
+
+    /// <summary>
+    /// 验证场景：AutoTuningConfigurationHelper_NormalizeToLocalTime_UsesLocalSemantics。
+    /// </summary>
+    [Fact]
+    public void AutoTuningConfigurationHelper_NormalizeToLocalTime_UsesLocalSemantics() {
+        var unspecified = new DateTime(2026, 3, 18, 10, 0, 0, DateTimeKind.Unspecified);
+        var normalizedUnspecified = AutoTuningConfigurationHelper.NormalizeToLocalTime(unspecified);
+        Assert.Equal(DateTimeKind.Local, normalizedUnspecified.Kind);
+        Assert.Equal(unspecified, DateTime.SpecifyKind(normalizedUnspecified, DateTimeKind.Unspecified));
+
+        var local = new DateTime(2026, 3, 18, 10, 0, 0, DateTimeKind.Local);
+        var normalizedLocal = AutoTuningConfigurationHelper.NormalizeToLocalTime(local);
+        Assert.Equal(local, normalizedLocal);
+
+        Assert.Throws<InvalidOperationException>(() => AutoTuningConfigurationHelper.NormalizeToLocalTime(new DateTime(2026, 3, 18, 10, 0, 0, DateTimeKind.Utc)));
+    }
+
+    /// <summary>
+    /// 验证场景：Dialect_IndexNameHash_ShouldStayConsistentAcrossProviders。
+    /// </summary>
+    [Fact]
+    public void Dialect_IndexNameHash_ShouldStayConsistentAcrossProviders() {
+        var whereColumns = (IReadOnlyList<string>)["col_a", "col_b"];
+        var mySqlCreateIndexSql = new MySqlDialect().BuildAutomaticTuningSql("demo", "parcel", whereColumns)[0];
+        var sqlServerCreateIndexSql = new SqlServerDialect().BuildAutomaticTuningSql("demo", "parcel", whereColumns)[0];
+
+        var mySqlMatch = Regex.Match(mySqlCreateIndexSql, @"CREATE INDEX `(?<name>[^`]+)`", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        var sqlServerMatch = Regex.Match(sqlServerCreateIndexSql, @"CREATE INDEX \[(?<name>[^\]]+)\]", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        Assert.True(mySqlMatch.Success);
+        Assert.True(sqlServerMatch.Success);
+
+        var mySqlName = mySqlMatch.Groups["name"].Value;
+        var sqlServerName = sqlServerMatch.Groups["name"].Value;
+        var mySqlHash = mySqlName[(mySqlName.LastIndexOf('_') + 1)..];
+        var sqlServerHash = sqlServerName[(sqlServerName.LastIndexOf('_') + 1)..];
+        Assert.Equal(mySqlHash, sqlServerHash);
     }
 
     /// <summary>
