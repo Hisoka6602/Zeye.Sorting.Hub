@@ -56,6 +56,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
             if (maxLength <= 0) {
                 throw new ArgumentOutOfRangeException(nameof(maxLength), "最大长度必须大于 0。");
             }
+            const int hashHexLength = 8;
+            var minAllowedLength = hashHexLength + 1; // '_' + 8位哈希
+            if (maxLength < minAllowedLength) {
+                throw new ArgumentOutOfRangeException(nameof(maxLength), $"最大长度至少为 {minAllowedLength}，以容纳 '_'+哈希后缀。");
+            }
 
             var schemaPart = schemaName ?? string.Empty;
             var seed = $"{schemaPart}:{tableName}:{string.Join(",", columns)}";

@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -238,6 +239,26 @@ public sealed class AutoTuningProductionControlTests {
         var mySqlHash = mySqlName[(mySqlName.LastIndexOf('_') + 1)..];
         var sqlServerHash = sqlServerName[(sqlServerName.LastIndexOf('_') + 1)..];
         Assert.Equal(mySqlHash, sqlServerHash);
+    }
+
+    /// <summary>
+    /// 验证场景：BuildIndexName_ShouldThrowClearException_WhenMaxLengthTooSmall。
+    /// </summary>
+    [Fact]
+    public void BuildIndexName_ShouldThrowClearException_WhenMaxLengthTooSmall() {
+        var helperType = typeof(MySqlDialect).Assembly.GetType("Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects.DatabaseProviderExceptionHelper");
+        Assert.NotNull(helperType);
+
+        var method = helperType!.GetMethod("BuildIndexName", BindingFlags.Public | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        IReadOnlyList<string> columns = new[] { "col_a" };
+        var invocation = Assert.Throws<TargetInvocationException>(() =>
+            method!.Invoke(null, ["dbo", "parcels", columns, 8]));
+
+        var argumentException = Assert.IsType<ArgumentOutOfRangeException>(invocation.InnerException);
+        Assert.Equal("maxLength", argumentException.ParamName);
+        Assert.Contains("至少为 9", argumentException.Message);
     }
 
     /// <summary>
