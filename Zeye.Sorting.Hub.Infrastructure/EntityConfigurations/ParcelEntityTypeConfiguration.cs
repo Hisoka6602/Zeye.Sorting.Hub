@@ -24,6 +24,17 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
 
             builder.HasKey(x => x.Id);
             builder.Property(x => x.Id).ValueGeneratedOnAdd();
+            builder.HasIndex(x => x.ParcelTimestamp);
+            builder.HasIndex(x => x.ScannedTime);
+            builder.HasIndex(x => x.CreatedTime);
+            builder.HasIndex(x => x.BagCode);
+            builder.HasIndex(x => new { x.Status, x.ScannedTime });
+            builder.HasIndex(x => new { x.NoReadType, x.ScannedTime });
+            builder.HasIndex(x => new { x.RequestStatus, x.ScannedTime });
+            builder.HasIndex(x => new { x.Status, x.ExceptionType, x.ScannedTime });
+            builder.HasIndex(x => new { x.ActualChuteId, x.DischargeTime });
+            builder.HasIndex(x => new { x.TargetChuteId, x.ScannedTime });
+            builder.HasIndex(x => new { x.WorkstationName, x.ScannedTime });
 
             // BagInfo：多 Parcel -> 1 BagInfo（独立表实体 + 影子外键）
             builder.Property<long?>("BagId").HasColumnName("BagId");
@@ -110,7 +121,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
                 b.HasKey("Id");
 
                 b.HasIndex("ParcelId");
-                b.HasIndex("BarCode");
+                b.HasIndex("BarCode", "ParcelId");
                 b.HasIndex("CapturedTime");
             });
 

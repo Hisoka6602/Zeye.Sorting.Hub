@@ -15,13 +15,9 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
     /// 包裹实体（领域层聚合根）
     /// 说明：
     /// 1) 仅包含领域语义与状态；
-    /// 2) 主表索引与 decimal 精度通过 EF Core 特征标记就近声明；
+    /// 2) 主表索引、字段精度与关系映射在 Infrastructure/EntityConfigurations 中通过 Fluent API 统一声明；
     /// 3) 其余持久化映射（表名、架构、关系、影子属性等）在 Infrastructure/EntityConfigurations 中完成。
     /// </summary>
-    [Index(nameof(ParcelTimestamp))]
-    [Index(nameof(BagCode))]
-    [Index(nameof(WorkstationName))]
-    [Index(nameof(ScannedTime))]
     public sealed class Parcel : AuditableEntity {
 
         /// <summary>
@@ -314,8 +310,6 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
             var entity = new Parcel {
                 ParcelTimestamp = parcelTimestamp,
                 Type = type,
-                Status = ParcelStatus.Pending,
-                ExceptionType = null,
                 NoReadType = noReadType,
                 SorterCarrierId = sorterCarrierId,
                 SegmentCodes = segmentCodes,
@@ -339,6 +333,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
                 Coordinate = coordinate ?? string.Empty,
                 CreatedTime = DateTime.Now,
             };
+            entity.ApplyStatus(ParcelStatus.Pending, null);
             return entity;
         }
 
@@ -350,8 +345,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         /// </remarks>
         public void MarkCompleted(DateTime completedTime) {
             CompletedTime = completedTime;
-            Status = ParcelStatus.Completed;
-            ExceptionType = null;
+            ApplyStatus(ParcelStatus.Completed, null);
         }
 
         /// <summary>
@@ -367,8 +361,34 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
                 throw new ArgumentOutOfRangeException(nameof(exceptionType), "异常类型无效");
             }
 
-            Status = ParcelStatus.SortingException;
+            ApplyStatus(ParcelStatus.SortingException, exceptionType);
+        }
+
+        /// <summary>
+        /// 应用状态与异常类型，确保两者领域语义一致。
+        /// </summary>
+        /// <param name="status">目标状态。</param>
+        /// <param name="exceptionType">异常类型。</param>
+        private void ApplyStatus(ParcelStatus status, ParcelExceptionType? exceptionType) {
+            EnsureStatusExceptionTypeConsistency(status, exceptionType);
+            Status = status;
             ExceptionType = exceptionType;
+        }
+
+        /// <summary>
+        /// 校验状态与异常类型的一致性约束。
+        /// </summary>
+        /// <param name="status">目标状态。</param>
+        /// <param name="exceptionType">异常类型。</param>
+        /// <exception cref="InvalidOperationException">状态与异常类型组合无效时抛出。</exception>
+        private static void EnsureStatusExceptionTypeConsistency(ParcelStatus status, ParcelExceptionType? exceptionType) {
+            if (status == ParcelStatus.SortingException && exceptionType is null) {
+                throw new InvalidOperationException("分拣异常状态必须提供异常类型");
+            }
+
+            if (status != ParcelStatus.SortingException && exceptionType is not null) {
+                throw new InvalidOperationException("非分拣异常状态不允许包含异常类型");
+            }
         }
 
         /// <summary>
