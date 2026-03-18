@@ -2,6 +2,7 @@ using Polly;
 using System;
 using System.Linq;
 using System.Text;
+using System.Globalization;
 using Polly.Retry;
 using System.Threading.Tasks;
 using System.Collections.Generic;
@@ -12,6 +13,7 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding.Enums;
 
 namespace Zeye.Sorting.Hub.Host.HostedServices {
 
@@ -35,6 +37,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private const string ShardingPrebuildWindowHoursConfigKey = "Persistence:Sharding:Governance:PrebuildWindowHours";
         private const string ShardingRunbookConfigKey = "Persistence:Sharding:Governance:Runbook";
         private const string ShardingManualPrebuildGuardConfigKey = "Persistence:Sharding:Governance:EnableManualPrebuildGuard";
+        private const string ShardingPrebuiltPerDayDatesConfigKey = "Persistence:Sharding:Governance:PrebuiltPerDayDates";
         /// <summary>
         /// 字段：_serviceProvider。
         /// </summary>
@@ -70,6 +73,10 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private readonly string _shardingRunbook;
         /// <summary>是否启用“手工预建分表”治理守卫。</summary>
         private readonly bool _enableManualPrebuildGuard;
+        /// <summary>手工预建模式下已完成预建的日分表日期（本地日期）。</summary>
+        private readonly IReadOnlySet<DateTime> _prebuiltPerDayShardDates;
+        /// <summary>日分表预建日期配置解析错误集合。</summary>
+        private readonly IReadOnlyList<string> _prebuiltPerDayShardDateValidationErrors;
         /// <summary>Parcel 分表策略决策快照。</summary>
         private readonly ParcelShardingStrategyDecision _parcelShardingStrategyDecision;
         /// <summary>Parcel 分表策略配置校验错误集合。</summary>
@@ -102,6 +109,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _shardingPrebuildWindowHours = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, ShardingPrebuildWindowHoursConfigKey, 72);
             _shardingRunbook = NormalizeOptionalTextOrPlaceholder(configuration[ShardingRunbookConfigKey], NotConfiguredPlaceholder);
             _enableManualPrebuildGuard = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, ShardingManualPrebuildGuardConfigKey, true);
+            var prebuiltPerDayShards = ResolvePrebuiltPerDayShardDates(configuration);
+            _prebuiltPerDayShardDates = prebuiltPerDayShards.PrebuiltDates;
+            _prebuiltPerDayShardDateValidationErrors = prebuiltPerDayShards.ValidationErrors;
             var parcelShardingStrategyEvaluation = ParcelShardingStrategyEvaluator.Evaluate(configuration);
             _parcelShardingStrategyDecision = parcelShardingStrategyEvaluation.Decision;
             _parcelShardingStrategyValidationErrors = parcelShardingStrategyEvaluation.ValidationErrors;
@@ -275,6 +285,67 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
 
             return string.Equals(legacyPlan, placeholder, StringComparison.Ordinal) ? placeholder : legacyPlan;
+        }
+
+        /// <summary>
+        /// 日分表预建日期解析结果。
+        /// </summary>
+        /// <param name="PrebuiltDates">已预建日期集合（本地日期）。</param>
+        /// <param name="ValidationErrors">解析错误集合。</param>
+        internal readonly record struct PrebuiltPerDayShardDatesResolution(
+            IReadOnlySet<DateTime> PrebuiltDates,
+            IReadOnlyList<string> ValidationErrors);
+
+        /// <summary>
+        /// 解析手工预建的日分表日期清单（yyyy-MM-dd，本地时间语义）。
+        /// </summary>
+        /// <param name="configuration">配置源。</param>
+        /// <returns>解析结果。</returns>
+        internal static PrebuiltPerDayShardDatesResolution ResolvePrebuiltPerDayShardDates(IConfiguration configuration) {
+            ArgumentNullException.ThrowIfNull(configuration);
+
+            var parsedDates = new HashSet<DateTime>();
+            var validationErrors = new List<string>();
+            foreach (var item in configuration.GetSection(ShardingPrebuiltPerDayDatesConfigKey).GetChildren()) {
+                var raw = item.Value?.Trim();
+                if (string.IsNullOrWhiteSpace(raw)) {
+                    continue;
+                }
+
+                if (!DateTime.TryParseExact(
+                    raw,
+                    "yyyy-MM-dd",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeLocal,
+                    out var parsedDate)) {
+                    validationErrors.Add($"配置项 {ShardingPrebuiltPerDayDatesConfigKey} 包含非法日期：{raw}。格式必须为 yyyy-MM-dd。");
+                    continue;
+                }
+
+                parsedDates.Add(parsedDate.Date);
+            }
+
+            return new PrebuiltPerDayShardDatesResolution(
+                PrebuiltDates: parsedDates,
+                ValidationErrors: Array.AsReadOnly(validationErrors.ToArray()));
+        }
+
+        /// <summary>
+        /// 计算预建窗口内必须完成预建的日分表日期清单（含当前日期）。
+        /// </summary>
+        /// <param name="localNow">当前本地时间。</param>
+        /// <param name="prebuildWindowHours">预建窗口小时数。</param>
+        /// <returns>必需预建的日期清单。</returns>
+        internal static IReadOnlyList<DateTime> BuildRequiredPerDayShardDates(DateTime localNow, int prebuildWindowHours) {
+            var windowEndDate = localNow.AddHours(prebuildWindowHours).Date;
+            var cursor = localNow.Date;
+            var requiredDates = new List<DateTime>();
+            while (cursor <= windowEndDate) {
+                requiredDates.Add(cursor);
+                cursor = cursor.AddDays(1);
+            }
+
+            return requiredDates;
         }
 
         /// <summary>
@@ -458,10 +529,18 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 expansionPlanSummary);
 
             _logger.LogInformation(
-                "Parcel 分表策略决策：Mode={ParcelShardingMode}, EffectiveDateMode={ParcelEffectiveDateMode}, DecisionReason={DecisionReason}",
+                "Parcel 分表策略决策：Mode={ParcelShardingMode}, EffectiveDateMode={ParcelEffectiveDateMode}, ThresholdAction={ThresholdAction}, ThresholdReached={ThresholdReached}, ObservationSource={ObservationSource}, DecisionReason={DecisionReason}",
                 _parcelShardingStrategyDecision.Mode,
                 _parcelShardingStrategyDecision.EffectiveDateMode,
+                _parcelShardingStrategyDecision.ThresholdAction,
+                _parcelShardingStrategyDecision.ThresholdReached,
+                _parcelShardingStrategyDecision.VolumeObservation.Source,
                 _parcelShardingStrategyDecision.Reason);
+
+            if (_parcelShardingStrategyDecision.Mode is ParcelShardingStrategyMode.Volume or ParcelShardingStrategyMode.Hybrid) {
+                _logger.LogInformation(
+                    "Volume/Hybrid 语义说明：当前实现为“容量阈值驱动的时间粒度治理”，不是独立的按数据量物理分表引擎。");
+            }
 
             if (_parcelShardingStrategyValidationErrors.Count > 0) {
                 _logger.LogError(
@@ -469,13 +548,20 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     string.Join(" | ", _parcelShardingStrategyValidationErrors));
             }
 
+            if (_prebuiltPerDayShardDateValidationErrors.Count > 0) {
+                _logger.LogError(
+                    "检测到日分表预建日期配置校验失败：{ValidationErrors}",
+                    string.Join(" | ", _prebuiltPerDayShardDateValidationErrors));
+            }
+
             if (!_createShardingTableOnStarting) {
                 _logger.LogWarning(
-                    "分表自动创建已关闭，必须依赖外部预建流程：Provider={Provider}, PrebuildWindowHours={PrebuildWindowHours}, Runbook={Runbook}, EnableManualPrebuildGuard={EnableManualPrebuildGuard}",
+                    "分表自动创建已关闭，必须依赖外部预建流程：Provider={Provider}, PrebuildWindowHours={PrebuildWindowHours}, Runbook={Runbook}, EnableManualPrebuildGuard={EnableManualPrebuildGuard}, PrebuiltPerDayDatesCount={PrebuiltPerDayDatesCount}",
                     _dialect.ProviderName,
                     _shardingPrebuildWindowHours,
                     _shardingRunbook,
-                    _enableManualPrebuildGuard);
+                    _enableManualPrebuildGuard,
+                    _prebuiltPerDayShardDates.Count);
             }
 
             if (string.Equals(_shardingRunbook, NotConfiguredPlaceholder, StringComparison.Ordinal)) {
@@ -492,12 +578,18 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// 规则：
         /// 1) 当启动自动建表关闭且守卫开启时，必须配置 Runbook；
         /// 2) 结构化扩容计划的 TargetMod 必须大于 CurrentMod；
-        /// 3) 生产环境且手工预建模式下，结构化阶段列表不能为空。
+        /// 3) 生产环境且手工预建模式下，结构化阶段列表不能为空；
+        /// 4) 当策略生效为 PerDay 且手工预建模式开启时，必须校验预建窗口内目标日表均已预建。
         /// </remarks>
         private void ValidateShardingGovernanceGuard() {
             if (_parcelShardingStrategyValidationErrors.Count > 0) {
                 throw new ShardingGovernanceGuardException(
                     $"分表策略配置非法：{string.Join(" | ", _parcelShardingStrategyValidationErrors)}");
+            }
+
+            if (_prebuiltPerDayShardDateValidationErrors.Count > 0) {
+                throw new ShardingGovernanceGuardException(
+                    $"日分表预建配置非法：{string.Join(" | ", _prebuiltPerDayShardDateValidationErrors)}");
             }
 
             if (_createShardingTableOnStarting || !_enableManualPrebuildGuard) {
@@ -517,6 +609,20 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             if (_isProductionEnvironment && _hashShardingExpansionStages.Count == 0) {
                 throw new ShardingGovernanceGuardException(
                     $"分表治理守卫触发：生产环境要求使用结构化扩容计划，请至少配置 {HashShardingExpansionPlanStagesConfigKey}:0。");
+            }
+
+            if (_parcelShardingStrategyDecision.EffectiveDateMode != ExpandByDateMode.PerDay) {
+                return;
+            }
+
+            var requiredPrebuiltDates = BuildRequiredPerDayShardDates(DateTime.Now, _shardingPrebuildWindowHours);
+            var missingDates = requiredPrebuiltDates
+                .Where(requiredDate => !_prebuiltPerDayShardDates.Contains(requiredDate))
+                .Select(requiredDate => requiredDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))
+                .ToArray();
+            if (missingDates.Length > 0) {
+                throw new ShardingGovernanceGuardException(
+                    $"分表治理守卫触发：当前策略已生效为 PerDay，且 {CreateShardingTableOnStartingConfigKey}=false。请先完成目标日表预建并配置 {ShardingPrebuiltPerDayDatesConfigKey}，缺失日期：{string.Join(", ", missingDates)}。");
             }
         }
 
