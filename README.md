@@ -114,6 +114,8 @@
 │   │   │   ├── 20260317024345_UseAttributeBasedIndexesAndPrecision.Designer.cs（迁移元数据，自动生成）
 │   │   │   ├── 20260317062930_SplitParcelStatusAndExceptionType.cs（Parcel 状态拆分与异常类型字段迁移）
 │   │   │   ├── 20260317062930_SplitParcelStatusAndExceptionType.Designer.cs（迁移元数据，自动生成）
+│   │   │   ├── 20260318024421_OptimizeParcelAggregateQueryIndexes.cs（Parcel 聚合高频查询索引优化迁移）
+│   │   │   ├── 20260318024421_OptimizeParcelAggregateQueryIndexes.Designer.cs（迁移元数据，自动生成）
 │   │   │   └── SortingHubDbContextModelSnapshot.cs（当前模型快照，自动生成）
 │   │   └── SortingHubDbContext.cs（EF Core DbContext）
 │   ├── Repositories（仓储基类与结果模型目录）
@@ -290,6 +292,8 @@
 - `20260317024345_UseAttributeBasedIndexesAndPrecision.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
 - `20260317062930_SplitParcelStatusAndExceptionType.cs`：Parcel 状态三态收敛后新增 `ExceptionType` 可空字段迁移。
 - `20260317062930_SplitParcelStatusAndExceptionType.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
+- `20260318024421_OptimizeParcelAggregateQueryIndexes.cs`：Parcel 聚合高频查询索引优化迁移（离散条件 + 时间范围复合索引）。
+- `20260318024421_OptimizeParcelAggregateQueryIndexes.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
 - `SortingHubDbContextModelSnapshot.cs`：当前模型快照，EF Core 用于计算下次迁移的差量（自动生成，勿手动修改）。
 
 #### `Zeye.Sorting.Hub.Infrastructure/Repositories/`：仓储基类与结果模型目录
@@ -436,3 +440,15 @@
 1. 在 CI 中增加"压测数据自动清理"步骤，防止种子数据影响正式环境。
 2. 将 sysbench 压测脚本封装为可复用的 Shell/Makefile 目标，纳入仓库 `scripts/` 目录管理。
 3. 接入 Prometheus + Grafana，将 AutoTuning 的分表观测指标（命中率、倾斜度、跨表查询占比）可视化，实现压测期间实时大盘监控。
+
+## 本次更新内容（Parcel 聚合查询索引优化）
+
+1. **主表索引优化**：在 `ParcelEntityTypeConfiguration` 中按“等值过滤列在前，时间范围列在后”新增/调整索引：`CreatedTime`、`(Status, ScannedTime)`、`(NoReadType, ScannedTime)`、`(RequestStatus, ScannedTime)`、`(Status, ExceptionType, ScannedTime)`、`(ActualChuteId, DischargeTime)`、`(TargetChuteId, ScannedTime)`、`(WorkstationName, ScannedTime)`，并保留 `ParcelTimestamp`、`ScannedTime`、`BagCode` 单列索引。
+2. **条码表索引优化**：将 `Parcel_BarCodeInfos` 的条码查询索引优化为 `(BarCode, ParcelId)`，优先支撑按条码回表到 Parcel 的高频场景，避免优先在 `Parcels.BarCodes` 长字符串字段上建普通索引。
+3. **领域一致性补强**：在 `Parcel` 聚合内新增状态-异常类型一致性守卫，确保 `Status != SortingException` 时 `ExceptionType == null`，且 `Status == SortingException` 时 `ExceptionType != null`。
+4. **新增迁移文件**：补充 `20260318024421_OptimizeParcelAggregateQueryIndexes` 迁移与快照更新，确保数据库结构与模型一致。
+
+## 后续可完善点（Parcel 索引治理）
+
+1. 基于线上慢查询与执行计划，评估 `BagCode` 是否升级为 `(BagCode, ScannedTime)` 复合索引。
+2. 针对高并发写入场景持续评估复合索引数量与写放大成本，必要时按读写占比做索引分层（核心索引/可选索引）。
