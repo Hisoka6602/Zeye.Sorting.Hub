@@ -6,7 +6,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
     /// <summary>自动调优配置读取辅助方法（集中管理，避免多处影分身副本）。</summary>
     public static class AutoTuningConfigurationHelper {
         private const string AutoTuningConfigPrefix = "Persistence:AutoTuning";
-        private const string AutonomousConfigPrefix = $"{AutoTuningConfigPrefix}:Autonomous";
+        private const string AutonomousConfigPrefix = "Persistence:AutoTuning:Autonomous";
 
         /// <summary>构建 AutoTuning 配置全路径键名。</summary>
         public static string BuildAutoTuningKey(string suffix) => $"{AutoTuningConfigPrefix}:{suffix}";
@@ -110,7 +110,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             return value.Kind switch {
                 DateTimeKind.Unspecified => DateTime.SpecifyKind(value, DateTimeKind.Local),
                 DateTimeKind.Local => value,
-                _ => throw new InvalidOperationException("仅支持本地时间语义，请勿传入 UTC 或带 offset 的时间值。")
+                _ => throw new InvalidOperationException("仅支持本地时间语义，请勿传入 UTC 时间值。")
             };
         }
     }

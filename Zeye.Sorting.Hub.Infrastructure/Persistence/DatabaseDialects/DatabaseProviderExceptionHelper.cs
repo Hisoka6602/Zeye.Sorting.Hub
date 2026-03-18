@@ -27,6 +27,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
         /// <param name="maxColumnCount">允许参与索引构造的最大列数。</param>
         /// <returns>归一化后的列数组。</returns>
         public static string[] NormalizeWhereColumns(IReadOnlyList<string> whereColumns, int maxColumnCount) {
+            ArgumentNullException.ThrowIfNull(whereColumns);
             if (whereColumns.Count == 0 || maxColumnCount <= 0) {
                 return [];
             }
@@ -47,6 +48,15 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
         /// <param name="maxLength">最大长度约束。</param>
         /// <returns>稳定且可复现的索引名。</returns>
         public static string BuildIndexName(string? schemaName, string tableName, IReadOnlyList<string> columns, int maxLength) {
+            ArgumentException.ThrowIfNullOrWhiteSpace(tableName);
+            ArgumentNullException.ThrowIfNull(columns);
+            if (columns.Count == 0) {
+                throw new ArgumentException("索引列不能为空。", nameof(columns));
+            }
+            if (maxLength <= 0) {
+                throw new ArgumentOutOfRangeException(nameof(maxLength), "最大长度必须大于 0。");
+            }
+
             var schemaPart = schemaName ?? string.Empty;
             var seed = $"{schemaPart}:{tableName}:{string.Join(",", columns)}";
             var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(seed));

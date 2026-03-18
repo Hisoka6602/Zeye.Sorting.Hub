@@ -224,7 +224,7 @@ public sealed class AutoTuningProductionControlTests {
     /// </summary>
     [Fact]
     public void Dialect_IndexNameHash_ShouldStayConsistentAcrossProviders() {
-        var whereColumns = (IReadOnlyList<string>)["col_a", "col_b"];
+        IReadOnlyList<string> whereColumns = new[] { "col_a", "col_b" };
         var mySqlCreateIndexSql = new MySqlDialect().BuildAutomaticTuningSql("demo", "parcel", whereColumns)[0];
         var sqlServerCreateIndexSql = new SqlServerDialect().BuildAutomaticTuningSql("demo", "parcel", whereColumns)[0];
 
