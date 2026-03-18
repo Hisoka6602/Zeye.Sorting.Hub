@@ -87,7 +87,7 @@
 │   └── Zeye.Sorting.Hub.Host.Tests.csproj（xUnit 测试项目定义）
 ├── Zeye.Sorting.Hub.Infrastructure（基础设施层）
 │   ├── DependencyInjection（依赖注入扩展目录）
-│   │   └── PersistenceServiceCollectionExtensions.cs（持久化服务注册扩展（数据库提供器选择、连接字符串校验、DbContext 注册、分表规则与覆盖守卫；性能参数读取直接复用 AutoTuningConfigurationHelper，无中间转发））
+│   │   └── PersistenceServiceCollectionExtensions.cs（持久化服务注册扩展（数据库提供器选择、连接字符串校验、DbContext 注册、分表规则与覆盖守卫；Parcel 主表始终按 CreatedTime 路由，时间/容量/混合策略决策由统一评估器驱动））
 │   ├── EntityConfigurations（EF Core 映射配置目录）
 │   │   ├── BagInfoEntityTypeConfiguration.cs（BagInfo 映射配置）
 │   │   └── ParcelEntityTypeConfiguration.cs（Parcel 映射配置）
@@ -99,6 +99,12 @@
 │   │   │   ├── SlowQueryAutoTuningPipeline.cs（慢查询采集、TopN 聚合、阈值告警（含基础防抖）与闭环自治结构化建议编排管道；新增主表提取公共方法供 AutoTuning 主链路复用）
 │   │   │   ├── SlowQueryCommandInterceptor.cs（EF Core 慢查询采集拦截器）
 │   │   │   └── SlowQuerySample.cs（慢查询采样记录模型）
+│   │   ├── Sharding（分表策略与治理决策目录）
+│   │   │   ├── ParcelShardingStrategyEvaluator.cs（Parcel 分表策略评估器：配置解析、结构化校验、阈值决策与最终时间粒度决策）
+│   │   │   └── Enums（分表策略枚举目录）
+│   │   │       ├── ParcelShardingStrategyMode.cs（分表模式枚举：Time/Volume/Hybrid）
+│   │   │       ├── ParcelTimeShardingGranularity.cs（时间粒度枚举：PerMonth/PerDay）
+│   │   │       └── ParcelVolumeThresholdAction.cs（容量阈值动作枚举：AlertOnly/SwitchToPerDay）
 │   │   ├── DatabaseDialects（数据库方言目录）
 │   │   │   ├── DatabaseProviderExceptionHelper.cs（数据库异常错误码提取与方言共享索引构造辅助类）
 │   │   │   ├── IDatabaseDialect.cs（数据库方言接口）
@@ -243,7 +249,7 @@
 - `Worker.cs`：后台轮询任务示例服务。
 - `Zeye.Sorting.Hub.Host.csproj`：Host 项目定义。
 - `nlog.config`：NLog 日志配置，双路落盘（`logs/app-*.log` 全量 + `logs/database-*.log` 数据库专属），低开销设计（异步队列 + keepFileOpen + optimizeBufferReuse），保留 30 天。
-- `appsettings.json`：默认运行配置（包含连接字符串、迁移失败策略分环境配置、分表治理守卫、结构化扩容计划、日志级别与自动调优参数）。
+- `appsettings.json`：默认运行配置（包含连接字符串、迁移失败策略分环境配置、分表治理守卫、Time/Volume/Hybrid 双策略配置、结构化扩容计划、日志级别与自动调优参数）。
 - `appsettings.Development.json`：开发环境配置覆盖文件。
 
 #### `Zeye.Sorting.Hub.Host/Enums/`：宿主层枚举目录
@@ -252,7 +258,7 @@
 #### `Zeye.Sorting.Hub.Host/HostedServices/`：启动/常驻托管服务目录
 - `AutoTuningLoggerObservability.cs`：自动调优观测默认日志实现（统一日志 + 指标抽象默认落地）。
 - `DatabaseAutoTuningHostedService.cs`：数据库自动调谐托管服务（显式闭环阶段迁移、执行隔离、标准化自动验证结果、回滚触发与审计日志；分表观测指标基于全量慢 SQL 解析并覆盖子查询/集合运算场景；自动索引建议在执行前统一执行覆盖、语义重复、低价值过滤）。
-- `DatabaseInitializerHostedService.cs`：数据库初始化与迁移托管服务（支持生产/非生产迁移失败策略分流：FailFast/Degraded；启动期执行分表治理程序化守卫，校验手工预建 Runbook 与结构化扩容计划完整性）。
+- `DatabaseInitializerHostedService.cs`：数据库初始化与迁移托管服务（支持生产/非生产迁移失败策略分流：FailFast/Degraded；启动期执行分表治理程序化守卫，新增 Time/Volume/Hybrid 策略配置校验与审计输出，校验手工预建 Runbook 与结构化扩容计划完整性）。
 
 #### `Zeye.Sorting.Hub.Host/Properties/`：项目运行调试属性目录
 - `launchSettings.json`：本地启动配置（Profile、环境变量等）。
@@ -261,7 +267,7 @@
 - `Zeye.Sorting.Hub.Infrastructure.csproj`：Infrastructure 项目定义。
 
 #### `Zeye.Sorting.Hub.Infrastructure/DependencyInjection/`：依赖注入扩展目录
-- `PersistenceServiceCollectionExtensions.cs`：持久化服务注册扩展（数据库提供器选择、连接字符串校验、DbContext 注册、Parcel 按 CreatedTime 月分表，支持 `CreateShardingTableOnStarting` 与 `ParcelRelatedHashShardingMod` 配置化；Parcel 关联值对象分表规则改为声明式清单统一注册，覆盖守卫直接复用同一清单，避免手工长列表双处膨胀）。
+- `PersistenceServiceCollectionExtensions.cs`：持久化服务注册扩展（数据库提供器选择、连接字符串校验、DbContext 注册、Parcel 主表保持按 `CreatedTime` 分表；分表时间粒度由 Time/Volume/Hybrid 统一策略决策驱动，Parcel 关联值对象规则继续复用声明式清单与覆盖守卫）。
 
 #### `Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/`：EF Core 实体映射配置目录
 - `BagInfoEntityTypeConfiguration.cs`：BagInfo 映射配置。
@@ -283,6 +289,14 @@
 - `SlowQueryAutoTuningPipeline.cs`：慢查询采集、TopN 聚合、阈值告警（含基础防抖）与闭环自治结构化建议编排管道（配置键拼装复用 `AutoTuningConfigurationHelper`，并提供主表提取公共方法供 HostedService 与建议编排共用）。
 - `SlowQueryCommandInterceptor.cs`：EF Core 慢查询采集拦截器。
 - `SlowQuerySample.cs`：慢查询采样记录模型。
+
+##### `Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding/`：分表策略与治理决策目录
+- `ParcelShardingStrategyEvaluator.cs`：Parcel 分表策略评估器（分表模式/时间粒度/容量阈值/阈值动作配置解析，结构化校验，治理决策输出，复用于注册入口与启动审计守卫）。
+
+###### `Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding/Enums/`：分表策略枚举目录
+- `ParcelShardingStrategyMode.cs`：分表模式枚举（`Time` / `Volume` / `Hybrid`，含 `Description`）。
+- `ParcelTimeShardingGranularity.cs`：时间分表粒度枚举（`PerMonth` / `PerDay`，含 `Description`）。
+- `ParcelVolumeThresholdAction.cs`：容量阈值动作枚举（`AlertOnly` / `SwitchToPerDay`，含 `Description`）。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/DesignTime/`：EF 设计时支持目录
 - `MySqlContextFactory.cs`：MySQL 设计时 DbContext 工厂（实现 `IDesignTimeDbContextFactory<SortingHubDbContext>`），供 `dotnet ef migrations add/remove/list` 等 CLI 命令在无宿主进程时构建 DbContext；连接字符串从 `appsettings.json` 的 `ConnectionStrings:MySql` 读取，版本采用 AutoDetect → 兜底 8.0 两级策略。
@@ -318,7 +332,7 @@
 
 ### `Zeye.Sorting.Hub.Host.Tests/`：自动调优测试层
 - `Zeye.Sorting.Hub.Host.Tests.csproj`：xUnit 测试项目定义。
-- `AutoTuningProductionControlTests.cs`：覆盖 dry-run、危险动作隔离、告警防抖与恢复、普通/严重回归、unavailable 指标处理、执行计划探针 available/unavailable 双路径、闭环链路与分表覆盖守卫校验、迁移失败策略分环境解析、结构化扩容计划解析与分表观测口径/自动索引过滤规则回归。
+- `AutoTuningProductionControlTests.cs`：覆盖 dry-run、危险动作隔离、告警防抖与恢复、普通/严重回归、unavailable 指标处理、执行计划探针 available/unavailable 双路径、闭环链路与分表覆盖守卫校验、迁移失败策略分环境解析、结构化扩容计划解析、Time/Volume/Hybrid 分表策略评估与分表观测口径/自动索引过滤规则回归。
 
 ## 本次更新内容（新增 Parcel 属性操作指南文档）
 
@@ -337,6 +351,22 @@
 1. 在 CI 中增加“下周期分表预建校验”门禁（按 PrebuildWindowHours 自动检查）。
 2. 为 `ExpansionPlan` 增加结构化字段（阶段、窗口、回滚脚本路径），替代纯文本描述。
 3. 将三项分表指标接入 Prometheus/Grafana 告警面板，补齐阈值化运营闭环。
+
+## 本次更新内容（分表双策略可配置治理）
+
+1. **新增分表策略配置模型与决策骨架**：在 `Persistence:Sharding:Strategy` 下支持 `Mode(Time/Volume/Hybrid)`、`Time.Granularity(PerMonth/PerDay)`、`Volume.MaxRowsPerShard`、`Volume.HotThresholdRatio`、`Volume.ActionOnThreshold(AlertOnly/SwitchToPerDay)`，并提供观测值字段用于阈值决策。
+2. **统一策略评估入口（不新增平行框架）**：新增 `ParcelShardingStrategyEvaluator`，统一输出结构化校验结果与决策快照；`PersistenceServiceCollectionExtensions.ConfigureParcelAggregateSharding` 与 `DatabaseInitializerHostedService` 均复用该入口，避免影分身逻辑。
+3. **注册入口收敛到现有分表链路**：继续使用 `ConfigureParcelAggregateSharding + ParcelAggregateShardingRules` 注册，不复制新框架；在保持 Parcel 主表分片字段为 `CreatedTime` 的前提下，根据策略决策动态选择 `PerMonth/PerDay`，并同步驱动日期型值对象分表粒度。
+4. **治理守卫与审计补强**：`DatabaseInitializerHostedService` 新增分表策略校验失败日志与启动期守卫阻断（结构化错误清单），并在治理基线日志输出当前策略模式、阈值动作、阈值命中状态与最终粒度决策。
+5. **边界保持不变（显式声明）**：
+   - Bootstrap SQL 仍保持“失败告警后继续（degraded）”语义，本次未改为 fail-fast。
+   - Parcel 主表仍按 `CreatedTime` 作为主分表依据，本次未改为 `ScannedTime`。
+
+## 后续可完善点（分表双策略）
+
+1. 将 `CurrentEstimatedRowsPerShard` / `CurrentObservedHotRatio` 从手工配置升级为真实观测源（数据库统计表或可观测指标），减少人工维护成本。
+2. 在隔离器框架下补充“阈值命中后的自动切换编排（开关 + dry-run + 审计 + 回滚脚本）”，逐步从决策骨架演进到安全可控的自动化治理。
+3. 为 Time/Volume/Hybrid 策略增加分环境差异化模板（生产更保守、压测环境更激进）与 CI 配置校验门禁。
 
 ## 本次更新内容（代码质量审查与缺陷修复）
 

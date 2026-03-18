@@ -11,6 +11,7 @@ using Zeye.Sorting.Hub.Host.Enums;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 
 namespace Zeye.Sorting.Hub.Host.HostedServices {
 
@@ -69,6 +70,10 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private readonly string _shardingRunbook;
         /// <summary>是否启用“手工预建分表”治理守卫。</summary>
         private readonly bool _enableManualPrebuildGuard;
+        /// <summary>Parcel 分表策略决策快照。</summary>
+        private readonly ParcelShardingStrategyDecision _parcelShardingStrategyDecision;
+        /// <summary>Parcel 分表策略配置校验错误集合。</summary>
+        private readonly IReadOnlyList<string> _parcelShardingStrategyValidationErrors;
 
         /// <summary>
         /// 字段：_retryPolicy。
@@ -97,6 +102,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _shardingPrebuildWindowHours = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, ShardingPrebuildWindowHoursConfigKey, 72);
             _shardingRunbook = NormalizeOptionalTextOrPlaceholder(configuration[ShardingRunbookConfigKey], NotConfiguredPlaceholder);
             _enableManualPrebuildGuard = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, ShardingManualPrebuildGuardConfigKey, true);
+            var parcelShardingStrategyEvaluation = ParcelShardingStrategyEvaluator.Evaluate(configuration);
+            _parcelShardingStrategyDecision = parcelShardingStrategyEvaluation.Decision;
+            _parcelShardingStrategyValidationErrors = parcelShardingStrategyEvaluation.ValidationErrors;
 
             _retryPolicy = Policy
                 .Handle<Exception>(ex => ex is not OperationCanceledException)
@@ -449,6 +457,18 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 _hashShardingExpansionTriggerRatio,
                 expansionPlanSummary);
 
+            _logger.LogInformation(
+                "Parcel 分表策略决策：Mode={ParcelShardingMode}, EffectiveDateMode={ParcelEffectiveDateMode}, DecisionReason={DecisionReason}",
+                _parcelShardingStrategyDecision.Mode,
+                _parcelShardingStrategyDecision.EffectiveDateMode,
+                _parcelShardingStrategyDecision.Reason);
+
+            if (_parcelShardingStrategyValidationErrors.Count > 0) {
+                _logger.LogError(
+                    "检测到 Parcel 分表策略配置校验失败：{ValidationErrors}",
+                    string.Join(" | ", _parcelShardingStrategyValidationErrors));
+            }
+
             if (!_createShardingTableOnStarting) {
                 _logger.LogWarning(
                     "分表自动创建已关闭，必须依赖外部预建流程：Provider={Provider}, PrebuildWindowHours={PrebuildWindowHours}, Runbook={Runbook}, EnableManualPrebuildGuard={EnableManualPrebuildGuard}",
@@ -475,6 +495,11 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// 3) 生产环境且手工预建模式下，结构化阶段列表不能为空。
         /// </remarks>
         private void ValidateShardingGovernanceGuard() {
+            if (_parcelShardingStrategyValidationErrors.Count > 0) {
+                throw new ShardingGovernanceGuardException(
+                    $"分表策略配置非法：{string.Join(" | ", _parcelShardingStrategyValidationErrors)}");
+            }
+
             if (_createShardingTableOnStarting || !_enableManualPrebuildGuard) {
                 return;
             }

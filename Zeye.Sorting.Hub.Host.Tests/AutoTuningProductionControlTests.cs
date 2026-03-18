@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using EFCore.Sharding;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -13,6 +14,8 @@ using Zeye.Sorting.Hub.Host.HostedServices;
 using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding.Enums;
 
 namespace Zeye.Sorting.Hub.Host.Tests;
 
@@ -218,6 +221,195 @@ public sealed class AutoTuningProductionControlTests {
             legacyPlan: "16->32 text",
             placeholder: "未配置");
         Assert.Equal("16->32 text", fallbackSummary);
+    }
+
+    /// <summary>
+    /// 验证场景：ParcelShardingStrategyEvaluator_HybridModeSwitchesToPerDay_WhenThresholdReached。
+    /// </summary>
+    [Fact]
+    public void ParcelShardingStrategyEvaluator_HybridModeSwitchesToPerDay_WhenThresholdReached() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:Sharding:Strategy:Mode"] = "Hybrid",
+                ["Persistence:Sharding:Strategy:Time:Granularity"] = "PerMonth",
+                ["Persistence:Sharding:Strategy:Volume:ActionOnThreshold"] = "SwitchToPerDay",
+                ["Persistence:Sharding:Strategy:Volume:MaxRowsPerShard"] = "1000",
+                ["Persistence:Sharding:Strategy:Volume:CurrentEstimatedRowsPerShard"] = "1500",
+                ["Persistence:Sharding:Strategy:Volume:HotThresholdRatio"] = "0.8",
+                ["Persistence:Sharding:Strategy:Volume:CurrentObservedHotRatio"] = "0.5"
+            })
+            .Build();
+
+        var evaluation = ParcelShardingStrategyEvaluator.Evaluate(configuration);
+
+        Assert.Empty(evaluation.ValidationErrors);
+        Assert.Equal(ParcelShardingStrategyMode.Hybrid, evaluation.Decision.Mode);
+        Assert.True(evaluation.Decision.ThresholdReached);
+        Assert.Equal(ExpandByDateMode.PerDay, evaluation.Decision.EffectiveDateMode);
+    }
+
+    /// <summary>
+    /// 验证场景：ParcelShardingStrategyEvaluator_HybridModeSwitchesToPerDay_WhenHotThresholdReachedOnly。
+    /// </summary>
+    [Fact]
+    public void ParcelShardingStrategyEvaluator_HybridModeSwitchesToPerDay_WhenHotThresholdReachedOnly() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:Sharding:Strategy:Mode"] = "Hybrid",
+                ["Persistence:Sharding:Strategy:Time:Granularity"] = "PerMonth",
+                ["Persistence:Sharding:Strategy:Volume:ActionOnThreshold"] = "SwitchToPerDay",
+                ["Persistence:Sharding:Strategy:Volume:MaxRowsPerShard"] = "1000",
+                ["Persistence:Sharding:Strategy:Volume:CurrentEstimatedRowsPerShard"] = "900",
+                ["Persistence:Sharding:Strategy:Volume:HotThresholdRatio"] = "0.8",
+                ["Persistence:Sharding:Strategy:Volume:CurrentObservedHotRatio"] = "0.9"
+            })
+            .Build();
+
+        var evaluation = ParcelShardingStrategyEvaluator.Evaluate(configuration);
+
+        Assert.Empty(evaluation.ValidationErrors);
+        Assert.True(evaluation.Decision.ThresholdReached);
+        Assert.Equal(ExpandByDateMode.PerDay, evaluation.Decision.EffectiveDateMode);
+        Assert.Contains("Trigger=hot", evaluation.Decision.Reason, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// 验证场景：ParcelShardingStrategyEvaluator_TimeModeUsesConfiguredGranularity。
+    /// </summary>
+    [Fact]
+    public void ParcelShardingStrategyEvaluator_TimeModeUsesConfiguredGranularity() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:Sharding:Strategy:Mode"] = "Time",
+                ["Persistence:Sharding:Strategy:Time:Granularity"] = "PerDay"
+            })
+            .Build();
+
+        var evaluation = ParcelShardingStrategyEvaluator.Evaluate(configuration);
+
+        Assert.Empty(evaluation.ValidationErrors);
+        Assert.Equal(ParcelShardingStrategyMode.Time, evaluation.Decision.Mode);
+        Assert.Equal(ExpandByDateMode.PerDay, evaluation.Decision.EffectiveDateMode);
+        Assert.False(evaluation.Decision.ThresholdReached);
+    }
+
+    /// <summary>
+    /// 验证场景：ParcelShardingStrategyEvaluator_TimeMode_ShouldIgnoreInvalidVolumeConfig。
+    /// </summary>
+    [Fact]
+    public void ParcelShardingStrategyEvaluator_TimeMode_ShouldIgnoreInvalidVolumeConfig() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:Sharding:Strategy:Mode"] = "Time",
+                ["Persistence:Sharding:Strategy:Time:Granularity"] = "PerMonth",
+                ["Persistence:Sharding:Strategy:Volume:ActionOnThreshold"] = "invalid",
+                ["Persistence:Sharding:Strategy:Volume:MaxRowsPerShard"] = "-1",
+                ["Persistence:Sharding:Strategy:Volume:HotThresholdRatio"] = "invalid"
+            })
+            .Build();
+
+        var evaluation = ParcelShardingStrategyEvaluator.Evaluate(configuration);
+
+        Assert.Empty(evaluation.ValidationErrors);
+        Assert.Equal(ParcelShardingStrategyMode.Time, evaluation.Decision.Mode);
+    }
+
+    /// <summary>
+    /// 验证场景：ParcelShardingStrategyEvaluator_ShouldRejectNumericEnumValues。
+    /// </summary>
+    [Fact]
+    public void ParcelShardingStrategyEvaluator_ShouldRejectNumericEnumValues() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:Sharding:Strategy:Mode"] = "1",
+                ["Persistence:Sharding:Strategy:Time:Granularity"] = "1"
+            })
+            .Build();
+
+        var evaluation = ParcelShardingStrategyEvaluator.Evaluate(configuration);
+
+        Assert.NotEmpty(evaluation.ValidationErrors);
+        Assert.Contains(evaluation.ValidationErrors, message => message.Contains("Strategy:Mode", StringComparison.Ordinal));
+        Assert.Contains(evaluation.ValidationErrors, message => message.Contains("Strategy:Time:Granularity", StringComparison.Ordinal));
+        Assert.Equal(ParcelShardingStrategyMode.Time, evaluation.Decision.Mode);
+        Assert.Equal(ExpandByDateMode.PerMonth, evaluation.Decision.EffectiveDateMode);
+    }
+
+    /// <summary>
+    /// 验证场景：ParcelShardingStrategyEvaluator_ShouldRejectNumericThresholdAction。
+    /// </summary>
+    [Fact]
+    public void ParcelShardingStrategyEvaluator_ShouldRejectNumericThresholdAction() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:Sharding:Strategy:Mode"] = "Hybrid",
+                ["Persistence:Sharding:Strategy:Time:Granularity"] = "PerMonth",
+                ["Persistence:Sharding:Strategy:Volume:ActionOnThreshold"] = "1",
+                ["Persistence:Sharding:Strategy:Volume:MaxRowsPerShard"] = "1000",
+                ["Persistence:Sharding:Strategy:Volume:CurrentEstimatedRowsPerShard"] = "0",
+                ["Persistence:Sharding:Strategy:Volume:HotThresholdRatio"] = "0.8"
+            })
+            .Build();
+
+        var evaluation = ParcelShardingStrategyEvaluator.Evaluate(configuration);
+
+        Assert.Contains(evaluation.ValidationErrors, message => message.Contains("ActionOnThreshold", StringComparison.Ordinal));
+        Assert.Equal(ParcelVolumeThresholdAction.AlertOnly, evaluation.Decision.ThresholdAction);
+    }
+
+    /// <summary>
+    /// 验证场景：ParcelShardingStrategyEvaluator_ValidationErrors_ShouldBeImmutableSnapshot。
+    /// </summary>
+    [Fact]
+    public void ParcelShardingStrategyEvaluator_ValidationErrors_ShouldBeImmutableSnapshot() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:Sharding:Strategy:Mode"] = "Volume"
+            })
+            .Build();
+
+        var evaluation = ParcelShardingStrategyEvaluator.Evaluate(configuration);
+
+        Assert.True(evaluation.ValidationErrors.Count > 0);
+        Assert.Throws<NotSupportedException>(() => ((IList<string>)evaluation.ValidationErrors)[0] = "mutate");
+    }
+
+    /// <summary>
+    /// 验证场景：ParcelShardingStrategyEvaluator_ReportsValidationErrors_WhenVolumeConfigMissing。
+    /// </summary>
+    [Fact]
+    public void ParcelShardingStrategyEvaluator_ReportsValidationErrors_WhenVolumeConfigMissing() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:Sharding:Strategy:Mode"] = "Volume",
+                ["Persistence:Sharding:Strategy:Volume:ActionOnThreshold"] = "AlertOnly"
+            })
+            .Build();
+
+        var evaluation = ParcelShardingStrategyEvaluator.Evaluate(configuration);
+
+        Assert.NotEmpty(evaluation.ValidationErrors);
+        Assert.Contains(evaluation.ValidationErrors, message => message.Contains("MaxRowsPerShard", StringComparison.Ordinal));
+        Assert.Contains(evaluation.ValidationErrors, message => message.Contains("HotThresholdRatio", StringComparison.Ordinal));
+        Assert.Equal(ExpandByDateMode.PerMonth, evaluation.Decision.EffectiveDateMode);
+    }
+
+    /// <summary>
+    /// 验证场景：AddSortingHubPersistence_ShouldFailFast_WhenShardingStrategyInvalid。
+    /// </summary>
+    [Fact]
+    public void AddSortingHubPersistence_ShouldFailFast_WhenShardingStrategyInvalid() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:Provider"] = "MySql",
+                ["ConnectionStrings:MySql"] = "Server=127.0.0.1;Port=3306;Database=test;Uid=root;Pwd=Admin@1234;",
+                ["Persistence:Sharding:Strategy:Mode"] = "9"
+            })
+            .Build();
+        var services = new ServiceCollection();
+
+        var exception = Assert.Throws<InvalidOperationException>(() => services.AddSortingHubPersistence(configuration));
+        Assert.Contains("分表策略配置校验失败", exception.Message, StringComparison.Ordinal);
     }
 
     /// <summary>
