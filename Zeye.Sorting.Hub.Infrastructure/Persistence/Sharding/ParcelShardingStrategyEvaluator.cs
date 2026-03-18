@@ -174,6 +174,16 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
         private const string VolumeFinerBucketCountConfigKey = "Persistence:Sharding:Strategy:Volume:FinerGranularity:Bucket:BucketCount";
 
         /// <summary>
+        /// BucketedPerDay 模式允许的最小桶数量。
+        /// </summary>
+        private const int MinBucketCount = 2;
+
+        /// <summary>
+        /// BucketedPerDay 模式允许的最大桶数量。
+        /// </summary>
+        private const int MaxBucketCount = 128;
+
+        /// <summary>
         /// 评估分表策略配置并产出决策与校验结果。
         /// </summary>
         /// <param name="configuration">配置源。</param>
@@ -325,11 +335,33 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
                 validationErrors);
             var requirePrebuildGuard = ReadBooleanOrDefault(configuration[VolumeFinerRequirePrebuildConfigKey], true);
             var bucketCount = ReadOptionalPositiveInt(configuration[VolumeFinerBucketCountConfigKey], VolumeFinerBucketCountConfigKey, validationErrors);
-            if (mode == ParcelFinerGranularityMode.BucketedPerDay && !bucketCount.HasValue) {
-                validationErrors.Add($"配置项 {VolumeFinerBucketCountConfigKey} 必填，且需为正整数（当前 ModeWhenPerDayStillHot=BucketedPerDay）。");
-            }
+            ValidateBucketedPerDayConfiguration(mode, bucketCount, validationErrors);
 
             return new ParcelFinerGranularityStrategySnapshot(mode, lifecycle, requirePrebuildGuard, bucketCount);
+        }
+
+        /// <summary>
+        /// 校验 BucketedPerDay 模式的必填参数完整性。
+        /// </summary>
+        /// <param name="mode">finer-granularity 模式。</param>
+        /// <param name="bucketCount">bucket 数量。</param>
+        /// <param name="validationErrors">错误集合。</param>
+        private static void ValidateBucketedPerDayConfiguration(
+            ParcelFinerGranularityMode mode,
+            int? bucketCount,
+            ICollection<string> validationErrors) {
+            if (mode != ParcelFinerGranularityMode.BucketedPerDay) {
+                return;
+            }
+
+            if (!bucketCount.HasValue) {
+                validationErrors.Add($"配置项 {VolumeFinerBucketCountConfigKey} 必填，且需为正整数（当前 ModeWhenPerDayStillHot=BucketedPerDay）。");
+                return;
+            }
+
+            if (bucketCount.Value is < MinBucketCount or > MaxBucketCount) {
+                validationErrors.Add($"配置项 {VolumeFinerBucketCountConfigKey} 值非法：{bucketCount.Value}。范围必须在 {MinBucketCount}~{MaxBucketCount}。");
+            }
         }
 
         /// <summary>
@@ -623,15 +655,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
                 return new ParcelFinerGranularityExtensionPlan(
                     ShouldPlanExtension: false,
                     SuggestedMode: ParcelFinerGranularityMode.None,
-                    Lifecycle: finerGranularityStrategy.Lifecycle,
+                    Lifecycle: ParcelFinerGranularityPlanLifecycle.PlanOnly,
                     RequiresPrebuildGuard: false,
-                    Reason: $"not-triggered; Trigger={thresholdTrigger}; EffectiveDateMode={effectiveDateMode}");
-            }
-
-            var reason = $"per-day-still-hot-planning; Trigger={thresholdTrigger}; SuggestedMode={finerGranularityStrategy.ModeWhenPerDayStillHot}; Lifecycle={finerGranularityStrategy.Lifecycle}";
-            if (finerGranularityStrategy.ModeWhenPerDayStillHot == ParcelFinerGranularityMode.BucketedPerDay
-                && finerGranularityStrategy.BucketCount.HasValue) {
-                reason = $"{reason}; BucketCount={finerGranularityStrategy.BucketCount.Value}";
+                    Reason: BuildNotTriggeredPlanReason(thresholdTrigger, effectiveDateMode));
             }
 
             return new ParcelFinerGranularityExtensionPlan(
@@ -639,7 +665,35 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
                 SuggestedMode: finerGranularityStrategy.ModeWhenPerDayStillHot,
                 Lifecycle: finerGranularityStrategy.Lifecycle,
                 RequiresPrebuildGuard: finerGranularityStrategy.RequirePrebuildGuard,
-                Reason: reason);
+                Reason: BuildTriggeredPlanReason(thresholdTrigger, finerGranularityStrategy));
+        }
+
+        /// <summary>
+        /// 构建“未触发扩展规划”原因文本。
+        /// </summary>
+        /// <param name="thresholdTrigger">阈值触发来源。</param>
+        /// <param name="effectiveDateMode">当前生效分表粒度。</param>
+        /// <returns>原因文本。</returns>
+        private static string BuildNotTriggeredPlanReason(string thresholdTrigger, ExpandByDateMode effectiveDateMode) {
+            return $"not-triggered; Trigger={thresholdTrigger}; EffectiveDateMode={effectiveDateMode}";
+        }
+
+        /// <summary>
+        /// 构建“已触发扩展规划”原因文本。
+        /// </summary>
+        /// <param name="thresholdTrigger">阈值触发来源。</param>
+        /// <param name="finerGranularityStrategy">finer-granularity 配置快照。</param>
+        /// <returns>原因文本。</returns>
+        private static string BuildTriggeredPlanReason(
+            string thresholdTrigger,
+            ParcelFinerGranularityStrategySnapshot finerGranularityStrategy) {
+            var reason = $"per-day-still-hot-planning; Trigger={thresholdTrigger}; SuggestedMode={finerGranularityStrategy.ModeWhenPerDayStillHot}; Lifecycle={finerGranularityStrategy.Lifecycle}";
+            if (finerGranularityStrategy.ModeWhenPerDayStillHot == ParcelFinerGranularityMode.BucketedPerDay
+                && finerGranularityStrategy.BucketCount.HasValue) {
+                reason = $"{reason}; BucketCount={finerGranularityStrategy.BucketCount.Value}";
+            }
+
+            return reason;
         }
 
         /// <summary>

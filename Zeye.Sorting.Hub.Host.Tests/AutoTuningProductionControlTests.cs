@@ -498,6 +498,26 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
+    /// 验证场景：ParcelShardingStrategyEvaluator_ShouldFailValidation_WhenBucketCountOutOfRange。
+    /// </summary>
+    [Fact]
+    public void ParcelShardingStrategyEvaluator_ShouldFailValidation_WhenBucketCountOutOfRange() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:Sharding:Strategy:Mode"] = "Volume",
+                ["Persistence:Sharding:Strategy:Volume:ActionOnThreshold"] = "SwitchToPerDay",
+                ["Persistence:Sharding:Strategy:Volume:MaxRowsPerShard"] = "1000",
+                ["Persistence:Sharding:Strategy:Volume:HotThresholdRatio"] = "0.8",
+                ["Persistence:Sharding:Strategy:Volume:FinerGranularity:ModeWhenPerDayStillHot"] = "BucketedPerDay",
+                ["Persistence:Sharding:Strategy:Volume:FinerGranularity:Bucket:BucketCount"] = "1"
+            })
+            .Build();
+
+        var evaluation = ParcelShardingStrategyEvaluator.Evaluate(configuration);
+        Assert.Contains(evaluation.ValidationErrors, message => message.Contains("范围必须在 2~128", StringComparison.Ordinal));
+    }
+
+    /// <summary>
     /// 验证场景：ShouldEnforcePerDayPrebuildGuard_UsesUnifiedFinerPlan。
     /// </summary>
     [Fact]
@@ -531,6 +551,78 @@ public sealed class AutoTuningProductionControlTests {
 
         var shouldEnforce = DatabaseInitializerHostedService.ShouldEnforcePerDayPrebuildGuard(decision);
         Assert.True(shouldEnforce);
+    }
+
+    /// <summary>
+    /// 验证场景：ShouldEnforcePerDayPrebuildGuard_ReturnsTrue_WhenPerDayAndNoExtensionPlan。
+    /// </summary>
+    [Fact]
+    public void ShouldEnforcePerDayPrebuildGuard_ReturnsTrue_WhenPerDayAndNoExtensionPlan() {
+        var decision = new ParcelShardingStrategyDecision(
+            Mode: ParcelShardingStrategyMode.Time,
+            TimeGranularity: ParcelTimeShardingGranularity.PerDay,
+            ThresholdAction: ParcelVolumeThresholdAction.AlertOnly,
+            VolumeObservation: new ParcelShardingVolumeObservation("config-static", null, null),
+            ThresholdReached: false,
+            EffectiveDateMode: ExpandByDateMode.PerDay,
+            FinerGranularityExtensionPlan: new ParcelFinerGranularityExtensionPlan(
+                ShouldPlanExtension: false,
+                SuggestedMode: ParcelFinerGranularityMode.None,
+                Lifecycle: ParcelFinerGranularityPlanLifecycle.PlanOnly,
+                RequiresPrebuildGuard: false,
+                Reason: "not-triggered"),
+            Reason: "test",
+            ConfigSnapshot: new ParcelShardingStrategyConfigSnapshot(
+                Mode: ParcelShardingStrategyMode.Time,
+                TimeGranularity: ParcelTimeShardingGranularity.PerDay,
+                ThresholdAction: ParcelVolumeThresholdAction.AlertOnly,
+                MaxRowsPerShard: null,
+                HotThresholdRatio: null,
+                VolumeObservation: new ParcelShardingVolumeObservation("config-static", null, null),
+                FinerGranularity: new ParcelFinerGranularityStrategySnapshot(
+                    ModeWhenPerDayStillHot: ParcelFinerGranularityMode.None,
+                    Lifecycle: ParcelFinerGranularityPlanLifecycle.PlanOnly,
+                    RequirePrebuildGuard: false,
+                    BucketCount: null)));
+
+        var shouldEnforce = DatabaseInitializerHostedService.ShouldEnforcePerDayPrebuildGuard(decision);
+        Assert.True(shouldEnforce);
+    }
+
+    /// <summary>
+    /// 验证场景：ShouldEnforcePerDayPrebuildGuard_ReturnsFalse_WhenNotPerDay。
+    /// </summary>
+    [Fact]
+    public void ShouldEnforcePerDayPrebuildGuard_ReturnsFalse_WhenNotPerDay() {
+        var decision = new ParcelShardingStrategyDecision(
+            Mode: ParcelShardingStrategyMode.Hybrid,
+            TimeGranularity: ParcelTimeShardingGranularity.PerMonth,
+            ThresholdAction: ParcelVolumeThresholdAction.SwitchToPerDay,
+            VolumeObservation: new ParcelShardingVolumeObservation("config-static", 2000, 0.9m),
+            ThresholdReached: true,
+            EffectiveDateMode: ExpandByDateMode.PerMonth,
+            FinerGranularityExtensionPlan: new ParcelFinerGranularityExtensionPlan(
+                ShouldPlanExtension: true,
+                SuggestedMode: ParcelFinerGranularityMode.PerHour,
+                Lifecycle: ParcelFinerGranularityPlanLifecycle.FutureExecutable,
+                RequiresPrebuildGuard: true,
+                Reason: "test"),
+            Reason: "test",
+            ConfigSnapshot: new ParcelShardingStrategyConfigSnapshot(
+                Mode: ParcelShardingStrategyMode.Hybrid,
+                TimeGranularity: ParcelTimeShardingGranularity.PerMonth,
+                ThresholdAction: ParcelVolumeThresholdAction.SwitchToPerDay,
+                MaxRowsPerShard: 1000,
+                HotThresholdRatio: 0.8m,
+                VolumeObservation: new ParcelShardingVolumeObservation("config-static", 2000, 0.9m),
+                FinerGranularity: new ParcelFinerGranularityStrategySnapshot(
+                    ModeWhenPerDayStillHot: ParcelFinerGranularityMode.PerHour,
+                    Lifecycle: ParcelFinerGranularityPlanLifecycle.FutureExecutable,
+                    RequirePrebuildGuard: true,
+                    BucketCount: null)));
+
+        var shouldEnforce = DatabaseInitializerHostedService.ShouldEnforcePerDayPrebuildGuard(decision);
+        Assert.False(shouldEnforce);
     }
 
     /// <summary>

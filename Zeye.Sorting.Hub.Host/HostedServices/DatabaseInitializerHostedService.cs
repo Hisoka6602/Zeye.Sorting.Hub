@@ -638,8 +638,13 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// 判断是否需要执行 PerDay 预建窗口守卫。
         /// </summary>
         /// <param name="decision">分表策略决策快照。</param>
-        /// <returns>需要执行守卫返回 true，否则返回 false。</returns>
+        /// <returns>
+        /// 当且仅当满足以下任一组合时返回 <c>true</c>：
+        /// 1) 当前生效粒度为 PerDay，且扩展规划要求预建守卫；
+        /// 2) 当前生效粒度为 PerDay，且当前不存在下一层扩展规划（保持既有 PerDay 手工预建约束不变）。
+        /// </returns>
         internal static bool ShouldEnforcePerDayPrebuildGuard(ParcelShardingStrategyDecision decision) {
+            // 说明：即便当前未触发下一层扩展规划，只要已生效为 PerDay，仍保持既有手工预建窗口守卫。
             return decision.EffectiveDateMode == ExpandByDateMode.PerDay
                 && (decision.FinerGranularityExtensionPlan.RequiresPrebuildGuard
                     || !decision.FinerGranularityExtensionPlan.ShouldPlanExtension);
