@@ -72,7 +72,7 @@
 ├── Zeye.Sorting.Hub.Host（宿主层）
 │   ├── HostedServices（托管服务目录）
 │   │   ├── AutoTuningLoggerObservability.cs（自动调优观测默认日志实现）
-│   │   ├── DatabaseAutoTuningHostedService.cs（数据库自动调谐托管服务（闭环阶段流转、执行隔离、自动验证标准化输出与回滚审计，并输出分表命中率/跨分表占比/热点倾斜指标））
+│   │   ├── DatabaseAutoTuningHostedService.cs（数据库自动调谐托管服务（闭环阶段流转、执行隔离、自动验证标准化输出与回滚审计；分表命中/跨表占比/热点倾斜改为全量慢 SQL 口径，并在自动索引建议前做覆盖/重复/低价值过滤））
 │   │   └── DatabaseInitializerHostedService.cs（数据库初始化与迁移托管服务（含分表治理基线与 Runbook 审计））
 │   ├── Program.cs（应用入口与 Host 构建流程）
 │   ├── Properties（运行调试属性目录）
@@ -96,7 +96,7 @@
 │   │   │   ├── AutoTuningAbstractions.cs（自动调优观测抽象、标准化验证结果、隔离/回滚策略与可观测执行计划探针）
 │   │   │   ├── AutoTuningConfigurationHelper.cs（配置读取与本地时间语义归一化/配置键拼装公共辅助类，统一 AutoTuning 键名与时间语义）
 │   │   │   ├── MySqlSessionBootstrapConnectionInterceptor.cs（MySQL 连接会话初始化拦截器，直连类型判断，无额外转发）
-│   │   │   ├── SlowQueryAutoTuningPipeline.cs（慢查询采集、TopN 聚合、阈值告警（含基础防抖）与闭环自治结构化建议编排管道，配置键拼装复用公共 Helper）
+│   │   │   ├── SlowQueryAutoTuningPipeline.cs（慢查询采集、TopN 聚合、阈值告警（含基础防抖）与闭环自治结构化建议编排管道；新增主表提取公共方法供 AutoTuning 主链路复用）
 │   │   │   ├── SlowQueryCommandInterceptor.cs（EF Core 慢查询采集拦截器）
 │   │   │   └── SlowQuerySample.cs（慢查询采样记录模型）
 │   │   ├── DatabaseDialects（数据库方言目录）
@@ -248,7 +248,7 @@
 
 #### `Zeye.Sorting.Hub.Host/HostedServices/`：启动/常驻托管服务目录
 - `AutoTuningLoggerObservability.cs`：自动调优观测默认日志实现（统一日志 + 指标抽象默认落地）。
-- `DatabaseAutoTuningHostedService.cs`：数据库自动调谐托管服务（显式闭环阶段迁移、执行隔离、标准化自动验证结果、回滚触发与审计日志，并输出分表命中率/跨分表查询占比/热点倾斜指标）。
+- `DatabaseAutoTuningHostedService.cs`：数据库自动调谐托管服务（显式闭环阶段迁移、执行隔离、标准化自动验证结果、回滚触发与审计日志；分表观测指标基于全量慢 SQL 解析并覆盖子查询/集合运算场景；自动索引建议在执行前统一执行覆盖、语义重复、低价值过滤）。
 - `DatabaseInitializerHostedService.cs`：数据库初始化与迁移托管服务（启动期输出分表治理基线审计，提示预建窗口与 Runbook 完整性）。
 
 #### `Zeye.Sorting.Hub.Host/Properties/`：项目运行调试属性目录
@@ -277,7 +277,7 @@
 - `AutoTuningAbstractions.cs`：自动调优观测抽象、闭环阶段模型、危险动作隔离策略、自动回滚决策、标准化验证结果构造器与可观测执行计划探针。
 - `AutoTuningConfigurationHelper.cs`：配置读取公共辅助类，集中提供 `GetPositiveIntOrDefault`、`GetNonNegativeIntOrDefault`、`GetNonNegativeDecimalOrDefault`、`GetDecimalInRangeOrDefault`、`GetDecimalClampedOrDefault`、`GetBoolOrDefault`、`GetPositiveSecondsAsTimeSpanOrDefault`、`GetTimeOfDayOrDefault`，并统一 `BuildAutoTuningKey`、`BuildAutonomousKey` 与 `NormalizeToLocalTime`，消除重复键拼装与时间归一化实现。
 - `MySqlSessionBootstrapConnectionInterceptor.cs`：MySQL 连接会话初始化拦截器（类型判断逻辑内联，移除无意义 helper）。
-- `SlowQueryAutoTuningPipeline.cs`：慢查询采集、TopN 聚合、阈值告警（含基础防抖）与闭环自治结构化建议编排管道（配置键拼装复用 `AutoTuningConfigurationHelper`）。
+- `SlowQueryAutoTuningPipeline.cs`：慢查询采集、TopN 聚合、阈值告警（含基础防抖）与闭环自治结构化建议编排管道（配置键拼装复用 `AutoTuningConfigurationHelper`，并提供主表提取公共方法供 HostedService 与建议编排共用）。
 - `SlowQueryCommandInterceptor.cs`：EF Core 慢查询采集拦截器。
 - `SlowQuerySample.cs`：慢查询采样记录模型。
 
@@ -315,7 +315,7 @@
 
 ### `Zeye.Sorting.Hub.Host.Tests/`：自动调优测试层
 - `Zeye.Sorting.Hub.Host.Tests.csproj`：xUnit 测试项目定义。
-- `AutoTuningProductionControlTests.cs`：覆盖 dry-run、危险动作隔离、告警防抖与恢复、普通/严重回归、unavailable 指标处理、执行计划探针 available/unavailable 双路径、闭环链路与分表覆盖守卫校验。
+- `AutoTuningProductionControlTests.cs`：覆盖 dry-run、危险动作隔离、告警防抖与恢复、普通/严重回归、unavailable 指标处理、执行计划探针 available/unavailable 双路径、闭环链路与分表覆盖守卫校验，以及分表观测口径与自动索引过滤规则回归。
 
 ## 本次更新内容（新增 Parcel 属性操作指南文档）
 
@@ -454,3 +454,18 @@
 
 1. 可进一步抽取方言层“表名转义/限定名拼装”公共骨架，在不改变方言 SQL 细节的前提下继续降低重复率。
 2. 可在 AutoTuning 相关测试中增加配置键拼装的参数化覆盖，减少未来配置项扩展时的回归风险。
+
+## 本次更新内容（PR2：自动调谐与自动索引建议修复）
+
+1. **分表命中率口径修正**：`autotuning.sharding.hit_rate` 改为“可识别主表且不含跨表语义”才计入命中，避免过去“只要有 FROM 就命中”的误判。
+2. **跨表查询识别补强**：`autotuning.sharding.cross_table_query_ratio` 在 JOIN 之外，新增子查询多 `FROM`、集合运算（`UNION/INTERSECT/EXCEPT`）与逗号连接识别。
+3. **热点与容量样本源修正**：`hot_table_skew` 与容量预测采样改为基于全量慢 SQL 指标聚合，不再只依赖 `TuningCandidates` 子集，降低统计偏差。
+4. **自动索引建议前置过滤**：在 AutoTuning 主链路内新增统一过滤规则，先检查模型静态索引覆盖/语义重复，再过滤低价值索引建议，避免冗余建议进入执行与日报输出。
+5. **公共逻辑复用与去重**：`SlowQueryAutoTuningPipeline` 新增主表提取公共方法，`DatabaseAutoTuningHostedService` 直接复用，减少重复语义实现。
+6. **最小回归测试补充**：新增子查询跨表识别、全量指标热点倾斜口径、自动索引过滤三类测试，确保逻辑修复可验证。
+7. **文件树与职责同步**：本次未新增/删除文件；已更新 `README` 中相关文件职责描述与本次更新说明。
+
+## 后续可完善点（自动调谐治理）
+
+1. 在不引入并行执行器的前提下，可继续引入“数据库真实索引元数据（运行时）+ 模型索引（静态）”双源比对，进一步降低跨环境误判率。
+2. 对“低价值索引”规则引入按表历史基线学习（例如分位数阈值），减少统一阈值在不同业务负载下的偏差。

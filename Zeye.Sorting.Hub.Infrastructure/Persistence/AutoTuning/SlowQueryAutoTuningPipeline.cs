@@ -525,11 +525,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                 && (number == 1205 || number == 1213);
         }
 
-        /// <summary>从 SQL 中提取 schema/table 与 where 列候选。</summary>
-        private static bool TryExtractTableAndColumns(string sql, out string? schemaName, out string tableName, out IReadOnlyList<string> whereColumns) {
+        /// <summary>从 SQL 中提取主表 schema/table。</summary>
+        public static bool TryExtractPrimaryTable(string sql, out string? schemaName, out string tableName) {
             schemaName = null;
             tableName = string.Empty;
-            whereColumns = Array.Empty<string>();
 
             var tableMatch = FromRegex.Match(sql);
             if (!tableMatch.Success) {
@@ -547,6 +546,19 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
 
             var candidateTable = tableMatch.Groups[2].Value.Trim();
             if (!SafeIdentifierRegex.IsMatch(candidateTable)) {
+                return false;
+            }
+
+            schemaName = string.IsNullOrWhiteSpace(candidateSchema) ? null : candidateSchema;
+            tableName = candidateTable;
+            return true;
+        }
+
+        /// <summary>从 SQL 中提取 schema/table 与 where 列候选。</summary>
+        private static bool TryExtractTableAndColumns(string sql, out string? schemaName, out string tableName, out IReadOnlyList<string> whereColumns) {
+            whereColumns = Array.Empty<string>();
+
+            if (!TryExtractPrimaryTable(sql, out schemaName, out tableName)) {
                 return false;
             }
 
@@ -576,8 +588,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                 return false;
             }
 
-            schemaName = string.IsNullOrWhiteSpace(candidateSchema) ? null : candidateSchema;
-            tableName = candidateTable;
             whereColumns = columns;
             return true;
         }

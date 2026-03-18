@@ -335,15 +335,14 @@ public sealed class AutoTuningProductionControlTests {
             Array.Empty<string>(),
             Array.Empty<SlowQueryAlertNotification>(),
             false);
-        var metricsByFingerprint = result.Metrics.ToDictionary(static metric => metric.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
-
         var updateAutonomousSignals = typeof(DatabaseAutoTuningHostedService).GetMethod("UpdateAutonomousSignals", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
-        updateAutonomousSignals.Invoke(service, [result, DateTime.Now, metricsByFingerprint]);
+        updateAutonomousSignals.Invoke(service, [result, DateTime.Now]);
 
         Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hit_rate");
         Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.cross_table_query_ratio");
         Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hot_table_skew");
-        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hit_rate" && Math.Abs(entry.Value - 1d) < DoublePrecisionTolerance);
+        // 命中调用数 = 5 + 20 = 25，总调用数 = 10 + 5 + 20 = 35。
+        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hit_rate" && Math.Abs(entry.Value - (25d / 35d)) < DoublePrecisionTolerance);
     }
 
     /// <summary>
@@ -385,8 +384,7 @@ public sealed class AutoTuningProductionControlTests {
             Array.Empty<string>(),
             Array.Empty<SlowQueryAlertNotification>(),
             false);
-        var partialMetrics = partial.Metrics.ToDictionary(static metric => metric.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
-        updateAutonomousSignals.Invoke(service, [partial, fixedNow, partialMetrics]);
+        updateAutonomousSignals.Invoke(service, [partial, fixedNow]);
         Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hit_rate" && Math.Abs(entry.Value - 0.5d) < DoublePrecisionTolerance);
 
         observability.MetricEntries.Clear();
@@ -403,9 +401,253 @@ public sealed class AutoTuningProductionControlTests {
             Array.Empty<string>(),
             Array.Empty<SlowQueryAlertNotification>(),
             false);
-        var noneMetrics = none.Metrics.ToDictionary(static metric => metric.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
-        updateAutonomousSignals.Invoke(service, [none, fixedNow, noneMetrics]);
+        updateAutonomousSignals.Invoke(service, [none, fixedNow]);
         Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hit_rate" && Math.Abs(entry.Value) < DoublePrecisionTolerance);
+    }
+
+    /// <summary>
+    /// 验证场景：UpdateAutonomousSignals_CrossTableRatioDetectsSubQueryWithoutJoinKeyword。
+    /// </summary>
+    [Fact]
+    public void UpdateAutonomousSignals_CrossTableRatioDetectsSubQueryWithoutJoinKeyword() {
+        var logger = new TestLogger<DatabaseAutoTuningHostedService>();
+        var observability = new TestObservability();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:AutoTuning:Autonomous:EnableFullAutomation"] = "true",
+                ["Persistence:AutoTuning:Autonomous:CapacityPrediction:EnableCapacityPrediction"] = "true"
+            })
+            .Build();
+        var pipeline = new SlowQueryAutoTuningPipeline(configuration, observability);
+        var service = new DatabaseAutoTuningHostedService(
+            logger,
+            observability,
+            new FixedPlanProbe(),
+            new EmptyServiceScopeFactory(),
+            new TestDialect(),
+            pipeline,
+            configuration);
+        var updateAutonomousSignals = typeof(DatabaseAutoTuningHostedService).GetMethod("UpdateAutonomousSignals", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        var fixedNow = new DateTime(2026, 3, 17, 10, 0, 0, DateTimeKind.Local);
+        var result = new SlowQueryAnalysisResult(
+            fixedNow,
+            0,
+            [
+                new SlowQueryMetric(
+                    "subquery-cross",
+                    "select * from parcels p where exists (select 1 from parcel_positions pp where pp.parcel_id = p.id)",
+                    8,
+                    80,
+                    0m,
+                    0m,
+                    0,
+                    100d,
+                    120d,
+                    130d,
+                    null),
+                new SlowQueryMetric(
+                    "single-table",
+                    "select * from parcels where code = @p0",
+                    8,
+                    60,
+                    0m,
+                    0m,
+                    0,
+                    90d,
+                    110d,
+                    130d,
+                    null)
+            ],
+            Array.Empty<SlowQueryTuningCandidate>(),
+            Array.Empty<string>(),
+            Array.Empty<SlowQuerySuggestionInsight>(),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            Array.Empty<SlowQueryAlertNotification>(),
+            false);
+
+        updateAutonomousSignals.Invoke(service, [result, fixedNow]);
+        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.cross_table_query_ratio" && Math.Abs(entry.Value - 0.5d) < DoublePrecisionTolerance);
+        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hit_rate" && Math.Abs(entry.Value - 0.5d) < DoublePrecisionTolerance);
+    }
+
+    /// <summary>
+    /// 验证场景：UpdateAutonomousSignals_HotTableSkewUsesAllMetricsInsteadOfOnlyCandidates。
+    /// </summary>
+    [Fact]
+    public void UpdateAutonomousSignals_HotTableSkewUsesAllMetricsInsteadOfOnlyCandidates() {
+        var logger = new TestLogger<DatabaseAutoTuningHostedService>();
+        var observability = new TestObservability();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:AutoTuning:Autonomous:EnableFullAutomation"] = "true",
+                ["Persistence:AutoTuning:Autonomous:CapacityPrediction:EnableCapacityPrediction"] = "true"
+            })
+            .Build();
+        var pipeline = new SlowQueryAutoTuningPipeline(configuration, observability);
+        var service = new DatabaseAutoTuningHostedService(
+            logger,
+            observability,
+            new FixedPlanProbe(),
+            new EmptyServiceScopeFactory(),
+            new TestDialect(),
+            pipeline,
+            configuration);
+        var updateAutonomousSignals = typeof(DatabaseAutoTuningHostedService).GetMethod("UpdateAutonomousSignals", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        var fixedNow = new DateTime(2026, 3, 17, 10, 0, 0, DateTimeKind.Local);
+        var result = new SlowQueryAnalysisResult(
+            fixedNow,
+            0,
+            [
+                new SlowQueryMetric("table-a", "select * from parcels where code=@p0", 30, 300, 0m, 0m, 0, 10d, 20d, 30d, null),
+                new SlowQueryMetric("table-b", "select * from parcel_positions where id=@p1", 10, 120, 0m, 0m, 0, 10d, 20d, 30d, null)
+            ],
+            Array.Empty<SlowQueryTuningCandidate>(),
+            Array.Empty<string>(),
+            Array.Empty<SlowQuerySuggestionInsight>(),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            Array.Empty<SlowQueryAlertNotification>(),
+            false);
+
+        updateAutonomousSignals.Invoke(service, [result, fixedNow]);
+        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hot_table_skew" && Math.Abs(entry.Value - 1.5d) < DoublePrecisionTolerance);
+    }
+
+    /// <summary>
+    /// 验证场景：ApplyIndexSuggestionGuardsAsync_FiltersCoveredAndLowValueCreateIndexSuggestions。
+    /// </summary>
+    [Fact]
+    public async Task ApplyIndexSuggestionGuardsAsync_FiltersCoveredAndLowValueCreateIndexSuggestions() {
+        var logger = new TestLogger<DatabaseAutoTuningHostedService>();
+        var observability = new TestObservability();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:AutoTuning:TriggerCount"] = "3",
+                ["Persistence:AutoTuning:AlertP99Milliseconds"] = "500"
+            })
+            .Build();
+        var pipeline = new SlowQueryAutoTuningPipeline(configuration, observability);
+        var service = new DatabaseAutoTuningHostedService(
+            logger,
+            observability,
+            new FixedPlanProbe(),
+            new EmptyServiceScopeFactory(),
+            new TestDialect(),
+            pipeline,
+            configuration);
+        var modelIndexField = typeof(DatabaseAutoTuningHostedService).GetField("_modelIndexColumnsByTable", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        var modelIndexes = (Dictionary<string, IReadOnlyList<string[]>>)modelIndexField.GetValue(service)!;
+        modelIndexes["parcels"] = [new[] { "code" }];
+        var result = new SlowQueryAnalysisResult(
+            DateTime.Now,
+            0,
+            [
+                new SlowQueryMetric("fp-covered", "select * from parcels where code=@p0", 3, 10, 0m, 0m, 0, 100d, 200d, 220d, null)
+            ],
+            [
+                new SlowQueryTuningCandidate(
+                    "fp-covered",
+                    null,
+                    "parcels",
+                    ["code"],
+                    [
+                        "CREATE INDEX `idx_auto_parcels_code_x` ON `parcels` (`code`)",
+                        "ANALYZE TABLE `parcels`"
+                    ])
+            ],
+            [],
+            [
+                new SlowQuerySuggestionInsight(
+                    "fp-covered",
+                    "/*AUTO_TUNING_READ_ONLY*/ CREATE INDEX `idx_auto_parcels_code_x` ON `parcels` (`code`)",
+                    "test",
+                    "low",
+                    0.8m),
+                new SlowQuerySuggestionInsight(
+                    "fp-covered",
+                    "/*AUTO_TUNING_READ_ONLY*/ ANALYZE TABLE `parcels`",
+                    "test",
+                    "low",
+                    0.8m)
+            ],
+            [],
+            [],
+            [],
+            false);
+        var method = typeof(DatabaseAutoTuningHostedService).GetMethod("ApplyIndexSuggestionGuardsAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        var guardedResult = await (Task<SlowQueryAnalysisResult>)method.Invoke(service, [result, CancellationToken.None])!;
+
+        Assert.Single(guardedResult.TuningCandidates);
+        Assert.DoesNotContain(guardedResult.TuningCandidates[0].SuggestedActions, action => action.Contains("create index", StringComparison.OrdinalIgnoreCase));
+        Assert.Single(guardedResult.SuggestionInsights);
+        Assert.Contains(guardedResult.SuggestionInsights, insight => insight.SuggestionSql.Contains("ANALYZE TABLE", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// 验证场景：ApplyIndexSuggestionGuardsAsync_KeepsCreateIndexWhenMetricIsHighValue。
+    /// </summary>
+    [Fact]
+    public async Task ApplyIndexSuggestionGuardsAsync_KeepsCreateIndexWhenMetricIsHighValue() {
+        var logger = new TestLogger<DatabaseAutoTuningHostedService>();
+        var observability = new TestObservability();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:AutoTuning:TriggerCount"] = "3",
+                ["Persistence:AutoTuning:AlertP99Milliseconds"] = "500"
+            })
+            .Build();
+        var pipeline = new SlowQueryAutoTuningPipeline(configuration, observability);
+        var service = new DatabaseAutoTuningHostedService(
+            logger,
+            observability,
+            new FixedPlanProbe(),
+            new EmptyServiceScopeFactory(),
+            new TestDialect(),
+            pipeline,
+            configuration);
+        var result = new SlowQueryAnalysisResult(
+            DateTime.Now,
+            0,
+            [
+                new SlowQueryMetric("fp-keep", "select * from parcels where code=@p0", 7, 100, 0m, 0m, 0, 100d, 800d, 900d, null)
+            ],
+            [
+                new SlowQueryTuningCandidate(
+                    "fp-keep",
+                    null,
+                    "parcels",
+                    ["code"],
+                    [
+                        "CREATE INDEX `idx_auto_parcels_code_x` ON `parcels` (`code`)",
+                        "ANALYZE TABLE `parcels`"
+                    ])
+            ],
+            [],
+            [
+                new SlowQuerySuggestionInsight(
+                    "fp-keep",
+                    "/*AUTO_TUNING_READ_ONLY*/ CREATE INDEX `idx_auto_parcels_code_x` ON `parcels` (`code`)",
+                    "test",
+                    "low",
+                    0.8m),
+                new SlowQuerySuggestionInsight(
+                    "fp-keep",
+                    "/*AUTO_TUNING_READ_ONLY*/ ANALYZE TABLE `parcels`",
+                    "test",
+                    "low",
+                    0.8m)
+            ],
+            [],
+            [],
+            [],
+            false);
+        var method = typeof(DatabaseAutoTuningHostedService).GetMethod("ApplyIndexSuggestionGuardsAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        var guardedResult = await (Task<SlowQueryAnalysisResult>)method.Invoke(service, [result, CancellationToken.None])!;
+
+        Assert.Single(guardedResult.TuningCandidates);
+        Assert.Contains(guardedResult.TuningCandidates[0].SuggestedActions, action => action.Contains("create index", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(2, guardedResult.SuggestionInsights.Count);
     }
 
     /// <summary>
