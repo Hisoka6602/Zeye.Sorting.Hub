@@ -448,19 +448,20 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 NotConfiguredPlaceholder);
 
             _logger.LogInformation(
-                "分表治理基线：Provider={Provider}, Environment={Environment}, MigrationFailureMode={MigrationFailureMode}, CreateShardingTableOnStarting={CreateShardingTableOnStarting}, ParcelRelatedHashShardingMod={ParcelRelatedHashShardingMod}, ExpansionTriggerRatio={ExpansionTriggerRatio:F2}, ExpansionPlan={ExpansionPlan}, ParcelShardingMode={ParcelShardingMode}, ParcelTimeGranularity={ParcelTimeGranularity}, ParcelThresholdAction={ParcelThresholdAction}, ParcelThresholdReached={ParcelThresholdReached}, ParcelEffectiveDateMode={ParcelEffectiveDateMode}",
+                "分表治理基线：Provider={Provider}, Environment={Environment}, MigrationFailureMode={MigrationFailureMode}, CreateShardingTableOnStarting={CreateShardingTableOnStarting}, ParcelRelatedHashShardingMod={ParcelRelatedHashShardingMod}, ExpansionTriggerRatio={ExpansionTriggerRatio:F2}, ExpansionPlan={ExpansionPlan}",
                 _dialect.ProviderName,
                 _environmentName,
                 _migrationFailureMode,
                 _createShardingTableOnStarting,
                 _parcelRelatedHashShardingMod,
                 _hashShardingExpansionTriggerRatio,
-                expansionPlanSummary,
+                expansionPlanSummary);
+
+            _logger.LogInformation(
+                "Parcel 分表策略决策：Mode={ParcelShardingMode}, EffectiveDateMode={ParcelEffectiveDateMode}, DecisionReason={DecisionReason}",
                 _parcelShardingStrategyDecision.Mode,
-                _parcelShardingStrategyDecision.TimeGranularity,
-                _parcelShardingStrategyDecision.ThresholdAction,
-                _parcelShardingStrategyDecision.ThresholdReached,
-                _parcelShardingStrategyDecision.EffectiveDateMode);
+                _parcelShardingStrategyDecision.EffectiveDateMode,
+                _parcelShardingStrategyDecision.Reason);
 
             if (_parcelShardingStrategyValidationErrors.Count > 0) {
                 _logger.LogError(

@@ -1,3 +1,4 @@
+using System.Globalization;
 using EFCore.Sharding;
 using Microsoft.Extensions.Configuration;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding.Enums;
@@ -83,8 +84,16 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
             var thresholdAction = ResolveThresholdAction(configuration[VolumeActionConfigKey], validationErrors);
             var maxRowsPerShard = ReadPositiveLong(configuration[VolumeMaxRowsConfigKey], VolumeMaxRowsConfigKey, mode, validationErrors);
             var currentEstimatedRowsPerShard = ReadNonNegativeLong(configuration[VolumeCurrentRowsConfigKey], VolumeCurrentRowsConfigKey, validationErrors);
-            var hotThresholdRatio = ReadRatio(configuration[VolumeHotThresholdConfigKey], VolumeHotThresholdConfigKey, mode, validationErrors);
-            var currentObservedHotRatio = ReadRatio(configuration[VolumeCurrentHotRatioConfigKey], VolumeCurrentHotRatioConfigKey, ParcelShardingStrategyMode.Time, validationErrors);
+            var hotThresholdRatio = ReadRatio(
+                configuration[VolumeHotThresholdConfigKey],
+                VolumeHotThresholdConfigKey,
+                requiredWhenMissing: mode is ParcelShardingStrategyMode.Volume or ParcelShardingStrategyMode.Hybrid,
+                validationErrors: validationErrors);
+            var currentObservedHotRatio = ReadRatio(
+                configuration[VolumeCurrentHotRatioConfigKey],
+                VolumeCurrentHotRatioConfigKey,
+                requiredWhenMissing: false,
+                validationErrors: validationErrors);
 
             var thresholdReached = IsThresholdReached(
                 maxRowsPerShard,
@@ -93,7 +102,16 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
                 currentObservedHotRatio);
 
             var effectiveDateMode = ResolveEffectiveDateMode(mode, timeGranularity, thresholdAction, thresholdReached);
-            var reason = BuildReason(mode, timeGranularity, thresholdAction, thresholdReached, effectiveDateMode);
+            var reason = BuildReason(
+                mode,
+                timeGranularity,
+                thresholdAction,
+                thresholdReached,
+                effectiveDateMode,
+                maxRowsPerShard,
+                currentEstimatedRowsPerShard,
+                hotThresholdRatio,
+                currentObservedHotRatio);
 
             var decision = new ParcelShardingStrategyDecision(
                 Mode: mode,
@@ -214,19 +232,25 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
         /// </summary>
         /// <param name="raw">原始配置。</param>
         /// <param name="key">配置键。</param>
-        /// <param name="mode">策略模式。</param>
+        /// <param name="requiredWhenMissing">当配置缺失时是否必填。</param>
         /// <param name="validationErrors">错误集合。</param>
         /// <returns>解析值；未配置返回 null。</returns>
-        private static decimal? ReadRatio(string? raw, string key, ParcelShardingStrategyMode mode, ICollection<string> validationErrors) {
+        private static decimal? ReadRatio(string? raw, string key, bool requiredWhenMissing, ICollection<string> validationErrors) {
             if (string.IsNullOrWhiteSpace(raw)) {
-                if (mode is ParcelShardingStrategyMode.Volume or ParcelShardingStrategyMode.Hybrid && key == VolumeHotThresholdConfigKey) {
+                if (requiredWhenMissing) {
                     validationErrors.Add($"配置项 {key} 必填，且范围应在 0~1。");
                 }
                 return null;
             }
 
-            if (!decimal.TryParse(raw.Trim(), out var value) || value < 0m || value > 1m) {
-                validationErrors.Add($"配置项 {key} 值非法：{raw}。范围必须在 0~1。");
+            var parsed = decimal.TryParse(raw.Trim(), NumberStyles.Number, CultureInfo.InvariantCulture, out var value);
+            if (!parsed) {
+                validationErrors.Add($"配置项 {key} 值格式非法：{raw}。必须为数字格式。");
+                return null;
+            }
+
+            if (value < 0m || value > 1m) {
+                validationErrors.Add($"配置项 {key} 值超出范围：{raw}。范围必须在 0~1。");
                 return null;
             }
 
@@ -246,13 +270,33 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
             long? currentEstimatedRowsPerShard,
             decimal? hotThresholdRatio,
             decimal? currentObservedHotRatio) {
-            var rowsReached = maxRowsPerShard.HasValue
+            var isRowThresholdReached = IsRowThresholdReached(maxRowsPerShard, currentEstimatedRowsPerShard);
+            var isHotThresholdReached = IsHotThresholdReached(hotThresholdRatio, currentObservedHotRatio);
+            return isRowThresholdReached || isHotThresholdReached;
+        }
+
+        /// <summary>
+        /// 判断是否命中“单分表行数”阈值。
+        /// </summary>
+        /// <param name="maxRowsPerShard">单分表最大行数阈值。</param>
+        /// <param name="currentEstimatedRowsPerShard">当前观测单分表估算行数。</param>
+        /// <returns>命中返回 true，否则 false。</returns>
+        private static bool IsRowThresholdReached(long? maxRowsPerShard, long? currentEstimatedRowsPerShard) {
+            return maxRowsPerShard.HasValue
                 && currentEstimatedRowsPerShard.HasValue
                 && currentEstimatedRowsPerShard.Value >= maxRowsPerShard.Value;
-            var hotReached = hotThresholdRatio.HasValue
+        }
+
+        /// <summary>
+        /// 判断是否命中“热点比例”阈值。
+        /// </summary>
+        /// <param name="hotThresholdRatio">热点阈值。</param>
+        /// <param name="currentObservedHotRatio">当前观测热点比例。</param>
+        /// <returns>命中返回 true，否则 false。</returns>
+        private static bool IsHotThresholdReached(decimal? hotThresholdRatio, decimal? currentObservedHotRatio) {
+            return hotThresholdRatio.HasValue
                 && currentObservedHotRatio.HasValue
                 && currentObservedHotRatio.Value >= hotThresholdRatio.Value;
-            return rowsReached || hotReached;
         }
 
         /// <summary>
@@ -296,8 +340,47 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
             ParcelTimeShardingGranularity timeGranularity,
             ParcelVolumeThresholdAction thresholdAction,
             bool thresholdReached,
-            ExpandByDateMode effectiveDateMode) {
-            return $"Mode={mode}; TimeGranularity={timeGranularity}; ThresholdReached={thresholdReached}; Action={thresholdAction}; EffectiveDateMode={effectiveDateMode}";
+            ExpandByDateMode effectiveDateMode,
+            long? maxRowsPerShard,
+            long? currentEstimatedRowsPerShard,
+            decimal? hotThresholdRatio,
+            decimal? currentObservedHotRatio) {
+            var trigger = ResolveThresholdTrigger(
+                maxRowsPerShard,
+                currentEstimatedRowsPerShard,
+                hotThresholdRatio,
+                currentObservedHotRatio);
+            return $"Mode={mode}; TimeGranularity={timeGranularity}; Action={thresholdAction}; ThresholdReached={thresholdReached}; Trigger={trigger}; EffectiveDateMode={effectiveDateMode}";
+        }
+
+        /// <summary>
+        /// 解析容量阈值命中的触发来源。
+        /// </summary>
+        /// <param name="maxRowsPerShard">单分表最大行数阈值。</param>
+        /// <param name="currentEstimatedRowsPerShard">当前观测单分表估算行数。</param>
+        /// <param name="hotThresholdRatio">热点阈值。</param>
+        /// <param name="currentObservedHotRatio">当前观测热点比例。</param>
+        /// <returns>触发来源标识。</returns>
+        private static string ResolveThresholdTrigger(
+            long? maxRowsPerShard,
+            long? currentEstimatedRowsPerShard,
+            decimal? hotThresholdRatio,
+            decimal? currentObservedHotRatio) {
+            var byRows = IsRowThresholdReached(maxRowsPerShard, currentEstimatedRowsPerShard);
+            var byHot = IsHotThresholdReached(hotThresholdRatio, currentObservedHotRatio);
+            if (byRows && byHot) {
+                return "rows-and-hot";
+            }
+
+            if (byRows) {
+                return "rows";
+            }
+
+            if (byHot) {
+                return "hot";
+            }
+
+            return "none";
         }
     }
 }

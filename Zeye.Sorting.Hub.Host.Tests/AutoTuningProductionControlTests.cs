@@ -249,6 +249,31 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
+    /// 验证场景：ParcelShardingStrategyEvaluator_HybridModeSwitchesToPerDay_WhenHotThresholdReachedOnly。
+    /// </summary>
+    [Fact]
+    public void ParcelShardingStrategyEvaluator_HybridModeSwitchesToPerDay_WhenHotThresholdReachedOnly() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:Sharding:Strategy:Mode"] = "Hybrid",
+                ["Persistence:Sharding:Strategy:Time:Granularity"] = "PerMonth",
+                ["Persistence:Sharding:Strategy:Volume:ActionOnThreshold"] = "SwitchToPerDay",
+                ["Persistence:Sharding:Strategy:Volume:MaxRowsPerShard"] = "1000",
+                ["Persistence:Sharding:Strategy:Volume:CurrentEstimatedRowsPerShard"] = "900",
+                ["Persistence:Sharding:Strategy:Volume:HotThresholdRatio"] = "0.8",
+                ["Persistence:Sharding:Strategy:Volume:CurrentObservedHotRatio"] = "0.9"
+            })
+            .Build();
+
+        var evaluation = ParcelShardingStrategyEvaluator.Evaluate(configuration);
+
+        Assert.Empty(evaluation.ValidationErrors);
+        Assert.True(evaluation.Decision.ThresholdReached);
+        Assert.Equal(ExpandByDateMode.PerDay, evaluation.Decision.EffectiveDateMode);
+        Assert.Contains("Trigger=hot", evaluation.Decision.Reason, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// 验证场景：ParcelShardingStrategyEvaluator_TimeModeUsesConfiguredGranularity。
     /// </summary>
     [Fact]
