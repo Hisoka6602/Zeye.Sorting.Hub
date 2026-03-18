@@ -37,18 +37,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             IsError = isError;
             IsTimeout = isTimeout;
             IsDeadlock = isDeadlock;
-            OccurredTime = NormalizeToLocalTime(occurredTime);
-        }
-
-        /// <summary>
-        /// 将时间值标准化为本地时间语义。
-        /// </summary>
-        private static DateTime NormalizeToLocalTime(DateTime value) {
-            return value.Kind switch {
-                DateTimeKind.Unspecified => DateTime.SpecifyKind(value, DateTimeKind.Local),
-                DateTimeKind.Local => value,
-                _ => throw new InvalidOperationException("仅支持本地时间语义，请勿传入 UTC 或带 offset 的时间值。")
-            };
+            OccurredTime = AutoTuningConfigurationHelper.NormalizeToLocalTime(occurredTime);
         }
     }
 }
