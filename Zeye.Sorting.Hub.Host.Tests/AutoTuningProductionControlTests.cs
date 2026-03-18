@@ -474,7 +474,7 @@ public sealed class AutoTuningProductionControlTests {
                 ["Persistence:Sharding:Governance:EnableManualPrebuildGuard"] = "true",
                 ["Persistence:Sharding:Governance:Runbook"] = "docs/internal/sharding-governance-runbook",
                 ["Persistence:Sharding:Governance:PrebuildWindowHours"] = "48",
-                ["Persistence:Sharding:Governance:PrebuiltPerDayDates:0"] = DateTime.Now.ToString("yyyy-MM-dd"),
+                ["Persistence:Sharding:Governance:PrebuiltPerDayDates:0"] = "2026-03-18",
                 ["Persistence:Sharding:HashSharding:ExpansionPlan:CurrentMod"] = "16",
                 ["Persistence:Sharding:HashSharding:ExpansionPlan:TargetMod"] = "32",
                 ["Persistence:Sharding:Strategy:Mode"] = "Time",
@@ -1698,7 +1698,7 @@ public sealed class AutoTuningProductionControlTests {
 
     private sealed class TestHostEnvironment : IHostEnvironment {
         /// <summary>
-        /// 验证场景：TestHostEnvironment。
+        /// 测试环境配置桩，用于隔离 IHostEnvironment 依赖并注入环境名称。
         /// </summary>
         /// <param name="environmentName">环境名称。</param>
         public TestHostEnvironment(string environmentName) {

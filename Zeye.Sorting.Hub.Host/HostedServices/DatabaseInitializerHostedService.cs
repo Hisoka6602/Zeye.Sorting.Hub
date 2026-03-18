@@ -322,7 +322,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     continue;
                 }
 
-                parsedDates.Add(AutoTuningConfigurationHelper.NormalizeToLocalTime(parsedDate).Date);
+                parsedDates.Add(parsedDate.Date);
             }
 
             return new PrebuiltPerDayShardDatesResolution(
@@ -337,9 +337,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <param name="prebuildWindowHours">预建窗口小时数。</param>
         /// <returns>必需预建的日期清单。</returns>
         internal static IReadOnlyList<DateTime> BuildRequiredPerDayShardDates(DateTime localNow, int prebuildWindowHours) {
-            var normalizedNow = AutoTuningConfigurationHelper.NormalizeToLocalTime(localNow);
-            var windowEndDate = normalizedNow.AddHours(prebuildWindowHours).Date;
-            var cursor = normalizedNow.Date;
+            var windowEndDate = localNow.AddHours(prebuildWindowHours).Date;
+            var cursor = localNow.Date;
             var requiredDates = new List<DateTime>();
             while (cursor <= windowEndDate) {
                 requiredDates.Add(cursor);
