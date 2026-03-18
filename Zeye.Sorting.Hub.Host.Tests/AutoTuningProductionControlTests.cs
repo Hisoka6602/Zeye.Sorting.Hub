@@ -247,6 +247,9 @@ public sealed class AutoTuningProductionControlTests {
         Assert.Equal(ParcelShardingStrategyMode.Hybrid, evaluation.Decision.Mode);
         Assert.True(evaluation.Decision.ThresholdReached);
         Assert.Equal(ExpandByDateMode.PerDay, evaluation.Decision.EffectiveDateMode);
+        Assert.True(evaluation.Decision.FinerGranularityExtensionPlan.ShouldPlanExtension);
+        Assert.Equal(ParcelFinerGranularityMode.PerHour, evaluation.Decision.FinerGranularityExtensionPlan.SuggestedMode);
+        Assert.Equal(ParcelFinerGranularityPlanLifecycle.PlanOnly, evaluation.Decision.FinerGranularityExtensionPlan.Lifecycle);
     }
 
     /// <summary>
@@ -272,6 +275,7 @@ public sealed class AutoTuningProductionControlTests {
         Assert.True(evaluation.Decision.ThresholdReached);
         Assert.Equal(ExpandByDateMode.PerDay, evaluation.Decision.EffectiveDateMode);
         Assert.Contains("Trigger=hot", evaluation.Decision.Reason, StringComparison.Ordinal);
+        Assert.True(evaluation.Decision.FinerGranularityExtensionPlan.ShouldPlanExtension);
     }
 
     /// <summary>
@@ -292,6 +296,7 @@ public sealed class AutoTuningProductionControlTests {
         Assert.Equal(ParcelShardingStrategyMode.Time, evaluation.Decision.Mode);
         Assert.Equal(ExpandByDateMode.PerDay, evaluation.Decision.EffectiveDateMode);
         Assert.False(evaluation.Decision.ThresholdReached);
+        Assert.False(evaluation.Decision.FinerGranularityExtensionPlan.ShouldPlanExtension);
     }
 
     /// <summary>
@@ -441,6 +446,91 @@ public sealed class AutoTuningProductionControlTests {
         Assert.Equal(0.2m, evaluation.Decision.VolumeObservation.ObservedHotRatio);
         Assert.True(evaluation.Decision.ThresholdReached);
         Assert.Equal(ExpandByDateMode.PerDay, evaluation.Decision.EffectiveDateMode);
+        Assert.True(evaluation.Decision.FinerGranularityExtensionPlan.ShouldPlanExtension);
+    }
+
+    /// <summary>
+    /// 验证场景：ParcelShardingStrategyEvaluator_OutputsBucketedPerDayExtensionPlan_WhenConfigured。
+    /// </summary>
+    [Fact]
+    public void ParcelShardingStrategyEvaluator_OutputsBucketedPerDayExtensionPlan_WhenConfigured() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:Sharding:Strategy:Mode"] = "Hybrid",
+                ["Persistence:Sharding:Strategy:Time:Granularity"] = "PerMonth",
+                ["Persistence:Sharding:Strategy:Volume:ActionOnThreshold"] = "SwitchToPerDay",
+                ["Persistence:Sharding:Strategy:Volume:MaxRowsPerShard"] = "1000",
+                ["Persistence:Sharding:Strategy:Volume:HotThresholdRatio"] = "0.8",
+                ["Persistence:Sharding:Strategy:Volume:Observation:EstimatedRowsPerShard"] = "2000",
+                ["Persistence:Sharding:Strategy:Volume:FinerGranularity:ModeWhenPerDayStillHot"] = "BucketedPerDay",
+                ["Persistence:Sharding:Strategy:Volume:FinerGranularity:Lifecycle"] = "FutureExecutable",
+                ["Persistence:Sharding:Strategy:Volume:FinerGranularity:Bucket:BucketCount"] = "16"
+            })
+            .Build();
+
+        var evaluation = ParcelShardingStrategyEvaluator.Evaluate(configuration);
+
+        Assert.Empty(evaluation.ValidationErrors);
+        Assert.True(evaluation.Decision.FinerGranularityExtensionPlan.ShouldPlanExtension);
+        Assert.Equal(ParcelFinerGranularityMode.BucketedPerDay, evaluation.Decision.FinerGranularityExtensionPlan.SuggestedMode);
+        Assert.Equal(ParcelFinerGranularityPlanLifecycle.FutureExecutable, evaluation.Decision.FinerGranularityExtensionPlan.Lifecycle);
+        Assert.Contains("BucketCount=16", evaluation.Decision.FinerGranularityExtensionPlan.Reason, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// 验证场景：ParcelShardingStrategyEvaluator_ShouldFailValidation_WhenBucketedPerDayMissingBucketCount。
+    /// </summary>
+    [Fact]
+    public void ParcelShardingStrategyEvaluator_ShouldFailValidation_WhenBucketedPerDayMissingBucketCount() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:Sharding:Strategy:Mode"] = "Volume",
+                ["Persistence:Sharding:Strategy:Volume:ActionOnThreshold"] = "SwitchToPerDay",
+                ["Persistence:Sharding:Strategy:Volume:MaxRowsPerShard"] = "1000",
+                ["Persistence:Sharding:Strategy:Volume:HotThresholdRatio"] = "0.8",
+                ["Persistence:Sharding:Strategy:Volume:FinerGranularity:ModeWhenPerDayStillHot"] = "BucketedPerDay"
+            })
+            .Build();
+
+        var evaluation = ParcelShardingStrategyEvaluator.Evaluate(configuration);
+
+        Assert.Contains(evaluation.ValidationErrors, message => message.Contains("BucketCount", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// 验证场景：ShouldEnforcePerDayPrebuildGuard_UsesUnifiedFinerPlan。
+    /// </summary>
+    [Fact]
+    public void ShouldEnforcePerDayPrebuildGuard_UsesUnifiedFinerPlan() {
+        var decision = new ParcelShardingStrategyDecision(
+            Mode: ParcelShardingStrategyMode.Hybrid,
+            TimeGranularity: ParcelTimeShardingGranularity.PerMonth,
+            ThresholdAction: ParcelVolumeThresholdAction.SwitchToPerDay,
+            VolumeObservation: new ParcelShardingVolumeObservation("config-static", 2000, 0.9m),
+            ThresholdReached: true,
+            EffectiveDateMode: ExpandByDateMode.PerDay,
+            FinerGranularityExtensionPlan: new ParcelFinerGranularityExtensionPlan(
+                ShouldPlanExtension: true,
+                SuggestedMode: ParcelFinerGranularityMode.PerHour,
+                Lifecycle: ParcelFinerGranularityPlanLifecycle.PlanOnly,
+                RequiresPrebuildGuard: true,
+                Reason: "test"),
+            Reason: "test",
+            ConfigSnapshot: new ParcelShardingStrategyConfigSnapshot(
+                Mode: ParcelShardingStrategyMode.Hybrid,
+                TimeGranularity: ParcelTimeShardingGranularity.PerMonth,
+                ThresholdAction: ParcelVolumeThresholdAction.SwitchToPerDay,
+                MaxRowsPerShard: 1000,
+                HotThresholdRatio: 0.8m,
+                VolumeObservation: new ParcelShardingVolumeObservation("config-static", 2000, 0.9m),
+                FinerGranularity: new ParcelFinerGranularityStrategySnapshot(
+                    ModeWhenPerDayStillHot: ParcelFinerGranularityMode.PerHour,
+                    Lifecycle: ParcelFinerGranularityPlanLifecycle.PlanOnly,
+                    RequirePrebuildGuard: true,
+                    BucketCount: null)));
+
+        var shouldEnforce = DatabaseInitializerHostedService.ShouldEnforcePerDayPrebuildGuard(decision);
+        Assert.True(shouldEnforce);
     }
 
     /// <summary>
@@ -489,7 +579,7 @@ public sealed class AutoTuningProductionControlTests {
             new TestHostEnvironment("Development"),
             configuration);
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.StartAsync(CancellationToken.None));
+        var exception = await Assert.ThrowsAnyAsync<InvalidOperationException>(() => service.StartAsync(CancellationToken.None));
         Assert.Contains("PrebuiltPerDayDates", exception.Message, StringComparison.Ordinal);
         Assert.Contains("PerDay", exception.Message, StringComparison.Ordinal);
     }
