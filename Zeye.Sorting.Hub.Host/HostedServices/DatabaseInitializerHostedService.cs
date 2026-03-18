@@ -6,6 +6,7 @@ using Polly.Retry;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
@@ -18,13 +19,20 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
     public sealed class DatabaseInitializerHostedService : IHostedService {
         /// <summary>配置项缺失时用于占位展示的默认文本（与中文日志语境保持一致）。</summary>
         private const string NotConfiguredPlaceholder = "未配置";
+        private const string MigrationFailureStrategyConfigKey = "Persistence:Migration:FailureStrategy";
+        private const string MigrationFailureStrategyProductionConfigKey = "Persistence:Migration:FailureStrategy:Production";
+        private const string MigrationFailureStrategyNonProductionConfigKey = "Persistence:Migration:FailureStrategy:NonProduction";
         private const string FailStartupOnMigrationErrorConfigKey = "Persistence:Migration:FailStartupOnError";
         private const string CreateShardingTableOnStartingConfigKey = "Persistence:Sharding:CreateShardingTableOnStarting";
         private const string ParcelRelatedHashShardingModConfigKey = "Persistence:Sharding:ParcelRelatedHashShardingMod";
         private const string HashShardingExpansionTriggerRatioConfigKey = "Persistence:Sharding:HashSharding:ExpansionTriggerRatio";
-        private const string HashShardingExpansionPlanConfigKey = "Persistence:Sharding:HashSharding:ExpansionPlan";
+        private const string HashShardingLegacyExpansionPlanConfigKey = "Persistence:Sharding:HashSharding:ExpansionPlan";
+        private const string HashShardingExpansionPlanCurrentModConfigKey = "Persistence:Sharding:HashSharding:ExpansionPlan:CurrentMod";
+        private const string HashShardingExpansionPlanTargetModConfigKey = "Persistence:Sharding:HashSharding:ExpansionPlan:TargetMod";
+        private const string HashShardingExpansionPlanStagesConfigKey = "Persistence:Sharding:HashSharding:ExpansionPlan:Stages";
         private const string ShardingPrebuildWindowHoursConfigKey = "Persistence:Sharding:Governance:PrebuildWindowHours";
         private const string ShardingRunbookConfigKey = "Persistence:Sharding:Governance:Runbook";
+        private const string ShardingManualPrebuildGuardConfigKey = "Persistence:Sharding:Governance:EnableManualPrebuildGuard";
         /// <summary>
         /// 字段：_serviceProvider。
         /// </summary>
@@ -34,20 +42,32 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// 字段：_dialect。
         /// </summary>
         private readonly IDatabaseDialect _dialect;
-        /// <summary>迁移失败是否阻断宿主启动。</summary>
-        private readonly bool _failStartupOnMigrationError;
+        /// <summary>当前宿主环境名称。</summary>
+        private readonly string _environmentName;
+        /// <summary>是否生产环境。</summary>
+        private readonly bool _isProductionEnvironment;
+        /// <summary>迁移失败策略。</summary>
+        private readonly MigrationFailureMode _migrationFailureMode;
         /// <summary>启动时是否自动创建分表。</summary>
         private readonly bool _createShardingTableOnStarting;
         /// <summary>Parcel 关联哈希分片模数。</summary>
         private readonly int _parcelRelatedHashShardingMod;
         /// <summary>哈希扩容触发阈值（0~1）。</summary>
         private readonly decimal _hashShardingExpansionTriggerRatio;
-        /// <summary>哈希扩容迁移计划说明。</summary>
-        private readonly string _hashShardingExpansionPlan;
+        /// <summary>哈希扩容当前模数（结构化）。</summary>
+        private readonly int _hashShardingExpansionCurrentMod;
+        /// <summary>哈希扩容目标模数（结构化）。</summary>
+        private readonly int _hashShardingExpansionTargetMod;
+        /// <summary>哈希扩容阶段列表（结构化）。</summary>
+        private readonly IReadOnlyList<string> _hashShardingExpansionStages;
+        /// <summary>哈希扩容文本计划（兼容历史配置）。</summary>
+        private readonly string _hashShardingLegacyExpansionPlan;
         /// <summary>分表预建窗口（小时）。</summary>
         private readonly int _shardingPrebuildWindowHours;
         /// <summary>分表治理 Runbook 标识（文档路径或链接）。</summary>
         private readonly string _shardingRunbook;
+        /// <summary>是否启用“手工预建分表”治理守卫。</summary>
+        private readonly bool _enableManualPrebuildGuard;
 
         /// <summary>
         /// 字段：_retryPolicy。
@@ -58,17 +78,24 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             IServiceProvider serviceProvider,
             ILogger<DatabaseInitializerHostedService> logger,
             IDatabaseDialect dialect,
+            IHostEnvironment hostEnvironment,
             IConfiguration configuration) {
             _serviceProvider = serviceProvider;
             _logger = logger;
             _dialect = dialect;
-            _failStartupOnMigrationError = ResolveFailStartupOnMigrationError(configuration);
+            _environmentName = hostEnvironment.EnvironmentName;
+            _isProductionEnvironment = hostEnvironment.IsProduction();
+            _migrationFailureMode = ResolveMigrationFailureMode(configuration, _isProductionEnvironment);
             _createShardingTableOnStarting = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, CreateShardingTableOnStartingConfigKey, false);
             _parcelRelatedHashShardingMod = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, ParcelRelatedHashShardingModConfigKey, 16);
             _hashShardingExpansionTriggerRatio = AutoTuningConfigurationHelper.GetDecimalInRangeOrDefault(configuration, HashShardingExpansionTriggerRatioConfigKey, 0.8m, 0m, 1m);
-            _hashShardingExpansionPlan = NormalizeOptionalTextOrPlaceholder(configuration[HashShardingExpansionPlanConfigKey], NotConfiguredPlaceholder);
+            _hashShardingExpansionCurrentMod = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, HashShardingExpansionPlanCurrentModConfigKey, _parcelRelatedHashShardingMod);
+            _hashShardingExpansionTargetMod = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, HashShardingExpansionPlanTargetModConfigKey, _hashShardingExpansionCurrentMod * 2);
+            _hashShardingExpansionStages = ResolveShardingExpansionPlanStages(configuration);
+            _hashShardingLegacyExpansionPlan = NormalizeOptionalTextOrPlaceholder(configuration[HashShardingLegacyExpansionPlanConfigKey], NotConfiguredPlaceholder);
             _shardingPrebuildWindowHours = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, ShardingPrebuildWindowHoursConfigKey, 72);
             _shardingRunbook = NormalizeOptionalTextOrPlaceholder(configuration[ShardingRunbookConfigKey], NotConfiguredPlaceholder);
+            _enableManualPrebuildGuard = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, ShardingManualPrebuildGuardConfigKey, true);
 
             _retryPolicy = Policy
                 .Handle<Exception>(ex => ex is not OperationCanceledException)
@@ -87,6 +114,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// </summary>
         public async Task StartAsync(CancellationToken cancellationToken) {
             AuditShardingGovernance();
+            ValidateShardingGovernanceGuard();
             try {
                 await _retryPolicy.ExecuteAsync(async (ct) => {
                     await using var scope = _serviceProvider.CreateAsyncScope();
@@ -116,12 +144,13 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
             catch (Exception ex) {
                 // 重试耗尽或不可恢复异常：按配置决定是否阻断启动。
-                if (_failStartupOnMigrationError) {
+                if (_migrationFailureMode == MigrationFailureMode.FailFast) {
                     _logger.LogCritical(ex,
-                        "[数据库初始化] 所有重试均失败，数据库连接不可用，且已启用 FailStartupOnError，应用将终止启动。" +
-                        "请检查连接字符串与数据库服务状态，Provider={Provider}, ConfigKey={ConfigKey}",
+                        "[数据库初始化] 所有重试均失败，数据库连接不可用，且当前环境迁移策略为 FailFast，应用将终止启动。" +
+                        "请检查连接字符串与数据库服务状态，Provider={Provider}, Environment={Environment}, ConfigKey={ConfigKey}",
                         _dialect.ProviderName,
-                        FailStartupOnMigrationErrorConfigKey);
+                        _environmentName,
+                        MigrationFailureStrategyConfigKey);
                     throw;
                 }
 
@@ -133,8 +162,10 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 //   - 请监控 logs/database-*.log 文件中的 Critical/Error 日志
                 _logger.LogCritical(ex,
                     "[数据库初始化] 所有重试均失败，数据库连接不可用，服务将以降级模式运行。" +
-                    "请检查连接字符串与数据库服务状态，Provider={Provider}",
-                    _dialect.ProviderName);
+                    "请检查连接字符串与数据库服务状态，Provider={Provider}, Environment={Environment}, Strategy={Strategy}",
+                    _dialect.ProviderName,
+                    _environmentName,
+                    _migrationFailureMode);
             }
         }
 
@@ -157,10 +188,102 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return bool.TryParse(raw, out var value) && value;
         }
 
+        /// <summary>
+        /// 解析“迁移失败策略”：生产环境默认 FailFast，非生产默认 Degraded。
+        /// </summary>
+        /// <param name="configuration">配置源。</param>
+        /// <param name="isProductionEnvironment">是否生产环境。</param>
+        /// <returns>迁移失败策略。</returns>
+        internal static MigrationFailureMode ResolveMigrationFailureMode(IConfiguration configuration, bool isProductionEnvironment) {
+            ArgumentNullException.ThrowIfNull(configuration);
+
+            var envSpecificKey = isProductionEnvironment
+                ? MigrationFailureStrategyProductionConfigKey
+                : MigrationFailureStrategyNonProductionConfigKey;
+            if (TryParseMigrationFailureMode(configuration[envSpecificKey], out var envMode)) {
+                return envMode;
+            }
+
+            if (TryParseMigrationFailureMode(configuration[MigrationFailureStrategyConfigKey], out var unifiedMode)) {
+                return unifiedMode;
+            }
+
+            if (ResolveFailStartupOnMigrationError(configuration)) {
+                return MigrationFailureMode.FailFast;
+            }
+
+            return isProductionEnvironment ? MigrationFailureMode.FailFast : MigrationFailureMode.Degraded;
+        }
+
         /// <summary>将可选文本配置标准化为“非空白值或占位符”。</summary>
         internal static string NormalizeOptionalTextOrPlaceholder(string? value, string placeholder) {
             var normalized = value?.Trim();
             return string.IsNullOrWhiteSpace(normalized) ? placeholder : normalized;
+        }
+
+        /// <summary>
+        /// 解析哈希扩容阶段配置（结构化数组）；若未配置则返回空集合。
+        /// </summary>
+        /// <param name="configuration">配置源。</param>
+        /// <returns>有序阶段清单。</returns>
+        internal static IReadOnlyList<string> ResolveShardingExpansionPlanStages(IConfiguration configuration) {
+            ArgumentNullException.ThrowIfNull(configuration);
+            return configuration.GetSection(HashShardingExpansionPlanStagesConfigKey)
+                .GetChildren()
+                .Select(static child => child.Value?.Trim())
+                .Where(static stage => !string.IsNullOrWhiteSpace(stage))
+                .Cast<string>()
+                .ToArray();
+        }
+
+        /// <summary>
+        /// 构建扩容计划摘要文本：优先使用结构化阶段，其次回退历史文本。
+        /// </summary>
+        /// <param name="currentMod">当前模数。</param>
+        /// <param name="targetMod">目标模数。</param>
+        /// <param name="stages">结构化阶段列表。</param>
+        /// <param name="legacyPlan">历史文本计划。</param>
+        /// <param name="placeholder">占位符。</param>
+        /// <returns>用于审计日志的计划摘要。</returns>
+        internal static string BuildExpansionPlanSummary(
+            int currentMod,
+            int targetMod,
+            IReadOnlyList<string> stages,
+            string legacyPlan,
+            string placeholder) {
+            ArgumentNullException.ThrowIfNull(stages);
+            if (stages.Count > 0) {
+                return $"{currentMod}->{targetMod}: {string.Join(" -> ", stages)}";
+            }
+
+            return string.Equals(legacyPlan, placeholder, StringComparison.Ordinal) ? placeholder : legacyPlan;
+        }
+
+        /// <summary>
+        /// 尝试解析迁移失败策略文本。
+        /// </summary>
+        /// <param name="raw">原始配置文本。</param>
+        /// <param name="mode">解析结果。</param>
+        /// <returns>成功返回 true，否则 false。</returns>
+        private static bool TryParseMigrationFailureMode(string? raw, out MigrationFailureMode mode) {
+            mode = default;
+            if (string.IsNullOrWhiteSpace(raw)) {
+                return false;
+            }
+
+            var normalized = raw.Trim();
+            if (normalized.Equals("FailFast", StringComparison.OrdinalIgnoreCase)) {
+                mode = MigrationFailureMode.FailFast;
+                return true;
+            }
+
+            if (normalized.Equals("Degraded", StringComparison.OrdinalIgnoreCase) ||
+                normalized.Equals("Fallback", StringComparison.OrdinalIgnoreCase)) {
+                mode = MigrationFailureMode.Degraded;
+                return true;
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -299,20 +422,30 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// 3) 若未配置 Runbook，给出警告，推动制度化落地。
         /// </remarks>
         private void AuditShardingGovernance() {
+            var expansionPlanSummary = BuildExpansionPlanSummary(
+                _hashShardingExpansionCurrentMod,
+                _hashShardingExpansionTargetMod,
+                _hashShardingExpansionStages,
+                _hashShardingLegacyExpansionPlan,
+                NotConfiguredPlaceholder);
+
             _logger.LogInformation(
-                "分表治理基线：Provider={Provider}, CreateShardingTableOnStarting={CreateShardingTableOnStarting}, ParcelRelatedHashShardingMod={ParcelRelatedHashShardingMod}, ExpansionTriggerRatio={ExpansionTriggerRatio:F2}, ExpansionPlan={ExpansionPlan}",
+                "分表治理基线：Provider={Provider}, Environment={Environment}, MigrationFailureMode={MigrationFailureMode}, CreateShardingTableOnStarting={CreateShardingTableOnStarting}, ParcelRelatedHashShardingMod={ParcelRelatedHashShardingMod}, ExpansionTriggerRatio={ExpansionTriggerRatio:F2}, ExpansionPlan={ExpansionPlan}",
                 _dialect.ProviderName,
+                _environmentName,
+                _migrationFailureMode,
                 _createShardingTableOnStarting,
                 _parcelRelatedHashShardingMod,
                 _hashShardingExpansionTriggerRatio,
-                _hashShardingExpansionPlan);
+                expansionPlanSummary);
 
             if (!_createShardingTableOnStarting) {
                 _logger.LogWarning(
-                    "分表自动创建已关闭，必须依赖外部预建流程：Provider={Provider}, PrebuildWindowHours={PrebuildWindowHours}, Runbook={Runbook}",
+                    "分表自动创建已关闭，必须依赖外部预建流程：Provider={Provider}, PrebuildWindowHours={PrebuildWindowHours}, Runbook={Runbook}, EnableManualPrebuildGuard={EnableManualPrebuildGuard}",
                     _dialect.ProviderName,
                     _shardingPrebuildWindowHours,
-                    _shardingRunbook);
+                    _shardingRunbook,
+                    _enableManualPrebuildGuard);
             }
 
             if (string.Equals(_shardingRunbook, NotConfiguredPlaceholder, StringComparison.Ordinal)) {
@@ -320,6 +453,50 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     "分表治理 Runbook 未配置：请补充配置项 {RunbookKey}，并在发布前完成预建窗口演练。",
                     ShardingRunbookConfigKey);
             }
+        }
+
+        /// <summary>
+        /// 分表治理程序化守卫：避免“仅日志提醒”导致生产漏配。
+        /// </summary>
+        /// <remarks>
+        /// 规则：
+        /// 1) 当启动自动建表关闭且守卫开启时，必须配置 Runbook；
+        /// 2) 结构化扩容计划的 TargetMod 必须大于 CurrentMod；
+        /// 3) 生产环境且手工预建模式下，结构化阶段列表不能为空。
+        /// </remarks>
+        private void ValidateShardingGovernanceGuard() {
+            if (_hashShardingExpansionTargetMod <= _hashShardingExpansionCurrentMod) {
+                throw new InvalidOperationException(
+                    $"分表治理配置非法：{HashShardingExpansionPlanTargetModConfigKey}({_hashShardingExpansionTargetMod}) 必须大于 {HashShardingExpansionPlanCurrentModConfigKey}({_hashShardingExpansionCurrentMod})。");
+            }
+
+            if (_createShardingTableOnStarting || !_enableManualPrebuildGuard) {
+                return;
+            }
+
+            if (string.Equals(_shardingRunbook, NotConfiguredPlaceholder, StringComparison.Ordinal)) {
+                throw new InvalidOperationException(
+                    $"分表治理守卫触发：当 {CreateShardingTableOnStartingConfigKey}=false 且 {ShardingManualPrebuildGuardConfigKey}=true 时，必须配置 {ShardingRunbookConfigKey}。");
+            }
+
+            if (_isProductionEnvironment && _hashShardingExpansionStages.Count == 0) {
+                throw new InvalidOperationException(
+                    $"分表治理守卫触发：生产环境要求使用结构化扩容计划，请至少配置 {HashShardingExpansionPlanStagesConfigKey}:0。");
+            }
+        }
+
+        /// <summary>
+        /// 迁移失败策略枚举。
+        /// </summary>
+        internal enum MigrationFailureMode {
+            /// <summary>
+            /// 失败后降级运行。
+            /// </summary>
+            Degraded = 0,
+            /// <summary>
+            /// 失败后立即终止启动。
+            /// </summary>
+            FailFast = 1
         }
     }
 }

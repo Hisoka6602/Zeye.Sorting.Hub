@@ -52,6 +52,25 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         private static readonly Regex TimeZoneSuffixRegex = new(
             pattern: @"(Z|[+\-]\d{2}:\d{2}|[+\-]\d{4})$",
             options: RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        /// <summary>
+        /// Parcel 关联值对象分表规则：以声明式清单注册，避免注册点继续膨胀为手工长列表。
+        /// </summary>
+        private static readonly IReadOnlyList<ParcelAggregateShardingRule> ParcelAggregateShardingRules = [
+            CreateHashShardingRule<BagInfo>(nameof(BagInfo.BagCode)),
+            CreateDateShardingRule<VolumeInfo>(nameof(VolumeInfo.MeasurementTime)),
+            CreateDateShardingRule<ChuteInfo>(nameof(ChuteInfo.LandedTime)),
+            CreateDateShardingRule<SorterCarrierInfo>(nameof(SorterCarrierInfo.LoadedTime)),
+            CreateDateShardingRule<GrayDetectorInfo>(nameof(GrayDetectorInfo.ResultTime)),
+            CreateHashShardingRule<ParcelDeviceInfo>(ParcelIdShadowField),
+            CreateHashShardingRule<ParcelPositionInfo>(ParcelIdShadowField),
+            CreateHashShardingRule<StickingParcelInfo>(ParcelIdShadowField),
+            CreateDateShardingRule<ApiRequestInfo>(nameof(ApiRequestInfo.RequestTime)),
+            CreateDateShardingRule<CommandInfo>(nameof(CommandInfo.GeneratedTime)),
+            CreateDateShardingRule<WeightInfo>(nameof(WeightInfo.WeighingTime)),
+            CreateHashShardingRule<BarCodeInfo>(ParcelIdShadowField),
+            CreateHashShardingRule<ImageInfo>(ParcelIdShadowField),
+            CreateHashShardingRule<VideoInfo>(ParcelIdShadowField)
+        ];
 
         /// <summary>
         /// 注册持久化层核心能力（EF Core、分表规则、自动调优拦截器与观测组件），并按 <c>Persistence:Provider</c> 选择数据库方言实现。
@@ -205,86 +224,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 sourceName: ShardingConstant.DefaultSource);
 
             // ------------------------------
-            // 2) 独立属性实体：BagInfo
+            // 2) Parcel 关联值对象：按规则清单统一注册
             // ------------------------------
-            // BagInfo 的 BaggingTime 可为空，采用 BagCode 哈希分表以保证路由稳定。
-            shardingBuilder.SetHashModSharding<BagInfo>(
-                shardingField: nameof(BagInfo.BagCode),
-                mod: parcelRelatedHashShardingMod,
-                sourceName: ShardingConstant.DefaultSource);
-
-            // ------------------------------
-            // 3) 一对一属性表（OwnsOne）
-            // ------------------------------
-            // 具备必填时间字段 -> 按月分表
-            shardingBuilder.SetDateSharding<VolumeInfo>(
-                shardingField: nameof(VolumeInfo.MeasurementTime),
-                expandByDateMode: ExpandByDateMode.PerMonth,
-                startTime: localShardingStartTime,
-                sourceName: ShardingConstant.DefaultSource);
-            shardingBuilder.SetDateSharding<ChuteInfo>(
-                shardingField: nameof(ChuteInfo.LandedTime),
-                expandByDateMode: ExpandByDateMode.PerMonth,
-                startTime: localShardingStartTime,
-                sourceName: ShardingConstant.DefaultSource);
-            shardingBuilder.SetDateSharding<SorterCarrierInfo>(
-                shardingField: nameof(SorterCarrierInfo.LoadedTime),
-                expandByDateMode: ExpandByDateMode.PerMonth,
-                startTime: localShardingStartTime,
-                sourceName: ShardingConstant.DefaultSource);
-            shardingBuilder.SetDateSharding<GrayDetectorInfo>(
-                shardingField: nameof(GrayDetectorInfo.ResultTime),
-                expandByDateMode: ExpandByDateMode.PerMonth,
-                startTime: localShardingStartTime,
-                sourceName: ShardingConstant.DefaultSource);
-
-            // 无稳定时间字段或时间可空 -> 按 ParcelId 哈希分表
-            shardingBuilder.SetHashModSharding<ParcelDeviceInfo>(
-                shardingField: ParcelIdShadowField,
-                mod: parcelRelatedHashShardingMod,
-                sourceName: ShardingConstant.DefaultSource);
-            shardingBuilder.SetHashModSharding<ParcelPositionInfo>(
-                shardingField: ParcelIdShadowField,
-                mod: parcelRelatedHashShardingMod,
-                sourceName: ShardingConstant.DefaultSource);
-            shardingBuilder.SetHashModSharding<StickingParcelInfo>(
-                shardingField: ParcelIdShadowField,
-                mod: parcelRelatedHashShardingMod,
-                sourceName: ShardingConstant.DefaultSource);
-
-            // ------------------------------
-            // 4) 一对多属性表（OwnsMany）
-            // ------------------------------
-            // 具备必填时间字段 -> 按月分表
-            shardingBuilder.SetDateSharding<ApiRequestInfo>(
-                shardingField: nameof(ApiRequestInfo.RequestTime),
-                expandByDateMode: ExpandByDateMode.PerMonth,
-                startTime: localShardingStartTime,
-                sourceName: ShardingConstant.DefaultSource);
-            shardingBuilder.SetDateSharding<CommandInfo>(
-                shardingField: nameof(CommandInfo.GeneratedTime),
-                expandByDateMode: ExpandByDateMode.PerMonth,
-                startTime: localShardingStartTime,
-                sourceName: ShardingConstant.DefaultSource);
-            shardingBuilder.SetDateSharding<WeightInfo>(
-                shardingField: nameof(WeightInfo.WeighingTime),
-                expandByDateMode: ExpandByDateMode.PerMonth,
-                startTime: localShardingStartTime,
-                sourceName: ShardingConstant.DefaultSource);
-
-            // 可空时间或无时间字段 -> 按 ParcelId 哈希分表
-            shardingBuilder.SetHashModSharding<BarCodeInfo>(
-                shardingField: ParcelIdShadowField,
-                mod: parcelRelatedHashShardingMod,
-                sourceName: ShardingConstant.DefaultSource);
-            shardingBuilder.SetHashModSharding<ImageInfo>(
-                shardingField: ParcelIdShadowField,
-                mod: parcelRelatedHashShardingMod,
-                sourceName: ShardingConstant.DefaultSource);
-            shardingBuilder.SetHashModSharding<VideoInfo>(
-                shardingField: ParcelIdShadowField,
-                mod: parcelRelatedHashShardingMod,
-                sourceName: ShardingConstant.DefaultSource);
+            foreach (var rule in ParcelAggregateShardingRules) {
+                rule.Register(shardingBuilder, localShardingStartTime, parcelRelatedHashShardingMod);
+            }
         }
 
         /// <summary>
@@ -295,22 +239,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// 避免运行期出现“路由命中但物理分表规则缺失”的异常。
         /// </remarks>
         internal static void AssertParcelAggregateShardingCoverage() {
-            var configured = new HashSet<Type> {
-                typeof(BagInfo),
-                typeof(VolumeInfo),
-                typeof(ChuteInfo),
-                typeof(SorterCarrierInfo),
-                typeof(GrayDetectorInfo),
-                typeof(ParcelDeviceInfo),
-                typeof(ParcelPositionInfo),
-                typeof(StickingParcelInfo),
-                typeof(ApiRequestInfo),
-                typeof(CommandInfo),
-                typeof(WeightInfo),
-                typeof(BarCodeInfo),
-                typeof(ImageInfo),
-                typeof(VideoInfo)
-            };
+            var configured = ParcelAggregateShardingRules
+                .Select(static rule => rule.EntityType)
+                .ToHashSet();
             var discoveredCandidates = DiscoverParcelAggregateShardingCandidates();
             var missing = discoveredCandidates
                 .Where(type => !configured.Contains(type))
@@ -337,6 +268,39 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                     && string.Equals(type.Namespace, valueObjectNamespace, StringComparison.Ordinal)
                     && type.Name.EndsWith("Info", StringComparison.Ordinal))
                 .ToArray();
+        }
+
+        /// <summary>
+        /// 创建“按月分表”规则描述。
+        /// </summary>
+        /// <typeparam name="TEntity">实体类型。</typeparam>
+        /// <param name="shardingField">分片字段名。</param>
+        /// <returns>规则描述对象。</returns>
+        private static ParcelAggregateShardingRule CreateDateShardingRule<TEntity>(string shardingField)
+            where TEntity : class {
+            return new ParcelAggregateShardingRule(
+                EntityType: typeof(TEntity),
+                Register: (builder, startTime, _) => builder.SetDateSharding<TEntity>(
+                    shardingField: shardingField,
+                    expandByDateMode: ExpandByDateMode.PerMonth,
+                    startTime: startTime,
+                    sourceName: ShardingConstant.DefaultSource));
+        }
+
+        /// <summary>
+        /// 创建“哈希分表”规则描述。
+        /// </summary>
+        /// <typeparam name="TEntity">实体类型。</typeparam>
+        /// <param name="shardingField">分片字段名。</param>
+        /// <returns>规则描述对象。</returns>
+        private static ParcelAggregateShardingRule CreateHashShardingRule<TEntity>(string shardingField)
+            where TEntity : class {
+            return new ParcelAggregateShardingRule(
+                EntityType: typeof(TEntity),
+                Register: (builder, _, mod) => builder.SetHashModSharding<TEntity>(
+                    shardingField: shardingField,
+                    mod: mod,
+                    sourceName: ShardingConstant.DefaultSource));
         }
 
         /// <summary>
@@ -396,5 +360,14 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             const int maxLength = 120;
             return sanitized.Length <= maxLength ? sanitized : $"{sanitized[..maxLength]}...";
         }
+
+        /// <summary>
+        /// Parcel 聚合分表规则描述（统一声明式定义）。
+        /// </summary>
+        /// <param name="EntityType">规则对应实体类型。</param>
+        /// <param name="Register">规则注册动作。</param>
+        private readonly record struct ParcelAggregateShardingRule(
+            Type EntityType,
+            Action<IShardingBuilder, DateTime, int> Register);
     }
 }

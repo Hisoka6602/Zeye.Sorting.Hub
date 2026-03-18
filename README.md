@@ -243,13 +243,13 @@
 - `Worker.cs`：后台轮询任务示例服务。
 - `Zeye.Sorting.Hub.Host.csproj`：Host 项目定义。
 - `nlog.config`：NLog 日志配置，双路落盘（`logs/app-*.log` 全量 + `logs/database-*.log` 数据库专属），低开销设计（异步队列 + keepFileOpen + optimizeBufferReuse），保留 30 天。
-- `appsettings.json`：默认运行配置（包含连接字符串、持久化参数、日志级别、分表治理窗口与扩容计划配置）。
+- `appsettings.json`：默认运行配置（包含连接字符串、迁移失败策略分环境配置、分表治理守卫、结构化扩容计划、日志级别与自动调优参数）。
 - `appsettings.Development.json`：开发环境配置覆盖文件。
 
 #### `Zeye.Sorting.Hub.Host/HostedServices/`：启动/常驻托管服务目录
 - `AutoTuningLoggerObservability.cs`：自动调优观测默认日志实现（统一日志 + 指标抽象默认落地）。
 - `DatabaseAutoTuningHostedService.cs`：数据库自动调谐托管服务（显式闭环阶段迁移、执行隔离、标准化自动验证结果、回滚触发与审计日志；分表观测指标基于全量慢 SQL 解析并覆盖子查询/集合运算场景；自动索引建议在执行前统一执行覆盖、语义重复、低价值过滤）。
-- `DatabaseInitializerHostedService.cs`：数据库初始化与迁移托管服务（启动期输出分表治理基线审计，提示预建窗口与 Runbook 完整性）。
+- `DatabaseInitializerHostedService.cs`：数据库初始化与迁移托管服务（支持生产/非生产迁移失败策略分流：FailFast/Degraded；启动期执行分表治理程序化守卫，校验手工预建 Runbook 与结构化扩容计划完整性）。
 
 #### `Zeye.Sorting.Hub.Host/Properties/`：项目运行调试属性目录
 - `launchSettings.json`：本地启动配置（Profile、环境变量等）。
@@ -258,7 +258,7 @@
 - `Zeye.Sorting.Hub.Infrastructure.csproj`：Infrastructure 项目定义。
 
 #### `Zeye.Sorting.Hub.Infrastructure/DependencyInjection/`：依赖注入扩展目录
-- `PersistenceServiceCollectionExtensions.cs`：持久化服务注册扩展（数据库提供器选择、连接字符串校验、DbContext 注册、Parcel 按 CreatedTime 月分表，支持 `CreateShardingTableOnStarting` 与 `ParcelRelatedHashShardingMod` 配置化，并在启动期执行 ValueObjects 分表覆盖守卫；性能参数读取直接复用公共 Helper，无中间转发器）。
+- `PersistenceServiceCollectionExtensions.cs`：持久化服务注册扩展（数据库提供器选择、连接字符串校验、DbContext 注册、Parcel 按 CreatedTime 月分表，支持 `CreateShardingTableOnStarting` 与 `ParcelRelatedHashShardingMod` 配置化；Parcel 关联值对象分表规则改为声明式清单统一注册，覆盖守卫直接复用同一清单，避免手工长列表双处膨胀）。
 
 #### `Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/`：EF Core 实体映射配置目录
 - `BagInfoEntityTypeConfiguration.cs`：BagInfo 映射配置。
@@ -315,7 +315,7 @@
 
 ### `Zeye.Sorting.Hub.Host.Tests/`：自动调优测试层
 - `Zeye.Sorting.Hub.Host.Tests.csproj`：xUnit 测试项目定义。
-- `AutoTuningProductionControlTests.cs`：覆盖 dry-run、危险动作隔离、告警防抖与恢复、普通/严重回归、unavailable 指标处理、执行计划探针 available/unavailable 双路径、闭环链路与分表覆盖守卫校验，以及分表观测口径与自动索引过滤规则回归。
+- `AutoTuningProductionControlTests.cs`：覆盖 dry-run、危险动作隔离、告警防抖与恢复、普通/严重回归、unavailable 指标处理、执行计划探针 available/unavailable 双路径、闭环链路与分表覆盖守卫校验、迁移失败策略分环境解析、结构化扩容计划解析与分表观测口径/自动索引过滤规则回归。
 
 ## 本次更新内容（新增 Parcel 属性操作指南文档）
 
@@ -469,3 +469,16 @@
 
 1. 在不引入并行执行器的前提下，可继续引入“数据库真实索引元数据（运行时）+ 模型索引（静态）”双源比对，进一步降低跨环境误判率。
 2. 对“低价值索引”规则引入按表历史基线学习（例如分位数阈值），减少统一阈值在不同业务负载下的偏差。
+
+## 本次更新内容（PR3：自动迁移 + 分表治理完善）
+
+1. **迁移失败策略明确化**：`DatabaseInitializerHostedService` 新增 `FailureStrategy` 解析逻辑，支持 `Production/NonProduction` 分环境策略；默认行为明确为“生产 FailFast、非生产 Degraded”，并兼容历史 `FailStartupOnError`。
+2. **分表预建程序化守卫**：在既有 `DatabaseInitializerHostedService` 启动流程中新增治理守卫，不再仅靠日志提醒；当关闭启动自动建表且启用守卫时，强制校验 Runbook 配置，生产环境额外要求结构化扩容阶段配置。
+3. **治理配置结构化收敛**：`appsettings.json` 将 `HashSharding.ExpansionPlan` 从单文本方案升级为结构化字段（`CurrentMod`、`TargetMod`、`Stages[]`），减少“文本计划式字段”。
+4. **分表规则注册去膨胀**：`PersistenceServiceCollectionExtensions` 将 Parcel 关联值对象分表规则改为单一声明式清单统一注册，覆盖守卫复用同一清单，避免注册与守卫双列表长期膨胀。
+5. **最小回归测试补充**：`AutoTuningProductionControlTests` 新增迁移策略分环境解析、结构化扩容阶段解析、扩容摘要优先级等测试，确保改动行为可验证。
+
+## 后续可完善点（PR3 续项）
+
+1. 当前“分表预建守卫”基于配置完整性与策略边界校验，尚未做到“直接探测未来周期物理分表是否已预建”；后续可结合数据库元数据查询增加实表存在性验证。
+2. Parcel 关联值对象分表规则已收敛为单清单，但新增类型仍需补一条声明；后续可评估通过属性标记/约定推断进一步自动化，减少人工维护成本。
