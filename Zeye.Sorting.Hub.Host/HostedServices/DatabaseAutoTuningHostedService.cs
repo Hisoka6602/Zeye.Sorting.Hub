@@ -1447,7 +1447,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 }
 
                 if (ch == ')') {
-                    depth = Math.Max(0, depth - 1);
+                    if (depth > 0) {
+                        depth--;
+                    }
                     continue;
                 }
 

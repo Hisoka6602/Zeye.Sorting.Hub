@@ -352,7 +352,7 @@ public sealed class AutoTuningProductionControlTests {
     public void UpdateAutonomousSignals_HitRateSupportsPartialAndNoTableReferenceCases() {
         var logger = new TestLogger<DatabaseAutoTuningHostedService>();
         var observability = new TestObservability();
-        var fixedNow = new DateTime(2026, 3, 17, 10, 0, 0, DateTimeKind.Local);
+        var fixedNow = DateTime.Now;
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:AutoTuning:Autonomous:EnableFullAutomation"] = "true",
