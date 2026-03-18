@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
@@ -44,11 +45,18 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private static readonly Regex JoinKeywordRegex = new(
             @"\b(?:left|right|inner|full|cross)?\s*join\b",
             RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
-        private static readonly Regex TableReferenceRegex = new(
-            // 识别 FROM 后的主表引用，支持常见 MySQL(`table`/`schema`.`table`) 与 SQL Server([table]/[schema].[table]) 书写形式。
-            // 该表达式仅用于分表命中率估算，不承担完整 SQL 语法解析职责。
-            @"\bfrom\s+(?:`[^`]+`|\[[^\]]+\]|\w+)(?:\.(?:`[^`]+`|\[[^\]]+\]|\w+))?",
+        private static readonly Regex SetOperatorRegex = new(
+            @"\b(union|intersect|except)\b",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        private static readonly Regex MultiFromRegex = new(
+            @"\bfrom\b[\s\S]*\bfrom\b",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        private static readonly Regex FromClauseRegex = new(
+            @"\bfrom\b(?<from>.+?)(?:\bwhere\b|\bgroup\s+by\b|\border\s+by\b|\blimit\b|\bhaving\b|\bunion\b|\bintersect\b|\bexcept\b|;|$)",
             RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
+        private static readonly Regex CreateIndexActionRegex = new(
+            @"\bcreate\s+(?:unique\s+)?index\b",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
         /// <summary>
         /// 字段：_logger。
         /// </summary>
@@ -181,6 +189,10 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private readonly Dictionary<string, int> _tableHeatByTable = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, Queue<TableCapacitySnapshot>> _capacitySnapshotsByTable = new(StringComparer.OrdinalIgnoreCase);
         /// <summary>
+        /// 字段：_modelIndexColumnsByTable。
+        /// </summary>
+        private readonly Dictionary<string, IReadOnlyList<string[]>> _modelIndexColumnsByTable = new(StringComparer.OrdinalIgnoreCase);
+        /// <summary>
         /// 字段：_analysisCycleCounter。
         /// </summary>
         private int _analysisCycleCounter;
@@ -270,6 +282,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     }
                     continue;
                 }
+                result = await ApplyIndexSuggestionGuardsAsync(result, stoppingToken);
                 _analysisCycleCounter++;
                 MoveToStage(AutoTuningClosedLoopStage.Diagnose, "metrics-aggregated");
 
@@ -304,7 +317,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 }
 
                 var metricsByFingerprint = result.Metrics.ToDictionary(static metric => metric.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
-                UpdateAutonomousSignals(result, result.GeneratedTime, metricsByFingerprint);
+                UpdateAutonomousSignals(result, result.GeneratedTime);
                 MoveToStage(AutoTuningClosedLoopStage.Execute, "execute-candidates");
                 await ExecuteAutoTuningActionsAsync(result, metricsByFingerprint, stoppingToken);
                 MoveToStage(AutoTuningClosedLoopStage.Verify, "validate-actions");
@@ -1030,11 +1043,210 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return decimal.Clamp(riskScore, 0m, 1m);
         }
 
+        /// <summary>按覆盖关系、重复语义和低价值规则过滤自动索引建议。</summary>
+        private async Task<SlowQueryAnalysisResult> ApplyIndexSuggestionGuardsAsync(
+            SlowQueryAnalysisResult result,
+            CancellationToken cancellationToken) {
+            await EnsureModelIndexColumnsLoadedAsync(cancellationToken);
+            var metricsByFingerprint = result.Metrics.ToDictionary(static metric => metric.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
+            var blockedCreateIndexActions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var emittedSignatures = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var filteredCandidates = new List<SlowQueryTuningCandidate>(result.TuningCandidates.Count);
+
+            foreach (var candidate in result.TuningCandidates) {
+                metricsByFingerprint.TryGetValue(candidate.SqlFingerprint, out var metric);
+                var indexColumns = NormalizeCandidateColumns(candidate.WhereColumns, 3);
+                var tableKey = BuildTableKey(candidate.SchemaName, candidate.TableName);
+                var indexSignature = BuildIndexSignature(tableKey, indexColumns);
+                var isCoveredByExisting = indexColumns.Length > 0 && IsCoveredByModelIndex(tableKey, indexColumns);
+                var isSemanticDuplicate = !string.IsNullOrWhiteSpace(indexSignature) && !emittedSignatures.Add(indexSignature);
+                var isLowValue = IsLowValueIndexCandidate(metric);
+                var shouldFilterIndex = isCoveredByExisting || isSemanticDuplicate || isLowValue;
+                if (shouldFilterIndex) {
+                    var blockReason = isCoveredByExisting
+                        ? "covered-by-existing-index"
+                        : isSemanticDuplicate
+                            ? "semantic-duplicate"
+                            : "low-value-index";
+                    _logger.LogInformation(
+                        "自动索引建议已过滤：Provider={Provider}, Fingerprint={Fingerprint}, Table={Table}, Reason={Reason}",
+                        _dialect.ProviderName,
+                        candidate.SqlFingerprint,
+                        tableKey,
+                        blockReason);
+                }
+
+                var filteredActions = new List<string>(candidate.SuggestedActions.Count);
+                foreach (var action in candidate.SuggestedActions) {
+                    if (IsCreateIndexAction(action) && shouldFilterIndex) {
+                        blockedCreateIndexActions.Add(NormalizeSqlText(action));
+                        continue;
+                    }
+
+                    filteredActions.Add(action);
+                }
+
+                if (filteredActions.Count == 0) {
+                    continue;
+                }
+
+                filteredCandidates.Add(new SlowQueryTuningCandidate(
+                    candidate.SqlFingerprint,
+                    candidate.SchemaName,
+                    candidate.TableName,
+                    candidate.WhereColumns,
+                    filteredActions));
+            }
+
+            var filteredInsights = result.SuggestionInsights
+                .Where(insight => !ShouldBlockSuggestionInsight(insight, blockedCreateIndexActions))
+                .ToList();
+            return result with {
+                TuningCandidates = filteredCandidates,
+                SuggestionInsights = filteredInsights,
+                ReadOnlySuggestions = filteredInsights.Select(static insight => insight.SuggestionSql).ToList()
+            };
+        }
+
+        /// <summary>按需加载模型静态索引列信息。</summary>
+        private async Task EnsureModelIndexColumnsLoadedAsync(CancellationToken cancellationToken) {
+            if (_modelIndexColumnsByTable.Count > 0) {
+                return;
+            }
+
+            try {
+                await using var scope = _scopeFactory.CreateAsyncScope();
+                var dbContext = scope.ServiceProvider.GetRequiredService<SortingHubDbContext>();
+                foreach (var entityType in dbContext.Model.GetEntityTypes()) {
+                    var tableName = entityType.GetTableName();
+                    if (string.IsNullOrWhiteSpace(tableName)) {
+                        continue;
+                    }
+
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var schemaName = entityType.GetSchema();
+                    var tableKey = BuildTableKey(schemaName, tableName);
+                    var tableStoreObject = StoreObjectIdentifier.Table(tableName, schemaName);
+                    var indexColumns = entityType.GetIndexes()
+                        .Select(index => index.Properties
+                            .Select(property => property.GetColumnName(tableStoreObject))
+                            .Where(static columnName => !string.IsNullOrWhiteSpace(columnName))
+                            .Select(static columnName => columnName!.Trim().ToLowerInvariant())
+                            .ToArray())
+                        .Where(static columns => columns.Length > 0)
+                        .ToArray();
+                    if (indexColumns.Length == 0) {
+                        continue;
+                    }
+
+                    _modelIndexColumnsByTable[tableKey] = indexColumns;
+                }
+            } catch (Exception ex) {
+                _logger.LogError(ex, "加载模型索引覆盖信息失败：Provider={Provider}", _dialect.ProviderName);
+            }
+        }
+
+        /// <summary>判断建议是否属于低价值索引候选。</summary>
+        private bool IsLowValueIndexCandidate(SlowQueryMetric? metric) {
+            if (metric is null) {
+                return true;
+            }
+
+            return metric.CallCount < _configuredTriggerCount * 2
+                && metric.P99Milliseconds < _configuredAlertP99Milliseconds
+                && metric.TimeoutRatePercent <= 0m
+                && metric.ErrorRatePercent <= 0m;
+        }
+
+        /// <summary>判断候选索引是否已被模型静态索引覆盖或语义重复。</summary>
+        private bool IsCoveredByModelIndex(string tableKey, IReadOnlyList<string> candidateColumns) {
+            if (candidateColumns.Count == 0 || !_modelIndexColumnsByTable.TryGetValue(tableKey, out var existingIndexes)) {
+                return false;
+            }
+
+            foreach (var existing in existingIndexes) {
+                if (IsPrefixMatch(existing, candidateColumns)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>判断列序列是否为前缀匹配。</summary>
+        private static bool IsPrefixMatch(IReadOnlyList<string> source, IReadOnlyList<string> target) {
+            if (source.Count == 0 || target.Count == 0 || source.Count < target.Count) {
+                return false;
+            }
+
+            for (var i = 0; i < target.Count; i++) {
+                if (!string.Equals(source[i], target[i], StringComparison.OrdinalIgnoreCase)) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>判断建议洞察是否应按已拦截的索引动作过滤。</summary>
+        private static bool ShouldBlockSuggestionInsight(SlowQuerySuggestionInsight insight, HashSet<string> blockedCreateIndexActions) {
+            var suggestionBody = NormalizeSuggestionBody(insight.SuggestionSql);
+            return blockedCreateIndexActions.Contains(suggestionBody);
+        }
+
+        /// <summary>移除只读建议标记后返回标准化 SQL。</summary>
+        private static string NormalizeSuggestionBody(string suggestionSql) {
+            var sql = suggestionSql.Trim();
+            var markerIndex = sql.IndexOf("*/", StringComparison.Ordinal);
+            if (markerIndex >= 0) {
+                sql = sql[(markerIndex + 2)..];
+            }
+
+            return NormalizeSqlText(sql);
+        }
+
+        /// <summary>判断动作 SQL 是否为 CREATE INDEX。</summary>
+        private static bool IsCreateIndexAction(string actionSql) {
+            if (string.IsNullOrWhiteSpace(actionSql)) {
+                return false;
+            }
+
+            var normalized = TrimLeadingComments(actionSql);
+            return CreateIndexActionRegex.IsMatch(normalized);
+        }
+
+        /// <summary>构造统一索引签名（table + columns）。</summary>
+        private static string BuildIndexSignature(string tableKey, IReadOnlyList<string> indexColumns) {
+            if (string.IsNullOrWhiteSpace(tableKey) || indexColumns.Count == 0) {
+                return string.Empty;
+            }
+
+            return $"{tableKey}|{string.Join(",", indexColumns)}";
+        }
+
+        /// <summary>归一化候选索引列，过滤空白并限制最大列数（maxColumnCount ≤ 0 时返回空数组； 当前调用侧固定传入 3）。</summary>
+        private static string[] NormalizeCandidateColumns(IReadOnlyList<string> columns, int maxColumnCount) {
+            if (columns.Count == 0 || maxColumnCount <= 0) {
+                return [];
+            }
+
+            return columns
+                .Where(static column => !string.IsNullOrWhiteSpace(column))
+                .Select(static column => column.Trim().ToLowerInvariant())
+                .Take(maxColumnCount)
+                .ToArray();
+        }
+
+        /// <summary>标准化 SQL 文本以便做集合去重。</summary>
+        private static string NormalizeSqlText(string sql) {
+            var normalized = TrimLeadingComments(sql).Trim();
+            return Regex.Replace(normalized, @"\s+", " ", RegexOptions.CultureInvariant).ToLowerInvariant();
+        }
+
         /// <summary>更新表热度与容量观测快照。</summary>
         private void UpdateAutonomousSignals(
             SlowQueryAnalysisResult result,
-            DateTime cycleTime,
-            IReadOnlyDictionary<string, SlowQueryMetric> metricsByFingerprint) {
+            DateTime cycleTime) {
             // 容量预测与执行热度是相互独立的功能，分别检查各自的开关。
             if (!_enableFullAutomation && !_enableCapacityPrediction) {
                 return;
@@ -1053,14 +1265,13 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 }
             }
 
-            // 步骤 2：按本轮候选聚合表级调用量与影响行数。
+            // 步骤 2：按全量慢 SQL 指标聚合表级调用量与影响行数（避免仅依赖 tuning candidates 造成统计失真）。
             var tableSamples = new Dictionary<string, (long Rows, int Calls)>(StringComparer.OrdinalIgnoreCase);
-            foreach (var candidate in result.TuningCandidates) {
-                if (!metricsByFingerprint.TryGetValue(candidate.SqlFingerprint, out var metric)) {
+            foreach (var metric in result.Metrics) {
+                if (!TryExtractMetricTableKey(metric.SampleSql, out var tableKey)) {
                     continue;
                 }
 
-                var tableKey = BuildTableKey(candidate.SchemaName, candidate.TableName);
                 if (!tableSamples.TryGetValue(tableKey, out var sample)) {
                     sample = (Rows: 0L, Calls: 0);
                 }
@@ -1114,7 +1325,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 return;
             }
 
-            var shardingHitCalls = metrics.Sum(static metric => HasTableReference(metric.SampleSql) ? metric.CallCount : 0);
+            var shardingHitCalls = metrics.Sum(static metric => IsShardingHitQuery(metric.SampleSql) ? metric.CallCount : 0);
             var hitRate = Math.Clamp((double)shardingHitCalls / totalCalls, 0d, 1d);
             var crossTableCalls = metrics.Sum(static metric => IsCrossTableQuery(metric.SampleSql) ? metric.CallCount : 0);
             var crossTableRatio = Math.Clamp((double)crossTableCalls / totalCalls, 0d, 1d);
@@ -1193,24 +1404,77 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 : $"{schemaName.Trim().ToLowerInvariant()}.{tableName.Trim().ToLowerInvariant()}";
         }
 
-        /// <summary>基于 JOIN 关键字判断是否为跨分表/跨表查询 (当前仅覆盖 JOIN 场景)。</summary>
+        /// <summary>识别 SQL 是否可视为分表命中（单主表且非跨表语义）。</summary>
+        private static bool IsShardingHitQuery(string sql) {
+            if (string.IsNullOrWhiteSpace(sql)) {
+                return false;
+            }
+
+            var normalizedSql = TrimLeadingComments(sql);
+            if (IsCrossTableQuery(normalizedSql)) {
+                return false;
+            }
+
+            return SlowQueryAutoTuningPipeline.TryExtractPrimaryTable(normalizedSql, out _, out _);
+        }
+
+        /// <summary>识别 SQL 是否存在跨表查询语义（JOIN、集合运算、多 FROM、逗号连接）。</summary>
         private static bool IsCrossTableQuery(string sql) {
             if (string.IsNullOrWhiteSpace(sql)) {
                 return false;
             }
 
             var normalizedSql = TrimLeadingComments(sql);
-            return JoinKeywordRegex.IsMatch(normalizedSql);
+            return JoinKeywordRegex.IsMatch(normalizedSql)
+                || SetOperatorRegex.IsMatch(normalizedSql)
+                || MultiFromRegex.IsMatch(normalizedSql)
+                || HasCommaJoinInFromClause(normalizedSql);
         }
 
-        /// <summary>判断 SQL 是否可识别出主表引用（用于分表命中率估算）。</summary>
-        private static bool HasTableReference(string sql) {
+        /// <summary>判断 FROM 子句是否存在顶层逗号连接（避免 WHERE/ORDER BY 中逗号误判）。</summary>
+        private static bool HasCommaJoinInFromClause(string normalizedSql) {
+            var fromMatch = FromClauseRegex.Match(normalizedSql);
+            if (!fromMatch.Success) {
+                return false;
+            }
+
+            var fromClause = fromMatch.Groups["from"].Value;
+            var depth = 0;
+            foreach (var ch in fromClause) {
+                if (ch == '(') {
+                    depth++;
+                    continue;
+                }
+
+                if (ch == ')') {
+                    if (depth > 0) {
+                        depth--;
+                    }
+                    continue;
+                }
+
+                if (ch == ',' && depth == 0) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>尝试从慢 SQL 提取主表 key（schema.table）。</summary>
+        private static bool TryExtractMetricTableKey(string sql, out string tableKey) {
+            tableKey = string.Empty;
             if (string.IsNullOrWhiteSpace(sql)) {
                 return false;
             }
 
             var normalizedSql = TrimLeadingComments(sql);
-            return TableReferenceRegex.IsMatch(normalizedSql);
+            if (!SlowQueryAutoTuningPipeline.TryExtractPrimaryTable(normalizedSql, out var schemaName, out var tableName)) {
+                return false;
+            }
+
+            tableKey = BuildTableKey(schemaName, tableName);
+            return true;
         }
 
         /// <summary>判断当前时刻是否位于高峰执行窗口。</summary>
