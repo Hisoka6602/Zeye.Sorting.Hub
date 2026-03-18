@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
+using Zeye.Sorting.Hub.Host.Enums;
 using Zeye.Sorting.Hub.Host.HostedServices;
 using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
@@ -112,6 +113,65 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
+    /// 验证场景：MigrationFailureMode_DefaultsToFailFast_InProduction。
+    /// </summary>
+    [Fact]
+    public void MigrationFailureMode_DefaultsToFailFast_InProduction() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>())
+            .Build();
+
+        var mode = DatabaseInitializerHostedService.ResolveMigrationFailureMode(configuration, isProductionEnvironment: true);
+        Assert.Equal(MigrationFailureMode.FailFast, mode);
+    }
+
+    /// <summary>
+    /// 验证场景：MigrationFailureMode_DefaultsToDegraded_InNonProduction。
+    /// </summary>
+    [Fact]
+    public void MigrationFailureMode_DefaultsToDegraded_InNonProduction() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>())
+            .Build();
+
+        var mode = DatabaseInitializerHostedService.ResolveMigrationFailureMode(configuration, isProductionEnvironment: false);
+        Assert.Equal(MigrationFailureMode.Degraded, mode);
+    }
+
+    /// <summary>
+    /// 验证场景：MigrationFailureMode_UsesEnvironmentSpecificConfig。
+    /// </summary>
+    [Fact]
+    public void MigrationFailureMode_UsesEnvironmentSpecificConfig() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:Migration:FailureStrategy:Production"] = "Degraded",
+                ["Persistence:Migration:FailureStrategy:NonProduction"] = "FailFast"
+            })
+            .Build();
+
+        var productionMode = DatabaseInitializerHostedService.ResolveMigrationFailureMode(configuration, isProductionEnvironment: true);
+        var nonProductionMode = DatabaseInitializerHostedService.ResolveMigrationFailureMode(configuration, isProductionEnvironment: false);
+        Assert.Equal(MigrationFailureMode.Degraded, productionMode);
+        Assert.Equal(MigrationFailureMode.FailFast, nonProductionMode);
+    }
+
+    /// <summary>
+    /// 验证场景：MigrationFailureMode_FallbacksToLegacyBooleanSwitch。
+    /// </summary>
+    [Fact]
+    public void MigrationFailureMode_FallbacksToLegacyBooleanSwitch() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:Migration:FailStartupOnError"] = "true"
+            })
+            .Build();
+
+        var mode = DatabaseInitializerHostedService.ResolveMigrationFailureMode(configuration, isProductionEnvironment: false);
+        Assert.Equal(MigrationFailureMode.FailFast, mode);
+    }
+
+    /// <summary>
     /// 验证场景：ShardingGovernanceTextNormalization_UsesPlaceholderForWhitespace。
     /// </summary>
     [Fact]
@@ -119,6 +179,45 @@ public sealed class AutoTuningProductionControlTests {
         var normalized = DatabaseInitializerHostedService.NormalizeOptionalTextOrPlaceholder("   ", "未配置");
         Assert.Equal("未配置", normalized);
         Assert.Equal("runbook-path", DatabaseInitializerHostedService.NormalizeOptionalTextOrPlaceholder("  runbook-path  ", "未配置"));
+    }
+
+    /// <summary>
+    /// 验证场景：ShardingGovernance_ResolvesStructuredExpansionStages。
+    /// </summary>
+    [Fact]
+    public void ShardingGovernance_ResolvesStructuredExpansionStages() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:Sharding:HashSharding:ExpansionPlan:Stages:0"] = "warmup",
+                ["Persistence:Sharding:HashSharding:ExpansionPlan:Stages:1"] = "verification",
+                ["Persistence:Sharding:HashSharding:ExpansionPlan:Stages:2"] = "cutover"
+            })
+            .Build();
+
+        var stages = DatabaseInitializerHostedService.ResolveShardingExpansionPlanStages(configuration);
+        Assert.Equal(["warmup", "verification", "cutover"], stages);
+    }
+
+    /// <summary>
+    /// 验证场景：ShardingGovernance_BuildExpansionPlanSummary_PrefersStructuredStages。
+    /// </summary>
+    [Fact]
+    public void ShardingGovernance_BuildExpansionPlanSummary_PrefersStructuredStages() {
+        var summary = DatabaseInitializerHostedService.BuildExpansionPlanSummary(
+            currentMod: 16,
+            targetMod: 32,
+            stages: ["warmup", "dual-write", "cutover"],
+            legacyPlan: "16->32 text",
+            placeholder: "未配置");
+        Assert.Equal("16->32: warmup -> dual-write -> cutover", summary);
+
+        var fallbackSummary = DatabaseInitializerHostedService.BuildExpansionPlanSummary(
+            currentMod: 16,
+            targetMod: 32,
+            stages: [],
+            legacyPlan: "16->32 text",
+            placeholder: "未配置");
+        Assert.Equal("16->32 text", fallbackSummary);
     }
 
     /// <summary>
