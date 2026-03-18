@@ -81,19 +81,26 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
             var validationErrors = new List<string>();
             var mode = ResolveMode(configuration[ModeConfigKey], validationErrors);
             var timeGranularity = ResolveTimeGranularity(configuration[TimeGranularityConfigKey], validationErrors);
-            var thresholdAction = ResolveThresholdAction(configuration[VolumeActionConfigKey], validationErrors);
-            var maxRowsPerShard = ReadPositiveLong(configuration[VolumeMaxRowsConfigKey], VolumeMaxRowsConfigKey, mode, validationErrors);
-            var currentEstimatedRowsPerShard = ReadNonNegativeLong(configuration[VolumeCurrentRowsConfigKey], VolumeCurrentRowsConfigKey, validationErrors);
-            var hotThresholdRatio = ReadRatio(
-                configuration[VolumeHotThresholdConfigKey],
-                VolumeHotThresholdConfigKey,
-                requiredWhenMissing: mode is ParcelShardingStrategyMode.Volume or ParcelShardingStrategyMode.Hybrid,
-                validationErrors: validationErrors);
-            var currentObservedHotRatio = ReadRatio(
-                configuration[VolumeCurrentHotRatioConfigKey],
-                VolumeCurrentHotRatioConfigKey,
-                requiredWhenMissing: false,
-                validationErrors: validationErrors);
+            var thresholdAction = ParcelVolumeThresholdAction.AlertOnly;
+            long? maxRowsPerShard = null;
+            long? currentEstimatedRowsPerShard = null;
+            decimal? hotThresholdRatio = null;
+            decimal? currentObservedHotRatio = null;
+            if (mode is ParcelShardingStrategyMode.Volume or ParcelShardingStrategyMode.Hybrid) {
+                thresholdAction = ResolveThresholdAction(configuration[VolumeActionConfigKey], validationErrors);
+                maxRowsPerShard = ReadPositiveLong(configuration[VolumeMaxRowsConfigKey], VolumeMaxRowsConfigKey, mode, validationErrors);
+                currentEstimatedRowsPerShard = ReadNonNegativeLong(configuration[VolumeCurrentRowsConfigKey], VolumeCurrentRowsConfigKey, validationErrors);
+                hotThresholdRatio = ReadRatio(
+                    configuration[VolumeHotThresholdConfigKey],
+                    VolumeHotThresholdConfigKey,
+                    requiredWhenMissing: true,
+                    validationErrors: validationErrors);
+                currentObservedHotRatio = ReadRatio(
+                    configuration[VolumeCurrentHotRatioConfigKey],
+                    VolumeCurrentHotRatioConfigKey,
+                    requiredWhenMissing: false,
+                    validationErrors: validationErrors);
+            }
 
             var thresholdReached = IsThresholdReached(
                 maxRowsPerShard,
@@ -120,7 +127,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
                 ThresholdReached: thresholdReached,
                 EffectiveDateMode: effectiveDateMode,
                 Reason: reason);
-            return new ParcelShardingStrategyEvaluation(decision, validationErrors);
+            return new ParcelShardingStrategyEvaluation(decision, Array.AsReadOnly(validationErrors.ToArray()));
         }
 
         /// <summary>
@@ -135,7 +142,13 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
             }
 
             var normalized = raw.Trim();
-            if (Enum.TryParse<ParcelShardingStrategyMode>(normalized, ignoreCase: true, out var mode)) {
+            if (IsNumericEnumToken(normalized)) {
+                validationErrors.Add($"配置项 {ModeConfigKey} 值非法：{normalized}。允许值：Time/Volume/Hybrid。");
+                return ParcelShardingStrategyMode.Time;
+            }
+
+            if (Enum.TryParse<ParcelShardingStrategyMode>(normalized, ignoreCase: true, out var mode)
+                && Enum.IsDefined(mode)) {
                 return mode;
             }
 
@@ -155,7 +168,13 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
             }
 
             var normalized = raw.Trim();
-            if (Enum.TryParse<ParcelTimeShardingGranularity>(normalized, ignoreCase: true, out var granularity)) {
+            if (IsNumericEnumToken(normalized)) {
+                validationErrors.Add($"配置项 {TimeGranularityConfigKey} 值非法：{normalized}。允许值：PerMonth/PerDay。");
+                return ParcelTimeShardingGranularity.PerMonth;
+            }
+
+            if (Enum.TryParse<ParcelTimeShardingGranularity>(normalized, ignoreCase: true, out var granularity)
+                && Enum.IsDefined(granularity)) {
                 return granularity;
             }
 
@@ -175,12 +194,27 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
             }
 
             var normalized = raw.Trim();
-            if (Enum.TryParse<ParcelVolumeThresholdAction>(normalized, ignoreCase: true, out var action)) {
+            if (IsNumericEnumToken(normalized)) {
+                validationErrors.Add($"配置项 {VolumeActionConfigKey} 值非法：{normalized}。允许值：AlertOnly/SwitchToPerDay。");
+                return ParcelVolumeThresholdAction.AlertOnly;
+            }
+
+            if (Enum.TryParse<ParcelVolumeThresholdAction>(normalized, ignoreCase: true, out var action)
+                && Enum.IsDefined(action)) {
                 return action;
             }
 
             validationErrors.Add($"配置项 {VolumeActionConfigKey} 值非法：{normalized}。允许值：AlertOnly/SwitchToPerDay。");
             return ParcelVolumeThresholdAction.AlertOnly;
+        }
+
+        /// <summary>
+        /// 判断枚举配置项是否使用了纯数字令牌。
+        /// </summary>
+        /// <param name="value">配置文本。</param>
+        /// <returns>纯数字令牌返回 true，否则 false。</returns>
+        private static bool IsNumericEnumToken(string value) {
+            return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _);
         }
 
         /// <summary>

@@ -85,6 +85,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             var parcelRelatedHashShardingMod = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, "Persistence:Sharding:ParcelRelatedHashShardingMod", DefaultParcelRelatedHashShardingMod);
             var parcelShardingStrategyEvaluation = ParcelShardingStrategyEvaluator.Evaluate(configuration);
             var parcelShardingStrategyDecision = parcelShardingStrategyEvaluation.Decision;
+            if (parcelShardingStrategyEvaluation.ValidationErrors.Count > 0) {
+                throw new InvalidOperationException(
+                    $"分表策略配置校验失败：{string.Join(" | ", parcelShardingStrategyEvaluation.ValidationErrors)}");
+            }
 
             services.AddSingleton<SlowQueryAutoTuningPipeline>();
             services.AddSingleton<SlowQueryCommandInterceptor>();
