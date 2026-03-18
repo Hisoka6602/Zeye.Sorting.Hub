@@ -57,7 +57,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
                 throw new ArgumentOutOfRangeException(nameof(maxLength), "最大长度必须大于 0。");
             }
             const int hashHexLength = 8;
-            var minAllowedLength = hashHexLength + 1; // '_' + 8位哈希
+            var minAllowedLength = hashHexLength + 1; // 哈希十六进制(8) + 下划线(1) = 9
             if (maxLength < minAllowedLength) {
                 throw new ArgumentOutOfRangeException(nameof(maxLength), $"最大长度至少为 {minAllowedLength}，以容纳 '_'+哈希后缀。");
             }

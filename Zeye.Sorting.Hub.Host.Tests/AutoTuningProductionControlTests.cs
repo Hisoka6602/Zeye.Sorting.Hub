@@ -242,10 +242,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：BuildIndexName_ShouldThrowClearException_WhenMaxLengthTooSmall。
+    /// 验证场景：当 maxLength 小于最小允许值（9）时，BuildIndexName 抛出 ArgumentOutOfRangeException。
     /// </summary>
     [Fact]
-    public void BuildIndexName_ShouldThrowClearException_WhenMaxLengthTooSmall() {
+    public void BuildIndexName_ShouldThrowArgumentOutOfRangeException_WhenMaxLengthLessThanMinimumRequired() {
         var helperType = typeof(MySqlDialect).Assembly.GetType("Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects.DatabaseProviderExceptionHelper");
         Assert.NotNull(helperType);
 
