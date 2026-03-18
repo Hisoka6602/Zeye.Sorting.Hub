@@ -51,8 +51,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private static readonly Regex MultiFromRegex = new(
             @"\bfrom\b[\s\S]*\bfrom\b",
             RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
-        private static readonly Regex CommaJoinRegex = new(
-            @"\bfrom\b[^;]*,",
+        private static readonly Regex FromClauseRegex = new(
+            @"\bfrom\b(?<from>.+?)(?:\bwhere\b|\bgroup\s+by\b|\border\s+by\b|\blimit\b|\bhaving\b|\bunion\b|\bintersect\b|\bexcept\b|;|$)",
             RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
         private static readonly Regex CreateIndexActionRegex = new(
             @"\bcreate\s+(?:unique\s+)?index\b",
@@ -1165,7 +1165,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
 
             foreach (var existing in existingIndexes) {
-                if (IsPrefixMatch(existing, candidateColumns) || IsPrefixMatch(candidateColumns, existing)) {
+                if (IsPrefixMatch(existing, candidateColumns)) {
                     return true;
                 }
             }
@@ -1428,7 +1428,35 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return JoinKeywordRegex.IsMatch(normalizedSql)
                 || SetOperatorRegex.IsMatch(normalizedSql)
                 || MultiFromRegex.IsMatch(normalizedSql)
-                || CommaJoinRegex.IsMatch(normalizedSql);
+                || HasCommaJoinInFromClause(normalizedSql);
+        }
+
+        /// <summary>判断 FROM 子句是否存在顶层逗号连接（避免 WHERE/ORDER BY 中逗号误判）。</summary>
+        private static bool HasCommaJoinInFromClause(string normalizedSql) {
+            var fromMatch = FromClauseRegex.Match(normalizedSql);
+            if (!fromMatch.Success) {
+                return false;
+            }
+
+            var fromClause = fromMatch.Groups["from"].Value;
+            var depth = 0;
+            foreach (var ch in fromClause) {
+                if (ch == '(') {
+                    depth++;
+                    continue;
+                }
+
+                if (ch == ')') {
+                    depth = Math.Max(0, depth - 1);
+                    continue;
+                }
+
+                if (ch == ',' && depth == 0) {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>尝试从慢 SQL 提取主表 key（schema.table）。</summary>
