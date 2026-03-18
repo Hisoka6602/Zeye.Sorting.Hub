@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using EFCore.Sharding;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
@@ -410,6 +411,87 @@ public sealed class AutoTuningProductionControlTests {
 
         var exception = Assert.Throws<InvalidOperationException>(() => services.AddSortingHubPersistence(configuration));
         Assert.Contains("分表策略配置校验失败", exception.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// 验证场景：ParcelShardingStrategyEvaluator_PrefersStructuredObservationInput。
+    /// </summary>
+    [Fact]
+    public void ParcelShardingStrategyEvaluator_PrefersStructuredObservationInput() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:Sharding:Strategy:Mode"] = "Hybrid",
+                ["Persistence:Sharding:Strategy:Time:Granularity"] = "PerMonth",
+                ["Persistence:Sharding:Strategy:Volume:ActionOnThreshold"] = "SwitchToPerDay",
+                ["Persistence:Sharding:Strategy:Volume:MaxRowsPerShard"] = "1000",
+                ["Persistence:Sharding:Strategy:Volume:HotThresholdRatio"] = "0.8",
+                ["Persistence:Sharding:Strategy:Volume:Observation:Source"] = "db-metrics",
+                ["Persistence:Sharding:Strategy:Volume:Observation:EstimatedRowsPerShard"] = "1500",
+                ["Persistence:Sharding:Strategy:Volume:Observation:ObservedHotRatio"] = "0.2",
+                ["Persistence:Sharding:Strategy:Volume:CurrentEstimatedRowsPerShard"] = "1",
+                ["Persistence:Sharding:Strategy:Volume:CurrentObservedHotRatio"] = "0.99"
+            })
+            .Build();
+
+        var evaluation = ParcelShardingStrategyEvaluator.Evaluate(configuration);
+
+        Assert.Empty(evaluation.ValidationErrors);
+        Assert.Equal("db-metrics", evaluation.Decision.VolumeObservation.Source);
+        Assert.Equal(1500, evaluation.Decision.VolumeObservation.EstimatedRowsPerShard);
+        Assert.Equal(0.2m, evaluation.Decision.VolumeObservation.ObservedHotRatio);
+        Assert.True(evaluation.Decision.ThresholdReached);
+        Assert.Equal(ExpandByDateMode.PerDay, evaluation.Decision.EffectiveDateMode);
+    }
+
+    /// <summary>
+    /// 验证场景：ResolvePrebuiltPerDayShardDates_RejectsInvalidLocalDateFormat。
+    /// </summary>
+    [Fact]
+    public void ResolvePrebuiltPerDayShardDates_RejectsInvalidLocalDateFormat() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:Sharding:Governance:PrebuiltPerDayDates:0"] = "2026-03-18",
+                ["Persistence:Sharding:Governance:PrebuiltPerDayDates:1"] = "2026-03-18T00:00:00Z"
+            })
+            .Build();
+
+        var resolution = DatabaseInitializerHostedService.ResolvePrebuiltPerDayShardDates(configuration);
+
+        Assert.Single(resolution.PrebuiltDates);
+        Assert.Single(resolution.ValidationErrors);
+        Assert.Contains("yyyy-MM-dd", resolution.ValidationErrors[0], StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// 验证场景：ShardingGovernanceGuard_ShouldFail_WhenPerDayMissingPrebuiltDates。
+    /// </summary>
+    [Fact]
+    public async Task ShardingGovernanceGuard_ShouldFail_WhenPerDayMissingPrebuiltDates() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:Migration:FailureStrategy:NonProduction"] = "Degraded",
+                ["Persistence:Sharding:CreateShardingTableOnStarting"] = "false",
+                ["Persistence:Sharding:Governance:EnableManualPrebuildGuard"] = "true",
+                ["Persistence:Sharding:Governance:Runbook"] = "docs/internal/sharding-governance-runbook",
+                ["Persistence:Sharding:Governance:PrebuildWindowHours"] = "48",
+                ["Persistence:Sharding:Governance:PrebuiltPerDayDates:0"] = DateTime.Now.ToString("yyyy-MM-dd"),
+                ["Persistence:Sharding:HashSharding:ExpansionPlan:CurrentMod"] = "16",
+                ["Persistence:Sharding:HashSharding:ExpansionPlan:TargetMod"] = "32",
+                ["Persistence:Sharding:Strategy:Mode"] = "Time",
+                ["Persistence:Sharding:Strategy:Time:Granularity"] = "PerDay"
+            })
+            .Build();
+
+        var service = new DatabaseInitializerHostedService(
+            new ServiceCollection().BuildServiceProvider(),
+            new TestLogger<DatabaseInitializerHostedService>(),
+            new TestDialect(),
+            new TestHostEnvironment("Development"),
+            configuration);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.StartAsync(CancellationToken.None));
+        Assert.Contains("PrebuiltPerDayDates", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("PerDay", exception.Message, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -1612,6 +1694,24 @@ public sealed class AutoTuningProductionControlTests {
         var enumerator = values.GetEnumerator();
         Assert.True(enumerator.MoveNext());
         return enumerator.Current!;
+    }
+
+    private sealed class TestHostEnvironment : IHostEnvironment {
+        /// <summary>
+        /// 验证场景：TestHostEnvironment。
+        /// </summary>
+        /// <param name="environmentName">环境名称。</param>
+        public TestHostEnvironment(string environmentName) {
+            EnvironmentName = environmentName;
+            ApplicationName = "Zeye.Sorting.Hub.Host.Tests";
+            ContentRootPath = AppContext.BaseDirectory;
+            ContentRootFileProvider = new Microsoft.Extensions.FileProviders.NullFileProvider();
+        }
+
+        public string EnvironmentName { get; set; }
+        public string ApplicationName { get; set; }
+        public string ContentRootPath { get; set; }
+        public Microsoft.Extensions.FileProviders.IFileProvider ContentRootFileProvider { get; set; }
     }
 
     private sealed class TestObservability : IAutoTuningObservability {
