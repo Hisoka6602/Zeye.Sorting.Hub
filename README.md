@@ -246,6 +246,9 @@
 - `appsettings.json`：默认运行配置（包含连接字符串、迁移失败策略分环境配置、分表治理守卫、结构化扩容计划、日志级别与自动调优参数）。
 - `appsettings.Development.json`：开发环境配置覆盖文件。
 
+#### `Zeye.Sorting.Hub.Host/Enums/`：宿主层枚举目录
+- `MigrationFailureMode.cs`：数据库迁移失败策略枚举（`FailFast` / `Degraded`，带 `Description` 标记），供初始化服务与测试复用，避免枚举内嵌导致扩展困难。
+
 #### `Zeye.Sorting.Hub.Host/HostedServices/`：启动/常驻托管服务目录
 - `AutoTuningLoggerObservability.cs`：自动调优观测默认日志实现（统一日志 + 指标抽象默认落地）。
 - `DatabaseAutoTuningHostedService.cs`：数据库自动调谐托管服务（显式闭环阶段迁移、执行隔离、标准化自动验证结果、回滚触发与审计日志；分表观测指标基于全量慢 SQL 解析并覆盖子查询/集合运算场景；自动索引建议在执行前统一执行覆盖、语义重复、低价值过滤）。
@@ -482,3 +485,14 @@
 
 1. 当前“分表预建守卫”基于配置完整性与策略边界校验，尚未做到“直接探测未来周期物理分表是否已预建”；后续可结合数据库元数据查询增加实表存在性验证。
 2. Parcel 关联值对象分表规则已收敛为单清单，但新增类型仍需补一条声明；后续可评估通过属性标记/约定推断进一步自动化，减少人工维护成本。
+
+## 本次更新内容（PR3 审查问题修复）
+
+1. **守卫异常日志补全**：`DatabaseInitializerHostedService` 将分表治理守卫纳入 `try/catch` 统一启动流程，并对守卫异常追加 `LogCritical` 后再抛出，保证阻断启动场景具备结构化日志。
+2. **守卫触发边界修正**：`TargetMod > CurrentMod` 校验改为仅在“手工预建 + 守卫开启”分支执行，避免自动建表场景被误阻断。
+3. **枚举归档治理**：`MigrationFailureMode` 从 HostedService 内嵌枚举提取至 `Zeye.Sorting.Hub.Host/Enums/MigrationFailureMode.cs`，并补齐 `Description` 与注释，符合枚举目录化规范。
+4. **测试同步修复**：`AutoTuningProductionControlTests` 改为引用独立枚举类型，保持原有策略解析断言不变。
+
+## 后续可完善点（PR3 审查修复）
+
+1. 目前分表治理守卫已使用专用异常类型并完成启动期日志阻断；后续可继续扩展“未来周期物理分表存在性探测”，将治理从配置完整性校验升级为实际建表状态校验。

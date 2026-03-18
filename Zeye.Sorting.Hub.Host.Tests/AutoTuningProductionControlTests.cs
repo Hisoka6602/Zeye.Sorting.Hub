@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
+using Zeye.Sorting.Hub.Host.Enums;
 using Zeye.Sorting.Hub.Host.HostedServices;
 using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
@@ -121,7 +122,7 @@ public sealed class AutoTuningProductionControlTests {
             .Build();
 
         var mode = DatabaseInitializerHostedService.ResolveMigrationFailureMode(configuration, isProductionEnvironment: true);
-        Assert.Equal(DatabaseInitializerHostedService.MigrationFailureMode.FailFast, mode);
+        Assert.Equal(MigrationFailureMode.FailFast, mode);
     }
 
     /// <summary>
@@ -134,7 +135,7 @@ public sealed class AutoTuningProductionControlTests {
             .Build();
 
         var mode = DatabaseInitializerHostedService.ResolveMigrationFailureMode(configuration, isProductionEnvironment: false);
-        Assert.Equal(DatabaseInitializerHostedService.MigrationFailureMode.Degraded, mode);
+        Assert.Equal(MigrationFailureMode.Degraded, mode);
     }
 
     /// <summary>
@@ -151,8 +152,8 @@ public sealed class AutoTuningProductionControlTests {
 
         var productionMode = DatabaseInitializerHostedService.ResolveMigrationFailureMode(configuration, isProductionEnvironment: true);
         var nonProductionMode = DatabaseInitializerHostedService.ResolveMigrationFailureMode(configuration, isProductionEnvironment: false);
-        Assert.Equal(DatabaseInitializerHostedService.MigrationFailureMode.Degraded, productionMode);
-        Assert.Equal(DatabaseInitializerHostedService.MigrationFailureMode.FailFast, nonProductionMode);
+        Assert.Equal(MigrationFailureMode.Degraded, productionMode);
+        Assert.Equal(MigrationFailureMode.FailFast, nonProductionMode);
     }
 
     /// <summary>
@@ -167,7 +168,7 @@ public sealed class AutoTuningProductionControlTests {
             .Build();
 
         var mode = DatabaseInitializerHostedService.ResolveMigrationFailureMode(configuration, isProductionEnvironment: false);
-        Assert.Equal(DatabaseInitializerHostedService.MigrationFailureMode.FailFast, mode);
+        Assert.Equal(MigrationFailureMode.FailFast, mode);
     }
 
     /// <summary>

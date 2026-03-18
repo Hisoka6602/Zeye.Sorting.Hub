@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
+using Zeye.Sorting.Hub.Host.Enums;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
@@ -113,9 +114,10 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// 执行逻辑：StartAsync。
         /// </summary>
         public async Task StartAsync(CancellationToken cancellationToken) {
-            AuditShardingGovernance();
-            ValidateShardingGovernanceGuard();
             try {
+                AuditShardingGovernance();
+                ValidateShardingGovernanceGuard();
+
                 await _retryPolicy.ExecuteAsync(async (ct) => {
                     await using var scope = _serviceProvider.CreateAsyncScope();
                     var db = scope.ServiceProvider.GetRequiredService<SortingHubDbContext>();
@@ -143,6 +145,14 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 _logger.LogInformation("数据库初始化已因取消令牌中止，Provider={Provider}", _dialect.ProviderName);
             }
             catch (Exception ex) {
+                if (ex is ShardingGovernanceGuardException) {
+                    _logger.LogCritical(ex,
+                        "[数据库初始化] 分表治理守卫触发，启动被阻断。Provider={Provider}, Environment={Environment}",
+                        _dialect.ProviderName,
+                        _environmentName);
+                    throw;
+                }
+
                 // 重试耗尽或不可恢复异常：按配置决定是否阻断启动。
                 if (_migrationFailureMode == MigrationFailureMode.FailFast) {
                     _logger.LogCritical(ex,
@@ -465,38 +475,36 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// 3) 生产环境且手工预建模式下，结构化阶段列表不能为空。
         /// </remarks>
         private void ValidateShardingGovernanceGuard() {
-            if (_hashShardingExpansionTargetMod <= _hashShardingExpansionCurrentMod) {
-                throw new InvalidOperationException(
-                    $"分表治理配置非法：{HashShardingExpansionPlanTargetModConfigKey}({_hashShardingExpansionTargetMod}) 必须大于 {HashShardingExpansionPlanCurrentModConfigKey}({_hashShardingExpansionCurrentMod})。");
-            }
-
             if (_createShardingTableOnStarting || !_enableManualPrebuildGuard) {
                 return;
             }
 
+            if (_hashShardingExpansionTargetMod <= _hashShardingExpansionCurrentMod) {
+                throw new ShardingGovernanceGuardException(
+                    $"分表治理配置非法：{HashShardingExpansionPlanTargetModConfigKey}({_hashShardingExpansionTargetMod}) 必须大于 {HashShardingExpansionPlanCurrentModConfigKey}({_hashShardingExpansionCurrentMod})。");
+            }
+
             if (string.Equals(_shardingRunbook, NotConfiguredPlaceholder, StringComparison.Ordinal)) {
-                throw new InvalidOperationException(
+                throw new ShardingGovernanceGuardException(
                     $"分表治理守卫触发：当 {CreateShardingTableOnStartingConfigKey}=false 且 {ShardingManualPrebuildGuardConfigKey}=true 时，必须配置 {ShardingRunbookConfigKey}。");
             }
 
             if (_isProductionEnvironment && _hashShardingExpansionStages.Count == 0) {
-                throw new InvalidOperationException(
+                throw new ShardingGovernanceGuardException(
                     $"分表治理守卫触发：生产环境要求使用结构化扩容计划，请至少配置 {HashShardingExpansionPlanStagesConfigKey}:0。");
             }
         }
 
         /// <summary>
-        /// 迁移失败策略枚举。
+        /// 分表治理守卫异常：用于区分启动期治理边界失败与数据库连接失败。
         /// </summary>
-        internal enum MigrationFailureMode {
+        private sealed class ShardingGovernanceGuardException : InvalidOperationException {
             /// <summary>
-            /// 失败后降级运行。
+            /// 初始化分表治理守卫异常实例。
             /// </summary>
-            Degraded = 0,
-            /// <summary>
-            /// 失败后立即终止启动。
-            /// </summary>
-            FailFast = 1
+            /// <param name="message">异常消息。</param>
+            public ShardingGovernanceGuardException(string message) : base(message) {
+            }
         }
     }
 }
