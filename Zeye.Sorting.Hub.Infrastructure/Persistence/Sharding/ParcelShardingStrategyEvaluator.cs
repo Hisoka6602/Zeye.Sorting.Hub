@@ -69,7 +69,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
         private const string VolumeMaxRowsConfigKey = "Persistence:Sharding:Strategy:Volume:MaxRowsPerShard";
 
         /// <summary>
-        /// 单分表当前估算行数配置键。
+        /// legacy 单分表当前估算行数配置键（仅兼容旧配置，优先级低于 Observation）。
         /// </summary>
         private const string VolumeLegacyCurrentRowsConfigKey = "Persistence:Sharding:Strategy:Volume:CurrentEstimatedRowsPerShard";
 
@@ -79,7 +79,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
         private const string VolumeHotThresholdConfigKey = "Persistence:Sharding:Strategy:Volume:HotThresholdRatio";
 
         /// <summary>
-        /// 当前热点比例观测值配置键（0~1）。
+        /// legacy 当前热点比例观测值配置键（0~1，仅兼容旧配置，优先级低于 Observation）。
         /// </summary>
         private const string VolumeLegacyCurrentHotRatioConfigKey = "Persistence:Sharding:Strategy:Volume:CurrentObservedHotRatio";
 
@@ -101,7 +101,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
         /// <summary>
         /// 结构化观测来源缺省值。
         /// </summary>
-        private const string DefaultObservationSource = "configuration-static";
+        private const string DefaultObservationSource = "config-static";
 
         /// <summary>
         /// 评估分表策略配置并产出决策与校验结果。
