@@ -382,15 +382,11 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         /// <param name="exceptionType">异常类型。</param>
         /// <exception cref="InvalidOperationException">状态与异常类型组合无效时抛出。</exception>
         private static void EnsureStatusExceptionTypeConsistency(ParcelStatus status, ParcelExceptionType? exceptionType) {
-            if (status == ParcelStatus.SortingException) {
-                if (exceptionType is null) {
-                    throw new InvalidOperationException("分拣异常状态必须提供异常类型");
-                }
-
-                return;
+            if (status == ParcelStatus.SortingException && exceptionType is null) {
+                throw new InvalidOperationException("分拣异常状态必须提供异常类型");
             }
 
-            if (exceptionType is not null) {
+            if (status != ParcelStatus.SortingException && exceptionType is not null) {
                 throw new InvalidOperationException("非分拣异常状态不允许包含异常类型");
             }
         }
