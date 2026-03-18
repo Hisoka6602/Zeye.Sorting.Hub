@@ -671,6 +671,8 @@ public sealed class AutoTuningProductionControlTests {
             new TestHostEnvironment("Development"),
             configuration);
 
+        // HostedService 内部使用私有嵌套异常类型（ShardingGovernanceGuardException）承载守卫阻断语义，
+        // 测试侧不可直接引用该私有类型，因此使用 ThrowsAnyAsync 断言 InvalidOperationException 继承体系。
         var exception = await Assert.ThrowsAnyAsync<InvalidOperationException>(() => service.StartAsync(CancellationToken.None));
         Assert.Contains("PrebuiltPerDayDates", exception.Message, StringComparison.Ordinal);
         Assert.Contains("PerDay", exception.Message, StringComparison.Ordinal);
