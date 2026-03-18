@@ -14,6 +14,7 @@ using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 
 namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
 
@@ -82,6 +83,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             var parcelShardingStartTime = GetShardingStartTime(configuration);
             var createShardingTableOnStarting = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, "Persistence:Sharding:CreateShardingTableOnStarting", false);
             var parcelRelatedHashShardingMod = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, "Persistence:Sharding:ParcelRelatedHashShardingMod", DefaultParcelRelatedHashShardingMod);
+            var parcelShardingStrategyEvaluation = ParcelShardingStrategyEvaluator.Evaluate(configuration);
+            var parcelShardingStrategyDecision = parcelShardingStrategyEvaluation.Decision;
 
             services.AddSingleton<SlowQueryAutoTuningPipeline>();
             services.AddSingleton<SlowQueryCommandInterceptor>();
@@ -138,7 +141,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                         .CreateShardingTableOnStarting(createShardingTableOnStarting)
                         .UseDatabase(connectionString, DatabaseType.MySql, typeof(Parcel).Namespace!, static _ => { });
 
-                    ConfigureParcelAggregateSharding(shardingBuilder, parcelShardingStartTime, parcelRelatedHashShardingMod);
+                    ConfigureParcelAggregateSharding(shardingBuilder, parcelShardingStartTime, parcelRelatedHashShardingMod, parcelShardingStrategyDecision);
                 });
 
                 services.AddSingleton<IDatabaseDialect, MySqlDialect>();
@@ -179,7 +182,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                         .CreateShardingTableOnStarting(createShardingTableOnStarting)
                         .UseDatabase(connectionString, DatabaseType.SqlServer, typeof(Parcel).Namespace!, static _ => { });
 
-                    ConfigureParcelAggregateSharding(shardingBuilder, parcelShardingStartTime, parcelRelatedHashShardingMod);
+                    ConfigureParcelAggregateSharding(shardingBuilder, parcelShardingStartTime, parcelRelatedHashShardingMod, parcelShardingStrategyDecision);
                 });
 
                 services.AddSingleton<IDatabaseDialect, SqlServerDialect>();
@@ -200,14 +203,19 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// <param name="shardingBuilder">分表构建器。</param>
         /// <param name="parcelShardingStartTime">Parcel 月分表起始时间。</param>
         /// <param name="parcelRelatedHashShardingMod">Parcel 关联属性表哈希分片模数。</param>
+        /// <param name="parcelShardingStrategyDecision">Parcel 分表策略决策快照。</param>
         /// <remarks>
         /// 设计目标：
-        /// - Parcel 主表已经采用按月分表；
+        /// - Parcel 主表继续基于 CreatedTime 做时间路由；
         /// - 与 Parcel 同步增长的属性表也必须具备分表能力，避免单表无限膨胀；
-        /// - 对“有稳定必填时间字段”的表优先采用按月分表；
+        /// - 对“有稳定必填时间字段”的表按策略决策采用按月/按天分表；
         /// - 对“无时间字段/时间可空”的表采用哈希分表，保证可路由且可扩展。
         /// </remarks>
-        private static void ConfigureParcelAggregateSharding(IShardingBuilder shardingBuilder, DateTime parcelShardingStartTime, int parcelRelatedHashShardingMod) {
+        private static void ConfigureParcelAggregateSharding(
+            IShardingBuilder shardingBuilder,
+            DateTime parcelShardingStartTime,
+            int parcelRelatedHashShardingMod,
+            ParcelShardingStrategyDecision parcelShardingStrategyDecision) {
             AssertParcelAggregateShardingCoverage();
 
             // 分表起始时间在进入规则注册前统一归一化为“本地时间语义”，
@@ -215,11 +223,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             var localShardingStartTime = AutoTuningConfigurationHelper.NormalizeToLocalTime(parcelShardingStartTime);
 
             // ------------------------------
-            // 1) 主表：Parcel（按月分表）
+            // 1) 主表：Parcel（CreatedTime + 策略决策粒度）
             // ------------------------------
             shardingBuilder.SetDateSharding<Parcel>(
                 shardingField: nameof(Parcel.CreatedTime),
-                expandByDateMode: ExpandByDateMode.PerMonth,
+                expandByDateMode: parcelShardingStrategyDecision.EffectiveDateMode,
                 startTime: localShardingStartTime,
                 sourceName: ShardingConstant.DefaultSource);
 
@@ -227,7 +235,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             // 2) Parcel 关联值对象：按规则清单统一注册
             // ------------------------------
             foreach (var rule in ParcelAggregateShardingRules) {
-                rule.Register(shardingBuilder, localShardingStartTime, parcelRelatedHashShardingMod);
+                rule.Register(shardingBuilder, localShardingStartTime, parcelRelatedHashShardingMod, parcelShardingStrategyDecision.EffectiveDateMode);
             }
         }
 
@@ -271,7 +279,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         }
 
         /// <summary>
-        /// 创建“按月分表”规则描述。
+        /// 创建“按时间粒度分表”规则描述。
         /// </summary>
         /// <typeparam name="TEntity">实体类型。</typeparam>
         /// <param name="shardingField">分片字段名。</param>
@@ -280,9 +288,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             where TEntity : class {
             return new ParcelAggregateShardingRule(
                 EntityType: typeof(TEntity),
-                Register: (builder, startTime, _) => builder.SetDateSharding<TEntity>(
+                Register: (builder, startTime, _, dateMode) => builder.SetDateSharding<TEntity>(
                     shardingField: shardingField,
-                    expandByDateMode: ExpandByDateMode.PerMonth,
+                    expandByDateMode: dateMode,
                     startTime: startTime,
                     sourceName: ShardingConstant.DefaultSource));
         }
@@ -297,7 +305,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             where TEntity : class {
             return new ParcelAggregateShardingRule(
                 EntityType: typeof(TEntity),
-                Register: (builder, _, mod) => builder.SetHashModSharding<TEntity>(
+                Register: (builder, _, mod, _) => builder.SetHashModSharding<TEntity>(
                     shardingField: shardingField,
                     mod: mod,
                     sourceName: ShardingConstant.DefaultSource));
@@ -368,6 +376,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// <param name="Register">规则注册动作。</param>
         private readonly record struct ParcelAggregateShardingRule(
             Type EntityType,
-            Action<IShardingBuilder, DateTime, int> Register);
+            Action<IShardingBuilder, DateTime, int, ExpandByDateMode> Register);
     }
 }
