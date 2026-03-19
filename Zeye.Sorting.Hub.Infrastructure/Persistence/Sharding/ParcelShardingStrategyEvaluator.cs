@@ -468,7 +468,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
                 ParcelFinerGranularityPlanLifecycle.PlanOnly,
                 "PlanOnly/AlertOnly/FutureExecutable",
                 validationErrors);
-            var requirePrebuildGuard = ReadBooleanOrDefault(configuration[VolumeFinerRequirePrebuildConfigKey], true);
+            var requirePrebuildGuard = ReadBoolean(
+                configuration[VolumeFinerRequirePrebuildConfigKey],
+                VolumeFinerRequirePrebuildConfigKey,
+                defaultValue: true,
+                validationErrors: validationErrors);
             var bucketCount = ReadOptionalPositiveInt(configuration[VolumeFinerBucketCountConfigKey], VolumeFinerBucketCountConfigKey, validationErrors);
             ValidateBucketedPerDayConfiguration(mode, bucketCount, validationErrors);
 
@@ -485,7 +489,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
             ParcelFinerGranularityMode mode,
             int? bucketCount,
             ICollection<string> validationErrors) {
-            if (mode != ParcelFinerGranularityMode.BucketedPerDay) {
+            if (mode != ParcelFinerGranularityMode.BucketedPerDay && bucketCount.HasValue) {
+                validationErrors.Add($"配置项 {VolumeFinerBucketCountConfigKey} 当前不会生效：仅当 {VolumeFinerModeConfigKey}=BucketedPerDay 时才会使用 BucketCount。");
                 return;
             }
 
@@ -592,13 +597,29 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
         }
 
         /// <summary>
-        /// 读取布尔配置，缺失或非法时回退默认值。
+        /// 读取布尔配置：缺失回退默认值；非法值输出校验错误并回退默认值。
         /// </summary>
         /// <param name="raw">原始配置。</param>
+        /// <param name="key">配置键。</param>
         /// <param name="defaultValue">默认值。</param>
+        /// <param name="validationErrors">错误集合。</param>
         /// <returns>解析结果。</returns>
-        private static bool ReadBooleanOrDefault(string? raw, bool defaultValue) {
-            return bool.TryParse(raw, out var parsedValue) ? parsedValue : defaultValue;
+        private static bool ReadBoolean(
+            string? raw,
+            string key,
+            bool defaultValue,
+            ICollection<string> validationErrors) {
+            if (string.IsNullOrWhiteSpace(raw)) {
+                return defaultValue;
+            }
+
+            var normalized = raw.Trim();
+            if (bool.TryParse(normalized, out var parsedValue)) {
+                return parsedValue;
+            }
+
+            validationErrors.Add($"配置项 {key} 值非法：{normalized}。允许值：true/false。");
+            return defaultValue;
         }
 
         /// <summary>
