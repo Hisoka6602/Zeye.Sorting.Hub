@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects;
@@ -15,6 +16,24 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 /// ParcelRepository 第一阶段能力回归测试。
 /// </summary>
 public sealed class ParcelRepositoryTests {
+    /// <summary>
+    /// 验证场景：IParcelRepository_ShouldResolveFromDependencyInjection。
+    /// </summary>
+    [Fact]
+    public void IParcelRepository_ShouldResolveFromDependencyInjection() {
+        var databaseName = $"parcel-repo-di-test-{Guid.NewGuid():N}";
+        var options = BuildOptions(databaseName);
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<IDbContextFactory<SortingHubDbContext>>(new TestDbContextFactory(options));
+        services.AddScoped<IParcelRepository, ParcelRepository>();
+
+        using var serviceProvider = services.BuildServiceProvider();
+        using var scope = serviceProvider.CreateScope();
+
+        _ = scope.ServiceProvider.GetRequiredService<IParcelRepository>();
+    }
+
     /// <summary>
     /// 验证场景：GetPagedAsync_ShouldReturnSummaryWithExpectedFilterAndPaging。
     /// </summary>
@@ -162,27 +181,33 @@ public sealed class ParcelRepositoryTests {
             var contractRepository = (IParcelRepository)repository;
 
             var parcel = CreateParcel("BC-W-1", "BAG-W", "WS-W", ParcelStatus.Pending, baseTime.AddMinutes(-10), 501, 601);
-            await contractRepository.AddAsync(parcel, CancellationToken.None);
+            var addResult = await contractRepository.AddAsync(parcel, CancellationToken.None);
+            Assert.True(addResult.IsSuccess, addResult.ErrorMessage);
 
             var saved = await repository.GetByIdAsync(parcel.Id, CancellationToken.None);
             Assert.NotNull(saved);
 
             saved!.UpdateRequestStatus(ApiRequestStatus.Failed);
-            await contractRepository.UpdateAsync(saved, CancellationToken.None);
+            var updateResult = await contractRepository.UpdateAsync(saved, CancellationToken.None);
+            Assert.True(updateResult.IsSuccess, updateResult.ErrorMessage);
 
             var updated = await repository.GetByIdAsync(saved.Id, CancellationToken.None);
             Assert.NotNull(updated);
             Assert.Equal(ApiRequestStatus.Failed, updated!.RequestStatus);
 
             var oldParcel = CreateParcel("BC-W-2", "BAG-W", "WS-W", ParcelStatus.Completed, baseTime.AddMinutes(-20), 502, 602);
-            await contractRepository.AddRangeAsync([oldParcel], CancellationToken.None);
+            var addRangeResult = await contractRepository.AddRangeAsync([oldParcel], CancellationToken.None);
+            Assert.True(addRangeResult.IsSuccess, addRangeResult.ErrorMessage);
 
-            var removedExpiredCount = await repository.RemoveExpiredAsync(baseTime.AddMinutes(1), CancellationToken.None);
-            Assert.True(removedExpiredCount >= 2);
+            var removeExpiredResult = await contractRepository.RemoveExpiredAsync(baseTime.AddMinutes(1), CancellationToken.None);
+            Assert.True(removeExpiredResult.IsSuccess, removeExpiredResult.ErrorMessage);
+            Assert.True(removeExpiredResult.Value >= 2);
 
             var deleteTarget = CreateParcel("BC-W-3", "BAG-W", "WS-W", ParcelStatus.Pending, baseTime.AddMinutes(-5), 503, 603);
-            await contractRepository.AddAsync(deleteTarget, CancellationToken.None);
-            await contractRepository.RemoveAsync(deleteTarget, CancellationToken.None);
+            var addDeleteTargetResult = await contractRepository.AddAsync(deleteTarget, CancellationToken.None);
+            Assert.True(addDeleteTargetResult.IsSuccess, addDeleteTargetResult.ErrorMessage);
+            var removeResult = await contractRepository.RemoveAsync(deleteTarget, CancellationToken.None);
+            Assert.True(removeResult.IsSuccess, removeResult.ErrorMessage);
 
             var deleted = await repository.GetByIdAsync(deleteTarget.Id, CancellationToken.None);
             Assert.Null(deleted);

@@ -8,6 +8,7 @@ using Zeye.Sorting.Hub.Domain.Repositories;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.Filters;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.Paging;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.ReadModels;
+using Zeye.Sorting.Hub.Domain.Repositories.Models.Results;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
@@ -206,48 +207,9 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     }
 
     /// <summary>
-    /// 以仓储契约方式新增包裹聚合。
-    /// </summary>
-    async Task IParcelRepository.AddAsync(Parcel parcel, CancellationToken cancellationToken) {
-        var result = await base.AddAsync(parcel, cancellationToken);
-        if (result.IsSuccess) {
-            return;
-        }
-
-        Logger.LogError("新增包裹失败，原因={ErrorMessage}", result.ErrorMessage);
-        throw new InvalidOperationException(result.ErrorMessage ?? "新增包裹失败");
-    }
-
-    /// <summary>
-    /// 以仓储契约方式更新包裹聚合。
-    /// </summary>
-    async Task IParcelRepository.UpdateAsync(Parcel parcel, CancellationToken cancellationToken) {
-        var result = await base.UpdateAsync(parcel, cancellationToken);
-        if (result.IsSuccess) {
-            return;
-        }
-
-        Logger.LogError("更新包裹失败，原因={ErrorMessage}", result.ErrorMessage);
-        throw new InvalidOperationException(result.ErrorMessage ?? "更新包裹失败");
-    }
-
-    /// <summary>
-    /// 以仓储契约方式删除包裹聚合。
-    /// </summary>
-    async Task IParcelRepository.RemoveAsync(Parcel parcel, CancellationToken cancellationToken) {
-        var result = await base.RemoveAsync(parcel, cancellationToken);
-        if (result.IsSuccess) {
-            return;
-        }
-
-        Logger.LogError("删除包裹失败，原因={ErrorMessage}", result.ErrorMessage);
-        throw new InvalidOperationException(result.ErrorMessage ?? "删除包裹失败");
-    }
-
-    /// <summary>
     /// 按创建时间删除过期包裹，返回删除条数。
     /// </summary>
-    public async Task<int> RemoveExpiredAsync(DateTime createdBefore, CancellationToken cancellationToken) {
+    public async Task<RepositoryResult<int>> RemoveExpiredAsync(DateTime createdBefore, CancellationToken cancellationToken) {
         try {
             await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
             var totalDeleted = 0;
@@ -281,25 +243,16 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
                     MaxExpiredDeleteCountPerCall);
             }
 
-            return totalDeleted;
+            return RepositoryResult<int>.Success(totalDeleted);
+        }
+        catch (OperationCanceledException ex) {
+            Logger.LogWarning(ex, "删除过期包裹操作被取消，CreatedBefore={CreatedBefore}", createdBefore);
+            return RepositoryResult<int>.Fail("操作已取消");
         }
         catch (Exception ex) {
             Logger.LogError(ex, "删除过期包裹失败，CreatedBefore={CreatedBefore}", createdBefore);
-            throw;
+            return RepositoryResult<int>.Fail("删除过期包裹失败");
         }
-    }
-
-    /// <summary>
-    /// 以仓储契约方式批量新增包裹聚合。
-    /// </summary>
-    async Task IParcelRepository.AddRangeAsync(IReadOnlyCollection<Parcel> parcels, CancellationToken cancellationToken) {
-        var result = await base.AddRangeAsync(parcels, cancellationToken);
-        if (result.IsSuccess) {
-            return;
-        }
-
-        Logger.LogError("批量新增包裹失败，原因={ErrorMessage}", result.ErrorMessage);
-        throw new InvalidOperationException(result.ErrorMessage ?? "批量新增包裹失败");
     }
 
     /// <summary>
