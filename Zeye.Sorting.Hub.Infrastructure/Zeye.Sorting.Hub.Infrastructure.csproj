@@ -31,4 +31,8 @@
     <ProjectReference Include="..\Zeye.Sorting.Hub.Domain\Zeye.Sorting.Hub.Domain.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Zeye.Sorting.Hub.Host.Tests" />
+  </ItemGroup>
+
 </Project>

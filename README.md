@@ -67,7 +67,7 @@
 │   ├── Primitives（领域基础类型目录）
 │   │   └── AuditableEntity.cs（可审计实体基类）
 │   ├── Repositories（领域仓储契约目录）
-│   │   ├── IParcelRepository.cs（包裹仓储接口）
+│   │   ├── IParcelRepository.cs（包裹仓储接口，含过期清理危险动作治理结果契约）
 │   │   └── Models（Parcel 仓储查询与分页模型目录）
 │   │       ├── Filters（查询过滤模型目录）
 │   │       │   └── ParcelQueryFilter.cs（Parcel 查询过滤模型）
@@ -77,7 +77,7 @@
 │   │       ├── ReadModels（查询读模型目录）
 │   │       │   └── ParcelSummaryReadModel.cs（Parcel 列表摘要读模型）
 │   │       ├── Results（仓储结果模型目录）
-│   │       │   └── RepositoryResult.cs（仓储统一结果模型，含泛型版本）
+│   │       │   └── RepositoryResult.cs（仓储统一结果模型，含泛型版本与危险批量动作结果模型）
 │   │       └── Validation（查询校验模型目录）
 │   │           └── MaxTimeRangeAttribute.cs（查询时间跨度限制特性，默认不超过 3 个月）
 │   └── Zeye.Sorting.Hub.Domain.csproj（Domain 项目定义）
@@ -95,10 +95,10 @@
 │   ├── Zeye.Sorting.Hub.Host.csproj（Host 项目定义）
 │   ├── nlog.config（NLog 日志配置：双路落盘，低开销异步写盘）
 │   ├── appsettings.Development.json（开发环境配置）
-│   └── appsettings.json（默认运行配置（含分表策略结构化 Observation 与 PerDay 预建日期清单示例））
+│   └── appsettings.json（默认运行配置（含分表策略结构化 Observation、PerDay 预建日期清单与仓储危险动作隔离默认策略））
 ├── Zeye.Sorting.Hub.Host.Tests（自动调优行为测试工程）
 │   ├── AutoTuningProductionControlTests.cs（自动调优生产可控能力测试：dry-run/隔离器/告警恢复/普通与严重回归/探针双路径/闭环链路；含分表策略评估与 PerDay 预建守卫联动测试）
-│   ├── ParcelRepositoryTests.cs（Parcel 仓储第一阶段能力测试：分页过滤、详情与邻近查询、写操作与过期清理）
+│   ├── ParcelRepositoryTests.cs（Parcel 仓储第一阶段能力测试：分页过滤、详情与邻近查询、写操作与过期清理；含阻断/dry-run/显式放开的危险动作治理回归）
 │   └── Zeye.Sorting.Hub.Host.Tests.csproj（xUnit 测试项目定义）
 ├── Zeye.Sorting.Hub.Infrastructure（基础设施层）
 │   ├── DependencyInjection（依赖注入扩展目录）
@@ -263,7 +263,7 @@
 - `AuditableEntity.cs`：可审计实体基类（创建/修改信息等）。
 
 #### `Zeye.Sorting.Hub.Domain/Repositories/`：领域仓储契约目录
-- `IParcelRepository.cs`：包裹仓储接口（第一阶段可落地契约：基础读写、分页查询、邻近查询）。
+- `IParcelRepository.cs`：包裹仓储接口（第一阶段可落地契约：基础读写、分页查询、邻近查询、过期清理危险动作治理结果返回）。
 
 ##### `Zeye.Sorting.Hub.Domain/Repositories/Models/`：Parcel 仓储查询模型目录
 
@@ -278,7 +278,7 @@
 - `ParcelSummaryReadModel.cs`：Parcel 列表摘要读模型（包含 Parcel 全部扁平化字段，用于分页列表）。
 
 ###### `Zeye.Sorting.Hub.Domain/Repositories/Models/Results/`：仓储结果模型目录
-- `RepositoryResult.cs`：仓储统一结果模型（`RepositoryResult` / `RepositoryResult<T>`），供 Domain 契约与 Infrastructure 实现共用，避免重复类型。
+- `RepositoryResult.cs`：仓储统一结果模型（`RepositoryResult` / `RepositoryResult<T>`）与 `DangerousBatchActionResult`（危险批量动作治理状态），供 Domain 契约与 Infrastructure 实现共用，避免重复类型。
 
 ###### `Zeye.Sorting.Hub.Domain/Repositories/Models/Validation/`：查询校验模型目录
 - `MaxTimeRangeAttribute.cs`：时间范围校验特性（限制起止时间跨度，默认不超过 3 个月）。
@@ -288,7 +288,7 @@
 - `Worker.cs`：后台轮询任务示例服务。
 - `Zeye.Sorting.Hub.Host.csproj`：Host 项目定义。
 - `nlog.config`：NLog 日志配置，双路落盘（`logs/app-*.log` 全量 + `logs/database-*.log` 数据库专属），低开销设计（异步队列 + keepFileOpen + optimizeBufferReuse），保留 30 天。
-- `appsettings.json`：默认运行配置（包含连接字符串、迁移失败策略分环境配置、分表治理守卫、Time/Volume/Hybrid 双策略配置、结构化容量观测入口 Observation、PerDay 预建日期清单、结构化扩容计划、日志级别与自动调优参数）。
+- `appsettings.json`：默认运行配置（包含连接字符串、迁移失败策略分环境配置、分表治理守卫、Time/Volume/Hybrid 双策略配置、结构化容量观测入口 Observation、PerDay 预建日期清单、仓储危险动作隔离开关、结构化扩容计划、日志级别与自动调优参数）。
 - `appsettings.Development.json`：开发环境配置覆盖文件。
 
 #### `Zeye.Sorting.Hub.Host/Enums/`：宿主层枚举目录
@@ -359,7 +359,7 @@
 
 #### `Zeye.Sorting.Hub.Infrastructure/Repositories/`：仓储基类与结果模型目录
 - `MemoryCacheRepositoryBase.cs`：带内存缓存失效逻辑的仓储基类。
-- `ParcelRepository.cs`：Parcel 仓储第一阶段实现（复用 `RepositoryBase` 与 `IDbContextFactory`，提供基础读写、分页查询、邻近查询与过期清理；写操作统一返回共享仓储结果模型）。
+- `ParcelRepository.cs`：Parcel 仓储第一阶段实现（复用 `RepositoryBase` 与 `IDbContextFactory`，提供基础读写、分页查询、邻近查询与过期清理；过期清理纳入隔离器开关 + dry-run + 审计 + 补偿边界声明）。
 - `RepositoryBase.cs`：通用仓储基类（增删改查 + 自动持久化实现）。
 
 ### `Zeye.Sorting.Hub.Realtime/`：实时通信子域（当前为占位工程）
@@ -377,7 +377,7 @@
 ### `Zeye.Sorting.Hub.Host.Tests/`：自动调优测试层
 - `Zeye.Sorting.Hub.Host.Tests.csproj`：xUnit 测试项目定义。
 - `AutoTuningProductionControlTests.cs`：覆盖 dry-run、危险动作隔离、告警防抖与恢复、普通/严重回归、unavailable 指标处理、执行计划探针 available/unavailable 双路径、闭环链路与分表覆盖守卫校验、迁移失败策略分环境解析、结构化扩容计划解析、Time/Volume/Hybrid 分表策略评估、PerDay 预建守卫（配置+物理探测）与分表观测口径/自动索引过滤规则回归。
-- `ParcelRepositoryTests.cs`：Parcel 仓储第一阶段能力测试，覆盖分页过滤、详情与邻近查询、新增/更新/删除、过期清理与批量新增。
+- `ParcelRepositoryTests.cs`：Parcel 仓储第一阶段能力测试，覆盖分页过滤、详情与邻近查询、新增/更新/删除、过期清理与批量新增，并回归验证危险清理动作的 blocked/dry-run/executed 三态。
 
 ## 本次更新内容（新增 Parcel 属性操作指南文档）
 
@@ -692,3 +692,15 @@
 ## 后续可完善点（枚举与时间语义治理）
 
 1. 可在测试层补充统一的“本地时间语义输入构造约束”测试工具或约定，进一步降低后续引入 UTC 相关 API 的回归风险。
+
+## 本次更新内容（危险批量删除治理收口）
+
+1. **`RemoveExpiredAsync` 纳入隔离器边界**：`ParcelRepository.RemoveExpiredAsync` 复用 `ActionIsolationPolicy` + `ActionIsolationDecision`，将危险批量删除改为“开关 + dry-run + 审计”受控执行链路；默认配置为守卫开启、危险执行关闭、dry-run 开启，避免直接删库式清理。
+2. **仓储契约最小增强**：`IParcelRepository.RemoveExpiredAsync` 返回值由 `RepositoryResult<int>` 收敛为 `RepositoryResult<DangerousBatchActionResult>`，显式表达 `blocked / dry-run / executed` 三态，并返回计划数量、执行数量与补偿边界说明。
+3. **审计与边界声明补齐**：过期清理新增结构化审计日志字段（ActionName、CreatedBefore、PlannedCount、ExecutedCount、DryRun、BlockedByGuard、Reason、CompensationBoundary），并在结果与日志中明确“物理删除暂无自动回滚脚本，仅提供默认阻断 + dry-run + 审计 + 显式开关”的保守治理方案。
+4. **配置与测试同步**：`appsettings.json` 新增 `Persistence:RepositoryDangerousActions:ParcelRemoveExpired:Isolator` 默认配置；`ParcelRepositoryTests` 新增三态回归（默认阻断、dry-run、显式放开后执行）以防治理回退。
+
+## 后续可完善点（危险删除治理）
+
+1. 在具备成熟数据备份/归档体系后，可评估将“删除前归档 + 可执行补偿脚本路径”纳入 `DangerousBatchActionResult`，将当前文本边界升级为可执行治理资产。
+2. 可在告警平台增加“危险删除被阻断次数 / dry-run 次数 / 真实执行次数”指标看板，提升治理策略可观测性。

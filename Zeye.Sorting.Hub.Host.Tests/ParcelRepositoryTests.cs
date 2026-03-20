@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
@@ -199,9 +200,41 @@ public sealed class ParcelRepositoryTests {
             var addRangeResult = await contractRepository.AddRangeAsync([oldParcel], CancellationToken.None);
             Assert.True(addRangeResult.IsSuccess, addRangeResult.ErrorMessage);
 
-            var removeExpiredResult = await contractRepository.RemoveExpiredAsync(baseTime.AddMinutes(1), CancellationToken.None);
-            Assert.True(removeExpiredResult.IsSuccess, removeExpiredResult.ErrorMessage);
-            Assert.True(removeExpiredResult.Value >= 2);
+            // 步骤 1：默认配置下危险清理动作应被守卫阻断（安全默认值）。
+            var removeExpiredBlockedResult = await contractRepository.RemoveExpiredAsync(baseTime.AddMinutes(1), CancellationToken.None);
+            Assert.True(removeExpiredBlockedResult.IsSuccess, removeExpiredBlockedResult.ErrorMessage);
+            var blockedAction = removeExpiredBlockedResult.Value;
+            Assert.True(blockedAction.IsBlockedByGuard);
+            Assert.False(blockedAction.IsDryRun);
+            Assert.Equal(ActionIsolationDecision.BlockedByGuard, blockedAction.Decision);
+            Assert.Equal(0, blockedAction.ExecutedCount);
+
+            // 步骤 2：关闭守卫并开启 dry-run 时，应仅审计不执行。
+            var dryRunRepository = CreateRepository(
+                databaseName,
+                BuildRemoveExpiredIsolationConfiguration(enableGuard: false, allowDangerousActionExecution: false, dryRun: true));
+            var removeExpiredDryRunResult = await dryRunRepository.RemoveExpiredAsync(baseTime.AddMinutes(1), CancellationToken.None);
+            Assert.True(removeExpiredDryRunResult.IsSuccess, removeExpiredDryRunResult.ErrorMessage);
+            var dryRunAction = removeExpiredDryRunResult.Value;
+            Assert.True(dryRunAction.IsDryRun);
+            Assert.False(dryRunAction.IsBlockedByGuard);
+            Assert.Equal(ActionIsolationDecision.DryRunOnly, dryRunAction.Decision);
+            Assert.Equal(0, dryRunAction.ExecutedCount);
+            Assert.True(dryRunAction.PlannedCount >= 2);
+
+            // 步骤 3：显式放开危险动作且关闭 dry-run 后，才允许真实删除。
+            var executeRepository = CreateRepository(
+                databaseName,
+                BuildRemoveExpiredIsolationConfiguration(enableGuard: true, allowDangerousActionExecution: true, dryRun: false));
+            var removeExpiredExecutedResult = await executeRepository.RemoveExpiredAsync(baseTime.AddMinutes(1), CancellationToken.None);
+            Assert.True(removeExpiredExecutedResult.IsSuccess, removeExpiredExecutedResult.ErrorMessage);
+            var executedAction = removeExpiredExecutedResult.Value;
+            Assert.Equal(ActionIsolationDecision.Execute, executedAction.Decision);
+            Assert.False(executedAction.IsBlockedByGuard);
+            Assert.False(executedAction.IsDryRun);
+            Assert.True(executedAction.ExecutedCount >= 2);
+            Assert.False(string.IsNullOrWhiteSpace(executedAction.CompensationBoundary));
+            Assert.Contains("回滚", executedAction.CompensationBoundary);
 
             var deleteTarget = CreateParcel("BC-W-3", "BAG-W", "WS-W", ParcelStatus.Pending, baseTime.AddMinutes(-5), 503, 603);
             var addDeleteTargetResult = await contractRepository.AddAsync(deleteTarget, CancellationToken.None);
@@ -220,10 +253,27 @@ public sealed class ParcelRepositoryTests {
     /// <summary>
     /// 创建 ParcelRepository 测试实例。
     /// </summary>
-    private static ParcelRepository CreateRepository(string databaseName) {
+    private static ParcelRepository CreateRepository(string databaseName, IConfiguration? configuration = null) {
         var options = BuildOptions(databaseName);
         var factory = new TestDbContextFactory(options);
-        return new ParcelRepository(factory, NullLogger<ParcelRepository>.Instance);
+        return new ParcelRepository(factory, NullLogger<ParcelRepository>.Instance, configuration);
+    }
+
+    /// <summary>
+    /// 构建过期清理危险动作隔离配置。
+    /// </summary>
+    private static IConfiguration BuildRemoveExpiredIsolationConfiguration(
+        bool enableGuard,
+        bool allowDangerousActionExecution,
+        bool dryRun) {
+        var values = new Dictionary<string, string?> {
+            [ParcelRepository.RemoveExpiredEnableGuardConfigKey] = enableGuard.ToString(),
+            [ParcelRepository.RemoveExpiredAllowExecutionConfigKey] = allowDangerousActionExecution.ToString(),
+            [ParcelRepository.RemoveExpiredDryRunConfigKey] = dryRun.ToString()
+        };
+        return new ConfigurationBuilder()
+            .AddInMemoryCollection(values)
+            .Build();
     }
 
     /// <summary>
