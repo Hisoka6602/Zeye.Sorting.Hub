@@ -1,7 +1,6 @@
 using NLog;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
-using System.Globalization;
 using Zeye.Sorting.Hub.Application.Services.Parcels;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels;
 using Zeye.Sorting.Hub.Host;
@@ -40,6 +39,10 @@ try {
     builder.Services.AddScoped<GetParcelPagedQueryService>();
     builder.Services.AddScoped<GetParcelByIdQueryService>();
     builder.Services.AddScoped<GetAdjacentParcelsQueryService>();
+    builder.Services.AddScoped<CreateParcelCommandService>();
+    builder.Services.AddScoped<UpdateParcelStatusCommandService>();
+    builder.Services.AddScoped<DeleteParcelCommandService>();
+    builder.Services.AddScoped<CleanupExpiredParcelsCommandService>();
 
     // Host 启动时执行持久化初始化
     builder.Services.AddHostedService<DatabaseInitializerHostedService>();
@@ -96,6 +99,8 @@ try {
     app.MapGet("/health", () => Results.Ok(new { status = "Healthy" }));
     // Parcel 只读查询端点：统一走 Application 查询服务，不直接暴露领域模型。
     app.MapParcelReadOnlyApis();
+    // Parcel 管理端写接口：普通写操作 + 危险治理接口（cleanup-expired）分开治理。
+    app.MapParcelAdminApis();
 
     app.Run();
 }
@@ -112,17 +117,6 @@ finally {
 /// Parcel 只读 API 路由扩展。
 /// </summary>
 public static class ParcelReadOnlyApiRouteExtensions {
-    /// <summary>
-    /// 邻近查询支持的本地时间格式（不允许 UTC/offset 表达）。
-    /// </summary>
-    private static readonly string[] LocalDateTimeFormats = [
-        "yyyy-MM-dd",
-        "yyyy-MM-dd HH:mm:ss",
-        "yyyy-MM-ddTHH:mm:ss",
-        "yyyy-MM-dd HH:mm:ss.fff",
-        "yyyy-MM-ddTHH:mm:ss.fff"
-    ];
-
     /// <summary>
     /// NLog 日志器。
     /// </summary>
@@ -169,9 +163,9 @@ public static class ParcelReadOnlyApiRouteExtensions {
         [AsParameters] ParcelListQueryParameters query,
         GetParcelPagedQueryService queryService,
         CancellationToken cancellationToken) {
-        if (!TryParseOptionalLocalDateTime(query.ScannedTimeStart, out var scannedTimeStart)
-            || !TryParseOptionalLocalDateTime(query.ScannedTimeEnd, out var scannedTimeEnd)) {
-            return CreateBadRequestProblem("请求参数无效", "scannedTimeStart/scannedTimeEnd 必须是本地时间格式，且不允许包含 UTC 或时区偏移。");
+        if (!LocalDateTimeParsing.TryParseOptionalLocalDateTime(query.ScannedTimeStart, out var scannedTimeStart)
+            || !LocalDateTimeParsing.TryParseOptionalLocalDateTime(query.ScannedTimeEnd, out var scannedTimeEnd)) {
+            return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", "scannedTimeStart/scannedTimeEnd 必须是本地时间格式，且不允许包含 UTC 或时区偏移。");
         }
 
         try {
@@ -192,7 +186,7 @@ public static class ParcelReadOnlyApiRouteExtensions {
         }
         catch (ArgumentException exception) {
             Logger.Warn(exception, "Parcel 列表查询参数校验失败。");
-            return CreateBadRequestProblem("请求参数无效", exception.Message);
+            return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", exception.Message);
         }
     }
 
@@ -218,7 +212,7 @@ public static class ParcelReadOnlyApiRouteExtensions {
         }
         catch (ArgumentException exception) {
             Logger.Warn(exception, "Parcel 详情查询参数校验失败，Id={ParcelId}", id);
-            return CreateBadRequestProblem("请求参数无效", exception.Message);
+            return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", exception.Message);
         }
     }
 
@@ -233,8 +227,8 @@ public static class ParcelReadOnlyApiRouteExtensions {
         [AsParameters] ParcelAdjacentQueryParameters query,
         GetAdjacentParcelsQueryService queryService,
         CancellationToken cancellationToken) {
-        if (!TryParseLocalDateTime(query.ScannedTime, out var scannedTime)) {
-            return CreateBadRequestProblem("请求参数无效", "scannedTime 必须是本地时间格式，且不允许包含 UTC 或时区偏移。");
+        if (!LocalDateTimeParsing.TryParseLocalDateTime(query.ScannedTime, out var scannedTime)) {
+            return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", "scannedTime 必须是本地时间格式，且不允许包含 UTC 或时区偏移。");
         }
 
         try {
@@ -253,69 +247,8 @@ public static class ParcelReadOnlyApiRouteExtensions {
                 query.ScannedTime,
                 query.BeforeCount,
                 query.AfterCount);
-            return CreateBadRequestProblem("请求参数无效", exception.Message);
+            return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", exception.Message);
         }
-    }
-
-    /// <summary>
-    /// 尝试按本地时间语义解析时间字符串。
-    /// </summary>
-    /// <param name="input">输入时间字符串。</param>
-    /// <param name="parsedTime">解析结果。</param>
-    /// <returns>是否解析成功。</returns>
-    private static bool TryParseLocalDateTime(string? input, out DateTime parsedTime) {
-        if (string.IsNullOrWhiteSpace(input)
-            || input.Contains('Z', StringComparison.OrdinalIgnoreCase)
-            || input.Contains('+', StringComparison.Ordinal)
-            || input.LastIndexOf('-') > "yyyy-MM-dd".Length - 1) {
-            parsedTime = default;
-            return false;
-        }
-
-        return DateTime.TryParseExact(
-            input,
-            LocalDateTimeFormats,
-            CultureInfo.InvariantCulture,
-            DateTimeStyles.AssumeLocal | DateTimeStyles.AllowWhiteSpaces,
-            out parsedTime);
-    }
-
-    /// <summary>
-    /// 尝试解析可空本地时间字符串（空值视为合法）。
-    /// </summary>
-    /// <param name="input">可空输入字符串。</param>
-    /// <param name="parsedTime">解析结果。</param>
-    /// <returns>是否解析成功。</returns>
-    private static bool TryParseOptionalLocalDateTime(string? input, out DateTime? parsedTime) {
-        if (string.IsNullOrWhiteSpace(input)) {
-            parsedTime = null;
-            return true;
-        }
-
-        if (!TryParseLocalDateTime(input, out var localTime)) {
-            parsedTime = null;
-            return false;
-        }
-
-        parsedTime = localTime;
-        return true;
-    }
-
-    /// <summary>
-    /// 创建统一的 400 ProblemDetails 响应。
-    /// </summary>
-    /// <param name="title">问题标题。</param>
-    /// <param name="detail">问题详情。</param>
-    /// <returns>统一错误响应。</returns>
-    private static IResult CreateBadRequestProblem(string title, string detail) {
-        return Results.Json(
-            new ProblemDetails {
-                Title = title,
-                Detail = detail,
-                Status = StatusCodes.Status400BadRequest
-            },
-            contentType: "application/problem+json",
-            statusCode: StatusCodes.Status400BadRequest);
     }
 
     /// <summary>
