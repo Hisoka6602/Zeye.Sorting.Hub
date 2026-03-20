@@ -13,18 +13,12 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories;
 /// </summary>
 public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContext>, IParcelRepository {
     /// <summary>
-    /// 字段：_logger。
-    /// </summary>
-    private readonly ILogger<ParcelRepository> _logger;
-
-    /// <summary>
     /// 创建 ParcelRepository。
     /// </summary>
     public ParcelRepository(
         IDbContextFactory<SortingHubDbContext> contextFactory,
         ILogger<ParcelRepository> logger)
         : base(contextFactory, logger) {
-        _logger = logger;
     }
 
     /// <summary>
@@ -40,7 +34,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
             return result.IsSuccess ? result.Value : null;
         }
         catch (Exception ex) {
-            _logger.LogError(ex, "根据 Id 查询包裹主实体失败，Id={ParcelId}", id);
+            Logger.LogError(ex, "根据 Id 查询包裹主实体失败，Id={ParcelId}", id);
             throw;
         }
     }
@@ -73,7 +67,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
                 .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
         }
         catch (Exception ex) {
-            _logger.LogError(ex, "根据 Id 查询包裹详情失败，Id={ParcelId}", id);
+            Logger.LogError(ex, "根据 Id 查询包裹详情失败，Id={ParcelId}", id);
             throw;
         }
     }
@@ -181,7 +175,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
             return [.. beforeItems, .. afterItems];
         }
         catch (Exception ex) {
-            _logger.LogError(ex,
+            Logger.LogError(ex,
                 "按扫描时间查询邻近记录失败，ScannedTime={ScannedTime}, BeforeCount={BeforeCount}, AfterCount={AfterCount}",
                 scannedTime,
                 beforeCount,
@@ -199,7 +193,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
             return;
         }
 
-        _logger.LogError("新增包裹失败，原因={ErrorMessage}", result.ErrorMessage);
+        Logger.LogError("新增包裹失败，原因={ErrorMessage}", result.ErrorMessage);
         throw new InvalidOperationException(result.ErrorMessage ?? "新增包裹失败");
     }
 
@@ -212,7 +206,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
             return;
         }
 
-        _logger.LogError("更新包裹失败，原因={ErrorMessage}", result.ErrorMessage);
+        Logger.LogError("更新包裹失败，原因={ErrorMessage}", result.ErrorMessage);
         throw new InvalidOperationException(result.ErrorMessage ?? "更新包裹失败");
     }
 
@@ -225,7 +219,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
             return;
         }
 
-        _logger.LogError("删除包裹失败，原因={ErrorMessage}", result.ErrorMessage);
+        Logger.LogError("删除包裹失败，原因={ErrorMessage}", result.ErrorMessage);
         throw new InvalidOperationException(result.ErrorMessage ?? "删除包裹失败");
     }
 
@@ -252,7 +246,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
             return expiredParcels.Count;
         }
         catch (Exception ex) {
-            _logger.LogError(ex, "删除过期包裹失败，CreatedBefore={CreatedBefore}", createdBefore);
+            Logger.LogError(ex, "删除过期包裹失败，CreatedBefore={CreatedBefore}", createdBefore);
             throw;
         }
     }
@@ -266,7 +260,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
             return;
         }
 
-        _logger.LogError("批量新增包裹失败，原因={ErrorMessage}", result.ErrorMessage);
+        Logger.LogError("批量新增包裹失败，原因={ErrorMessage}", result.ErrorMessage);
         throw new InvalidOperationException(result.ErrorMessage ?? "批量新增包裹失败");
     }
 
@@ -301,7 +295,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
             };
         }
         catch (Exception ex) {
-            _logger.LogError(ex, "分页查询包裹失败，PageNumber={PageNumber}, PageSize={PageSize}", pageNumber, pageSize);
+            Logger.LogError(ex, "分页查询包裹失败，PageNumber={PageNumber}, PageSize={PageSize}", pageNumber, pageSize);
             throw;
         }
     }
@@ -310,9 +304,9 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     /// 应用过滤条件。
     /// </summary>
     private static IQueryable<Parcel> ApplyFilter(IQueryable<Parcel> query, ParcelQueryFilter filter) {
-        if (!string.IsNullOrWhiteSpace(filter.BarCodes)) {
-            var barCodes = filter.BarCodes.Trim();
-            query = query.Where(x => x.BarCodes.Contains(barCodes));
+        if (!string.IsNullOrWhiteSpace(filter.BarCodeKeyword)) {
+            var barCodeKeyword = filter.BarCodeKeyword.Trim();
+            query = query.Where(x => x.BarCodes.Contains(barCodeKeyword));
         }
 
         if (!string.IsNullOrWhiteSpace(filter.BagCode)) {

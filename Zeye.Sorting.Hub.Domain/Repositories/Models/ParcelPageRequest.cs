@@ -5,17 +5,17 @@ namespace Zeye.Sorting.Hub.Domain.Repositories.Models;
 /// </summary>
 public sealed record ParcelPageRequest {
     /// <summary>
-    /// 字段：DefaultPageNumber。
+    /// 默认页码（用于无效页码兜底）。
     /// </summary>
     private const int DefaultPageNumber = 1;
 
     /// <summary>
-    /// 字段：DefaultPageSize。
+    /// 默认分页大小（用于无效分页大小兜底）。
     /// </summary>
     private const int DefaultPageSize = 20;
 
     /// <summary>
-    /// 字段：MaxPageSize。
+    /// 最大分页大小（用于限制单次查询开销）。
     /// </summary>
     private const int MaxPageSize = 200;
 

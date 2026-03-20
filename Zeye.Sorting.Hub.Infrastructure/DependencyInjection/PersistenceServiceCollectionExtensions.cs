@@ -110,6 +110,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 }
 
                 // DbContextPool：更低分配、更稳吞吐
+                // AddDbContextPool：兼容现有直接注入 SortingHubDbContext 的路径（如 HostedService）。
+                // AddPooledDbContextFactory：供仓储基类通过 IDbContextFactory 按调用创建短生命周期上下文。
                 services.AddDbContextPool<SortingHubDbContext>(ConfigureMySqlDbContextOptions);
                 services.AddPooledDbContextFactory<SortingHubDbContext>(ConfigureMySqlDbContextOptions);
 
@@ -134,6 +136,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                     throw new InvalidOperationException("缺少连接字符串：ConnectionStrings:SqlServer");
                 }
 
+                // AddDbContextPool：兼容现有直接注入 SortingHubDbContext 的路径（如 HostedService）。
+                // AddPooledDbContextFactory：供仓储基类通过 IDbContextFactory 按调用创建短生命周期上下文。
                 services.AddDbContextPool<SortingHubDbContext>(ConfigureSqlServerDbContextOptions);
                 services.AddPooledDbContextFactory<SortingHubDbContext>(ConfigureSqlServerDbContextOptions);
 

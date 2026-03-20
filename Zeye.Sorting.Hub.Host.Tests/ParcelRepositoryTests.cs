@@ -20,29 +20,34 @@ public sealed class ParcelRepositoryTests {
     [Fact]
     public async Task GetPagedAsync_ShouldReturnSummaryWithExpectedFilterAndPaging() {
         var databaseName = $"parcel-repo-test-{Guid.NewGuid():N}";
-        var repository = CreateRepository(databaseName);
-        await SeedParcelsAsync(databaseName, [
-            CreateParcel("BC-001", "BAG-A", "WS-1", ParcelStatus.Pending, DateTime.Now.AddMinutes(-3), 100, 101),
-            CreateParcel("BC-002", "BAG-A", "WS-1", ParcelStatus.Pending, DateTime.Now.AddMinutes(-2), 100, 101),
-            CreateParcel("BC-003", "BAG-B", "WS-2", ParcelStatus.Completed, DateTime.Now.AddMinutes(-1), 200, 201)
-        ]);
+        try {
+            var repository = CreateRepository(databaseName);
+            await SeedParcelsAsync(databaseName, [
+                CreateParcel("BC-001", "BAG-A", "WS-1", ParcelStatus.Pending, DateTime.Now.AddMinutes(-3), 100, 101),
+                CreateParcel("BC-002", "BAG-A", "WS-1", ParcelStatus.Pending, DateTime.Now.AddMinutes(-2), 100, 101),
+                CreateParcel("BC-003", "BAG-B", "WS-2", ParcelStatus.Completed, DateTime.Now.AddMinutes(-1), 200, 201)
+            ]);
 
-        var result = await repository.GetPagedAsync(
-            new ParcelQueryFilter {
-                BagCode = "BAG-A",
-                WorkstationName = "WS-1",
-                Status = ParcelStatus.Pending
-            },
-            new ParcelPageRequest { PageNumber = 1, PageSize = 1 },
-            CancellationToken.None);
+            var result = await repository.GetPagedAsync(
+                new ParcelQueryFilter {
+                    BagCode = "BAG-A",
+                    WorkstationName = "WS-1",
+                    Status = ParcelStatus.Pending
+                },
+                new ParcelPageRequest { PageNumber = 1, PageSize = 1 },
+                CancellationToken.None);
 
-        Assert.Equal(1, result.PageNumber);
-        Assert.Equal(1, result.PageSize);
-        Assert.Equal(2, result.TotalCount);
-        Assert.Single(result.Items);
-        Assert.Equal("BAG-A", result.Items[0].BagCode);
-        Assert.Equal("WS-1", result.Items[0].WorkstationName);
-        Assert.Equal(ParcelStatus.Pending, result.Items[0].Status);
+            Assert.Equal(1, result.PageNumber);
+            Assert.Equal(1, result.PageSize);
+            Assert.Equal(2, result.TotalCount);
+            Assert.Single(result.Items);
+            Assert.Equal("BAG-A", result.Items[0].BagCode);
+            Assert.Equal("WS-1", result.Items[0].WorkstationName);
+            Assert.Equal(ParcelStatus.Pending, result.Items[0].Status);
+        }
+        finally {
+            await CleanupDatabaseAsync(databaseName);
+        }
     }
 
     /// <summary>
@@ -52,29 +57,33 @@ public sealed class ParcelRepositoryTests {
     public async Task GetDetailByIdAsync_AndAdjacent_ShouldReturnAggregateAndNeighbors() {
         var databaseName = $"parcel-repo-test-{Guid.NewGuid():N}";
         var baseTime = DateTime.Now.AddHours(-1);
+        try {
+            var parcel1 = CreateParcel("BC-101", "BAG-X", "WS-X", ParcelStatus.Pending, baseTime.AddMinutes(1), 301, 401);
+            parcel1.AddBarCodeInfo(new BarCodeInfo {
+                BarCode = "SUB-101",
+                BarCodeType = BarCodeType.ExpressSheet,
+                CapturedTime = baseTime.AddMinutes(1)
+            });
 
-        var parcel1 = CreateParcel("BC-101", "BAG-X", "WS-X", ParcelStatus.Pending, baseTime.AddMinutes(1), 301, 401);
-        parcel1.AddBarCodeInfo(new BarCodeInfo {
-            BarCode = "SUB-101",
-            BarCodeType = BarCodeType.ExpressSheet,
-            CapturedTime = baseTime.AddMinutes(1)
-        });
+            var parcel2 = CreateParcel("BC-102", "BAG-X", "WS-X", ParcelStatus.Pending, baseTime.AddMinutes(2), 301, 401);
+            var parcel3 = CreateParcel("BC-103", "BAG-Y", "WS-Y", ParcelStatus.Completed, baseTime.AddMinutes(3), 302, 402);
 
-        var parcel2 = CreateParcel("BC-102", "BAG-X", "WS-X", ParcelStatus.Pending, baseTime.AddMinutes(2), 301, 401);
-        var parcel3 = CreateParcel("BC-103", "BAG-Y", "WS-Y", ParcelStatus.Completed, baseTime.AddMinutes(3), 302, 402);
+            await SeedParcelsAsync(databaseName, [parcel1, parcel2, parcel3]);
 
-        await SeedParcelsAsync(databaseName, [parcel1, parcel2, parcel3]);
+            var repository = CreateRepository(databaseName);
+            var detail = await repository.GetDetailByIdAsync(parcel2.Id, CancellationToken.None);
 
-        var repository = CreateRepository(databaseName);
-        var detail = await repository.GetDetailByIdAsync(parcel2.Id, CancellationToken.None);
+            Assert.NotNull(detail);
+            Assert.Equal("BC-102", detail.BarCodes);
 
-        Assert.NotNull(detail);
-        Assert.Equal("BC-102", detail.BarCodes);
-
-        var adjacent = await repository.GetAdjacentByScannedTimeAsync(baseTime.AddMinutes(2), 1, 1, CancellationToken.None);
-        Assert.Equal(2, adjacent.Count);
-        Assert.Equal("BC-101", adjacent[0].BarCodes);
-        Assert.Equal("BC-103", adjacent[1].BarCodes);
+            var adjacent = await repository.GetAdjacentByScannedTimeAsync(baseTime.AddMinutes(2), 1, 1, CancellationToken.None);
+            Assert.Equal(2, adjacent.Count);
+            Assert.Equal("BC-101", adjacent[0].BarCodes);
+            Assert.Equal("BC-103", adjacent[1].BarCodes);
+        }
+        finally {
+            await CleanupDatabaseAsync(databaseName);
+        }
     }
 
     /// <summary>
@@ -83,32 +92,39 @@ public sealed class ParcelRepositoryTests {
     [Fact]
     public async Task WriteOperations_ShouldAddUpdateRemoveAndCleanupExpired() {
         var databaseName = $"parcel-repo-test-{Guid.NewGuid():N}";
-        var repository = CreateRepository(databaseName);
-        var contractRepository = (IParcelRepository)repository;
+        try {
+            var repository = CreateRepository(databaseName);
+            var contractRepository = (IParcelRepository)repository;
 
-        var parcel = CreateParcel("BC-W-1", "BAG-W", "WS-W", ParcelStatus.Pending, DateTime.Now.AddMinutes(-10), 501, 601);
-        await contractRepository.AddAsync(parcel, CancellationToken.None);
+            var parcel = CreateParcel("BC-W-1", "BAG-W", "WS-W", ParcelStatus.Pending, DateTime.Now.AddMinutes(-10), 501, 601);
+            await contractRepository.AddAsync(parcel, CancellationToken.None);
 
-        var saved = await repository.GetByIdAsync(parcel.Id, CancellationToken.None);
-        Assert.NotNull(saved);
+            var saved = await repository.GetByIdAsync(parcel.Id, CancellationToken.None);
+            Assert.NotNull(saved);
 
-        saved!.UpdateRequestStatus(ApiRequestStatus.Failed);
-        await contractRepository.UpdateAsync(saved, CancellationToken.None);
+            saved!.UpdateRequestStatus(ApiRequestStatus.Failed);
+            await contractRepository.UpdateAsync(saved, CancellationToken.None);
 
-        var updated = await repository.GetByIdAsync(saved.Id, CancellationToken.None);
-        Assert.NotNull(updated);
-        Assert.Equal(ApiRequestStatus.Failed, updated!.RequestStatus);
+            var updated = await repository.GetByIdAsync(saved.Id, CancellationToken.None);
+            Assert.NotNull(updated);
+            Assert.Equal(ApiRequestStatus.Failed, updated!.RequestStatus);
 
-        var oldParcel = CreateParcel("BC-W-2", "BAG-W", "WS-W", ParcelStatus.Completed, DateTime.Now.AddMinutes(-20), 502, 602);
-        SetCreatedTime(oldParcel, DateTime.Now.AddDays(-10));
-        await contractRepository.AddRangeAsync([oldParcel], CancellationToken.None);
+            var oldParcel = CreateParcel("BC-W-2", "BAG-W", "WS-W", ParcelStatus.Completed, DateTime.Now.AddMinutes(-20), 502, 602);
+            await contractRepository.AddRangeAsync([oldParcel], CancellationToken.None);
 
-        var removedExpiredCount = await repository.RemoveExpiredAsync(DateTime.Now.AddDays(-1), CancellationToken.None);
-        Assert.True(removedExpiredCount >= 1);
+            var removedExpiredCount = await repository.RemoveExpiredAsync(DateTime.Now.AddMinutes(1), CancellationToken.None);
+            Assert.True(removedExpiredCount >= 2);
 
-        await contractRepository.RemoveAsync(updated, CancellationToken.None);
-        var deleted = await repository.GetByIdAsync(updated.Id, CancellationToken.None);
-        Assert.Null(deleted);
+            var deleteTarget = CreateParcel("BC-W-3", "BAG-W", "WS-W", ParcelStatus.Pending, DateTime.Now.AddMinutes(-5), 503, 603);
+            await contractRepository.AddAsync(deleteTarget, CancellationToken.None);
+            await contractRepository.RemoveAsync(deleteTarget, CancellationToken.None);
+
+            var deleted = await repository.GetByIdAsync(deleteTarget.Id, CancellationToken.None);
+            Assert.Null(deleted);
+        }
+        finally {
+            await CleanupDatabaseAsync(databaseName);
+        }
     }
 
     /// <summary>
@@ -186,12 +202,12 @@ public sealed class ParcelRepositoryTests {
     }
 
     /// <summary>
-    /// 通过反射设置创建时间，构造过期数据样本。
+    /// 删除测试数据库，确保用例资源及时释放。
     /// </summary>
-    private static void SetCreatedTime(Parcel parcel, DateTime createdTime) {
-        var property = typeof(Parcel).BaseType?.GetProperty(nameof(Parcel.CreatedTime));
-        Assert.NotNull(property);
-        property!.SetValue(parcel, createdTime);
+    private static async Task CleanupDatabaseAsync(string databaseName) {
+        var options = BuildOptions(databaseName);
+        await using var db = new SortingHubDbContext(options);
+        await db.Database.EnsureDeletedAsync();
     }
 
     /// <summary>
@@ -199,7 +215,7 @@ public sealed class ParcelRepositoryTests {
     /// </summary>
     private sealed class TestDbContextFactory : IDbContextFactory<SortingHubDbContext> {
         /// <summary>
-        /// 字段：_options。
+        /// 用于创建 InMemory 测试数据库上下文的配置选项。
         /// </summary>
         private readonly DbContextOptions<SortingHubDbContext> _options;
 

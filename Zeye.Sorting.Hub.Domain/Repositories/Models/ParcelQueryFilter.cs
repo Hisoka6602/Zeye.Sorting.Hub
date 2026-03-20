@@ -9,7 +9,7 @@ public sealed record ParcelQueryFilter {
     /// <summary>
     /// 主条码关键字。
     /// </summary>
-    public string? BarCodes { get; init; }
+    public string? BarCodeKeyword { get; init; }
 
     /// <summary>
     /// 集包号。
