@@ -1,4 +1,5 @@
 using NLog;
+using Microsoft.AspNetCore.Diagnostics;
 using Zeye.Sorting.Hub.Host;
 using NLog.Extensions.Logging;
 using Zeye.Sorting.Hub.Host.HostedServices;
@@ -12,7 +13,7 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 var bootstrapLogger = LogManager.GetCurrentClassLogger();
 
 try {
-    var builder = Host.CreateApplicationBuilder(args);
+    var builder = WebApplication.CreateBuilder(args);
 
     // ──────────────────────────────────────────────────────
     // NLog：替换默认日志提供器，双路落盘（详见 nlog.config）
@@ -29,14 +30,54 @@ try {
     builder.Services.AddHostedService<Worker>();
     builder.Services.AddSortingHubPersistence(builder.Configuration);
     builder.Services.AddSingleton<IAutoTuningObservability, AutoTuningLoggerObservability>();
+    builder.Services.AddProblemDetails();
+    builder.Services.AddEndpointsApiExplorer();
+    builder.Services.AddSwaggerGen();
 
     // Host 启动时执行持久化初始化
     builder.Services.AddHostedService<DatabaseInitializerHostedService>();
     builder.Services.AddHostedService<DatabaseAutoTuningHostedService>();
 
-    var host = builder.Build();
+    var app = builder.Build();
 
-    host.Run();
+    // ──────────────────────────────────────────────────────
+    // 全局异常出口：统一 ProblemDetails + 异常日志落盘
+    // ──────────────────────────────────────────────────────
+    app.UseExceptionHandler(exceptionHandlerApp => {
+        exceptionHandlerApp.Run(async context => {
+            // 步骤 1：提取当前请求异常
+            var exceptionFeature = context.Features.Get<IExceptionHandlerFeature>();
+            var exception = exceptionFeature?.Error;
+
+            // 步骤 2：所有异常必须记录日志
+            var loggerFactory = context.RequestServices.GetRequiredService<ILoggerFactory>();
+            var logger = loggerFactory.CreateLogger("GlobalExceptionHandler");
+            if (exception is not null) {
+                logger.LogError(exception, "处理 HTTP 请求时发生未处理异常，路径：{Path}", context.Request.Path);
+            }
+            else {
+                logger.LogError("处理 HTTP 请求时发生未知异常，路径：{Path}", context.Request.Path);
+            }
+
+            // 步骤 3：返回统一问题详情响应
+            context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+            await Results.Problem(
+                title: "服务器内部错误",
+                detail: "请求处理失败，请联系系统管理员。",
+                statusCode: StatusCodes.Status500InternalServerError).ExecuteAsync(context);
+        });
+    });
+
+    app.UseHttpsRedirection();
+    if (app.Environment.IsDevelopment()) {
+        app.UseSwagger();
+        app.UseSwaggerUI();
+    }
+
+    // 最小探活端点：用于容器/网关健康检查，不承载业务语义
+    app.MapGet("/health", () => Results.Ok(new { status = "Healthy" }));
+
+    app.Run();
 }
 catch (Exception ex) {
     // 捕获启动期间的顶层异常，确保日志落盘后再退出
