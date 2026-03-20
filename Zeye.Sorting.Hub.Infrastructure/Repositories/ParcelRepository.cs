@@ -1,9 +1,12 @@
+using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Repositories;
-using Zeye.Sorting.Hub.Domain.Repositories.Models;
+using Zeye.Sorting.Hub.Domain.Repositories.Models.Filters;
+using Zeye.Sorting.Hub.Domain.Repositories.Models.Paging;
+using Zeye.Sorting.Hub.Domain.Repositories.Models.ReadModels;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Repositories;
@@ -22,27 +25,9 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     }
 
     /// <summary>
-    /// 根据主键获取包裹主实体（不包含完整聚合图）。
-    /// </summary>
-    public async Task<Parcel?> GetByIdAsync(long id, CancellationToken cancellationToken) {
-        if (id <= 0) {
-            return null;
-        }
-
-        try {
-            var result = await FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
-            return result.IsSuccess ? result.Value : null;
-        }
-        catch (Exception ex) {
-            Logger.LogError(ex, "根据 Id 查询包裹主实体失败，Id={ParcelId}", id);
-            throw;
-        }
-    }
-
-    /// <summary>
     /// 根据主键获取包裹完整聚合详情（包含值对象与集合）。
     /// </summary>
-    public async Task<Parcel?> GetDetailByIdAsync(long id, CancellationToken cancellationToken) {
+    public async Task<Parcel?> GetByIdAsync(long id, CancellationToken cancellationToken) {
         if (id <= 0) {
             return null;
         }
@@ -75,9 +60,9 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     /// <summary>
     /// 按过滤条件执行分页查询（返回摘要读模型）。
     /// </summary>
-    public Task<ParcelPageResult<ParcelSummaryReadModel>> GetPagedAsync(
+    public Task<PageResult<ParcelSummaryReadModel>> GetPagedAsync(
         ParcelQueryFilter filter,
-        ParcelPageRequest pageRequest,
+        PageRequest pageRequest,
         CancellationToken cancellationToken) {
         if (filter is null) {
             throw new ArgumentNullException(nameof(filter));
@@ -87,51 +72,61 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
             throw new ArgumentNullException(nameof(pageRequest));
         }
 
+        ValidateQueryFilter(filter);
+
         return ExecutePagedQueryAsync(query => ApplyFilter(query, filter), pageRequest, cancellationToken);
     }
 
     /// <summary>
-    /// 按集包号分页查询包裹摘要。
+    /// 按集包号与扫码时间范围分页查询包裹摘要。
     /// </summary>
-    public Task<ParcelPageResult<ParcelSummaryReadModel>> GetByBagCodeAsync(
+    public Task<PageResult<ParcelSummaryReadModel>> GetByBagCodeAsync(
         string bagCode,
-        ParcelPageRequest pageRequest,
+        DateTime scannedTimeStart,
+        DateTime scannedTimeEnd,
+        PageRequest pageRequest,
         CancellationToken cancellationToken) {
-        var filter = new ParcelQueryFilter { BagCode = bagCode };
+        var filter = BuildRequiredTimeRangeFilter(scannedTimeStart, scannedTimeEnd) with { BagCode = bagCode };
         return GetPagedAsync(filter, pageRequest, cancellationToken);
     }
 
     /// <summary>
-    /// 按工作台分页查询包裹摘要。
+    /// 按工作台与扫码时间范围分页查询包裹摘要。
     /// </summary>
-    public Task<ParcelPageResult<ParcelSummaryReadModel>> GetByWorkstationNameAsync(
+    public Task<PageResult<ParcelSummaryReadModel>> GetByWorkstationNameAsync(
         string workstationName,
-        ParcelPageRequest pageRequest,
+        DateTime scannedTimeStart,
+        DateTime scannedTimeEnd,
+        PageRequest pageRequest,
         CancellationToken cancellationToken) {
-        var filter = new ParcelQueryFilter { WorkstationName = workstationName };
+        var filter = BuildRequiredTimeRangeFilter(scannedTimeStart, scannedTimeEnd) with { WorkstationName = workstationName };
         return GetPagedAsync(filter, pageRequest, cancellationToken);
     }
 
     /// <summary>
-    /// 按包裹状态分页查询包裹摘要。
+    /// 按包裹状态与扫码时间范围分页查询包裹摘要。
     /// </summary>
-    public Task<ParcelPageResult<ParcelSummaryReadModel>> GetByStatusAsync(
+    public Task<PageResult<ParcelSummaryReadModel>> GetByStatusAsync(
         ParcelStatus status,
-        ParcelPageRequest pageRequest,
+        DateTime scannedTimeStart,
+        DateTime scannedTimeEnd,
+        PageRequest pageRequest,
         CancellationToken cancellationToken) {
-        var filter = new ParcelQueryFilter { Status = status };
+        var filter = BuildRequiredTimeRangeFilter(scannedTimeStart, scannedTimeEnd) with { Status = status };
         return GetPagedAsync(filter, pageRequest, cancellationToken);
     }
 
     /// <summary>
-    /// 按实际/目标格口条件分页查询包裹摘要。
+    /// 按实际/目标格口与扫码时间范围分页查询包裹摘要。
     /// </summary>
-    public Task<ParcelPageResult<ParcelSummaryReadModel>> GetByChuteAsync(
+    public Task<PageResult<ParcelSummaryReadModel>> GetByChuteAsync(
         long? actualChuteId,
         long? targetChuteId,
-        ParcelPageRequest pageRequest,
+        DateTime scannedTimeStart,
+        DateTime scannedTimeEnd,
+        PageRequest pageRequest,
         CancellationToken cancellationToken) {
-        var filter = new ParcelQueryFilter {
+        var filter = BuildRequiredTimeRangeFilter(scannedTimeStart, scannedTimeEnd) with {
             ActualChuteId = actualChuteId,
             TargetChuteId = targetChuteId
         };
@@ -265,11 +260,21 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     }
 
     /// <summary>
+    /// 构建必填时间范围过滤参数。
+    /// </summary>
+    private static ParcelQueryFilter BuildRequiredTimeRangeFilter(DateTime scannedTimeStart, DateTime scannedTimeEnd) {
+        return new ParcelQueryFilter {
+            ScannedTimeStart = scannedTimeStart,
+            ScannedTimeEnd = scannedTimeEnd
+        };
+    }
+
+    /// <summary>
     /// 执行分页查询。
     /// </summary>
-    private async Task<ParcelPageResult<ParcelSummaryReadModel>> ExecutePagedQueryAsync(
+    private async Task<PageResult<ParcelSummaryReadModel>> ExecutePagedQueryAsync(
         Func<IQueryable<Parcel>, IQueryable<Parcel>> queryBuilder,
-        ParcelPageRequest pageRequest,
+        PageRequest pageRequest,
         CancellationToken cancellationToken) {
         var pageNumber = pageRequest.NormalizePageNumber();
         var pageSize = pageRequest.NormalizePageSize();
@@ -287,7 +292,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
                 .Select(SelectSummaryExpression)
                 .ToListAsync(cancellationToken);
 
-            return new ParcelPageResult<ParcelSummaryReadModel> {
+            return new PageResult<ParcelSummaryReadModel> {
                 Items = items,
                 PageNumber = pageNumber,
                 PageSize = pageSize,
@@ -343,19 +348,52 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     }
 
     /// <summary>
+    /// 校验查询过滤参数。
+    /// </summary>
+    private static void ValidateQueryFilter(ParcelQueryFilter filter) {
+        var validationContext = new ValidationContext(filter);
+        var validationResults = new List<ValidationResult>();
+        if (Validator.TryValidateObject(filter, validationContext, validationResults, validateAllProperties: true)) {
+            return;
+        }
+
+        var errorMessage = string.Join("; ", validationResults.Select(static x => x.ErrorMessage));
+        throw new ValidationException(string.IsNullOrWhiteSpace(errorMessage) ? "查询参数校验失败" : errorMessage);
+    }
+
+    /// <summary>
     /// Parcel 摘要投影表达式。
     /// </summary>
     private static readonly System.Linq.Expressions.Expression<Func<Parcel, ParcelSummaryReadModel>> SelectSummaryExpression = x => new ParcelSummaryReadModel {
         Id = x.Id,
+        CreatedTime = x.CreatedTime,
+        ModifyTime = x.ModifyTime,
+        ModifyIp = x.ModifyIp,
         ParcelTimestamp = x.ParcelTimestamp,
-        BarCodes = x.BarCodes,
+        Type = x.Type,
         Status = x.Status,
         ExceptionType = x.ExceptionType,
+        NoReadType = x.NoReadType,
+        SorterCarrierId = x.SorterCarrierId,
+        SegmentCodes = x.SegmentCodes,
+        LifecycleMilliseconds = x.LifecycleMilliseconds,
+        TargetChuteId = x.TargetChuteId,
+        ActualChuteId = x.ActualChuteId,
+        BarCodes = x.BarCodes,
+        Weight = x.Weight,
+        RequestStatus = x.RequestStatus,
         BagCode = x.BagCode,
         WorkstationName = x.WorkstationName,
-        ActualChuteId = x.ActualChuteId,
-        TargetChuteId = x.TargetChuteId,
+        IsSticking = x.IsSticking,
+        Length = x.Length,
+        Width = x.Width,
+        Height = x.Height,
+        Volume = x.Volume,
         ScannedTime = x.ScannedTime,
-        CreatedTime = x.CreatedTime
+        DischargeTime = x.DischargeTime,
+        CompletedTime = x.CompletedTime,
+        HasImages = x.HasImages,
+        HasVideos = x.HasVideos,
+        Coordinate = x.Coordinate
     };
 }

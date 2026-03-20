@@ -1,10 +1,12 @@
 using Zeye.Sorting.Hub.Domain.Enums;
+using Zeye.Sorting.Hub.Domain.Repositories.Models.Validation;
 
-namespace Zeye.Sorting.Hub.Domain.Repositories.Models;
+namespace Zeye.Sorting.Hub.Domain.Repositories.Models.Filters;
 
 /// <summary>
 /// Parcel 列表查询过滤参数（第一阶段最小集合）。
 /// </summary>
+[MaxTimeRange(nameof(ScannedTimeStart), nameof(ScannedTimeEnd), maxMonths: 3)]
 public sealed record ParcelQueryFilter {
     /// <summary>
     /// 主条码关键字。

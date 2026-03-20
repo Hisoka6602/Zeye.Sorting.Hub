@@ -1,9 +1,9 @@
-namespace Zeye.Sorting.Hub.Domain.Repositories.Models;
+namespace Zeye.Sorting.Hub.Domain.Repositories.Models.Paging;
 
 /// <summary>
-/// Parcel 分页结果。
+/// 通用分页结果。
 /// </summary>
-public sealed record ParcelPageResult<TItem> {
+public sealed record PageResult<TItem> {
     /// <summary>
     /// 当前页数据。
     /// </summary>

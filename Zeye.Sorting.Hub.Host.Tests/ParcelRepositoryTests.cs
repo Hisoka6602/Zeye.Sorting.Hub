@@ -4,7 +4,8 @@ using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects;
 using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Repositories;
-using Zeye.Sorting.Hub.Domain.Repositories.Models;
+using Zeye.Sorting.Hub.Domain.Repositories.Models.Filters;
+using Zeye.Sorting.Hub.Domain.Repositories.Models.Paging;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Repositories;
 
@@ -32,9 +33,11 @@ public sealed class ParcelRepositoryTests {
                 new ParcelQueryFilter {
                     BagCode = "BAG-A",
                     WorkstationName = "WS-1",
-                    Status = ParcelStatus.Pending
+                    Status = ParcelStatus.Pending,
+                    ScannedTimeStart = DateTime.Now.AddHours(-2),
+                    ScannedTimeEnd = DateTime.Now
                 },
-                new ParcelPageRequest { PageNumber = 1, PageSize = 1 },
+                new PageRequest { PageNumber = 1, PageSize = 1 },
                 CancellationToken.None);
 
             Assert.Equal(1, result.PageNumber);
@@ -44,6 +47,8 @@ public sealed class ParcelRepositoryTests {
             Assert.Equal("BAG-A", result.Items[0].BagCode);
             Assert.Equal("WS-1", result.Items[0].WorkstationName);
             Assert.Equal(ParcelStatus.Pending, result.Items[0].Status);
+            Assert.Equal(ApiRequestStatus.Success, result.Items[0].RequestStatus);
+            Assert.NotNull(result.Items[0].ModifyIp);
         }
         finally {
             await CleanupDatabaseAsync(databaseName);
@@ -51,10 +56,10 @@ public sealed class ParcelRepositoryTests {
     }
 
     /// <summary>
-    /// 验证场景：GetDetailByIdAsync_AndAdjacent_ShouldReturnAggregateAndNeighbors。
+    /// 验证场景：GetByIdAsync_AndAdjacent_ShouldReturnAggregateAndNeighbors。
     /// </summary>
     [Fact]
-    public async Task GetDetailByIdAsync_AndAdjacent_ShouldReturnAggregateAndNeighbors() {
+    public async Task GetByIdAsync_AndAdjacent_ShouldReturnAggregateAndNeighbors() {
         var databaseName = $"parcel-repo-test-{Guid.NewGuid():N}";
         var baseTime = DateTime.Now.AddHours(-1);
         try {
@@ -71,7 +76,7 @@ public sealed class ParcelRepositoryTests {
             await SeedParcelsAsync(databaseName, [parcel1, parcel2, parcel3]);
 
             var repository = CreateRepository(databaseName);
-            var detail = await repository.GetDetailByIdAsync(parcel2.Id, CancellationToken.None);
+            var detail = await repository.GetByIdAsync(parcel2.Id, CancellationToken.None);
 
             Assert.NotNull(detail);
             Assert.Equal("BC-102", detail.BarCodes);
@@ -80,6 +85,62 @@ public sealed class ParcelRepositoryTests {
             Assert.Equal(2, adjacent.Count);
             Assert.Equal("BC-101", adjacent[0].BarCodes);
             Assert.Equal("BC-103", adjacent[1].BarCodes);
+        }
+        finally {
+            await CleanupDatabaseAsync(databaseName);
+        }
+    }
+
+    /// <summary>
+    /// 验证场景：GetBySpecificFilters_ShouldRequireTimeRangeAndWork。
+    /// </summary>
+    [Fact]
+    public async Task GetBySpecificFilters_ShouldRequireTimeRangeAndWork() {
+        var databaseName = $"parcel-repo-test-{Guid.NewGuid():N}";
+        try {
+            var repository = CreateRepository(databaseName);
+            var startTime = DateTime.Now.AddHours(-2);
+            var endTime = DateTime.Now;
+
+            await SeedParcelsAsync(databaseName, [
+                CreateParcel("BC-F-1", "BAG-F", "WS-F", ParcelStatus.Pending, DateTime.Now.AddMinutes(-30), 700, 800),
+                CreateParcel("BC-F-2", "BAG-F", "WS-F", ParcelStatus.Completed, DateTime.Now.AddMinutes(-20), 700, 801)
+            ]);
+
+            var byBag = await repository.GetByBagCodeAsync("BAG-F", startTime, endTime, new PageRequest(), CancellationToken.None);
+            Assert.Equal(2, byBag.TotalCount);
+
+            var byWorkstation = await repository.GetByWorkstationNameAsync("WS-F", startTime, endTime, new PageRequest(), CancellationToken.None);
+            Assert.Equal(2, byWorkstation.TotalCount);
+
+            var byStatus = await repository.GetByStatusAsync(ParcelStatus.Pending, startTime, endTime, new PageRequest(), CancellationToken.None);
+            Assert.Equal(1, byStatus.TotalCount);
+
+            var byChute = await repository.GetByChuteAsync(800, 700, startTime, endTime, new PageRequest(), CancellationToken.None);
+            Assert.Equal(1, byChute.TotalCount);
+        }
+        finally {
+            await CleanupDatabaseAsync(databaseName);
+        }
+    }
+
+    /// <summary>
+    /// 验证场景：GetPagedAsync_ShouldRejectTimeRangeExceedingThreeMonths。
+    /// </summary>
+    [Fact]
+    public async Task GetPagedAsync_ShouldRejectTimeRangeExceedingThreeMonths() {
+        var databaseName = $"parcel-repo-test-{Guid.NewGuid():N}";
+        try {
+            var repository = CreateRepository(databaseName);
+            var exception = await Assert.ThrowsAsync<System.ComponentModel.DataAnnotations.ValidationException>(() => repository.GetPagedAsync(
+                new ParcelQueryFilter {
+                    ScannedTimeStart = DateTime.Now.AddMonths(-4),
+                    ScannedTimeEnd = DateTime.Now
+                },
+                new PageRequest(),
+                CancellationToken.None));
+
+            Assert.Contains("3 个月", exception.Message);
         }
         finally {
             await CleanupDatabaseAsync(databaseName);

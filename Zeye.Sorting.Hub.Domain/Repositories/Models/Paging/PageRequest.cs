@@ -1,9 +1,9 @@
-namespace Zeye.Sorting.Hub.Domain.Repositories.Models;
+namespace Zeye.Sorting.Hub.Domain.Repositories.Models.Paging;
 
 /// <summary>
-/// Parcel 分页请求参数。
+/// 通用分页请求参数。
 /// </summary>
-public sealed record ParcelPageRequest {
+public sealed record PageRequest {
     /// <summary>
     /// 默认页码（用于无效页码兜底）。
     /// </summary>

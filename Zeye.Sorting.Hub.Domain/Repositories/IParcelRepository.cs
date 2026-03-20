@@ -1,6 +1,8 @@
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Domain.Enums;
-using Zeye.Sorting.Hub.Domain.Repositories.Models;
+using Zeye.Sorting.Hub.Domain.Repositories.Models.Filters;
+using Zeye.Sorting.Hub.Domain.Repositories.Models.Paging;
+using Zeye.Sorting.Hub.Domain.Repositories.Models.ReadModels;
 
 namespace Zeye.Sorting.Hub.Domain.Repositories {
 
@@ -9,54 +11,57 @@ namespace Zeye.Sorting.Hub.Domain.Repositories {
     /// </summary>
     public interface IParcelRepository {
         /// <summary>
-        /// 根据主键获取包裹主实体（不包含完整聚合图）。
+        /// 根据主键获取包裹完整聚合详情（包含值对象与集合）。
         /// </summary>
         Task<Parcel?> GetByIdAsync(long id, CancellationToken cancellationToken);
 
         /// <summary>
-        /// 根据主键获取包裹完整聚合详情（包含值对象与集合）。
-        /// </summary>
-        Task<Parcel?> GetDetailByIdAsync(long id, CancellationToken cancellationToken);
-
-        /// <summary>
         /// 按过滤条件执行分页查询（返回摘要读模型）。
         /// </summary>
-        Task<ParcelPageResult<ParcelSummaryReadModel>> GetPagedAsync(
+        Task<PageResult<ParcelSummaryReadModel>> GetPagedAsync(
             ParcelQueryFilter filter,
-            ParcelPageRequest pageRequest,
+            PageRequest pageRequest,
             CancellationToken cancellationToken);
 
         /// <summary>
-        /// 按集包号分页查询包裹摘要。
+        /// 按集包号与扫码时间范围分页查询包裹摘要。
         /// </summary>
-        Task<ParcelPageResult<ParcelSummaryReadModel>> GetByBagCodeAsync(
+        Task<PageResult<ParcelSummaryReadModel>> GetByBagCodeAsync(
             string bagCode,
-            ParcelPageRequest pageRequest,
+            DateTime scannedTimeStart,
+            DateTime scannedTimeEnd,
+            PageRequest pageRequest,
             CancellationToken cancellationToken);
 
         /// <summary>
-        /// 按工作台分页查询包裹摘要。
+        /// 按工作台与扫码时间范围分页查询包裹摘要。
         /// </summary>
-        Task<ParcelPageResult<ParcelSummaryReadModel>> GetByWorkstationNameAsync(
+        Task<PageResult<ParcelSummaryReadModel>> GetByWorkstationNameAsync(
             string workstationName,
-            ParcelPageRequest pageRequest,
+            DateTime scannedTimeStart,
+            DateTime scannedTimeEnd,
+            PageRequest pageRequest,
             CancellationToken cancellationToken);
 
         /// <summary>
-        /// 按包裹状态分页查询包裹摘要。
+        /// 按包裹状态与扫码时间范围分页查询包裹摘要。
         /// </summary>
-        Task<ParcelPageResult<ParcelSummaryReadModel>> GetByStatusAsync(
+        Task<PageResult<ParcelSummaryReadModel>> GetByStatusAsync(
             ParcelStatus status,
-            ParcelPageRequest pageRequest,
+            DateTime scannedTimeStart,
+            DateTime scannedTimeEnd,
+            PageRequest pageRequest,
             CancellationToken cancellationToken);
 
         /// <summary>
-        /// 按实际/目标格口条件分页查询包裹摘要。
+        /// 按实际/目标格口与扫码时间范围分页查询包裹摘要。
         /// </summary>
-        Task<ParcelPageResult<ParcelSummaryReadModel>> GetByChuteAsync(
+        Task<PageResult<ParcelSummaryReadModel>> GetByChuteAsync(
             long? actualChuteId,
             long? targetChuteId,
-            ParcelPageRequest pageRequest,
+            DateTime scannedTimeStart,
+            DateTime scannedTimeEnd,
+            PageRequest pageRequest,
             CancellationToken cancellationToken);
 
         /// <summary>
