@@ -494,6 +494,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
                 return;
             }
 
+            if (mode != ParcelFinerGranularityMode.BucketedPerDay) {
+                return;
+            }
+
             if (!bucketCount.HasValue) {
                 validationErrors.Add($"配置项 {VolumeFinerBucketCountConfigKey} 必填，且需为正整数（当前 ModeWhenPerDayStillHot=BucketedPerDay）。");
                 return;

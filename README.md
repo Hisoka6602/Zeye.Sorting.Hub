@@ -70,6 +70,8 @@
 │   │   └── IParcelRepository.cs（包裹仓储接口）
 │   └── Zeye.Sorting.Hub.Domain.csproj（Domain 项目定义）
 ├── Zeye.Sorting.Hub.Host（宿主层）
+│   ├── Enums（宿主层枚举目录）
+│   │   └── MigrationFailureMode.cs（数据库迁移失败策略枚举：FailFast/Degraded，含 Description）
 │   ├── HostedServices（托管服务目录）
 │   │   ├── AutoTuningLoggerObservability.cs（自动调优观测默认日志实现）
 │   │   ├── DatabaseAutoTuningHostedService.cs（数据库自动调谐托管服务（闭环阶段流转、执行隔离、自动验证标准化输出与回滚审计；分表命中/跨表占比/热点倾斜改为全量慢 SQL 口径，并在自动索引建议前做覆盖/重复/低价值过滤））
@@ -144,6 +146,7 @@
 ├── EFCore-Migration.md（EF Core CodeFirst 迁移使用说明文档）
 ├── EFCore9-UpgradePlan.md（EF Core 8 → 9 升级记录：已完成，EFCore 9.0.14 / Pomelo 9.0.0 / HasPendingModelChanges 守卫已集成）
 ├── NewDatabaseProvider-Guide.md（接入新数据库提供器（如 SQLite / PostgreSQL）的逐步操作指南）
+├── 数据库读写压力测试计划.md（MySQL + EFCore.Sharding 分表架构的读写压测方案与验收模板）
 ├── Parcel属性新增操作指南.md（Parcel 聚合新增属性时的文件修改操作指南）
 └── 项目完成度与推进计划.md（项目阶段评估与路线图文档）
 ```
@@ -564,3 +567,11 @@
 1. 在隔离器（开关 + dry-run + 审计 + 回滚）边界内，将 `FutureExecutable` 生命周期逐步接入可控执行编排。
 2. 为 `BucketedPerDay` 增加更细的策略参数（例如路由字段组合、桶热点重平衡提示），并补充运维演练 Runbook 模板。
 3. 在启动守卫中引入“规划目标的物理分表存在性探测”能力，减少纯配置清单方式的人工维护成本。
+4. finer-granularity 未来物理执行仍需坚持隔离器（开关 + dry-run + 审计 + 回滚边界），避免直接放开自动执行。
+5. 未来可增加真实物理分表存在性探测能力，而不只是配置清单校验。
+
+## 本次更新内容（finer-granularity 配置与 README 一致性修复）
+
+1. **修复 BucketCount 校验误判**：`ParcelShardingStrategyEvaluator` 调整为仅在 `ModeWhenPerDayStillHot=BucketedPerDay` 时强制要求 `BucketCount`，`PerHour/None + 无 BucketCount` 视为合法，同时保留“非 Bucketed 配置 BucketCount 报当前不会生效”的既有校验语义。
+2. **修复默认 appsettings 非法示例组合**：`Zeye.Sorting.Hub.Host/appsettings.json` 保留 `ModeWhenPerDayStillHot=PerHour`，移除 `Bucket:BucketCount` 示例，避免启动期分表策略守卫误阻断。
+3. **同步修正文档文件树**：补齐 README 顶部“仓库文件结构（当前）”中遗漏的 `数据库读写压力测试计划.md`、`Zeye.Sorting.Hub.Host/Enums/` 与 `MigrationFailureMode.cs`。
