@@ -13,9 +13,10 @@ public sealed record ParcelUpdateRequest {
     public required int Operation { get; init; }
 
     /// <summary>
-    /// 完结时间（本地时间，仅 Operation=MarkCompleted 时有效，不允许 UTC/offset）。
+    /// 完结时间（本地时间字符串，仅 Operation=MarkCompleted 时有效，不允许 UTC/offset/Z）。
+    /// 格式支持：yyyy-MM-dd / yyyy-MM-dd HH:mm:ss / yyyy-MM-ddTHH:mm:ss 等，不允许 Z 或 offset 表达。
     /// </summary>
-    public DateTime? CompletedTime { get; init; }
+    public string? CompletedTime { get; init; }
 
     /// <summary>
     /// 分拣异常类型（对应 Domain.ParcelExceptionType 枚举数值，仅 Operation=MarkSortingException 时有效）。

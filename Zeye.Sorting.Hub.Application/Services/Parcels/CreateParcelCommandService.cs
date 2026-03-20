@@ -33,9 +33,11 @@ public sealed class CreateParcelCommandService {
     /// 执行新增包裹。
     /// </summary>
     /// <param name="request">新增请求合同。</param>
+    /// <param name="scannedTime">已解析的扫码时间（本地时间，由 Host 层完成字符串解析与 UTC 拒绝）。</param>
+    /// <param name="dischargeTime">已解析的落格时间（本地时间，由 Host 层完成字符串解析与 UTC 拒绝）。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>新增成功后的包裹详情响应。</returns>
-    public async Task<ParcelDetailResponse> ExecuteAsync(ParcelCreateRequest request, CancellationToken cancellationToken) {
+    public async Task<ParcelDetailResponse> ExecuteAsync(ParcelCreateRequest request, DateTime scannedTime, DateTime dischargeTime, CancellationToken cancellationToken) {
         if (request is null) {
             throw new ArgumentNullException(nameof(request));
         }
@@ -64,8 +66,8 @@ public sealed class CreateParcelCommandService {
                 barCodes: request.BarCodes,
                 weight: request.Weight,
                 workstationName: request.WorkstationName,
-                scannedTime: request.ScannedTime,
-                dischargeTime: request.DischargeTime,
+                scannedTime: scannedTime,
+                dischargeTime: dischargeTime,
                 targetChuteId: request.TargetChuteId,
                 actualChuteId: request.ActualChuteId,
                 requestStatus: (ApiRequestStatus)request.RequestStatus,

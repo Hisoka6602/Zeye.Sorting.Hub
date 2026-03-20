@@ -175,9 +175,15 @@ internal sealed class FakeParcelRepository : IParcelRepository {
     }
 
     /// <summary>
-    /// 详情查询返回固定包裹（仅 id==1 时有数据）。
+    /// 详情查询优先从内存存储返回包裹，未命中时对 id==1 返回固定样本包裹。
     /// </summary>
     public Task<Parcel?> GetByIdAsync(long id, CancellationToken cancellationToken) {
+        // 先从内存存储中查找，支持 Add/Update/Remove 操作写入后的读取、更新、删除验证
+        if (_store.TryGetValue(id, out var storedParcel)) {
+            return Task.FromResult<Parcel?>(storedParcel);
+        }
+
+        // 若内存存储未命中，仅对 id==1 返回固定样本包裹，其余返回 null
         if (id != 1) {
             return Task.FromResult<Parcel?>(null);
         }

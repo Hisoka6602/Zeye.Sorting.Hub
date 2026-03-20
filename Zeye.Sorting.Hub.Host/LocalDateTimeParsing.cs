@@ -1,7 +1,8 @@
 using System.Globalization;
+using Microsoft.AspNetCore.Mvc;
 
 /// <summary>
-/// 本地时间字符串解析工具（供 API 路由层共用，保证所有端点统一使用同一套本地时间验证规则）。
+/// 本地时间字符串解析工具与 API 层统一错误响应工厂（供所有 API 路由层共用）。
 /// 全项目禁止 UTC 语义，所有时间字符串均按本地时间解析。
 /// </summary>
 internal static class LocalDateTimeParsing {
@@ -61,11 +62,19 @@ internal static class LocalDateTimeParsing {
     }
 
     /// <summary>
-    /// 判断 DateTime 是否包含 UTC Kind（用于验证 JSON body 反序列化的时间字段）。
+    /// 创建统一的 400 ProblemDetails 响应（供所有 API 路由扩展共用，避免重复实现）。
     /// </summary>
-    /// <param name="dateTime">目标 DateTime。</param>
-    /// <returns>是否为 UTC 时间。</returns>
-    internal static bool IsUtcKind(DateTime dateTime) {
-        return dateTime.Kind == DateTimeKind.Utc;
+    /// <param name="title">问题标题。</param>
+    /// <param name="detail">问题详情。</param>
+    /// <returns>统一 400 错误响应。</returns>
+    internal static IResult CreateBadRequestProblem(string title, string detail) {
+        return Results.Json(
+            new ProblemDetails {
+                Title = title,
+                Detail = detail,
+                Status = StatusCodes.Status400BadRequest
+            },
+            contentType: "application/problem+json",
+            statusCode: StatusCodes.Status400BadRequest);
     }
 }

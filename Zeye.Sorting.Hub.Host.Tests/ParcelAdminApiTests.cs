@@ -63,6 +63,45 @@ public sealed class ParcelAdminApiTests {
     }
 
     /// <summary>
+    /// 验证场景：新增时传入带 offset 的时间（+08:00），返回 400 Bad Request（字符串解析可严格拒绝 offset）。
+    /// </summary>
+    [Fact]
+    public async Task CreateParcel_WithOffsetScannedTime_ShouldReturn400() {
+        await using var app = await BuildTestAppAsync();
+        using var client = app.GetTestClient();
+
+        var body = BuildCreateRequestJson(
+            scannedTime: "2026-03-20T10:00:00+08:00",
+            dischargeTime: "2026-03-20T10:00:03");
+
+        using var response = await client.PostAsync("/api/admin/parcels", body);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var content = await response.Content.ReadAsStringAsync();
+        Assert.Contains("本地时间格式", content, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// 验证场景：更新时传入带 offset 的 completedTime（+08:00），返回 400 Bad Request（字符串解析可严格拒绝 offset）。
+    /// </summary>
+    [Fact]
+    public async Task UpdateParcelStatus_MarkCompleted_WithOffsetCompletedTime_ShouldReturn400() {
+        await using var app = await BuildTestAppAsync();
+        using var client = app.GetTestClient();
+
+        var body = new StringContent(
+            """{"operation":1,"completedTime":"2026-03-20T10:10:00+08:00"}""",
+            Encoding.UTF8,
+            "application/json");
+
+        using var response = await client.PutAsync("/api/admin/parcels/1", body);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var content = await response.Content.ReadAsStringAsync();
+        Assert.Contains("本地时间格式", content, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// 验证场景：新增时 BarCodes 为空字符串，域层抛 ArgumentException，返回 400 Bad Request。
     /// </summary>
     [Fact]

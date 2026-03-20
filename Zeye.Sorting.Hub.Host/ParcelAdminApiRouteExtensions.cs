@@ -72,21 +72,30 @@ public static class ParcelAdminApiRouteExtensions {
         CreateParcelCommandService commandService,
         CancellationToken cancellationToken) {
         if (request is null) {
-            return CreateBadRequestProblem("请求参数无效", "请求体不能为空。");
+            return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", "请求体不能为空。");
         }
 
-        // 验证 DateTime 字段不含 UTC Kind（JSON 反序列化 ISO 8601 带 Z 后缀会产生 DateTimeKind.Utc）。
-        if (LocalDateTimeParsing.IsUtcKind(request.ScannedTime) || LocalDateTimeParsing.IsUtcKind(request.DischargeTime)) {
-            return CreateBadRequestProblem("请求参数无效", "scannedTime/dischargeTime 必须使用本地时间格式，不允许 UTC 或时区 offset。");
+        // 步骤 1：在 Host 层解析时间字符串并强制拒绝 UTC/offset 表达（字符串方式可彻底拒绝 +offset 表达）。
+        if (!LocalDateTimeParsing.TryParseLocalDateTime(request.ScannedTime, out var scannedTime)) {
+            return LocalDateTimeParsing.CreateBadRequestProblem(
+                "请求参数无效",
+                "scannedTime 必须是本地时间格式（如 yyyy-MM-dd HH:mm:ss），不允许 UTC 或时区 offset。");
+        }
+
+        if (!LocalDateTimeParsing.TryParseLocalDateTime(request.DischargeTime, out var dischargeTime)) {
+            return LocalDateTimeParsing.CreateBadRequestProblem(
+                "请求参数无效",
+                "dischargeTime 必须是本地时间格式（如 yyyy-MM-dd HH:mm:ss），不允许 UTC 或时区 offset。");
         }
 
         try {
-            var response = await commandService.ExecuteAsync(request, cancellationToken);
+            // 步骤 2：调用 Application 服务，传入已解析的本地时间（服务无需感知 HTTP 时间格式）。
+            var response = await commandService.ExecuteAsync(request, scannedTime, dischargeTime, cancellationToken);
             return Results.Created($"/api/admin/parcels/{response.Id}", response);
         }
         catch (ArgumentException ex) {
             Logger.Warn(ex, "新增 Parcel 参数校验失败。");
-            return CreateBadRequestProblem("请求参数无效", ex.Message);
+            return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", ex.Message);
         }
         catch (InvalidOperationException ex) {
             Logger.Error(ex, "新增 Parcel 业务逻辑异常。");
@@ -111,16 +120,25 @@ public static class ParcelAdminApiRouteExtensions {
         UpdateParcelStatusCommandService commandService,
         CancellationToken cancellationToken) {
         if (request is null) {
-            return CreateBadRequestProblem("请求参数无效", "请求体不能为空。");
+            return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", "请求体不能为空。");
         }
 
-        // 验证 MarkCompleted 操作中的 CompletedTime 字段不含 UTC Kind。
-        if (request.CompletedTime.HasValue && LocalDateTimeParsing.IsUtcKind(request.CompletedTime.Value)) {
-            return CreateBadRequestProblem("请求参数无效", "completedTime 必须使用本地时间格式，不允许 UTC 或时区 offset。");
+        // 步骤 1：若提供了 CompletedTime 字符串，在 Host 层解析并强制拒绝 UTC/offset 表达。
+        //         不解析则传 null，由 Application 服务在 MarkCompleted 操作时报错。
+        DateTime? completedTime = null;
+        if (request.CompletedTime is not null) {
+            if (!LocalDateTimeParsing.TryParseLocalDateTime(request.CompletedTime, out var parsedCompletedTime)) {
+                return LocalDateTimeParsing.CreateBadRequestProblem(
+                    "请求参数无效",
+                    "completedTime 必须是本地时间格式（如 yyyy-MM-dd HH:mm:ss），不允许 UTC 或时区 offset。");
+            }
+
+            completedTime = parsedCompletedTime;
         }
 
         try {
-            var response = await commandService.ExecuteAsync(id, request, cancellationToken);
+            // 步骤 2：调用 Application 服务，传入已解析的本地完结时间（服务无需感知 HTTP 时间格式）。
+            var response = await commandService.ExecuteAsync(id, request, completedTime, cancellationToken);
             return response is null
                 ? Results.Problem(
                     title: "资源不存在",
@@ -130,7 +148,7 @@ public static class ParcelAdminApiRouteExtensions {
         }
         catch (ArgumentException ex) {
             Logger.Warn(ex, "更新 Parcel 状态参数校验失败，Id={ParcelId}", id);
-            return CreateBadRequestProblem("请求参数无效", ex.Message);
+            return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", ex.Message);
         }
         catch (InvalidOperationException ex) {
             Logger.Error(ex, "更新 Parcel 状态业务逻辑异常，Id={ParcelId}", id);
@@ -163,7 +181,7 @@ public static class ParcelAdminApiRouteExtensions {
         }
         catch (ArgumentException ex) {
             Logger.Warn(ex, "删除 Parcel 参数校验失败，Id={ParcelId}", id);
-            return CreateBadRequestProblem("请求参数无效", ex.Message);
+            return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", ex.Message);
         }
         catch (InvalidOperationException ex) {
             Logger.Error(ex, "删除 Parcel 业务逻辑异常，Id={ParcelId}", id);
@@ -188,12 +206,12 @@ public static class ParcelAdminApiRouteExtensions {
         CleanupExpiredParcelsCommandService commandService,
         CancellationToken cancellationToken) {
         if (request is null) {
-            return CreateBadRequestProblem("请求参数无效", "请求体不能为空。");
+            return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", "请求体不能为空。");
         }
 
         // 步骤 1：解析 createdBefore 为本地时间，拒绝 UTC/offset 表达。
         if (!LocalDateTimeParsing.TryParseLocalDateTime(request.CreatedBefore, out var createdBefore)) {
-            return CreateBadRequestProblem(
+            return LocalDateTimeParsing.CreateBadRequestProblem(
                 "请求参数无效",
                 "createdBefore 必须是本地时间格式（如 yyyy-MM-dd HH:mm:ss），且不允许包含 UTC 或时区偏移。");
         }
@@ -210,22 +228,5 @@ public static class ParcelAdminApiRouteExtensions {
                 detail: ex.Message,
                 statusCode: StatusCodes.Status500InternalServerError);
         }
-    }
-
-    /// <summary>
-    /// 创建统一的 400 ProblemDetails 响应。
-    /// </summary>
-    /// <param name="title">问题标题。</param>
-    /// <param name="detail">问题详情。</param>
-    /// <returns>统一错误响应。</returns>
-    private static IResult CreateBadRequestProblem(string title, string detail) {
-        return Results.Json(
-            new ProblemDetails {
-                Title = title,
-                Detail = detail,
-                Status = StatusCodes.Status400BadRequest
-            },
-            contentType: "application/problem+json",
-            statusCode: StatusCodes.Status400BadRequest);
     }
 }

@@ -165,7 +165,7 @@ public static class ParcelReadOnlyApiRouteExtensions {
         CancellationToken cancellationToken) {
         if (!LocalDateTimeParsing.TryParseOptionalLocalDateTime(query.ScannedTimeStart, out var scannedTimeStart)
             || !LocalDateTimeParsing.TryParseOptionalLocalDateTime(query.ScannedTimeEnd, out var scannedTimeEnd)) {
-            return CreateBadRequestProblem("请求参数无效", "scannedTimeStart/scannedTimeEnd 必须是本地时间格式，且不允许包含 UTC 或时区偏移。");
+            return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", "scannedTimeStart/scannedTimeEnd 必须是本地时间格式，且不允许包含 UTC 或时区偏移。");
         }
 
         try {
@@ -186,7 +186,7 @@ public static class ParcelReadOnlyApiRouteExtensions {
         }
         catch (ArgumentException exception) {
             Logger.Warn(exception, "Parcel 列表查询参数校验失败。");
-            return CreateBadRequestProblem("请求参数无效", exception.Message);
+            return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", exception.Message);
         }
     }
 
@@ -212,7 +212,7 @@ public static class ParcelReadOnlyApiRouteExtensions {
         }
         catch (ArgumentException exception) {
             Logger.Warn(exception, "Parcel 详情查询参数校验失败，Id={ParcelId}", id);
-            return CreateBadRequestProblem("请求参数无效", exception.Message);
+            return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", exception.Message);
         }
     }
 
@@ -228,7 +228,7 @@ public static class ParcelReadOnlyApiRouteExtensions {
         GetAdjacentParcelsQueryService queryService,
         CancellationToken cancellationToken) {
         if (!LocalDateTimeParsing.TryParseLocalDateTime(query.ScannedTime, out var scannedTime)) {
-            return CreateBadRequestProblem("请求参数无效", "scannedTime 必须是本地时间格式，且不允许包含 UTC 或时区偏移。");
+            return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", "scannedTime 必须是本地时间格式，且不允许包含 UTC 或时区偏移。");
         }
 
         try {
@@ -247,25 +247,8 @@ public static class ParcelReadOnlyApiRouteExtensions {
                 query.ScannedTime,
                 query.BeforeCount,
                 query.AfterCount);
-            return CreateBadRequestProblem("请求参数无效", exception.Message);
+            return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", exception.Message);
         }
-    }
-
-    /// <summary>
-    /// 创建统一的 400 ProblemDetails 响应。
-    /// </summary>
-    /// <param name="title">问题标题。</param>
-    /// <param name="detail">问题详情。</param>
-    /// <returns>统一错误响应。</returns>
-    private static IResult CreateBadRequestProblem(string title, string detail) {
-        return Results.Json(
-            new ProblemDetails {
-                Title = title,
-                Detail = detail,
-                Status = StatusCodes.Status400BadRequest
-            },
-            contentType: "application/problem+json",
-            statusCode: StatusCodes.Status400BadRequest);
     }
 
     /// <summary>

@@ -30,14 +30,16 @@ public sealed record ParcelCreateRequest {
     public required string WorkstationName { get; init; }
 
     /// <summary>
-    /// 扫码时间（本地时间，不允许 UTC/offset 格式）。
+    /// 扫码时间（本地时间字符串，不允许 UTC/offset 格式）。
+    /// 格式支持：yyyy-MM-dd / yyyy-MM-dd HH:mm:ss / yyyy-MM-ddTHH:mm:ss 等，不允许 Z 或 offset 表达。
     /// </summary>
-    public required DateTime ScannedTime { get; init; }
+    public required string ScannedTime { get; init; }
 
     /// <summary>
-    /// 落格时间（本地时间，不允许 UTC/offset 格式）。
+    /// 落格时间（本地时间字符串，不允许 UTC/offset 格式）。
+    /// 格式支持：yyyy-MM-dd / yyyy-MM-dd HH:mm:ss / yyyy-MM-ddTHH:mm:ss 等，不允许 Z 或 offset 表达。
     /// </summary>
-    public required DateTime DischargeTime { get; init; }
+    public required string DischargeTime { get; init; }
 
     /// <summary>
     /// 目标格口 Id（必须大于 0）。
