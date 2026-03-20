@@ -108,7 +108,7 @@ public sealed class ParcelReadOnlyApiTests {
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
 
         var body = await response.Content.ReadAsStringAsync();
-        Assert.Contains("scannedTime", body, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("scannedTime 必须是本地时间格式，且不允许包含 UTC 或时区偏移", body, StringComparison.Ordinal);
     }
 
     /// <summary>
