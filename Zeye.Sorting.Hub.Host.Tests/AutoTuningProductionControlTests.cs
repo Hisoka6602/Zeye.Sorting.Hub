@@ -478,6 +478,46 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
+    /// 验证场景：ParcelShardingStrategyEvaluator_ShouldPassValidation_WhenPerHourAndBucketCountMissing。
+    /// </summary>
+    [Fact]
+    public void ParcelShardingStrategyEvaluator_ShouldPassValidation_WhenPerHourAndBucketCountMissing() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:Sharding:Strategy:Mode"] = "Hybrid",
+                ["Persistence:Sharding:Strategy:Time:Granularity"] = "PerMonth",
+                ["Persistence:Sharding:Strategy:Volume:ActionOnThreshold"] = "SwitchToPerDay",
+                ["Persistence:Sharding:Strategy:Volume:MaxRowsPerShard"] = "1000",
+                ["Persistence:Sharding:Strategy:Volume:HotThresholdRatio"] = "0.8",
+                ["Persistence:Sharding:Strategy:Volume:FinerGranularity:ModeWhenPerDayStillHot"] = "PerHour"
+            })
+            .Build();
+
+        var evaluation = ParcelShardingStrategyEvaluator.Evaluate(configuration);
+        Assert.Empty(evaluation.ValidationErrors);
+    }
+
+    /// <summary>
+    /// 验证场景：ParcelShardingStrategyEvaluator_ShouldPassValidation_WhenNoneAndBucketCountMissing。
+    /// </summary>
+    [Fact]
+    public void ParcelShardingStrategyEvaluator_ShouldPassValidation_WhenNoneAndBucketCountMissing() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:Sharding:Strategy:Mode"] = "Hybrid",
+                ["Persistence:Sharding:Strategy:Time:Granularity"] = "PerMonth",
+                ["Persistence:Sharding:Strategy:Volume:ActionOnThreshold"] = "SwitchToPerDay",
+                ["Persistence:Sharding:Strategy:Volume:MaxRowsPerShard"] = "1000",
+                ["Persistence:Sharding:Strategy:Volume:HotThresholdRatio"] = "0.8",
+                ["Persistence:Sharding:Strategy:Volume:FinerGranularity:ModeWhenPerDayStillHot"] = "None"
+            })
+            .Build();
+
+        var evaluation = ParcelShardingStrategyEvaluator.Evaluate(configuration);
+        Assert.Empty(evaluation.ValidationErrors);
+    }
+
+    /// <summary>
     /// 验证场景：ParcelShardingStrategyEvaluator_ShouldFailValidation_WhenBucketedPerDayMissingBucketCount。
     /// </summary>
     [Fact]
@@ -555,6 +595,33 @@ public sealed class AutoTuningProductionControlTests {
 
         var evaluation = ParcelShardingStrategyEvaluator.Evaluate(configuration);
         Assert.Contains(evaluation.ValidationErrors, message => message.Contains("当前不会生效", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// 验证场景：ParcelShardingStrategyEvaluator_DefaultAppsettingsExample_ShouldPassValidation。
+    /// </summary>
+    [Fact]
+    public void ParcelShardingStrategyEvaluator_DefaultAppsettingsExample_ShouldPassValidation() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:Sharding:Strategy:Mode"] = "Hybrid",
+                ["Persistence:Sharding:Strategy:Time:Granularity"] = "PerMonth",
+                ["Persistence:Sharding:Strategy:Volume:ActionOnThreshold"] = "SwitchToPerDay",
+                ["Persistence:Sharding:Strategy:Volume:MaxRowsPerShard"] = "10000000",
+                ["Persistence:Sharding:Strategy:Volume:HotThresholdRatio"] = "0.8",
+                ["Persistence:Sharding:Strategy:Volume:Observation:Source"] = "config-static",
+                ["Persistence:Sharding:Strategy:Volume:Observation:EstimatedRowsPerShard"] = "0",
+                ["Persistence:Sharding:Strategy:Volume:Observation:ObservedHotRatio"] = "0",
+                ["Persistence:Sharding:Strategy:Volume:CurrentEstimatedRowsPerShard"] = "0",
+                ["Persistence:Sharding:Strategy:Volume:CurrentObservedHotRatio"] = "0",
+                ["Persistence:Sharding:Strategy:Volume:FinerGranularity:ModeWhenPerDayStillHot"] = "PerHour",
+                ["Persistence:Sharding:Strategy:Volume:FinerGranularity:Lifecycle"] = "PlanOnly",
+                ["Persistence:Sharding:Strategy:Volume:FinerGranularity:RequirePrebuildGuard"] = "true"
+            })
+            .Build();
+
+        var evaluation = ParcelShardingStrategyEvaluator.Evaluate(configuration);
+        Assert.Empty(evaluation.ValidationErrors);
     }
 
     /// <summary>
