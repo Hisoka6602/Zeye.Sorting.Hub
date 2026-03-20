@@ -112,6 +112,7 @@
 │   └── appsettings.json（默认运行配置（含分表策略结构化 Observation、PerDay 预建日期清单与仓储危险动作隔离默认策略））
 ├── Zeye.Sorting.Hub.Host.Tests（自动调优行为测试工程）
 │   ├── AutoTuningProductionControlTests.cs（自动调优生产可控能力测试：dry-run/隔离器/告警恢复/普通与严重回归/探针双路径/闭环链路；含分表策略评估与 PerDay 预建守卫联动测试）
+│   ├── ParcelReadOnlyApiTests.cs（Parcel 只读 API 端点测试：列表/详情/404/邻近参数异常）
 │   ├── ParcelQueryServicesTests.cs（Parcel 应用层查询服务测试：列表/详情/邻近查询映射与最小校验）
 │   ├── ParcelRepositoryTests.cs（Parcel 仓储第一阶段能力测试：分页过滤、详情与邻近查询、写操作与过期清理；含阻断/dry-run/显式放开的危险动作治理回归）
 │   └── Zeye.Sorting.Hub.Host.Tests.csproj（xUnit 测试项目定义）
@@ -406,6 +407,7 @@
 ### `Zeye.Sorting.Hub.Host.Tests/`：自动调优测试层
 - `Zeye.Sorting.Hub.Host.Tests.csproj`：xUnit 测试项目定义。
 - `AutoTuningProductionControlTests.cs`：覆盖 dry-run、危险动作隔离、告警防抖与恢复、普通/严重回归、unavailable 指标处理、执行计划探针 available/unavailable 双路径、闭环链路与分表覆盖守卫校验、迁移失败策略分环境解析、结构化扩容计划解析、Time/Volume/Hybrid 分表策略评估、PerDay 预建守卫（配置+物理探测）与分表观测口径/自动索引过滤规则回归。
+- `ParcelReadOnlyApiTests.cs`：Parcel 只读 API 端点测试，覆盖列表查询、详情查询、详情不存在返回 404、邻近查询参数异常返回 400。
 - `ParcelQueryServicesTests.cs`：Parcel 应用层查询服务测试（列表/详情/邻近查询映射与最小参数校验）。
 - `ParcelRepositoryTests.cs`：Parcel 仓储第一阶段能力测试，覆盖分页过滤、详情与邻近查询、新增/更新/删除、过期清理与批量新增，并回归验证危险清理动作的 blocked/dry-run/executed 三态。
 
@@ -747,3 +749,15 @@
 
 1. 在 Host 接入 HTTP 端点时，可直接复用本次查询服务，后续可按场景拆分“轻量列表 DTO / 完整列表 DTO”以降低网络负载。
 2. 当前详情合同保持与列表合同字段一致，后续可按前端展示需求补充值对象级明细合同（图片/视频/命令轨迹等）并保持 Application 统一映射。
+
+## 本次更新内容（第 3 步：暴露只读 Parcel API）
+
+1. **Host 接入只读 Parcel 端点**：在 `Program.cs` 新增 `/api/parcels`、`/api/parcels/{id}`、`/api/parcels/adjacent` 三个只读查询端点，统一通过 Application 查询服务访问仓储，不在 API 层直接访问 `DbContext`，并保持不暴露领域实体 `Parcel`。
+2. **参数绑定与最小必要校验**：列表端点支持分页与过滤参数绑定；详情端点对无效 Id 返回统一 400；邻近端点支持 `scannedTime + beforeCount + afterCount` 并校验条数非负与时间字符串本地语义（拒绝 UTC/offset）。
+3. **统一错误输出风格与 Swagger 可见性**：三个端点统一输出 `ProblemDetails` 风格错误响应，并补充 `Produces/ProducesProblem` 元数据，确保 Swagger/OpenAPI 可见且响应契约明确。
+4. **最小 API 级测试补齐**：新增 `ParcelReadOnlyApiTests.cs`，覆盖列表查询成功、详情查询成功、详情不存在返回 404、邻近参数异常返回 400 四个关键场景。
+
+## 后续可完善点（只读 Parcel API）
+
+1. 可在后续迭代补充统一参数模型验证器（如分页上限、字符串长度）并输出字段级错误明细，进一步增强 API 可观测性与前端联调体验。
+2. 可补充 `/swagger/v1/swagger.json` 结构断言测试，防止后续重构时端点元数据（tags/summary/response）回退。
