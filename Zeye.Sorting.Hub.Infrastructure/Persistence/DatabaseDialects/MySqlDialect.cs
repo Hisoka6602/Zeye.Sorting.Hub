@@ -103,7 +103,7 @@ SELECT CASE WHEN EXISTS (
         }
 
         /// <summary>
-        /// 批量探测 MySQL 物理分表缺失项（单次查询当前 schema 全量表名后做内存对比）。
+        /// 批量探测 MySQL 物理分表缺失项（单次查询目标 schema 全量表名后做内存对比；为空回退当前数据库）。
         /// </summary>
         /// <param name="dbContext">数据库上下文。</param>
         /// <param name="schemaName">schema 名称；为空时默认使用当前数据库。</param>
@@ -132,7 +132,7 @@ SELECT CASE WHEN EXISTS (
                 return Array.Empty<string>();
             }
 
-const string sql = """
+            const string sql = """
 SELECT TABLE_NAME
 FROM INFORMATION_SCHEMA.TABLES
 WHERE TABLE_SCHEMA = COALESCE(NULLIF(@p0, ''), DATABASE())

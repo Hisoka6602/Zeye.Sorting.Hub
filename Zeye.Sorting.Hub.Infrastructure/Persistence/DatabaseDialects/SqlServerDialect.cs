@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
 
     /// <summary>SQL Server 方言</summary>
-public sealed class SqlServerDialect : IDatabaseDialect, IBatchShardingPhysicalTableProbe {
+    public sealed class SqlServerDialect : IDatabaseDialect, IBatchShardingPhysicalTableProbe {
         /// <summary>
         /// 字段：BatchShardingProbeSql。
         /// </summary>
