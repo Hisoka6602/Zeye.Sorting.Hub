@@ -149,6 +149,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 });
 
                 services.AddSingleton<IDatabaseDialect, MySqlDialect>();
+                services.AddSingleton<IShardingPhysicalTableProbe>(sp =>
+                    (IShardingPhysicalTableProbe)sp.GetRequiredService<IDatabaseDialect>());
             }
             else if (string.Equals(provider, "SqlServer", StringComparison.OrdinalIgnoreCase)) {
                 var connectionString = configuration.GetConnectionString("SqlServer");
@@ -190,6 +192,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 });
 
                 services.AddSingleton<IDatabaseDialect, SqlServerDialect>();
+                services.AddSingleton<IShardingPhysicalTableProbe>(sp =>
+                    (IShardingPhysicalTableProbe)sp.GetRequiredService<IDatabaseDialect>());
             }
             else {
                 throw new InvalidOperationException($"不支持的数据库类型：{provider}，可选值：MySql / SqlServer");
@@ -199,6 +203,19 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             // services.AddScoped(typeof(IRepository<>), typeof(RepositoryBase<>));
 
             return services;
+        }
+
+        /// <summary>
+        /// 获取 Parcel 体系按日分表治理需要关注的实体类型清单（与分表注册规则同源）。
+        /// </summary>
+        /// <returns>实体类型清单。</returns>
+        public static IReadOnlyList<Type> GetParcelPerDayShardingEntityTypes() {
+            return ParcelAggregateShardingRules
+                .Where(static rule => rule.RuleKind == ParcelAggregateShardingRuleKind.Date)
+                .Select(static rule => rule.EntityType)
+                .Prepend(typeof(Parcel))
+                .Distinct()
+                .ToArray();
         }
 
         /// <summary>
@@ -292,6 +309,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             where TEntity : class {
             return new ParcelAggregateShardingRule(
                 EntityType: typeof(TEntity),
+                RuleKind: ParcelAggregateShardingRuleKind.Date,
                 Register: (builder, startTime, _, dateMode) => builder.SetDateSharding<TEntity>(
                     shardingField: shardingField,
                     expandByDateMode: dateMode,
@@ -309,6 +327,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             where TEntity : class {
             return new ParcelAggregateShardingRule(
                 EntityType: typeof(TEntity),
+                RuleKind: ParcelAggregateShardingRuleKind.Hash,
                 Register: (builder, _, mod, _) => builder.SetHashModSharding<TEntity>(
                     shardingField: shardingField,
                     mod: mod,
@@ -380,6 +399,17 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// <param name="Register">规则注册动作。</param>
         private readonly record struct ParcelAggregateShardingRule(
             Type EntityType,
+            ParcelAggregateShardingRuleKind RuleKind,
             Action<IShardingBuilder, DateTime, int, ExpandByDateMode> Register);
+
+        /// <summary>
+        /// Parcel 聚合分表规则类型。
+        /// </summary>
+        private enum ParcelAggregateShardingRuleKind {
+            /// <summary>按日期分表规则。</summary>
+            Date = 0,
+            /// <summary>按哈希分表规则。</summary>
+            Hash = 1
+        }
     }
 }

@@ -114,6 +114,26 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         PlanRegressionSnapshot Evaluate(string providerName, string sqlFingerprint);
     }
 
+    /// <summary>
+    /// provider-aware 执行计划回退探针扩展请求（为未来真实 EXPLAIN/SHOWPLAN 实现预留上下文）。
+    /// </summary>
+    /// <param name="ProviderName">数据库提供器名称。</param>
+    /// <param name="SqlFingerprint">标准化 SQL 指纹。</param>
+    public readonly record struct ExecutionPlanProbeRequest(
+        string ProviderName,
+        string SqlFingerprint);
+
+    /// <summary>
+    /// provider-aware 执行计划回退探针扩展约定。
+    /// </summary>
+    /// <remarks>
+    /// 当前默认实现仍为 logging-only；真实数据库级计划探针可在该接口下受控接入，
+    /// 不改变现有隔离器、dry-run、审计与回滚治理边界。
+    /// </remarks>
+    public interface IProviderAwareExecutionPlanRegressionProbe : IExecutionPlanRegressionProbe {
+        PlanRegressionSnapshot Evaluate(in ExecutionPlanProbeRequest request);
+    }
+
     /// <summary>执行计划回退快照（默认 unavailable）。</summary>
     public sealed record PlanRegressionSnapshot(
         bool IsAvailable,
@@ -215,7 +235,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
     }
 
     /// <summary>默认执行计划探针：结构化输出 unavailable/available 状态，并发出观测指标。</summary>
-    public sealed class LoggingOnlyExecutionPlanRegressionProbe : IExecutionPlanRegressionProbe {
+    public sealed class LoggingOnlyExecutionPlanRegressionProbe : IProviderAwareExecutionPlanRegressionProbe {
         private readonly ILogger<LoggingOnlyExecutionPlanRegressionProbe> _logger;
         /// <summary>
         /// 字段：_observability。
@@ -232,9 +252,23 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         /// <summary>
         /// 执行逻辑：Evaluate。
         /// </summary>
+        /// <remarks>
+        /// 该入口用于保持既有 <see cref="IExecutionPlanRegressionProbe"/> 调用方兼容；
+        /// 新增 provider-aware 约定后，这里作为兼容适配层保留，不改变默认 logging-only 行为。
+        /// </remarks>
         public PlanRegressionSnapshot Evaluate(string providerName, string sqlFingerprint) {
-            var normalizedProvider = NormalizeParameter(providerName);
-            var normalizedFingerprint = NormalizeParameter(sqlFingerprint);
+            var request = new ExecutionPlanProbeRequest(providerName, sqlFingerprint);
+            return Evaluate(request);
+        }
+
+        /// <summary>
+        /// 执行逻辑：Evaluate。
+        /// </summary>
+        /// <param name="request">provider-aware 探针请求。</param>
+        /// <returns>探针结果快照。</returns>
+        public PlanRegressionSnapshot Evaluate(in ExecutionPlanProbeRequest request) {
+            var normalizedProvider = NormalizeParameter(request.ProviderName);
+            var normalizedFingerprint = NormalizeParameter(request.SqlFingerprint);
             var snapshot = BuildSnapshot(normalizedProvider, normalizedFingerprint);
             _observability.EmitMetric(
                 "autotuning.plan_probe.evaluation",

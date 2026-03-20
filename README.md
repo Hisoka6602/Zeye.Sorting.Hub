@@ -75,7 +75,7 @@
 │   ├── HostedServices（托管服务目录）
 │   │   ├── AutoTuningLoggerObservability.cs（自动调优观测默认日志实现）
 │   │   ├── DatabaseAutoTuningHostedService.cs（数据库自动调谐托管服务（闭环阶段流转、执行隔离、自动验证标准化输出与回滚审计；分表命中/跨表占比/热点倾斜改为全量慢 SQL 口径，并在自动索引建议前做覆盖/重复/低价值过滤））
-│   │   └── DatabaseInitializerHostedService.cs（数据库初始化与迁移托管服务（含分表治理基线、Runbook 审计、PerDay 手工预建窗口守卫与预建日期校验））
+│   │   └── DatabaseInitializerHostedService.cs（数据库初始化与迁移托管服务（含分表治理基线、Runbook 审计、PerDay 手工预建窗口守卫；新增“配置清单 + 物理分表存在性”双重校验））
 │   ├── Program.cs（应用入口与 Host 构建流程）
 │   ├── Properties（运行调试属性目录）
 │   │   └── launchSettings.json（本地启动配置）
@@ -112,6 +112,7 @@
 │   │   ├── DatabaseDialects（数据库方言目录）
 │   │   │   ├── DatabaseProviderExceptionHelper.cs（数据库异常错误码提取与方言共享索引构造辅助类）
 │   │   │   ├── IDatabaseDialect.cs（数据库方言接口）
+│   │   │   ├── IShardingPhysicalTableProbe.cs（分表物理表存在性探测接口，仅负责“表是否存在”）
 │   │   │   ├── MySqlDialect.cs（MySQL 方言实现）
 │   │   │   └── SqlServerDialect.cs（SQL Server 方言实现）
 │   │   ├── DesignTime（EF 设计时支持目录）
@@ -263,7 +264,7 @@
 #### `Zeye.Sorting.Hub.Host/HostedServices/`：启动/常驻托管服务目录
 - `AutoTuningLoggerObservability.cs`：自动调优观测默认日志实现（统一日志 + 指标抽象默认落地）。
 - `DatabaseAutoTuningHostedService.cs`：数据库自动调谐托管服务（显式闭环阶段迁移、执行隔离、标准化自动验证结果、回滚触发与审计日志；分表观测指标基于全量慢 SQL 解析并覆盖子查询/集合运算场景；自动索引建议在执行前统一执行覆盖、语义重复、低价值过滤）。
-- `DatabaseInitializerHostedService.cs`：数据库初始化与迁移托管服务（支持生产/非生产迁移失败策略分流：FailFast/Degraded；启动期执行分表治理程序化守卫，新增 Time/Volume/Hybrid 策略配置校验与审计输出，校验手工预建 Runbook、结构化扩容计划与 PerDay 预建窗口日期清单完整性）。
+- `DatabaseInitializerHostedService.cs`：数据库初始化与迁移托管服务（支持生产/非生产迁移失败策略分流：FailFast/Degraded；启动期执行分表治理程序化守卫，新增 Time/Volume/Hybrid 策略配置校验与审计输出；PerDay 手工预建守卫升级为“配置日期清单完整性 + 物理分表存在性”双重校验，且仅做探测/阻断/审计，不自动建表）。
 
 #### `Zeye.Sorting.Hub.Host/Properties/`：项目运行调试属性目录
 - `launchSettings.json`：本地启动配置（Profile、环境变量等）。
@@ -284,11 +285,12 @@
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/DatabaseDialects/`：数据库方言抽象与实现目录
 - `DatabaseProviderExceptionHelper.cs`：数据库异常错误码提取与方言共享索引列归一化/索引名构造辅助类。
 - `IDatabaseDialect.cs`：数据库方言抽象接口。
-- `MySqlDialect.cs`：MySQL 方言实现。
-- `SqlServerDialect.cs`：SQL Server 方言实现。
+- `IShardingPhysicalTableProbe.cs`：分表物理表存在性探测抽象（最小职责：判断目标物理表是否存在）。
+- `MySqlDialect.cs`：MySQL 方言实现（自动调优 SQL + INFORMATION_SCHEMA.TABLES 物理分表探测）。
+- `SqlServerDialect.cs`：SQL Server 方言实现（自动调优 SQL + sys.tables/sys.schemas 物理分表探测）。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/`：自动调谐核心目录
-- `AutoTuningAbstractions.cs`：自动调优观测抽象、闭环阶段模型、危险动作隔离策略、自动回滚决策、标准化验证结果构造器与可观测执行计划探针。
+- `AutoTuningAbstractions.cs`：自动调优观测抽象、闭环阶段模型、危险动作隔离策略、自动回滚决策、标准化验证结果构造器与可观测执行计划探针（含 provider-aware 真实 probe 扩展约定，默认实现仍 logging-only）。
 - `AutoTuningConfigurationHelper.cs`：配置读取公共辅助类，集中提供 `GetPositiveIntOrDefault`、`GetNonNegativeIntOrDefault`、`GetNonNegativeDecimalOrDefault`、`GetDecimalInRangeOrDefault`、`GetDecimalClampedOrDefault`、`GetBoolOrDefault`、`GetPositiveSecondsAsTimeSpanOrDefault`、`GetTimeOfDayOrDefault`，并统一 `BuildAutoTuningKey`、`BuildAutonomousKey` 与 `NormalizeToLocalTime`，消除重复键拼装与时间归一化实现。
 - `MySqlSessionBootstrapConnectionInterceptor.cs`：MySQL 连接会话初始化拦截器（类型判断逻辑内联，移除无意义 helper）。
 - `SlowQueryAutoTuningPipeline.cs`：慢查询采集、TopN 聚合、阈值告警（含基础防抖）与闭环自治结构化建议编排管道（配置键拼装复用 `AutoTuningConfigurationHelper`，并提供主表提取公共方法供 HostedService 与建议编排共用）。
@@ -339,7 +341,7 @@
 
 ### `Zeye.Sorting.Hub.Host.Tests/`：自动调优测试层
 - `Zeye.Sorting.Hub.Host.Tests.csproj`：xUnit 测试项目定义。
-- `AutoTuningProductionControlTests.cs`：覆盖 dry-run、危险动作隔离、告警防抖与恢复、普通/严重回归、unavailable 指标处理、执行计划探针 available/unavailable 双路径、闭环链路与分表覆盖守卫校验、迁移失败策略分环境解析、结构化扩容计划解析、Time/Volume/Hybrid 分表策略评估、PerDay 预建守卫与分表观测口径/自动索引过滤规则回归。
+- `AutoTuningProductionControlTests.cs`：覆盖 dry-run、危险动作隔离、告警防抖与恢复、普通/严重回归、unavailable 指标处理、执行计划探针 available/unavailable 双路径、闭环链路与分表覆盖守卫校验、迁移失败策略分环境解析、结构化扩容计划解析、Time/Volume/Hybrid 分表策略评估、PerDay 预建守卫（配置+物理探测）与分表观测口径/自动索引过滤规则回归。
 
 ## 本次更新内容（新增 Parcel 属性操作指南文档）
 
@@ -575,3 +577,17 @@
 1. **修复 BucketCount 校验误判**：`ParcelShardingStrategyEvaluator` 调整为仅在 `ModeWhenPerDayStillHot=BucketedPerDay` 时强制要求 `BucketCount`，`PerHour/None + 无 BucketCount` 视为合法，同时保留“非 Bucketed 配置 BucketCount 报当前不会生效”的既有校验语义。
 2. **修复默认 appsettings 非法示例组合**：`Zeye.Sorting.Hub.Host/appsettings.json` 保留 `ModeWhenPerDayStillHot=PerHour`，移除 `Bucket:BucketCount` 示例，避免启动期分表策略守卫误阻断。
 3. **同步修正文档文件树**：补齐 README 顶部“仓库文件结构（当前）”中遗漏的 `数据库读写压力测试计划.md`、`Zeye.Sorting.Hub.Host/Enums/` 与 `MigrationFailureMode.cs`。
+
+## 本次更新内容（自动分表治理物理探测 + probe 扩展点）
+
+1. **新增 PerDay 物理分表存在性探测能力**：在 `Infrastructure/Persistence/DatabaseDialects/` 新增最小职责接口 `IShardingPhysicalTableProbe`，并由 `MySqlDialect`（`INFORMATION_SCHEMA.TABLES`）与 `SqlServerDialect`（`sys.tables + sys.schemas`）分别实现 provider 差异化探测，避免在 HostedService 中拼接 provider SQL。
+2. **分表治理守卫升级为双重校验**：`DatabaseInitializerHostedService` 在既有 `PrebuiltPerDayDates` 配置清单校验通过后，继续按 PerDay 规则生成预期物理日表名并执行真实存在性探测；当出现“配置已声明但物理表缺失”时阻断启动并输出明确错误语义。
+3. **保持治理边界不放开自动执行**：仍严格保持 `CreateShardingTableOnStarting=false` 场景下“仅探测 + 阻断 + 审计日志”，不自动建表、不自动迁移、不自动修复；finer-granularity 的 `FutureExecutable` 仍仅为未来可受控接入占位。
+4. **执行计划回归 probe 扩展点整理**：在 `IExecutionPlanRegressionProbe` 体系新增 provider-aware 扩展约定（`ExecutionPlanProbeRequest` + `IProviderAwareExecutionPlanRegressionProbe`），为未来真实 EXPLAIN/SHOWPLAN 探针预留接入面；默认依赖注入保持 `LoggingOnlyExecutionPlanRegressionProbe` 不变。
+5. **测试补强**：`AutoTuningProductionControlTests` 新增 PerDay 物理探测守卫覆盖（触发/阻断/跳过场景）与 provider-aware probe 兼容性测试，确保 logging-only 默认行为与 unavailable 可观测性保持兼容。
+
+## 后续可继续完善项
+
+1. 将物理存在性探测从 PerDay 逐步扩展到 `PerHour` / `BucketedPerDay`（仍需保持最小职责探测抽象，避免扩散为大而全编排类）。
+2. finer-granularity 的真实自动执行仍需在隔离器边界内演进：开关 + dry-run + 审计 + 回滚脚本全部就绪前，不应放开自动动作。
+3. 在 provider-aware probe 扩展约定基础上，后续可接入真实 `EXPLAIN ANALYZE` / `SHOWPLAN` 采集链路，并继续保持默认 logging-only 兼容路径。

@@ -8,11 +8,13 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.EntityFrameworkCore;
 using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Host.Enums;
 using Zeye.Sorting.Hub.Host.HostedServices;
 using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
+using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
@@ -811,6 +813,7 @@ public sealed class AutoTuningProductionControlTests {
             new ServiceCollection().BuildServiceProvider(),
             new TestLogger<DatabaseInitializerHostedService>(),
             new TestDialect(),
+            new AlwaysExistsShardingPhysicalTableProbe(),
             new TestHostEnvironment("Development"),
             configuration);
 
@@ -819,6 +822,115 @@ public sealed class AutoTuningProductionControlTests {
         var exception = await Assert.ThrowsAnyAsync<InvalidOperationException>(() => service.StartAsync(CancellationToken.None));
         Assert.Contains("PrebuiltPerDayDates", exception.Message, StringComparison.Ordinal);
         Assert.Contains("PerDay", exception.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// 验证场景：ShardingGovernanceGuard_PerDayWithConfiguredDatesAndExistingPhysicalTables_DoesNotBlockByPhysicalProbe。
+    /// </summary>
+    [Fact]
+    public async Task ShardingGovernanceGuard_PerDayWithConfiguredDatesAndExistingPhysicalTables_DoesNotBlockByPhysicalProbe() {
+        var requiredDates = DatabaseInitializerHostedService
+            .BuildRequiredPerDayShardDates(DateTime.Now, 48)
+            .Select(static date => date.ToString("yyyy-MM-dd"))
+            .ToArray();
+        var configuration = BuildPerDayGovernanceConfiguration(
+            createShardingTableOnStarting: false,
+            enableManualPrebuildGuard: true,
+            timeGranularity: "PerDay",
+            prebuildWindowHours: 48,
+            prebuiltDates: requiredDates);
+        var probe = new AlwaysExistsShardingPhysicalTableProbe();
+        var service = CreateDatabaseInitializerHostedService(configuration, probe);
+
+        var exception = await Record.ExceptionAsync(() => InvokeShardingGovernanceGuardAsync(service));
+        Assert.Null(exception);
+        Assert.True(probe.CallCount > 0);
+    }
+
+    /// <summary>
+    /// 验证场景：ShardingGovernanceGuard_PerDayWithConfiguredDatesButMissingPhysicalTable_ShouldFail。
+    /// </summary>
+    [Fact]
+    public async Task ShardingGovernanceGuard_PerDayWithConfiguredDatesButMissingPhysicalTable_ShouldFail() {
+        var date = DateTime.Now;
+        var requiredDates = DatabaseInitializerHostedService
+            .BuildRequiredPerDayShardDates(date, 48)
+            .Select(static requiredDate => requiredDate.ToString("yyyy-MM-dd"))
+            .ToArray();
+        var configuration = BuildPerDayGovernanceConfiguration(
+            createShardingTableOnStarting: false,
+            enableManualPrebuildGuard: true,
+            timeGranularity: "PerDay",
+            prebuildWindowHours: 48,
+            prebuiltDates: requiredDates);
+        var missingTable = DatabaseInitializerHostedService.BuildPerDayPhysicalTableName("Parcels", date);
+        var probe = new SelectiveMissingShardingPhysicalTableProbe([missingTable]);
+        var service = CreateDatabaseInitializerHostedService(configuration, probe);
+
+        var exception = await Assert.ThrowsAnyAsync<InvalidOperationException>(() => InvokeShardingGovernanceGuardAsync(service));
+        Assert.Contains("缺失物理表", exception.Message, StringComparison.Ordinal);
+        Assert.Contains(missingTable, exception.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// 验证场景：ShardingGovernanceGuard_PerDayWithMissingConfiguredDates_ShouldFailBeforePhysicalProbe。
+    /// </summary>
+    [Fact]
+    public async Task ShardingGovernanceGuard_PerDayWithMissingConfiguredDates_ShouldFailBeforePhysicalProbe() {
+        var configuration = BuildPerDayGovernanceConfiguration(
+            createShardingTableOnStarting: false,
+            enableManualPrebuildGuard: true,
+            timeGranularity: "PerDay",
+            prebuildWindowHours: 48,
+            prebuiltDates: [DateTime.Now.ToString("yyyy-MM-dd")]);
+        var probe = new AlwaysExistsShardingPhysicalTableProbe();
+        var service = CreateDatabaseInitializerHostedService(configuration, probe);
+
+        var exception = await Assert.ThrowsAnyAsync<InvalidOperationException>(() => InvokeShardingGovernanceGuardAsync(service));
+        Assert.Contains("缺失日期", exception.Message, StringComparison.Ordinal);
+        Assert.Equal(0, probe.CallCount);
+    }
+
+    /// <summary>
+    /// 验证场景：ShardingGovernanceGuard_NonPerDay_ShouldSkipPhysicalProbe。
+    /// </summary>
+    [Fact]
+    public async Task ShardingGovernanceGuard_NonPerDay_ShouldSkipPhysicalProbe() {
+        var configuration = BuildPerDayGovernanceConfiguration(
+            createShardingTableOnStarting: false,
+            enableManualPrebuildGuard: true,
+            timeGranularity: "PerMonth",
+            prebuildWindowHours: 0,
+            prebuiltDates: []);
+        var probe = new AlwaysExistsShardingPhysicalTableProbe();
+        var service = CreateDatabaseInitializerHostedService(configuration, probe);
+
+        var exception = await Record.ExceptionAsync(() => InvokeShardingGovernanceGuardAsync(service));
+        Assert.Null(exception);
+        Assert.Equal(0, probe.CallCount);
+    }
+
+    /// <summary>
+    /// 验证场景：ShardingGovernanceGuard_WhenCreateTableEnabledOrManualGuardDisabled_ShouldSkipPhysicalProbe。
+    /// </summary>
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public async Task ShardingGovernanceGuard_WhenCreateTableEnabledOrManualGuardDisabled_ShouldSkipPhysicalProbe(
+        bool createShardingTableOnStarting,
+        bool enableManualPrebuildGuard) {
+        var configuration = BuildPerDayGovernanceConfiguration(
+            createShardingTableOnStarting: createShardingTableOnStarting,
+            enableManualPrebuildGuard: enableManualPrebuildGuard,
+            timeGranularity: "PerDay",
+            prebuildWindowHours: 0,
+            prebuiltDates: [DateTime.Now.ToString("yyyy-MM-dd")]);
+        var probe = new AlwaysExistsShardingPhysicalTableProbe();
+        var service = CreateDatabaseInitializerHostedService(configuration, probe);
+
+        var exception = await Record.ExceptionAsync(() => InvokeShardingGovernanceGuardAsync(service));
+        Assert.Null(exception);
+        Assert.Equal(0, probe.CallCount);
     }
 
     /// <summary>
@@ -1574,6 +1686,35 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
+    /// 验证场景：PlanRegressionProbe_ProviderAwareExtension_ShouldKeepLoggingOnlyCompatibility。
+    /// </summary>
+    [Fact]
+    public void PlanRegressionProbe_ProviderAwareExtension_ShouldKeepLoggingOnlyCompatibility() {
+        var observability = new TestObservability();
+        var logger = new TestLogger<LoggingOnlyExecutionPlanRegressionProbe>();
+        var probe = new LoggingOnlyExecutionPlanRegressionProbe(logger, observability);
+        var providerAwareProbe = Assert.IsAssignableFrom<IProviderAwareExecutionPlanRegressionProbe>(probe);
+
+        var snapshot = providerAwareProbe.Evaluate(new ExecutionPlanProbeRequest("SqlServer", "custom-fingerprint"));
+        Assert.False(snapshot.IsAvailable);
+        Assert.Equal("dialect-not-supported", snapshot.UnavailableReason);
+        Assert.Contains("provider=SqlServer", snapshot.Summary, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// 验证场景：PerDayShardingBaseTableNames_ShouldResolveFromEfModelWithoutHardcodedTableList。
+    /// </summary>
+    [Fact]
+    public void PerDayShardingBaseTableNames_ShouldResolveFromEfModelWithoutHardcodedTableList() {
+        using var dbContext = CreateTestingDbContext();
+        var tableNames = DatabaseInitializerHostedService.ResolvePerDayShardingBaseTableNames(dbContext);
+        Assert.Equal(8, tableNames.Count);
+        Assert.Contains("Parcels", tableNames);
+        Assert.Contains("Parcel_WeightInfos", tableNames);
+        Assert.Contains("Parcel_CommandInfos", tableNames);
+    }
+
+    /// <summary>
     /// 验证场景：ClosedLoopFlow_TriggersMonitorExecuteVerifyRollback_WithAuditAndRollbackTrigger。
     /// </summary>
     [Fact]
@@ -1958,6 +2099,42 @@ public sealed class AutoTuningProductionControlTests {
         public IReadOnlyList<string> BuildAutonomousMaintenanceSql(string? schemaName, string tableName, bool inPeakWindow, bool highRisk) => Array.Empty<string>();
     }
 
+    private sealed class AlwaysExistsShardingPhysicalTableProbe : IShardingPhysicalTableProbe {
+        /// <summary>探测调用次数。</summary>
+        public int CallCount { get; private set; }
+
+        /// <summary>
+        /// 验证场景：ExistsAsync。
+        /// </summary>
+        public Task<bool> ExistsAsync(DbContext dbContext, string? schemaName, string physicalTableName, CancellationToken cancellationToken) {
+            CallCount++;
+            return Task.FromResult(true);
+        }
+    }
+
+    private sealed class SelectiveMissingShardingPhysicalTableProbe : IShardingPhysicalTableProbe {
+        /// <summary>缺失表集合。</summary>
+        private readonly IReadOnlySet<string> _missingPhysicalTables;
+        /// <summary>探测调用次数。</summary>
+        public int CallCount { get; private set; }
+
+        /// <summary>
+        /// 初始化选择性缺失探测器。
+        /// </summary>
+        /// <param name="missingPhysicalTables">缺失表名集合。</param>
+        public SelectiveMissingShardingPhysicalTableProbe(IEnumerable<string> missingPhysicalTables) {
+            _missingPhysicalTables = new HashSet<string>(missingPhysicalTables, StringComparer.Ordinal);
+        }
+
+        /// <summary>
+        /// 验证场景：ExistsAsync。
+        /// </summary>
+        public Task<bool> ExistsAsync(DbContext dbContext, string? schemaName, string physicalTableName, CancellationToken cancellationToken) {
+            CallCount++;
+            return Task.FromResult(!_missingPhysicalTables.Contains(physicalTableName));
+        }
+    }
+
     private sealed class FixedPlanProbe : IExecutionPlanRegressionProbe {
         /// <summary>
         /// 验证场景：Evaluate。
@@ -2102,6 +2279,93 @@ public sealed class AutoTuningProductionControlTests {
             /// 验证场景：Dispose。
             /// </summary>
             public void Dispose() { }
+        }
+    }
+
+    /// <summary>
+    /// 构建最小可运行的分表治理配置。
+    /// </summary>
+    /// <param name="createShardingTableOnStarting">是否启用启动自动建表。</param>
+    /// <param name="enableManualPrebuildGuard">是否启用手工预建守卫。</param>
+    /// <param name="timeGranularity">时间粒度配置（PerDay/PerMonth）。</param>
+    /// <param name="prebuildWindowHours">预建窗口小时数。</param>
+    /// <param name="prebuiltDates">预建日期清单（yyyy-MM-dd）。</param>
+    /// <returns>配置对象。</returns>
+    private static IConfiguration BuildPerDayGovernanceConfiguration(
+        bool createShardingTableOnStarting,
+        bool enableManualPrebuildGuard,
+        string timeGranularity,
+        int prebuildWindowHours,
+        IReadOnlyList<string> prebuiltDates) {
+        var configData = new Dictionary<string, string?> {
+            ["Persistence:Migration:FailureStrategy:NonProduction"] = "Degraded",
+            ["Persistence:Sharding:CreateShardingTableOnStarting"] = createShardingTableOnStarting.ToString(),
+            ["Persistence:Sharding:Governance:EnableManualPrebuildGuard"] = enableManualPrebuildGuard.ToString(),
+            ["Persistence:Sharding:Governance:Runbook"] = "docs/internal/sharding-governance-runbook",
+            ["Persistence:Sharding:Governance:PrebuildWindowHours"] = prebuildWindowHours.ToString(),
+            ["Persistence:Sharding:HashSharding:ExpansionPlan:CurrentMod"] = "16",
+            ["Persistence:Sharding:HashSharding:ExpansionPlan:TargetMod"] = "32",
+            ["Persistence:Sharding:Strategy:Mode"] = "Time",
+            ["Persistence:Sharding:Strategy:Time:Granularity"] = timeGranularity
+        };
+        for (var i = 0; i < prebuiltDates.Count; i++) {
+            configData[$"Persistence:Sharding:Governance:PrebuiltPerDayDates:{i}"] = prebuiltDates[i];
+        }
+
+        return new ConfigurationBuilder()
+            .AddInMemoryCollection(configData)
+            .Build();
+    }
+
+    /// <summary>
+    /// 创建数据库初始化托管服务（含最小 DB 上下文桩）。
+    /// </summary>
+    /// <param name="configuration">配置源。</param>
+    /// <param name="physicalTableProbe">物理表探测器。</param>
+    /// <returns>初始化托管服务实例。</returns>
+    private static DatabaseInitializerHostedService CreateDatabaseInitializerHostedService(
+        IConfiguration configuration,
+        IShardingPhysicalTableProbe physicalTableProbe) {
+        var services = new ServiceCollection();
+        services.AddSingleton(CreateTestingDbContext());
+        var provider = services.BuildServiceProvider();
+        return new DatabaseInitializerHostedService(
+            provider,
+            new TestLogger<DatabaseInitializerHostedService>(),
+            new TestDialect(),
+            physicalTableProbe,
+            new TestHostEnvironment("Development"),
+            configuration);
+    }
+
+    /// <summary>
+    /// 创建用于守卫与模型解析测试的 DbContext（使用 InMemory provider，避免依赖真实数据库）。
+    /// </summary>
+    /// <returns>测试 DbContext。</returns>
+    private static SortingHubDbContext CreateTestingDbContext() {
+        var options = new DbContextOptionsBuilder<SortingHubDbContext>()
+            .UseInMemoryDatabase($"sharding-guard-test-{Guid.NewGuid():N}")
+            .Options;
+        return new SortingHubDbContext(options);
+    }
+
+    /// <summary>
+    /// 通过反射调用启动期分表治理守卫（仅验证守卫，不触发后续迁移逻辑）。
+    /// </summary>
+    /// <param name="service">初始化托管服务实例。</param>
+    /// <returns>守卫执行任务。</returns>
+    private static async Task InvokeShardingGovernanceGuardAsync(DatabaseInitializerHostedService service) {
+        var validateMethod = typeof(DatabaseInitializerHostedService)
+            .GetMethod("ValidateShardingGovernanceGuardAsync", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(validateMethod);
+
+        try {
+            var task = (Task?)validateMethod!.Invoke(service, [CancellationToken.None]);
+            Assert.NotNull(task);
+            await task!;
+        }
+        catch (TargetInvocationException ex) when (ex.InnerException is not null) {
+            throw ex.InnerException;
         }
     }
 }
