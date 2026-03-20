@@ -478,10 +478,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ParcelShardingStrategyEvaluator_ShouldPassValidation_WhenPerHourAndBucketCountMissing。
+    /// 验证 PerHour 模式下缺失 BucketCount 时应通过校验。
     /// </summary>
     [Fact]
-    public void ParcelShardingStrategyEvaluator_ShouldPassValidation_WhenPerHourAndBucketCountMissing() {
+    public void PerHourMode_MissingBucketCount_ShouldPassValidation() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Sharding:Strategy:Mode"] = "Hybrid",
@@ -498,10 +498,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ParcelShardingStrategyEvaluator_ShouldPassValidation_WhenNoneAndBucketCountMissing。
+    /// 验证 None 模式下缺失 BucketCount 时应通过校验。
     /// </summary>
     [Fact]
-    public void ParcelShardingStrategyEvaluator_ShouldPassValidation_WhenNoneAndBucketCountMissing() {
+    public void NoneMode_MissingBucketCount_ShouldPassValidation() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Sharding:Strategy:Mode"] = "Hybrid",
@@ -518,7 +518,7 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ParcelShardingStrategyEvaluator_ShouldFailValidation_WhenBucketedPerDayMissingBucketCount。
+    /// 验证 BucketedPerDay 模式下缺失 BucketCount 时应触发校验错误。
     /// </summary>
     [Fact]
     public void ParcelShardingStrategyEvaluator_ShouldFailValidation_WhenBucketedPerDayMissingBucketCount() {
@@ -598,10 +598,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ParcelShardingStrategyEvaluator_DefaultAppsettingsExample_ShouldPassValidation。
+    /// 验证默认 appsettings 示例等价配置不会触发分表策略校验错误。
     /// </summary>
     [Fact]
-    public void ParcelShardingStrategyEvaluator_DefaultAppsettingsExample_ShouldPassValidation() {
+    public void DefaultAppsettingsExample_ShouldPassValidation() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Sharding:Strategy:Mode"] = "Hybrid",
