@@ -103,14 +103,16 @@ SELECT CASE WHEN EXISTS (
         }
 
         /// <summary>
-        /// 批量探测 MySQL 物理分表缺失项（单次查询当前 schema 全量表名后做内存对比）。
+        /// 批量探测 MySQL 物理分表缺失项（单次查询目标 schema 全量表名后做内存对比；为空回退当前数据库）。
         /// </summary>
         /// <param name="dbContext">数据库上下文。</param>
+        /// <param name="schemaName">schema 名称；为空时默认使用当前数据库。</param>
         /// <param name="physicalTableNames">待探测物理表名集合。</param>
         /// <param name="cancellationToken">取消令牌。</param>
         /// <returns>缺失物理表名集合。</returns>
         public async Task<IReadOnlyList<string>> FindMissingTablesAsync(
             DbContext dbContext,
+            string? schemaName,
             IReadOnlyList<string> physicalTableNames,
             CancellationToken cancellationToken) {
             ArgumentNullException.ThrowIfNull(dbContext);
@@ -118,6 +120,8 @@ SELECT CASE WHEN EXISTS (
             if (physicalTableNames.Count == 0) {
                 return Array.Empty<string>();
             }
+
+            var normalizedSchemaName = string.IsNullOrWhiteSpace(schemaName) ? null : schemaName.Trim();
 
             var normalizedExpectedTables = physicalTableNames
                 .Where(static tableName => !string.IsNullOrWhiteSpace(tableName))
@@ -131,10 +135,10 @@ SELECT CASE WHEN EXISTS (
             const string sql = """
 SELECT TABLE_NAME
 FROM INFORMATION_SCHEMA.TABLES
-WHERE TABLE_SCHEMA = DATABASE()
+WHERE TABLE_SCHEMA = COALESCE(NULLIF(@p0, ''), DATABASE())
 """;
             var existingTables = await dbContext.Database
-                .SqlQueryRaw<string>(sql)
+                .SqlQueryRaw<string>(sql, normalizedSchemaName ?? string.Empty)
                 .ToListAsync(cancellationToken);
             var existingTableSet = existingTables
                 .Where(static tableName => !string.IsNullOrWhiteSpace(tableName))

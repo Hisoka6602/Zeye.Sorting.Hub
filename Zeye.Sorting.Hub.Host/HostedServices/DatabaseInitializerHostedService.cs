@@ -123,7 +123,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _shardingPhysicalTableProbe = shardingPhysicalTableProbe;
 
             _retryPolicy = Policy
-                .Handle<Exception>(ex => ex is not OperationCanceledException)
+                .Handle<Exception>(ex => ex is not OperationCanceledException and not ShardingGovernanceGuardException)
                 .WaitAndRetryAsync(
                     retryCount: 6,
                     sleepDurationProvider: attempt => TimeSpan.FromSeconds(Math.Min(30, 2 * attempt)),
@@ -643,15 +643,16 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             var db = scope.ServiceProvider.GetRequiredService<SortingHubDbContext>();
             var perDayShardingBaseTableNames = ResolvePerDayShardingBaseTableNames(db);
             var expectedPhysicalTables = BuildExpectedPerDayPhysicalTableNames(requiredPrebuiltDates, perDayShardingBaseTableNames);
+            var schemaName = ResolvePerDayPhysicalTableProbeSchemaName(_dialect.ProviderName);
             if (_shardingPhysicalTableProbe is IBatchShardingPhysicalTableProbe batchShardingPhysicalTableProbe) {
                 var missingPhysicalTableSet = await batchShardingPhysicalTableProbe.FindMissingTablesAsync(
                     db,
+                    schemaName,
                     expectedPhysicalTables,
                     cancellationToken);
                 missingPhysicalTables.AddRange(missingPhysicalTableSet);
             }
             else {
-                var schemaName = ResolvePerDayPhysicalTableProbeSchemaName(_dialect.ProviderName);
                 foreach (var expectedPhysicalTable in expectedPhysicalTables) {
                     var exists = await _shardingPhysicalTableProbe.ExistsAsync(
                         db,

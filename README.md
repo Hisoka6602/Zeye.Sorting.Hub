@@ -106,6 +106,7 @@
 │   │   │   └── Enums（分表策略枚举目录）
 │   │   │       ├── ParcelFinerGranularityMode.cs（PerDay 仍过热时下一层细粒度模式枚举：None/PerHour/BucketedPerDay）
 │   │   │       ├── ParcelFinerGranularityPlanLifecycle.cs（finer-granularity 扩展规划生命周期枚举：PlanOnly/AlertOnly/FutureExecutable）
+│   │   │       ├── ParcelAggregateShardingRuleKind.cs（Parcel 聚合分表规则类别枚举：Main/DateValueObject）
 │   │   │       ├── ParcelShardingStrategyMode.cs（分表模式枚举：Time/Volume/Hybrid）
 │   │   │       ├── ParcelTimeShardingGranularity.cs（时间粒度枚举：PerMonth/PerDay）
 │   │   │       └── ParcelVolumeThresholdAction.cs（容量阈值动作枚举：AlertOnly/SwitchToPerDay）
@@ -305,6 +306,7 @@
 ###### `Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding/Enums/`：分表策略枚举目录
 - `ParcelFinerGranularityMode.cs`：PerDay 仍过热时下一层细粒度模式枚举（`None` / `PerHour` / `BucketedPerDay`，含 `Description`）。
 - `ParcelFinerGranularityPlanLifecycle.cs`：finer-granularity 扩展规划生命周期枚举（`PlanOnly` / `AlertOnly` / `FutureExecutable`，含 `Description`）。
+- `ParcelAggregateShardingRuleKind.cs`：Parcel 聚合分表规则类别枚举（`Main` / `DateValueObject`，含 `Description`），用于统一主表与值对象规则注册语义。
 - `ParcelShardingStrategyMode.cs`：分表模式枚举（`Time` / `Volume` / `Hybrid`，含 `Description`）。
 - `ParcelTimeShardingGranularity.cs`：时间分表粒度枚举（`PerMonth` / `PerDay`，含 `Description`）。
 - `ParcelVolumeThresholdAction.cs`：容量阈值动作枚举（`AlertOnly` / `SwitchToPerDay`，含 `Description`）。
@@ -580,16 +582,30 @@
 2. **修复默认 appsettings 非法示例组合**：`Zeye.Sorting.Hub.Host/appsettings.json` 保留 `ModeWhenPerDayStillHot=PerHour`，移除 `Bucket:BucketCount` 示例，避免启动期分表策略守卫误阻断。
 3. **同步修正文档文件树**：补齐 README 顶部“仓库文件结构（当前）”中遗漏的 `数据库读写压力测试计划.md`、`Zeye.Sorting.Hub.Host/Enums/` 与 `MigrationFailureMode.cs`。
 
-## 本次更新内容（自动分表治理物理探测 + probe 扩展点）
+## 本次更新内容（自动迁移 / 自动分表 / 自动调谐阶段收尾）
 
-1. **新增 PerDay 物理分表存在性探测能力**：在 `Infrastructure/Persistence/DatabaseDialects/` 新增最小职责接口 `IShardingPhysicalTableProbe` 与批量探测接口 `IBatchShardingPhysicalTableProbe`，并由 `MySqlDialect`（`INFORMATION_SCHEMA.TABLES`）与 `SqlServerDialect`（`sys.tables + sys.schemas`）分别实现 provider 差异化探测，避免在 HostedService 中拼接 provider SQL。
-2. **分表治理守卫升级为双重校验**：`DatabaseInitializerHostedService` 在既有 `PrebuiltPerDayDates` 配置清单校验通过后，继续按 PerDay 规则生成预期物理日表名并执行真实存在性探测；当出现“配置已声明但物理表缺失”时阻断启动并输出明确错误语义。
-3. **保持治理边界不放开自动执行**：仍严格保持 `CreateShardingTableOnStarting=false` 场景下“仅探测 + 阻断 + 审计日志”，不自动建表、不自动迁移、不自动修复；finer-granularity 的 `FutureExecutable` 仍仅为未来可受控接入占位。
-4. **执行计划回归 probe 扩展点整理**：在 `IExecutionPlanRegressionProbe` 体系新增 provider-aware 扩展约定（`ExecutionPlanProbeRequest` + `IProviderAwareExecutionPlanRegressionProbe`），为未来真实 EXPLAIN/SHOWPLAN 探针预留接入面；默认依赖注入保持 `LoggingOnlyExecutionPlanRegressionProbe` 不变。
-5. **测试补强**：`AutoTuningProductionControlTests` 新增 PerDay 物理探测守卫覆盖（触发/阻断/跳过场景）与 provider-aware probe 兼容性测试，确保 logging-only 默认行为与 unavailable 可观测性保持兼容。
+1. **自动迁移（当前阶段已完成）**：
+   - 启动自动迁移链路保留（`DatabaseInitializerHostedService` 启动期迁移 + 一致性校验）。
+   - 迁移一致性守卫与 `HasPendingModelChanges` 守卫已纳入启动流程。
+   - 本次明确边界：当前阶段完成的是“自动迁移与一致性阻断”，**不包含**手工 DDL 自愈执行。
+2. **自动分表（当前阶段已完成）**：
+   - 主表与值对象分表规则继续通过声明式规则清单统一注册（`ParcelAggregateShardingRuleKind` 明确规则类别语义）。
+   - Time / Volume / Hybrid 策略评估与治理审计保持闭环。
+   - PerDay 手工预建窗口守卫、PerDay 物理分表存在性探测已完成。
+   - 本次收尾修复两项关键问题：  
+     a) 治理守卫从统一重试链路中拆出，配置/守卫/物理表明确缺失等确定性错误立即失败，不再被重试放大；  
+     b) 批量物理探测接口补齐 `schemaName` 语义，HostedService 显式传参，SQL Server 不再写死 `dbo`。
+   - 本次明确边界：当前阶段完成的是“策略决策 + 规则注册 + 治理守卫 + 物理存在性探测”，**不是**完整在线自动扩缩容平台。
+3. **自动调谐（当前阶段已完成）**：
+   - 慢 SQL 采集、闭环自治（监控/诊断/执行/验证/回滚）链路已具备。
+   - 白名单、风险评分、高峰时段限制、危险动作隔离器已具备并默认生效。
+   - 自动验证 / 自动回滚链路与审计语义已具备。
+   - provider-aware probe 扩展点已具备，默认 probe 仍为 logging-only。
+4. **README 同步收尾**：
+   - 已补齐 `ParcelAggregateShardingRuleKind.cs` 在“仓库文件结构（当前）”与“各层级与各文件作用说明（逐项）”中的条目与职责说明。
 
 ## 后续可继续完善项
 
-1. 将物理存在性探测从 PerDay 逐步扩展到 `PerHour` / `BucketedPerDay`（仍需保持最小职责探测抽象，避免扩散为大而全编排类）。
-2. finer-granularity 的真实自动执行仍需在隔离器边界内演进：开关 + dry-run + 审计 + 回滚脚本全部就绪前，不应放开自动动作。
-3. 在 provider-aware probe 扩展约定基础上，后续可接入真实 `EXPLAIN ANALYZE` / `SHOWPLAN` 采集链路，并继续保持默认 logging-only 兼容路径。
+1. finer-granularity 真实自动执行仍需严格在隔离器边界内演进（开关 + dry-run + 审计 + 回滚边界全部就绪后再放开）。
+2. 真实 `EXPLAIN` / `SHOWPLAN` 计划探针可在现有 provider-aware probe 扩展点上继续接入，默认 logging-only 语义保持不变。
+3. 哈希扩容/重分片自动执行仍属于下一阶段能力，不在本轮 PR 内继续膨胀。
