@@ -8,7 +8,17 @@ using Microsoft.EntityFrameworkCore;
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
 
     /// <summary>SQL Server 方言</summary>
-    public sealed class SqlServerDialect : IDatabaseDialect, IBatchShardingPhysicalTableProbe {
+public sealed class SqlServerDialect : IDatabaseDialect, IBatchShardingPhysicalTableProbe {
+        /// <summary>
+        /// 字段：BatchShardingProbeSql。
+        /// </summary>
+        internal const string BatchShardingProbeSql = """
+SELECT t.name
+FROM sys.tables AS t
+INNER JOIN sys.schemas AS s ON s.schema_id = t.schema_id
+WHERE s.name = @p0
+""";
+
         /// <summary>当前方言提供器名称。</summary>
         public string ProviderName => "SQLServer";
 
@@ -115,14 +125,16 @@ SELECT CASE WHEN EXISTS (
         }
 
         /// <summary>
-        /// 批量探测 SQL Server 物理分表缺失项（单次查询 dbo 全量表名后做内存对比）。
+        /// 批量探测 SQL Server 物理分表缺失项（单次查询目标 schema 全量表名后做内存对比）。
         /// </summary>
         /// <param name="dbContext">数据库上下文。</param>
+        /// <param name="schemaName">schema 名称；为空时默认使用 dbo。</param>
         /// <param name="physicalTableNames">待探测物理表名集合。</param>
         /// <param name="cancellationToken">取消令牌。</param>
         /// <returns>缺失物理表名集合。</returns>
         public async Task<IReadOnlyList<string>> FindMissingTablesAsync(
             DbContext dbContext,
+            string? schemaName,
             IReadOnlyList<string> physicalTableNames,
             CancellationToken cancellationToken) {
             ArgumentNullException.ThrowIfNull(dbContext);
@@ -130,6 +142,8 @@ SELECT CASE WHEN EXISTS (
             if (physicalTableNames.Count == 0) {
                 return Array.Empty<string>();
             }
+
+            var normalizedSchemaName = string.IsNullOrWhiteSpace(schemaName) ? "dbo" : schemaName.Trim();
 
             var normalizedExpectedTables = physicalTableNames
                 .Where(static tableName => !string.IsNullOrWhiteSpace(tableName))
@@ -140,14 +154,8 @@ SELECT CASE WHEN EXISTS (
                 return Array.Empty<string>();
             }
 
-            const string sql = """
-SELECT t.name
-FROM sys.tables AS t
-INNER JOIN sys.schemas AS s ON s.schema_id = t.schema_id
-WHERE s.name = N'dbo'
-""";
             var existingTables = await dbContext.Database
-                .SqlQueryRaw<string>(sql)
+                .SqlQueryRaw<string>(BatchShardingProbeSql, normalizedSchemaName)
                 .ToListAsync(cancellationToken);
             var existingTableSet = existingTables
                 .Where(static tableName => !string.IsNullOrWhiteSpace(tableName))

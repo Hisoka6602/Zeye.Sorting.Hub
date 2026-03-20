@@ -825,6 +825,38 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
+    /// 验证场景：ShardingGovernanceGuard_ConfigValidationFailure_ShouldNotEnterRetryPolicy。
+    /// </summary>
+    [Fact]
+    public async Task ShardingGovernanceGuard_ConfigValidationFailure_ShouldNotEnterRetryPolicy() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:Migration:FailureStrategy:NonProduction"] = "FailFast",
+                ["Persistence:Sharding:CreateShardingTableOnStarting"] = "false",
+                ["Persistence:Sharding:Governance:EnableManualPrebuildGuard"] = "true",
+                ["Persistence:Sharding:Governance:Runbook"] = "docs/internal/sharding-governance-runbook",
+                ["Persistence:Sharding:Governance:PrebuildWindowHours"] = "24",
+                ["Persistence:Sharding:Governance:PrebuiltPerDayDates:0"] = "2026-03-18T00:00:00Z",
+                ["Persistence:Sharding:HashSharding:ExpansionPlan:CurrentMod"] = "16",
+                ["Persistence:Sharding:HashSharding:ExpansionPlan:TargetMod"] = "32",
+                ["Persistence:Sharding:Strategy:Mode"] = "Time",
+                ["Persistence:Sharding:Strategy:Time:Granularity"] = "PerDay"
+            })
+            .Build();
+        var logger = new TestLogger<DatabaseInitializerHostedService>();
+        var service = new DatabaseInitializerHostedService(
+            new ServiceCollection().BuildServiceProvider(),
+            logger,
+            new TestDialect(),
+            new AlwaysExistsShardingPhysicalTableProbe(),
+            new TestHostEnvironment("Development"),
+            configuration);
+
+        await Assert.ThrowsAnyAsync<InvalidOperationException>(() => service.StartAsync(CancellationToken.None));
+        Assert.DoesNotContain(logger.Messages, message => message.Contains("数据库初始化重试中", StringComparison.Ordinal));
+    }
+
+    /// <summary>
     /// 验证场景：ShardingGovernanceGuard_PerDayWithConfiguredDatesAndExistingPhysicalTables_DoesNotBlockByPhysicalProbe。
     /// </summary>
     [Fact]
@@ -870,6 +902,102 @@ public sealed class AutoTuningProductionControlTests {
         var exception = await Assert.ThrowsAnyAsync<InvalidOperationException>(() => InvokeShardingGovernanceGuardAsync(service));
         Assert.Contains("缺失物理表", exception.Message, StringComparison.Ordinal);
         Assert.Contains(missingTable, exception.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// 验证场景：ShardingGovernanceGuard_PerDayPhysicalMissing_ShouldNotRetry。
+    /// </summary>
+    [Fact]
+    public async Task ShardingGovernanceGuard_PerDayPhysicalMissing_ShouldNotRetry() {
+        var date = DateTime.Now;
+        var requiredDates = DatabaseInitializerHostedService
+            .BuildRequiredPerDayShardDates(date, 24)
+            .Select(static requiredDate => requiredDate.ToString("yyyy-MM-dd"))
+            .ToArray();
+        var configuration = BuildPerDayGovernanceConfiguration(
+            createShardingTableOnStarting: false,
+            enableManualPrebuildGuard: true,
+            timeGranularity: "PerDay",
+            prebuildWindowHours: 24,
+            prebuiltDates: requiredDates);
+        var missingTable = DatabaseInitializerHostedService.BuildPerDayPhysicalTableName("Parcels", date);
+        var probe = new BatchSelectiveMissingShardingPhysicalTableProbe([missingTable]);
+        var logger = new TestLogger<DatabaseInitializerHostedService>();
+        var service = CreateDatabaseInitializerHostedService(configuration, probe, logger);
+
+        await Assert.ThrowsAnyAsync<InvalidOperationException>(() => service.StartAsync(CancellationToken.None));
+        Assert.Equal(1, probe.FindMissingCallCount);
+        Assert.DoesNotContain(logger.Messages, message => message.Contains("数据库初始化重试中", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// 验证场景：DatabaseInitializer_RetryableExceptionPath_ShouldKeepRetrySemantics。
+    /// </summary>
+    [Fact]
+    public async Task DatabaseInitializer_RetryableExceptionPath_ShouldKeepRetrySemantics() {
+        var logger = new TestLogger<DatabaseInitializerHostedService>();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:Migration:FailureStrategy:NonProduction"] = "Degraded",
+                ["Persistence:Sharding:CreateShardingTableOnStarting"] = "true",
+                ["Persistence:Sharding:Governance:EnableManualPrebuildGuard"] = "true",
+                ["Persistence:Sharding:Governance:Runbook"] = "docs/internal/sharding-governance-runbook",
+                ["Persistence:Sharding:HashSharding:ExpansionPlan:CurrentMod"] = "16",
+                ["Persistence:Sharding:HashSharding:ExpansionPlan:TargetMod"] = "32",
+                ["Persistence:Sharding:Strategy:Mode"] = "Time",
+                ["Persistence:Sharding:Strategy:Time:Granularity"] = "PerMonth"
+            })
+            .Build();
+        var service = new DatabaseInitializerHostedService(
+            new ServiceCollection().BuildServiceProvider(),
+            logger,
+            new TestDialect(),
+            new AlwaysExistsShardingPhysicalTableProbe(),
+            new TestHostEnvironment("Development"),
+            configuration);
+
+        var exception = await Record.ExceptionAsync(() => service.StartAsync(CancellationToken.None));
+        Assert.Null(exception);
+        Assert.Equal(6, logger.Messages.Count(message => message.Contains("数据库初始化重试中", StringComparison.Ordinal)));
+    }
+
+    /// <summary>
+    /// 验证场景：ShardingGovernanceGuard_BatchProbe_ShouldPassSchemaFromHostedService。
+    /// </summary>
+    [Fact]
+    public async Task ShardingGovernanceGuard_BatchProbe_ShouldPassSchemaFromHostedService() {
+        var requiredDates = DatabaseInitializerHostedService
+            .BuildRequiredPerDayShardDates(DateTime.Now, 24)
+            .Select(static date => date.ToString("yyyy-MM-dd"))
+            .ToArray();
+        var configuration = BuildPerDayGovernanceConfiguration(
+            createShardingTableOnStarting: false,
+            enableManualPrebuildGuard: true,
+            timeGranularity: "PerDay",
+            prebuildWindowHours: 24,
+            prebuiltDates: requiredDates);
+        var probe = new BatchSelectiveMissingShardingPhysicalTableProbe([]);
+        var service = CreateDatabaseInitializerHostedService(configuration, probe, dialect: new TestSqlServerDialect());
+
+        var exception = await Record.ExceptionAsync(() => InvokeShardingGovernanceGuardAsync(service));
+        Assert.Null(exception);
+        Assert.Equal(1, probe.FindMissingCallCount);
+        Assert.Equal("dbo", probe.LastSchemaName);
+    }
+
+    /// <summary>
+    /// 验证场景：SqlServerDialect_BatchProbeSql_ShouldUseSchemaParameter。
+    /// </summary>
+    [Fact]
+    public void SqlServerDialect_BatchProbeSql_ShouldUseSchemaParameter() {
+        var sqlField = typeof(SqlServerDialect).GetField(
+            "BatchShardingProbeSql",
+            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+        Assert.NotNull(sqlField);
+        var sql = sqlField!.GetRawConstantValue() as string;
+        Assert.False(string.IsNullOrWhiteSpace(sql));
+        Assert.Contains("@p0", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("N'dbo'", sql, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -2099,6 +2227,26 @@ public sealed class AutoTuningProductionControlTests {
         public IReadOnlyList<string> BuildAutonomousMaintenanceSql(string? schemaName, string tableName, bool inPeakWindow, bool highRisk) => Array.Empty<string>();
     }
 
+    private sealed class TestSqlServerDialect : IDatabaseDialect {
+        public string ProviderName => "SQLServer";
+        /// <summary>
+        /// 验证场景：GetOptionalBootstrapSql。
+        /// </summary>
+        public IReadOnlyList<string> GetOptionalBootstrapSql() => Array.Empty<string>();
+        /// <summary>
+        /// 验证场景：BuildAutomaticTuningSql。
+        /// </summary>
+        public IReadOnlyList<string> BuildAutomaticTuningSql(string? schemaName, string tableName, IReadOnlyList<string> whereColumns) => Array.Empty<string>();
+        /// <summary>
+        /// 验证场景：ShouldIgnoreAutoTuningException。
+        /// </summary>
+        public bool ShouldIgnoreAutoTuningException(Exception exception) => false;
+        /// <summary>
+        /// 验证场景：BuildAutonomousMaintenanceSql。
+        /// </summary>
+        public IReadOnlyList<string> BuildAutonomousMaintenanceSql(string? schemaName, string tableName, bool inPeakWindow, bool highRisk) => Array.Empty<string>();
+    }
+
     private sealed class AlwaysExistsShardingPhysicalTableProbe : IShardingPhysicalTableProbe {
         /// <summary>探测调用次数。</summary>
         public int CallCount { get; private set; }
@@ -2132,6 +2280,47 @@ public sealed class AutoTuningProductionControlTests {
         public Task<bool> ExistsAsync(DbContext dbContext, string? schemaName, string physicalTableName, CancellationToken cancellationToken) {
             CallCount++;
             return Task.FromResult(!_missingPhysicalTables.Contains(physicalTableName));
+        }
+    }
+
+    private sealed class BatchSelectiveMissingShardingPhysicalTableProbe : IBatchShardingPhysicalTableProbe {
+        /// <summary>缺失表集合。</summary>
+        private readonly IReadOnlySet<string> _missingPhysicalTables;
+        /// <summary>批量探测调用次数。</summary>
+        public int FindMissingCallCount { get; private set; }
+        /// <summary>最近一次传入的 schema 名称。</summary>
+        public string? LastSchemaName { get; private set; }
+
+        /// <summary>
+        /// 初始化批量探测桩。
+        /// </summary>
+        /// <param name="missingPhysicalTables">缺失表名集合。</param>
+        public BatchSelectiveMissingShardingPhysicalTableProbe(IEnumerable<string> missingPhysicalTables) {
+            _missingPhysicalTables = new HashSet<string>(missingPhysicalTables, StringComparer.Ordinal);
+        }
+
+        /// <summary>
+        /// 验证场景：ExistsAsync。
+        /// </summary>
+        public Task<bool> ExistsAsync(DbContext dbContext, string? schemaName, string physicalTableName, CancellationToken cancellationToken) {
+            return Task.FromResult(!_missingPhysicalTables.Contains(physicalTableName));
+        }
+
+        /// <summary>
+        /// 验证场景：FindMissingTablesAsync。
+        /// </summary>
+        public Task<IReadOnlyList<string>> FindMissingTablesAsync(
+            DbContext dbContext,
+            string? schemaName,
+            IReadOnlyList<string> physicalTableNames,
+            CancellationToken cancellationToken) {
+            FindMissingCallCount++;
+            LastSchemaName = schemaName;
+            var missing = physicalTableNames
+                .Where(tableName => _missingPhysicalTables.Contains(tableName))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            return Task.FromResult<IReadOnlyList<string>>(missing);
         }
     }
 
@@ -2322,17 +2511,21 @@ public sealed class AutoTuningProductionControlTests {
     /// </summary>
     /// <param name="configuration">配置源。</param>
     /// <param name="physicalTableProbe">物理表探测器。</param>
+    /// <param name="logger">日志桩。</param>
+    /// <param name="dialect">数据库方言桩。</param>
     /// <returns>初始化托管服务实例。</returns>
     private static DatabaseInitializerHostedService CreateDatabaseInitializerHostedService(
         IConfiguration configuration,
-        IShardingPhysicalTableProbe physicalTableProbe) {
+        IShardingPhysicalTableProbe physicalTableProbe,
+        TestLogger<DatabaseInitializerHostedService>? logger = null,
+        IDatabaseDialect? dialect = null) {
         var services = new ServiceCollection();
         services.AddSingleton(CreateTestingDbContext());
         var provider = services.BuildServiceProvider();
         return new DatabaseInitializerHostedService(
             provider,
-            new TestLogger<DatabaseInitializerHostedService>(),
-            new TestDialect(),
+            logger ?? new TestLogger<DatabaseInitializerHostedService>(),
+            dialect ?? new TestDialect(),
             physicalTableProbe,
             new TestHostEnvironment("Development"),
             configuration);
