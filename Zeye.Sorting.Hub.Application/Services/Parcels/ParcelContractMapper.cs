@@ -1,4 +1,5 @@
 using Zeye.Sorting.Hub.Contracts.Models.Parcels;
+using Zeye.Sorting.Hub.Contracts.Models.Parcels.ValueObjects;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.ReadModels;
 
@@ -181,7 +182,123 @@ internal static class ParcelContractMapper {
     public static ParcelDetailResponse ToDetail(Parcel parcel) {
         var args = BuildFromAggregate(parcel);
         var listItem = CreateParcelListItemResponse(args);
-        return new ParcelDetailResponse(listItem);
+        return new ParcelDetailResponse(
+            listItem,
+            barCodeInfos: parcel.BarCodeInfos.Select(x => new BarCodeInfoResponse {
+                BarCode = x.BarCode,
+                BarCodeType = (int)x.BarCodeType,
+                CapturedTime = x.CapturedTime
+            }).ToList(),
+            weightInfos: parcel.WeightInfos.Select(x => new WeightInfoResponse {
+                RawWeight = x.RawWeight,
+                EvidenceCode = x.EvidenceCode,
+                FormattedWeight = x.FormattedWeight,
+                WeighingTime = x.WeighingTime,
+                AdjustedWeight = x.AdjustedWeight
+            }).ToList(),
+            volumeInfo: parcel.VolumeInfo is null ? null : new VolumeInfoResponse {
+                SourceType = (int)parcel.VolumeInfo.SourceType,
+                RawVolume = parcel.VolumeInfo.RawVolume,
+                EvidenceCode = parcel.VolumeInfo.EvidenceCode,
+                FormattedLength = parcel.VolumeInfo.FormattedLength,
+                FormattedWidth = parcel.VolumeInfo.FormattedWidth,
+                FormattedHeight = parcel.VolumeInfo.FormattedHeight,
+                FormattedVolume = parcel.VolumeInfo.FormattedVolume,
+                AdjustedLength = parcel.VolumeInfo.AdjustedLength,
+                AdjustedWidth = parcel.VolumeInfo.AdjustedWidth,
+                AdjustedHeight = parcel.VolumeInfo.AdjustedHeight,
+                AdjustedVolume = parcel.VolumeInfo.AdjustedVolume,
+                MeasurementTime = parcel.VolumeInfo.MeasurementTime,
+                BindTime = parcel.VolumeInfo.BindTime
+            },
+            apiRequests: parcel.ApiRequests.Select(x => new ApiRequestInfoResponse {
+                ApiType = (int)x.ApiType,
+                RequestStatus = (int)x.RequestStatus,
+                RequestUrl = x.RequestUrl,
+                QueryParams = x.QueryParams,
+                Headers = x.Headers,
+                RequestBody = x.RequestBody,
+                ResponseBody = x.ResponseBody,
+                RequestTime = x.RequestTime,
+                ResponseTime = x.ResponseTime,
+                ElapsedMilliseconds = x.ElapsedMilliseconds,
+                Exception = x.Exception,
+                RawData = x.RawData,
+                FormattedMessage = x.FormattedMessage
+            }).ToList(),
+            chuteInfo: parcel.ChuteInfo is null ? null : new ChuteInfoResponse {
+                TargetChuteId = parcel.ChuteInfo.TargetChuteId,
+                ActualChuteId = parcel.ChuteInfo.ActualChuteId,
+                BackupChuteId = parcel.ChuteInfo.BackupChuteId,
+                LandedTime = parcel.ChuteInfo.LandedTime
+            },
+            commandInfos: parcel.CommandInfos.Select(x => new CommandInfoResponse {
+                ProtocolType = (int)x.ProtocolType,
+                ProtocolName = x.ProtocolName,
+                ConnectionName = x.ConnectionName,
+                CommandPayload = x.CommandPayload,
+                GeneratedTime = x.GeneratedTime,
+                ActionType = (int)x.ActionType,
+                FormattedMessage = x.FormattedMessage,
+                Direction = (int)x.Direction
+            }).ToList(),
+            imageInfos: parcel.ImageInfos.Select(x => new ImageInfoResponse {
+                CameraName = x.CameraName,
+                CustomName = x.CustomName,
+                CameraSerialNumber = x.CameraSerialNumber,
+                ImageType = (int)x.ImageType,
+                RelativePath = x.RelativePath,
+                CaptureType = (int)x.CaptureType
+            }).ToList(),
+            videoInfos: parcel.VideoInfos.Select(x => new VideoInfoResponse {
+                Channel = x.Channel,
+                NvrSerialNumber = x.NvrSerialNumber,
+                NodeType = (int)x.NodeType
+            }).ToList(),
+            sorterCarrierInfo: parcel.SorterCarrierInfo is null ? null : new SorterCarrierInfoResponse {
+                SorterCarrierId = parcel.SorterCarrierInfo.SorterCarrierId,
+                LoadedTime = parcel.SorterCarrierInfo.LoadedTime,
+                ConveyorSpeedWhenLoaded = parcel.SorterCarrierInfo.ConveyorSpeedWhenLoaded,
+                LinkedCarrierCount = parcel.SorterCarrierInfo.LinkedCarrierCount
+            },
+            bagInfo: parcel.BagInfo is null ? null : new BagInfoResponse {
+                ChuteId = parcel.BagInfo.ChuteId,
+                ChuteName = parcel.BagInfo.ChuteName,
+                BagCode = parcel.BagInfo.BagCode,
+                ParcelCount = parcel.BagInfo.ParcelCount,
+                BaggingTime = parcel.BagInfo.BaggingTime
+            },
+            deviceInfo: parcel.DeviceInfo is null ? null : new ParcelDeviceInfoResponse {
+                WorkstationName = parcel.DeviceInfo.WorkstationName,
+                MachineCode = parcel.DeviceInfo.MachineCode,
+                CustomName = parcel.DeviceInfo.CustomName
+            },
+            grayDetectorInfo: parcel.GrayDetectorInfo is null ? null : new GrayDetectorInfoResponse {
+                CarrierNumber = parcel.GrayDetectorInfo.CarrierNumber,
+                AttachBoxInfo = parcel.GrayDetectorInfo.AttachBoxInfo,
+                MainBoxInfo = parcel.GrayDetectorInfo.MainBoxInfo,
+                LinkedCarrierCount = parcel.GrayDetectorInfo.LinkedCarrierCount,
+                CenterPosition = parcel.GrayDetectorInfo.CenterPosition,
+                ResultTime = parcel.GrayDetectorInfo.ResultTime,
+                RawResult = parcel.GrayDetectorInfo.RawResult
+            },
+            stickingParcelInfo: parcel.StickingParcelInfo is null ? null : new StickingParcelInfoResponse {
+                IsSticking = parcel.StickingParcelInfo.IsSticking,
+                ReceiveTime = parcel.StickingParcelInfo.ReceiveTime,
+                RawData = parcel.StickingParcelInfo.RawData,
+                ElapsedMilliseconds = parcel.StickingParcelInfo.ElapsedMilliseconds
+            },
+            parcelPositionInfo: parcel.ParcelPositionInfo is null ? null : new ParcelPositionInfoResponse {
+                X1 = parcel.ParcelPositionInfo.X1,
+                X2 = parcel.ParcelPositionInfo.X2,
+                Y1 = parcel.ParcelPositionInfo.Y1,
+                Y2 = parcel.ParcelPositionInfo.Y2,
+                BackgroundX1 = parcel.ParcelPositionInfo.BackgroundX1,
+                BackgroundX2 = parcel.ParcelPositionInfo.BackgroundX2,
+                BackgroundY1 = parcel.ParcelPositionInfo.BackgroundY1,
+                BackgroundY2 = parcel.ParcelPositionInfo.BackgroundY2
+            }
+        );
     }
 
     /// <summary>
