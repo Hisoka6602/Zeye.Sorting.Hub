@@ -106,7 +106,7 @@
 │   │   │   └── Enums（分表策略枚举目录）
 │   │   │       ├── ParcelFinerGranularityMode.cs（PerDay 仍过热时下一层细粒度模式枚举：None/PerHour/BucketedPerDay）
 │   │   │       ├── ParcelFinerGranularityPlanLifecycle.cs（finer-granularity 扩展规划生命周期枚举：PlanOnly/AlertOnly/FutureExecutable）
-│   │   │       ├── ParcelAggregateShardingRuleKind.cs（Parcel 聚合分表规则类别枚举：Main/DateValueObject）
+│   │   │       ├── ParcelAggregateShardingRuleKind.cs（Parcel 聚合分表规则类别枚举：Date/Hash）
 │   │   │       ├── ParcelShardingStrategyMode.cs（分表模式枚举：Time/Volume/Hybrid）
 │   │   │       ├── ParcelTimeShardingGranularity.cs（时间粒度枚举：PerMonth/PerDay）
 │   │   │       └── ParcelVolumeThresholdAction.cs（容量阈值动作枚举：AlertOnly/SwitchToPerDay）
@@ -306,7 +306,7 @@
 ###### `Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding/Enums/`：分表策略枚举目录
 - `ParcelFinerGranularityMode.cs`：PerDay 仍过热时下一层细粒度模式枚举（`None` / `PerHour` / `BucketedPerDay`，含 `Description`）。
 - `ParcelFinerGranularityPlanLifecycle.cs`：finer-granularity 扩展规划生命周期枚举（`PlanOnly` / `AlertOnly` / `FutureExecutable`，含 `Description`）。
-- `ParcelAggregateShardingRuleKind.cs`：Parcel 聚合分表规则类别枚举（`Main` / `DateValueObject`，含 `Description`），用于统一主表与值对象规则注册语义。
+- `ParcelAggregateShardingRuleKind.cs`：Parcel 聚合分表规则类别枚举（`Date` / `Hash`，含 `Description`），用于区分日期分表规则与哈希分表规则。
 - `ParcelShardingStrategyMode.cs`：分表模式枚举（`Time` / `Volume` / `Hybrid`，含 `Description`）。
 - `ParcelTimeShardingGranularity.cs`：时间分表粒度枚举（`PerMonth` / `PerDay`，含 `Description`）。
 - `ParcelVolumeThresholdAction.cs`：容量阈值动作枚举（`AlertOnly` / `SwitchToPerDay`，含 `Description`）。
@@ -589,7 +589,7 @@
    - 迁移一致性守卫与 `HasPendingModelChanges` 守卫已纳入启动流程。
    - 本次明确边界：当前阶段完成的是“自动迁移与一致性阻断”，**不包含**手工 DDL 自愈执行。
 2. **自动分表（当前阶段已完成）**：
-   - 主表与值对象分表规则继续通过声明式规则清单统一注册（`ParcelAggregateShardingRuleKind` 明确规则类别语义）。
+   - 主表与值对象分表规则继续通过声明式规则清单统一注册（`ParcelAggregateShardingRuleKind` 明确 `Date` / `Hash` 规则类别语义）。
    - Time / Volume / Hybrid 策略评估与治理审计保持闭环。
    - PerDay 手工预建窗口守卫、PerDay 物理分表存在性探测已完成。
    - 本次收尾修复两项关键问题：  
