@@ -59,7 +59,14 @@ try {
                 logger.LogError("处理 HTTP 请求时发生未知异常，路径：{Path}", context.Request.Path);
             }
 
-            // 步骤 3：返回统一问题详情响应
+            // 步骤 3：若响应已开始写出，则避免再次写入响应导致连接异常
+            if (context.Response.HasStarted) {
+                logger.LogError("响应已开始写出，无法输出统一 ProblemDetails，路径：{Path}", context.Request.Path);
+                return;
+            }
+
+            // 步骤 4：清理已有响应状态并返回统一问题详情响应
+            context.Response.Clear();
             context.Response.StatusCode = StatusCodes.Status500InternalServerError;
             await Results.Problem(
                 title: "服务器内部错误",
@@ -68,7 +75,11 @@ try {
         });
     });
 
-    app.UseHttpsRedirection();
+    // 仅在显式开启时启用 HTTPS 重定向，避免纯 HTTP / 反向代理终止 TLS 场景影响探活
+    if (bool.TryParse(app.Configuration["Hosting:EnableHttpsRedirection"], out var enableHttpsRedirection)
+        && enableHttpsRedirection) {
+        app.UseHttpsRedirection();
+    }
     if (app.Environment.IsDevelopment()) {
         app.UseSwagger();
         app.UseSwaggerUI();
