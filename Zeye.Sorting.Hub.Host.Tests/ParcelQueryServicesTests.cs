@@ -21,7 +21,7 @@ public sealed class ParcelQueryServicesTests {
     [Fact]
     public async Task GetParcelPagedQueryService_ShouldMapAndValidate() {
         var databaseName = $"parcel-query-service-test-{Guid.NewGuid():N}";
-        var baseTime = DateTime.Now;
+        var baseTime = new DateTime(2026, 3, 20, 10, 0, 0, DateTimeKind.Local);
         try {
             var repository = CreateRepository(databaseName);
             await SeedParcelsAsync(databaseName, [
@@ -65,7 +65,7 @@ public sealed class ParcelQueryServicesTests {
     [Fact]
     public async Task GetParcelByIdQueryService_ShouldReturnDetailOrNull() {
         var databaseName = $"parcel-query-service-test-{Guid.NewGuid():N}";
-        var baseTime = DateTime.Now;
+        var baseTime = new DateTime(2026, 3, 20, 11, 0, 0, DateTimeKind.Local);
         try {
             var parcel = CreateParcel("BC-DETAIL-1", "BAG-DETAIL", "WS-DETAIL", ParcelStatus.Pending, baseTime.AddMinutes(-2), 930, 931);
             await SeedParcelsAsync(databaseName, [parcel]);
@@ -91,7 +91,7 @@ public sealed class ParcelQueryServicesTests {
     [Fact]
     public async Task GetAdjacentParcelsQueryService_ShouldMapAndNormalize() {
         var databaseName = $"parcel-query-service-test-{Guid.NewGuid():N}";
-        var baseTime = DateTime.Now.AddHours(-1);
+        var baseTime = new DateTime(2026, 3, 20, 9, 0, 0, DateTimeKind.Local);
         try {
             await SeedParcelsAsync(databaseName, [
                 CreateParcel("BC-ADJ-1", "BAG-ADJ", "WS-ADJ", ParcelStatus.Pending, baseTime.AddMinutes(1), 940, 941),
@@ -206,7 +206,7 @@ public sealed class ParcelQueryServicesTests {
         long targetChuteId,
         long actualChuteId) {
         var parcel = Parcel.Create(
-            parcelTimestamp: DateTime.Now.Ticks,
+            parcelTimestamp: Math.Abs(scannedTime.Ticks),
             type: ParcelType.Normal,
             barCodes: barCode,
             weight: 1.25m,

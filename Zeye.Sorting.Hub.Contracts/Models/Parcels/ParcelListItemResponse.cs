@@ -3,7 +3,7 @@ namespace Zeye.Sorting.Hub.Contracts.Models.Parcels;
 /// <summary>
 /// Parcel 列表项响应合同。
 /// </summary>
-public sealed record ParcelListItemResponse {
+public record ParcelListItemResponse {
     /// <summary>
     /// 包裹 Id。
     /// </summary>

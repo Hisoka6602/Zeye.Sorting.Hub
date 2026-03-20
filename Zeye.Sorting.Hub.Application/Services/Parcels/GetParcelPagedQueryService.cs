@@ -65,11 +65,17 @@ public sealed class GetParcelPagedQueryService {
         catch (Exception ex) {
             Logger.Error(
                 ex,
-                "分页查询 Parcel 列表失败，PageNumber={0}, PageSize={1}, BagCode={2}, WorkstationName={3}",
+                "分页查询 Parcel 列表失败，PageNumber={0}, PageSize={1}, BarCodeKeyword={2}, BagCode={3}, WorkstationName={4}, Status={5}, ActualChuteId={6}, TargetChuteId={7}, ScannedTimeStart={8}, ScannedTimeEnd={9}",
                 request.PageNumber,
                 request.PageSize,
+                request.BarCodeKeyword,
                 request.BagCode,
-                request.WorkstationName);
+                request.WorkstationName,
+                request.Status,
+                request.ActualChuteId,
+                request.TargetChuteId,
+                request.ScannedTimeStart,
+                request.ScannedTimeEnd);
             throw;
         }
     }
