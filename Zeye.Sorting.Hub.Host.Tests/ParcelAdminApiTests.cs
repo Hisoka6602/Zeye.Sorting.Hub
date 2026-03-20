@@ -119,6 +119,25 @@ public sealed class ParcelAdminApiTests {
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    /// <summary>
+    /// 验证场景：仓储写入失败（ShouldFailOnAdd=true），返回 500 Internal Server Error（覆盖写接口失败路径日志链路）。
+    /// </summary>
+    [Fact]
+    public async Task CreateParcel_WhenRepositoryFails_ShouldReturn500() {
+        var fakeRepo = new FakeParcelRepository { ShouldFailOnAdd = true };
+        await using var app = await BuildTestAppAsync(fakeRepo);
+        using var client = app.GetTestClient();
+
+        var body = BuildCreateRequestJson(
+            scannedTime: "2026-03-20T10:00:00",
+            dischargeTime: "2026-03-20T10:00:03");
+
+        using var response = await client.PostAsync("/api/admin/parcels", body);
+
+        // 仓储失败时，CommandService 抛 InvalidOperationException，Host 层捕获后返回 500。
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     // PUT /api/admin/parcels/{id}
     // ═══════════════════════════════════════════════════════════════════════
