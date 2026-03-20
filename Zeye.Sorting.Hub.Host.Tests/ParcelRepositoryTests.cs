@@ -31,8 +31,7 @@ public sealed class ParcelRepositoryTests {
         using var serviceProvider = services.BuildServiceProvider();
         using var scope = serviceProvider.CreateScope();
 
-        var repository = scope.ServiceProvider.GetService<IParcelRepository>();
-        Assert.NotNull(repository);
+        _ = scope.ServiceProvider.GetRequiredService<IParcelRepository>();
     }
 
     /// <summary>

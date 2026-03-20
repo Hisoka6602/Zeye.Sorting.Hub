@@ -207,8 +207,8 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     }
 
     /// <summary>
-     /// 按创建时间删除过期包裹，返回删除条数。
-     /// </summary>
+    /// 按创建时间删除过期包裹，返回删除条数。
+    /// </summary>
     public async Task<RepositoryResult<int>> RemoveExpiredAsync(DateTime createdBefore, CancellationToken cancellationToken) {
         try {
             await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
