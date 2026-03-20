@@ -7,7 +7,7 @@ namespace Zeye.Sorting.Hub.Contracts.Enums.Parcels;
 /// 与 Domain 层 ParcelExceptionType 数值保持一一对应，供 API 客户端识别可用值，
 /// 避免调用方依赖魔法数字或字符串化状态判断。
 /// </summary>
-public enum ParcelExceptionTypeDto {
+public enum ParcelExceptionType {
 
     /// <summary>
     /// 接口响应异常

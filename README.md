@@ -35,7 +35,7 @@
 │   ├── Class1.cs（程序集锚点类型）
 │   ├── Enums（契约层枚举目录）
 │   │   └── Parcels（Parcel 枚举目录）
-│   │       ├── ParcelExceptionTypeDto.cs（包裹异常类型对外合同枚举：与 Domain.ParcelExceptionType 数值一一对应，供 API 客户端按语义筛选）
+│   │       ├── ParcelExceptionType.cs（包裹异常类型对外合同枚举：与 Domain.ParcelExceptionType 数值一一对应，供 API 客户端按语义筛选）
 │   │       └── ParcelUpdateOperation.cs（Parcel 更新操作类型枚举：MarkCompleted/MarkSortingException/UpdateRequestStatus）
 │   ├── Models（对外合同模型目录）
 │   │   └── Parcels（Parcel 合同目录）
@@ -272,7 +272,7 @@
 - `Class1.cs`：程序集锚点类型。
 
 #### `Zeye.Sorting.Hub.Contracts/Enums/Parcels/`：Parcel 枚举目录
-- `ParcelExceptionTypeDto.cs`：包裹异常类型对外合同枚举（与 Domain.ParcelExceptionType 数值一一对应，供 API 客户端按语义筛选异常类型，避免魔法数字，含 Description）。
+- `ParcelExceptionType.cs`：包裹异常类型对外合同枚举（与 Domain.ParcelExceptionType 数值一一对应，供 API 客户端按语义筛选异常类型，避免魔法数字，含 Description）。
 - `ParcelUpdateOperation.cs`：Parcel 更新操作类型枚举（MarkCompleted=1/MarkSortingException=2/UpdateRequestStatus=3，含 Description）。
 
 #### `Zeye.Sorting.Hub.Contracts/Models/Parcels/`：Parcel 对外查询合同目录

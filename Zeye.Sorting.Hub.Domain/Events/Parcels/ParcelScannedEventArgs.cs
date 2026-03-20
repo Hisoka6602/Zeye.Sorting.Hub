@@ -26,7 +26,7 @@ internal readonly record struct ParcelScannedEventArgs {
     public required DateTime ScannedTime { get; init; }
 
     /// <summary>
-    /// 集包号（可为空，无集包场景传空字符串）。
+    /// 集包号（可为空字符串，无集包场景传 string.Empty）。
     /// </summary>
     public required string BagCode { get; init; }
 

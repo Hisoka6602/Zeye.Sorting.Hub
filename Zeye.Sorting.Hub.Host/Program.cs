@@ -287,7 +287,7 @@ public static class ParcelReadOnlyApiRouteExtensions {
         public int? Status { get; init; }
 
         /// <summary>
-        /// 包裹异常类型（对应 ParcelExceptionTypeDto 枚举数值，null 表示不限异常类型）。
+        /// 包裹异常类型（对应 ParcelExceptionType 枚举数值，null 表示不限异常类型）。
         /// </summary>
         public int? ExceptionType { get; init; }
 
