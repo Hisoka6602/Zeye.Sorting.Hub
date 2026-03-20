@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Domain.Enums;
@@ -9,6 +10,7 @@ using Zeye.Sorting.Hub.Domain.Repositories.Models.Filters;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.Paging;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.ReadModels;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.Results;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
@@ -17,6 +19,38 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
 /// Parcel 仓储第一阶段实现。
 /// </summary>
 public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContext>, IParcelRepository {
+    /// <summary>
+    /// 空配置（用于保持默认值读取语义）。
+    /// </summary>
+    private static readonly IConfiguration EmptyConfiguration = new ConfigurationBuilder()
+        .AddInMemoryCollection(new Dictionary<string, string?>())
+        .Build();
+
+    /// <summary>
+    /// 过期清理动作名（用于结构化审计）。
+    /// </summary>
+    private const string RemoveExpiredActionName = "ParcelRepository.RemoveExpired";
+
+    /// <summary>
+    /// 物理删除补偿边界说明。
+    /// </summary>
+    private const string RemoveExpiredCompensationBoundary = "当前为物理删除，仓库未内建自动回滚脚本；采用默认阻断 + dry-run + 审计 + 显式开关的保守治理边界。";
+
+    /// <summary>
+    /// 过期清理隔离器开关配置键。
+    /// </summary>
+    private const string RemoveExpiredEnableGuardConfigKey = "Persistence:RepositoryDangerousActions:ParcelRemoveExpired:Isolator:EnableGuard";
+
+    /// <summary>
+    /// 过期清理允许执行危险动作配置键。
+    /// </summary>
+    private const string RemoveExpiredAllowExecutionConfigKey = "Persistence:RepositoryDangerousActions:ParcelRemoveExpired:Isolator:AllowDangerousActionExecution";
+
+    /// <summary>
+    /// 过期清理 dry-run 配置键。
+    /// </summary>
+    private const string RemoveExpiredDryRunConfigKey = "Persistence:RepositoryDangerousActions:ParcelRemoveExpired:Isolator:DryRun";
+
     /// <summary>
     /// 邻近查询最大返回条数（单侧）。
     /// </summary>
@@ -33,12 +67,53 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     private const int MaxExpiredDeleteCountPerCall = 10000;
 
     /// <summary>
+    /// 是否启用过期清理危险动作守卫。
+    /// </summary>
+    private readonly bool _removeExpiredEnableGuard;
+
+    /// <summary>
+    /// 是否允许执行过期清理危险动作。
+    /// </summary>
+    private readonly bool _removeExpiredAllowDangerousActionExecution;
+
+    /// <summary>
+    /// 是否启用过期清理 dry-run。
+    /// </summary>
+    private readonly bool _removeExpiredDryRun;
+
+    /// <summary>
     /// 创建 ParcelRepository。
     /// </summary>
     public ParcelRepository(
         IDbContextFactory<SortingHubDbContext> contextFactory,
         ILogger<ParcelRepository> logger)
+        : this(contextFactory, logger, EmptyConfiguration) {
+    }
+
+    /// <summary>
+    /// 创建 ParcelRepository（带配置的危险动作隔离能力）。
+    /// </summary>
+    public ParcelRepository(
+        IDbContextFactory<SortingHubDbContext> contextFactory,
+        ILogger<ParcelRepository> logger,
+        IConfiguration? configuration)
         : base(contextFactory, logger) {
+        var effectiveConfiguration = configuration ?? EmptyConfiguration;
+        // 步骤 1：守卫开关默认开启（保守默认值，避免危险动作默认放开）。
+        _removeExpiredEnableGuard = AutoTuningConfigurationHelper.GetBoolOrDefault(
+            effectiveConfiguration,
+            RemoveExpiredEnableGuardConfigKey,
+            true);
+        // 步骤 2：危险动作执行默认关闭（仅显式放开时才允许真实删除）。
+        _removeExpiredAllowDangerousActionExecution = AutoTuningConfigurationHelper.GetBoolOrDefault(
+            effectiveConfiguration,
+            RemoveExpiredAllowExecutionConfigKey,
+            false);
+        // 步骤 3：dry-run 默认开启，确保未显式放开前只审计不落地。
+        _removeExpiredDryRun = AutoTuningConfigurationHelper.GetBoolOrDefault(
+            effectiveConfiguration,
+            RemoveExpiredDryRunConfigKey,
+            true);
     }
 
     /// <summary>
@@ -207,14 +282,53 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     }
 
     /// <summary>
-    /// 按创建时间删除过期包裹，返回删除条数。
+    /// 按创建时间清理过期包裹（危险动作：受隔离器开关、dry-run 与审计约束）。
     /// </summary>
-    public async Task<RepositoryResult<int>> RemoveExpiredAsync(DateTime createdBefore, CancellationToken cancellationToken) {
+    public async Task<RepositoryResult<DangerousBatchActionResult>> RemoveExpiredAsync(DateTime createdBefore, CancellationToken cancellationToken) {
         try {
             await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
+            // 步骤 1：先受控评估本次动作决策（默认阻断且默认 dry-run，避免误删）。
+            var isolationDecision = ActionIsolationPolicy.Evaluate(
+                _removeExpiredEnableGuard,
+                _removeExpiredAllowDangerousActionExecution,
+                _removeExpiredDryRun,
+                dangerousAction: true,
+                isRollback: false);
+
+            // 步骤 2：先统计计划处理量（遵循单次上限），用于阻断/dry-run/执行三种分支统一审计。
+            var plannedCount = await CountPlannedExpiredAsync(db, createdBefore, cancellationToken);
+
+            if (isolationDecision == ActionIsolationDecision.BlockedByGuard) {
+                EmitRemoveExpiredAuditLog(
+                    createdBefore,
+                    plannedCount,
+                    executedCount: 0,
+                    dryRun: false,
+                    blockedByGuard: true,
+                    reason: "blocked-by-guard");
+                return RepositoryResult<DangerousBatchActionResult>.Success(BuildDangerousBatchActionResult(
+                    isolationDecision,
+                    plannedCount,
+                    executedCount: 0));
+            }
+
+            if (isolationDecision == ActionIsolationDecision.DryRunOnly) {
+                EmitRemoveExpiredAuditLog(
+                    createdBefore,
+                    plannedCount,
+                    executedCount: 0,
+                    dryRun: true,
+                    blockedByGuard: false,
+                    reason: "dry-run");
+                return RepositoryResult<DangerousBatchActionResult>.Success(BuildDangerousBatchActionResult(
+                    isolationDecision,
+                    plannedCount,
+                    executedCount: 0));
+            }
+
             var totalDeleted = 0;
 
-            // 步骤 1：循环按批次拉取待删除记录，避免一次性加载过大数据集。
+            // 步骤 3：按批次真实删除，保留单次上限保护，避免长事务与大批量误删风险。
             while (totalDeleted < MaxExpiredDeleteCountPerCall) {
                 var remainingDeleteBudget = MaxExpiredDeleteCountPerCall - totalDeleted;
                 var currentBatchSize = Math.Min(remainingDeleteBudget, ExpiredDeleteBatchSize);
@@ -228,13 +342,13 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
                     break;
                 }
 
-                // 步骤 2：通过 EF 跟踪删除当前批次并立即提交，缩短事务占用时间。
+                // 步骤 4：通过 EF 跟踪删除当前批次并立即提交，缩短事务占用时间。
                 db.Set<Parcel>().RemoveRange(expiredBatch);
                 await db.SaveChangesAsync(cancellationToken);
                 totalDeleted += expiredBatch.Count;
             }
 
-            // 步骤 3：如果触达上限则记录告警，防止误调用造成大范围清理。
+            // 步骤 5：如果触达上限则记录告警，防止误调用造成大范围清理。
             if (totalDeleted >= MaxExpiredDeleteCountPerCall) {
                 Logger.LogWarning(
                     "删除过期包裹触达单次上限，TotalDeleted={TotalDeleted}, CreatedBefore={CreatedBefore}, Limit={DeleteLimit}",
@@ -243,16 +357,96 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
                     MaxExpiredDeleteCountPerCall);
             }
 
-            return RepositoryResult<int>.Success(totalDeleted);
+            EmitRemoveExpiredAuditLog(
+                createdBefore,
+                plannedCount,
+                executedCount: totalDeleted,
+                dryRun: false,
+                blockedByGuard: false,
+                reason: "executed");
+            return RepositoryResult<DangerousBatchActionResult>.Success(BuildDangerousBatchActionResult(
+                isolationDecision,
+                plannedCount,
+                executedCount: totalDeleted));
         }
         catch (OperationCanceledException ex) {
             Logger.LogWarning(ex, "删除过期包裹操作被取消，CreatedBefore={CreatedBefore}", createdBefore);
-            return RepositoryResult<int>.Fail("操作已取消");
+            EmitRemoveExpiredAuditLog(
+                createdBefore,
+                plannedCount: 0,
+                executedCount: 0,
+                dryRun: false,
+                blockedByGuard: false,
+                reason: "cancelled");
+            return RepositoryResult<DangerousBatchActionResult>.Fail("操作已取消");
         }
         catch (Exception ex) {
             Logger.LogError(ex, "删除过期包裹失败，CreatedBefore={CreatedBefore}", createdBefore);
-            return RepositoryResult<int>.Fail("删除过期包裹失败");
+            EmitRemoveExpiredAuditLog(
+                createdBefore,
+                plannedCount: 0,
+                executedCount: 0,
+                dryRun: false,
+                blockedByGuard: false,
+                reason: $"failed:{ex.Message}");
+            return RepositoryResult<DangerousBatchActionResult>.Fail("删除过期包裹失败");
         }
+    }
+
+    /// <summary>
+    /// 统计过期清理计划量（受单次上限保护）。
+    /// </summary>
+    private static async Task<int> CountPlannedExpiredAsync(
+        SortingHubDbContext db,
+        DateTime createdBefore,
+        CancellationToken cancellationToken) {
+        // 步骤 1：统计总候选量（不触发真实删除）。
+        var totalCandidateCount = await db.Set<Parcel>()
+            .AsNoTracking()
+            .Where(x => x.CreatedTime < createdBefore)
+            .CountAsync(cancellationToken);
+        // 步骤 2：按单次上限裁剪为本次计划处理量。
+        return Math.Min(totalCandidateCount, MaxExpiredDeleteCountPerCall);
+    }
+
+    /// <summary>
+    /// 构建过期清理危险动作结果。
+    /// </summary>
+    private static DangerousBatchActionResult BuildDangerousBatchActionResult(
+        ActionIsolationDecision decision,
+        int plannedCount,
+        int executedCount) {
+        return new DangerousBatchActionResult {
+            ActionName = RemoveExpiredActionName,
+            Decision = decision,
+            PlannedCount = plannedCount,
+            ExecutedCount = executedCount,
+            IsDryRun = decision == ActionIsolationDecision.DryRunOnly,
+            IsBlockedByGuard = decision == ActionIsolationDecision.BlockedByGuard,
+            CompensationBoundary = RemoveExpiredCompensationBoundary
+        };
+    }
+
+    /// <summary>
+    /// 输出过期清理动作结构化审计日志。
+    /// </summary>
+    private void EmitRemoveExpiredAuditLog(
+        DateTime createdBefore,
+        int plannedCount,
+        int executedCount,
+        bool dryRun,
+        bool blockedByGuard,
+        string reason) {
+        Logger.LogInformation(
+            "仓储危险动作审计：ActionName={ActionName}, CreatedBefore={CreatedBefore}, PlannedCount={PlannedCount}, ExecutedCount={ExecutedCount}, DryRun={DryRun}, BlockedByGuard={BlockedByGuard}, CompensationBoundary={CompensationBoundary}, Reason={Reason}",
+            RemoveExpiredActionName,
+            createdBefore,
+            plannedCount,
+            executedCount,
+            dryRun,
+            blockedByGuard,
+            RemoveExpiredCompensationBoundary,
+            reason);
     }
 
     /// <summary>

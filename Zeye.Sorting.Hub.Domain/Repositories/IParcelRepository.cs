@@ -90,9 +90,9 @@ namespace Zeye.Sorting.Hub.Domain.Repositories {
         Task<RepositoryResult> RemoveAsync(Parcel parcel, CancellationToken cancellationToken);
 
         /// <summary>
-        /// 按创建时间删除过期包裹，返回删除条数。
+        /// 按创建时间清理过期包裹（危险动作：受隔离器开关、dry-run 与审计约束）。
         /// </summary>
-        Task<RepositoryResult<int>> RemoveExpiredAsync(DateTime createdBefore, CancellationToken cancellationToken);
+        Task<RepositoryResult<DangerousBatchActionResult>> RemoveExpiredAsync(DateTime createdBefore, CancellationToken cancellationToken);
 
         /// <summary>
         /// 批量新增包裹聚合。
