@@ -10,12 +10,27 @@ using Zeye.Sorting.Hub.Domain.Repositories.Models.Paging;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.ReadModels;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 
-namespace Zeye.Sorting.Hub.Infrastructure.Repositories;
+namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
 
 /// <summary>
 /// Parcel 仓储第一阶段实现。
 /// </summary>
 public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContext>, IParcelRepository {
+    /// <summary>
+    /// 邻近查询最大返回条数（单侧）。
+    /// </summary>
+    private const int MaxAdjacentCountPerSide = 200;
+
+    /// <summary>
+    /// 过期数据分批删除批次大小。
+    /// </summary>
+    private const int ExpiredDeleteBatchSize = 1000;
+
+    /// <summary>
+    /// 单次调用过期删除最大条数保护阈值。
+    /// </summary>
+    private const int MaxExpiredDeleteCountPerCall = 10000;
+
     /// <summary>
     /// 创建 ParcelRepository。
     /// </summary>
@@ -73,9 +88,19 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
             throw new ArgumentNullException(nameof(pageRequest));
         }
 
-        ValidateQueryFilter(filter);
-
-        return ExecutePagedQueryAsync(query => ApplyFilter(query, filter), pageRequest, cancellationToken);
+        try {
+            ValidateQueryFilter(filter);
+            return ExecutePagedQueryAsync(query => ApplyFilter(query, filter), pageRequest, cancellationToken);
+        }
+        catch (ValidationException ex) {
+            Logger.LogWarning(
+                ex,
+                "分页查询包裹摘要参数校验失败，Filter={@Filter}, PageNumber={PageNumber}, PageSize={PageSize}",
+                filter,
+                pageRequest.PageNumber,
+                pageRequest.PageSize);
+            throw;
+        }
     }
 
     /// <summary>
@@ -143,8 +168,8 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
         int beforeCount,
         int afterCount,
         CancellationToken cancellationToken) {
-        var normalizedBeforeCount = beforeCount < 0 ? 0 : beforeCount;
-        var normalizedAfterCount = afterCount < 0 ? 0 : afterCount;
+        var normalizedBeforeCount = NormalizeAdjacentCount(beforeCount);
+        var normalizedAfterCount = NormalizeAdjacentCount(afterCount);
 
         try {
             await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
@@ -225,21 +250,38 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     public async Task<int> RemoveExpiredAsync(DateTime createdBefore, CancellationToken cancellationToken) {
         try {
             await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
+            var totalDeleted = 0;
 
-            // 步骤 1：先按条件加载待删除实体。
-            var expiredParcels = await db.Set<Parcel>()
-                .Where(x => x.CreatedTime < createdBefore)
-                .ToListAsync(cancellationToken);
+            // 步骤 1：循环按批次拉取待删除记录，避免一次性加载过大数据集。
+            while (totalDeleted < MaxExpiredDeleteCountPerCall) {
+                var remainingDeleteBudget = MaxExpiredDeleteCountPerCall - totalDeleted;
+                var currentBatchSize = Math.Min(remainingDeleteBudget, ExpiredDeleteBatchSize);
 
-            if (expiredParcels.Count == 0) {
-                return 0;
+                var expiredBatch = await db.Set<Parcel>()
+                    .Where(x => x.CreatedTime < createdBefore)
+                    .Take(currentBatchSize)
+                    .ToListAsync(cancellationToken);
+
+                if (expiredBatch.Count == 0) {
+                    break;
+                }
+
+                // 步骤 2：通过 EF 跟踪删除当前批次并立即提交，缩短事务占用时间。
+                db.Set<Parcel>().RemoveRange(expiredBatch);
+                await db.SaveChangesAsync(cancellationToken);
+                totalDeleted += expiredBatch.Count;
             }
 
-            // 步骤 2：统一通过 EF 跟踪删除，避免直接 SQL 批量删除扩散风险。
-            db.Set<Parcel>().RemoveRange(expiredParcels);
-            await db.SaveChangesAsync(cancellationToken);
+            // 步骤 3：如果触达上限则记录告警，防止误调用造成大范围清理。
+            if (totalDeleted >= MaxExpiredDeleteCountPerCall) {
+                Logger.LogWarning(
+                    "删除过期包裹触达单次上限，TotalDeleted={TotalDeleted}, CreatedBefore={CreatedBefore}, Limit={DeleteLimit}",
+                    totalDeleted,
+                    createdBefore,
+                    MaxExpiredDeleteCountPerCall);
+            }
 
-            return expiredParcels.Count;
+            return totalDeleted;
         }
         catch (Exception ex) {
             Logger.LogError(ex, "删除过期包裹失败，CreatedBefore={CreatedBefore}", createdBefore);
@@ -363,6 +405,17 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     }
 
     /// <summary>
+    /// 归一化邻近查询条数，限制单侧最大返回量。
+    /// </summary>
+    private static int NormalizeAdjacentCount(int count) {
+        if (count <= 0) {
+            return 0;
+        }
+
+        return count > MaxAdjacentCountPerSide ? MaxAdjacentCountPerSide : count;
+    }
+
+    /// <summary>
     /// Parcel 摘要投影表达式。
     /// </summary>
     private static readonly Expression<Func<Parcel, ParcelSummaryReadModel>> SelectSummaryExpression = x => new ParcelSummaryReadModel {
@@ -397,4 +450,5 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
         HasVideos = x.HasVideos,
         Coordinate = x.Coordinate
     };
+}
 }

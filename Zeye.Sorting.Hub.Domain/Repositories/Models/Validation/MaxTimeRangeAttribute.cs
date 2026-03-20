@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace Zeye.Sorting.Hub.Domain.Repositories.Models.Validation;
+namespace Zeye.Sorting.Hub.Domain.Repositories.Models.Validation {
 
 /// <summary>
 /// 限制起止时间字段最大时间跨度的校验特性。
@@ -47,8 +47,8 @@ public sealed class MaxTimeRangeAttribute : ValidationAttribute {
             return new ValidationResult($"时间跨度校验字段不存在：{_startPropertyName}/{_endPropertyName}");
         }
 
-        var startValue = startProperty.GetValue(value) as DateTime?;
-        var endValue = endProperty.GetValue(value) as DateTime?;
+        var startValue = ConvertToNullableDateTime(startProperty.GetValue(value));
+        var endValue = ConvertToNullableDateTime(endProperty.GetValue(value));
 
         if (!startValue.HasValue || !endValue.HasValue) {
             return ValidationResult.Success;
@@ -65,4 +65,16 @@ public sealed class MaxTimeRangeAttribute : ValidationAttribute {
 
         return ValidationResult.Success;
     }
+
+    /// <summary>
+    /// 将属性值转换为可空本地时间。
+    /// </summary>
+    /// <param name="propertyValue">待转换的属性值，可能为 DateTime 或其他类型。</param>
+    private static DateTime? ConvertToNullableDateTime(object? propertyValue) {
+        return propertyValue switch {
+            DateTime dateTime => dateTime,
+            _ => null
+        };
+    }
+}
 }

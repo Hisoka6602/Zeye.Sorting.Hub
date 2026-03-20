@@ -1,7 +1,7 @@
 using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.Validation;
 
-namespace Zeye.Sorting.Hub.Domain.Repositories.Models.Filters;
+namespace Zeye.Sorting.Hub.Domain.Repositories.Models.Filters {
 
 /// <summary>
 /// Parcel 列表查询过滤参数（第一阶段最小集合）。
@@ -47,4 +47,5 @@ public sealed record ParcelQueryFilter {
     /// 扫码结束时间（含边界）。
     /// </summary>
     public DateTime? ScannedTimeEnd { get; init; }
+}
 }
