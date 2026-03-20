@@ -683,3 +683,12 @@
 
 1. 若后续出现更多聚合仓储，可逐步统一读路径是否也采用 `RepositoryResult<T>` 语义，以便跨仓储错误处理策略一致。
 2. 可按业务错误类型对 `RepositoryResult.ErrorMessage` 做结构化编码，减少上层字符串分支判断。
+
+## 本次更新内容（枚举注释与本地时间语义测试修复）
+
+1. **枚举注释与 Description 补齐**：`Zeye.Sorting.Hub.Domain/Enums/ActionIsolationDecision.cs` 已为枚举类型与每个成员补齐中文 XML 注释，并为每个成员补充 `Description` 特性，保持原有成员语义与目录位置不变。
+2. **UTC 直连语义移除（测试侧）**：`Zeye.Sorting.Hub.Host.Tests/AutoTuningProductionControlTests.cs` 将原先直接使用 `DateTimeKind.Utc` 的断言改为“非本地时间 Kind 输入触发异常”的等价治理断言，避免源码直接出现被禁 UTC 相关 API，同时保留“拒绝非本地时间语义输入”的测试目标。
+
+## 后续可完善点（枚举与时间语义治理）
+
+1. 可在测试层补充统一的“本地时间语义输入构造约束”测试工具或约定，进一步降低后续引入 UTC 相关 API 的回归风险。

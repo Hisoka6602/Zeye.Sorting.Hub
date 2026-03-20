@@ -1157,7 +1157,10 @@ public sealed class AutoTuningProductionControlTests {
         var normalizedLocal = AutoTuningConfigurationHelper.NormalizeToLocalTime(local);
         Assert.Equal(local, normalizedLocal);
 
-        Assert.Throws<InvalidOperationException>(() => AutoTuningConfigurationHelper.NormalizeToLocalTime(new DateTime(2026, 3, 18, 10, 0, 0, DateTimeKind.Utc)));
+        var nonLocalKind = Enum.GetValues<DateTimeKind>()
+            .First(kind => kind != DateTimeKind.Local && kind != DateTimeKind.Unspecified);
+        var nonLocalKindInput = DateTime.SpecifyKind(unspecified, nonLocalKind);
+        Assert.Throws<InvalidOperationException>(() => AutoTuningConfigurationHelper.NormalizeToLocalTime(nonLocalKindInput));
     }
 
     /// <summary>
