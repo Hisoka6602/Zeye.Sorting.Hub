@@ -3,6 +3,7 @@ using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.Filters;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.Paging;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.ReadModels;
+using Zeye.Sorting.Hub.Domain.Repositories.Models.Results;
 
 namespace Zeye.Sorting.Hub.Domain.Repositories {
 
@@ -76,26 +77,26 @@ namespace Zeye.Sorting.Hub.Domain.Repositories {
         /// <summary>
         /// 新增包裹聚合。
         /// </summary>
-        Task AddAsync(Parcel parcel, CancellationToken cancellationToken);
+        Task<RepositoryResult> AddAsync(Parcel parcel, CancellationToken cancellationToken);
 
         /// <summary>
         /// 更新包裹聚合。
         /// </summary>
-        Task UpdateAsync(Parcel parcel, CancellationToken cancellationToken);
+        Task<RepositoryResult> UpdateAsync(Parcel parcel, CancellationToken cancellationToken);
 
         /// <summary>
         /// 删除包裹聚合。
         /// </summary>
-        Task RemoveAsync(Parcel parcel, CancellationToken cancellationToken);
+        Task<RepositoryResult> RemoveAsync(Parcel parcel, CancellationToken cancellationToken);
 
         /// <summary>
         /// 按创建时间删除过期包裹，返回删除条数。
         /// </summary>
-        Task<int> RemoveExpiredAsync(DateTime createdBefore, CancellationToken cancellationToken);
+        Task<RepositoryResult<int>> RemoveExpiredAsync(DateTime createdBefore, CancellationToken cancellationToken);
 
         /// <summary>
         /// 批量新增包裹聚合。
         /// </summary>
-        Task AddRangeAsync(IReadOnlyCollection<Parcel> parcels, CancellationToken cancellationToken);
+        Task<RepositoryResult> AddRangeAsync(IReadOnlyCollection<Parcel> parcels, CancellationToken cancellationToken);
     }
 }

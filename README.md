@@ -76,6 +76,8 @@
 │   │       │   └── PageResult.cs（通用分页结果模型）
 │   │       ├── ReadModels（查询读模型目录）
 │   │       │   └── ParcelSummaryReadModel.cs（Parcel 列表摘要读模型）
+│   │       ├── Results（仓储结果模型目录）
+│   │       │   └── RepositoryResult.cs（仓储统一结果模型，含泛型版本）
 │   │       └── Validation（查询校验模型目录）
 │   │           └── MaxTimeRangeAttribute.cs（查询时间跨度限制特性，默认不超过 3 个月）
 │   └── Zeye.Sorting.Hub.Domain.csproj（Domain 项目定义）
@@ -145,8 +147,7 @@
 │   ├── Repositories（仓储基类与结果模型目录）
 │   │   ├── MemoryCacheRepositoryBase.cs（缓存仓储基类）
 │   │   ├── ParcelRepository.cs（Parcel 仓储第一阶段实现）
-│   │   ├── RepositoryBase.cs（通用仓储基类）
-│   │   └── RepositoryResult.cs（仓储调用结果封装模型）
+│   │   └── RepositoryBase.cs（通用仓储基类）
 │   └── Zeye.Sorting.Hub.Infrastructure.csproj（Infrastructure 项目定义）
 ├── Zeye.Sorting.Hub.Realtime（实时通信子域，占位工程）
 │   ├── Class1.cs（占位类，预留实时推送/订阅能力）
@@ -276,6 +277,9 @@
 ###### `Zeye.Sorting.Hub.Domain/Repositories/Models/ReadModels/`：查询读模型目录
 - `ParcelSummaryReadModel.cs`：Parcel 列表摘要读模型（包含 Parcel 全部扁平化字段，用于分页列表）。
 
+###### `Zeye.Sorting.Hub.Domain/Repositories/Models/Results/`：仓储结果模型目录
+- `RepositoryResult.cs`：仓储统一结果模型（`RepositoryResult` / `RepositoryResult<T>`），供 Domain 契约与 Infrastructure 实现共用，避免重复类型。
+
 ###### `Zeye.Sorting.Hub.Domain/Repositories/Models/Validation/`：查询校验模型目录
 - `MaxTimeRangeAttribute.cs`：时间范围校验特性（限制起止时间跨度，默认不超过 3 个月）。
 
@@ -355,9 +359,8 @@
 
 #### `Zeye.Sorting.Hub.Infrastructure/Repositories/`：仓储基类与结果模型目录
 - `MemoryCacheRepositoryBase.cs`：带内存缓存失效逻辑的仓储基类。
-- `ParcelRepository.cs`：Parcel 仓储第一阶段实现（复用 `RepositoryBase` 与 `IDbContextFactory`，提供基础读写、分页查询、邻近查询与过期清理）。
+- `ParcelRepository.cs`：Parcel 仓储第一阶段实现（复用 `RepositoryBase` 与 `IDbContextFactory`，提供基础读写、分页查询、邻近查询与过期清理；写操作统一返回共享仓储结果模型）。
 - `RepositoryBase.cs`：通用仓储基类（增删改查 + 自动持久化实现）。
-- `RepositoryResult.cs`：仓储调用结果封装模型。
 
 ### `Zeye.Sorting.Hub.Realtime/`：实时通信子域（当前为占位工程）
 - `Zeye.Sorting.Hub.Realtime.csproj`：Realtime 项目定义。
@@ -667,3 +670,16 @@
 1. 在不破坏当前契约的前提下，为分页列表逐步补充更细粒度排序/筛选选项（保持 summary 模型边界不变）。
 2. 当 Application/Contracts 层正式接入查询用例后，再按阶段引入 DTO 映射与用例级验证，避免在仓储阶段过度扩展。
 3. 第二阶段再评估统计/报表类能力收敛位置（建议独立读模型查询服务），避免在聚合仓储中混入报表职责。
+
+## 本次更新内容（仓储 Result 类型统一收敛）
+
+1. **统一仓储结果类型**：将 `RepositoryResult/RepositoryResult<T>` 迁移到 `Zeye.Sorting.Hub.Domain/Repositories/Models/Results/RepositoryResult.cs`，作为 Domain 与 Infrastructure 共用结果模型。
+2. **移除重复结果模型**：删除 `Zeye.Sorting.Hub.Infrastructure/Repositories/RepositoryResult.cs`，仓储体系不再保留并行 Result 抽象。
+3. **统一写操作契约**：`IParcelRepository` 的 `AddAsync/UpdateAsync/RemoveAsync/AddRangeAsync` 统一返回 `Task<RepositoryResult>`，`RemoveExpiredAsync` 统一返回 `Task<RepositoryResult<int>>`。
+4. **去除无意义桥接与重复日志**：`ParcelRepository` 移除显式接口桥接抛异常逻辑，直接复用 `RepositoryBase` 返回语义；`RemoveExpiredAsync` 改为同一 Result 风格并保留批次删除 + 上限告警保护。
+5. **测试与 DI 回归同步**：`ParcelRepositoryTests` 新增 `IParcelRepository` DI 解析用例，并将写操作断言统一到共享 `RepositoryResult` 契约。
+
+## 可继续完善的内容（仓储 Result 收敛后）
+
+1. 若后续出现更多聚合仓储，可逐步统一读路径是否也采用 `RepositoryResult<T>` 语义，以便跨仓储错误处理策略一致。
+2. 可按业务错误类型对 `RepositoryResult.ErrorMessage` 做结构化编码，减少上层字符串分支判断。
