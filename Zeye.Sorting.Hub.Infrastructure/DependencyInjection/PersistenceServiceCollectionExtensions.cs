@@ -15,6 +15,7 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding.Enums;
 
 namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
 
@@ -401,15 +402,5 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             Type EntityType,
             ParcelAggregateShardingRuleKind RuleKind,
             Action<IShardingBuilder, DateTime, int, ExpandByDateMode> Register);
-
-        /// <summary>
-        /// Parcel 聚合分表规则类型。
-        /// </summary>
-        private enum ParcelAggregateShardingRuleKind {
-            /// <summary>按日期分表规则。</summary>
-            Date = 0,
-            /// <summary>按哈希分表规则。</summary>
-            Hash = 1
-        }
     }
 }

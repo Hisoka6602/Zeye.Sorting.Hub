@@ -140,9 +140,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         public async Task StartAsync(CancellationToken cancellationToken) {
             try {
                 AuditShardingGovernance();
-                await ValidateShardingGovernanceGuardAsync(cancellationToken);
 
                 await _retryPolicy.ExecuteAsync(async (ct) => {
+                    await ValidateShardingGovernanceGuardAsync(ct);
                     await using var scope = _serviceProvider.CreateAsyncScope();
                     var db = scope.ServiceProvider.GetRequiredService<SortingHubDbContext>();
 

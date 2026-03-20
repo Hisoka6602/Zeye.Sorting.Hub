@@ -113,6 +113,7 @@
 │   │   │   ├── DatabaseProviderExceptionHelper.cs（数据库异常错误码提取与方言共享索引构造辅助类）
 │   │   │   ├── IDatabaseDialect.cs（数据库方言接口）
 │   │   │   ├── IShardingPhysicalTableProbe.cs（分表物理表存在性探测接口，仅负责“表是否存在”）
+│   │   │   ├── IBatchShardingPhysicalTableProbe.cs（批量分表物理表存在性探测接口，支持一次性探测多张表是否存在）
 │   │   │   ├── MySqlDialect.cs（MySQL 方言实现）
 │   │   │   └── SqlServerDialect.cs（SQL Server 方言实现）
 │   │   ├── DesignTime（EF 设计时支持目录）
@@ -286,6 +287,7 @@
 - `DatabaseProviderExceptionHelper.cs`：数据库异常错误码提取与方言共享索引列归一化/索引名构造辅助类。
 - `IDatabaseDialect.cs`：数据库方言抽象接口。
 - `IShardingPhysicalTableProbe.cs`：分表物理表存在性探测抽象（最小职责：判断目标物理表是否存在）。
+- `IBatchShardingPhysicalTableProbe.cs`：分表物理表批量探测抽象（最小职责：一次性返回缺失物理表集合）。
 - `MySqlDialect.cs`：MySQL 方言实现（自动调优 SQL + INFORMATION_SCHEMA.TABLES 物理分表探测）。
 - `SqlServerDialect.cs`：SQL Server 方言实现（自动调优 SQL + sys.tables/sys.schemas 物理分表探测）。
 
@@ -580,7 +582,7 @@
 
 ## 本次更新内容（自动分表治理物理探测 + probe 扩展点）
 
-1. **新增 PerDay 物理分表存在性探测能力**：在 `Infrastructure/Persistence/DatabaseDialects/` 新增最小职责接口 `IShardingPhysicalTableProbe`，并由 `MySqlDialect`（`INFORMATION_SCHEMA.TABLES`）与 `SqlServerDialect`（`sys.tables + sys.schemas`）分别实现 provider 差异化探测，避免在 HostedService 中拼接 provider SQL。
+1. **新增 PerDay 物理分表存在性探测能力**：在 `Infrastructure/Persistence/DatabaseDialects/` 新增最小职责接口 `IShardingPhysicalTableProbe` 与批量探测接口 `IBatchShardingPhysicalTableProbe`，并由 `MySqlDialect`（`INFORMATION_SCHEMA.TABLES`）与 `SqlServerDialect`（`sys.tables + sys.schemas`）分别实现 provider 差异化探测，避免在 HostedService 中拼接 provider SQL。
 2. **分表治理守卫升级为双重校验**：`DatabaseInitializerHostedService` 在既有 `PrebuiltPerDayDates` 配置清单校验通过后，继续按 PerDay 规则生成预期物理日表名并执行真实存在性探测；当出现“配置已声明但物理表缺失”时阻断启动并输出明确错误语义。
 3. **保持治理边界不放开自动执行**：仍严格保持 `CreateShardingTableOnStarting=false` 场景下“仅探测 + 阻断 + 审计日志”，不自动建表、不自动迁移、不自动修复；finer-granularity 的 `FutureExecutable` 仍仅为未来可受控接入占位。
 4. **执行计划回归 probe 扩展点整理**：在 `IExecutionPlanRegressionProbe` 体系新增 provider-aware 扩展约定（`ExecutionPlanProbeRequest` + `IProviderAwareExecutionPlanRegressionProbe`），为未来真实 EXPLAIN/SHOWPLAN 探针预留接入面；默认依赖注入保持 `LoggingOnlyExecutionPlanRegressionProbe` 不变。
