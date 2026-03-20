@@ -13,6 +13,7 @@ using Zeye.Sorting.Hub.Host.Enums;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
+using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding.Enums;
 
@@ -82,6 +83,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private readonly ParcelShardingStrategyDecision _parcelShardingStrategyDecision;
         /// <summary>Parcel 分表策略配置校验错误集合。</summary>
         private readonly IReadOnlyList<string> _parcelShardingStrategyValidationErrors;
+        /// <summary>物理分表存在性探测器。</summary>
+        private readonly IShardingPhysicalTableProbe _shardingPhysicalTableProbe;
 
         /// <summary>
         /// 字段：_retryPolicy。
@@ -92,6 +95,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             IServiceProvider serviceProvider,
             ILogger<DatabaseInitializerHostedService> logger,
             IDatabaseDialect dialect,
+            IShardingPhysicalTableProbe shardingPhysicalTableProbe,
             IHostEnvironment hostEnvironment,
             IConfiguration configuration) {
             _serviceProvider = serviceProvider;
@@ -116,6 +120,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             var parcelShardingStrategyEvaluation = ParcelShardingStrategyEvaluator.Evaluate(configuration);
             _parcelShardingStrategyDecision = parcelShardingStrategyEvaluation.Decision;
             _parcelShardingStrategyValidationErrors = parcelShardingStrategyEvaluation.ValidationErrors;
+            _shardingPhysicalTableProbe = shardingPhysicalTableProbe;
 
             _retryPolicy = Policy
                 .Handle<Exception>(ex => ex is not OperationCanceledException)
@@ -135,9 +140,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         public async Task StartAsync(CancellationToken cancellationToken) {
             try {
                 AuditShardingGovernance();
-                ValidateShardingGovernanceGuard();
 
                 await _retryPolicy.ExecuteAsync(async (ct) => {
+                    await ValidateShardingGovernanceGuardAsync(ct);
                     await using var scope = _serviceProvider.CreateAsyncScope();
                     var db = scope.ServiceProvider.GetRequiredService<SortingHubDbContext>();
 
@@ -589,7 +594,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// 3) 生产环境且手工预建模式下，结构化阶段列表不能为空；
         /// 4) 当策略生效为 PerDay 且手工预建模式开启时，必须校验预建窗口内目标日表均已预建。
         /// </remarks>
-        private void ValidateShardingGovernanceGuard() {
+        private async Task ValidateShardingGovernanceGuardAsync(CancellationToken cancellationToken) {
             if (_parcelShardingStrategyValidationErrors.Count > 0) {
                 throw new ShardingGovernanceGuardException(
                     $"分表策略配置非法：{string.Join(" | ", _parcelShardingStrategyValidationErrors)}");
@@ -632,6 +637,110 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 throw new ShardingGovernanceGuardException(
                     $"分表治理守卫触发：当前策略已生效为 PerDay，且 {CreateShardingTableOnStartingConfigKey}=false。请先完成目标日表预建并配置 {ShardingPrebuiltPerDayDatesConfigKey}，缺失日期：{string.Join(", ", missingDates)}。");
             }
+
+            var missingPhysicalTables = new List<string>();
+            await using var scope = _serviceProvider.CreateAsyncScope();
+            var db = scope.ServiceProvider.GetRequiredService<SortingHubDbContext>();
+            var perDayShardingBaseTableNames = ResolvePerDayShardingBaseTableNames(db);
+            var expectedPhysicalTables = BuildExpectedPerDayPhysicalTableNames(requiredPrebuiltDates, perDayShardingBaseTableNames);
+            if (_shardingPhysicalTableProbe is IBatchShardingPhysicalTableProbe batchShardingPhysicalTableProbe) {
+                var missingPhysicalTableSet = await batchShardingPhysicalTableProbe.FindMissingTablesAsync(
+                    db,
+                    expectedPhysicalTables,
+                    cancellationToken);
+                missingPhysicalTables.AddRange(missingPhysicalTableSet);
+            }
+            else {
+                var schemaName = ResolvePerDayPhysicalTableProbeSchemaName(_dialect.ProviderName);
+                foreach (var expectedPhysicalTable in expectedPhysicalTables) {
+                    var exists = await _shardingPhysicalTableProbe.ExistsAsync(
+                        db,
+                        schemaName,
+                        expectedPhysicalTable,
+                        cancellationToken);
+                    if (!exists) {
+                        missingPhysicalTables.Add(expectedPhysicalTable);
+                    }
+                }
+            }
+
+            if (missingPhysicalTables.Count > 0) {
+                throw new ShardingGovernanceGuardException(
+                    $"分表治理守卫触发：当前策略已生效为 PerDay，且 {CreateShardingTableOnStartingConfigKey}=false。检测到配置清单已声明预建，但数据库物理表不存在。缺失物理表：{string.Join(", ", missingPhysicalTables)}。");
+            }
+        }
+
+        /// <summary>
+        /// 构建 PerDay 预建窗口对应的目标物理表名集合。
+        /// </summary>
+        /// <param name="requiredPrebuiltDates">窗口内必须预建的日期集合。</param>
+        /// <returns>目标物理表名集合。</returns>
+        /// <remarks>
+        /// 规则说明：
+        /// 1) 复用当前分表治理同源对象（Parcel 主表 + 已注册的日期型值对象表）；
+        /// 2) 物理表名规则与 EFCore.Sharding 的按日扩展语义保持一致：BaseTable_yyyyMMdd；
+        /// 3) 当前仅用于 PerDay 治理探测，不引入自动建表/迁移动作。
+        /// </remarks>
+        internal static IReadOnlyList<string> BuildExpectedPerDayPhysicalTableNames(
+            IReadOnlyList<DateTime> requiredPrebuiltDates,
+            IReadOnlyList<string> perDayShardingBaseTableNames) {
+            ArgumentNullException.ThrowIfNull(requiredPrebuiltDates);
+            ArgumentNullException.ThrowIfNull(perDayShardingBaseTableNames);
+            var expectedPhysicalTables = new List<string>(requiredPrebuiltDates.Count * perDayShardingBaseTableNames.Count);
+            foreach (var requiredDate in requiredPrebuiltDates) {
+                foreach (var baseTableName in perDayShardingBaseTableNames) {
+                    expectedPhysicalTables.Add(BuildPerDayPhysicalTableName(baseTableName, requiredDate));
+                }
+            }
+
+            return expectedPhysicalTables;
+        }
+
+        /// <summary>
+        /// 构建单个按日分表的物理表名。
+        /// </summary>
+        /// <param name="baseTableName">逻辑基础表名。</param>
+        /// <param name="date">本地日期。</param>
+        /// <returns>物理表名。</returns>
+        internal static string BuildPerDayPhysicalTableName(string baseTableName, DateTime date) {
+            return $"{baseTableName}_{date:yyyyMMdd}";
+        }
+
+        /// <summary>
+        /// 解析 PerDay 物理探测使用的 schema。
+        /// </summary>
+        /// <param name="providerName">数据库提供器名称。</param>
+        /// <returns>schema 名称；为空表示方言使用默认语义。</returns>
+        internal static string? ResolvePerDayPhysicalTableProbeSchemaName(string providerName) {
+            return string.Equals(providerName, "SQLServer", StringComparison.OrdinalIgnoreCase) ? "dbo" : null;
+        }
+
+        /// <summary>
+        /// 从 EF 模型解析 PerDay 分表治理的基础逻辑表名清单。
+        /// </summary>
+        /// <param name="dbContext">数据库上下文。</param>
+        /// <returns>基础逻辑表名清单。</returns>
+        internal static IReadOnlyList<string> ResolvePerDayShardingBaseTableNames(SortingHubDbContext dbContext) {
+            ArgumentNullException.ThrowIfNull(dbContext);
+            var baseTableNames = new List<string>(PerDayShardingEntityTypes.Count);
+            foreach (var entityType in PerDayShardingEntityTypes) {
+                var mappedEntityTypes = dbContext.Model
+                    .GetEntityTypes()
+                    .Where(modelEntityType => modelEntityType.ClrType == entityType)
+                    .Select(modelEntityType => modelEntityType.GetTableName())
+                    .Where(static tableName => !string.IsNullOrWhiteSpace(tableName))
+                    .Cast<string>()
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray();
+                if (mappedEntityTypes.Length != 1) {
+                    throw new ShardingGovernanceGuardException(
+                        $"分表治理守卫触发：无法从 EF 模型唯一解析 PerDay 探测目标表，EntityType={entityType.Name}, MatchedCount={mappedEntityTypes.Length}。");
+                }
+
+                baseTableNames.Add(mappedEntityTypes[0]);
+            }
+
+            return baseTableNames;
         }
 
         /// <summary>
@@ -644,6 +753,23 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// </returns>
         internal static bool ShouldEnforcePerDayPrebuildGuard(ParcelShardingStrategyDecision decision) {
             return decision.EffectiveDateMode == ExpandByDateMode.PerDay;
+        }
+
+        /// <summary>
+        /// PerDay 分表治理需要探测的实体类型清单（与分表注册同源）。
+        /// </summary>
+        /// <remarks>
+        /// 当前通过 <see cref="BuildPerDayShardingEntityTypes"/> 从分表注册同源规则动态构造，
+        /// 避免硬编码实体清单导致治理探测与注册规则漂移。
+        /// </remarks>
+        private static readonly IReadOnlyList<Type> PerDayShardingEntityTypes = BuildPerDayShardingEntityTypes();
+
+        /// <summary>
+        /// 从分表注册同源规则动态构建 PerDay 探测实体类型清单。
+        /// </summary>
+        /// <returns>实体类型数组。</returns>
+        private static IReadOnlyList<Type> BuildPerDayShardingEntityTypes() {
+            return PersistenceServiceCollectionExtensions.GetParcelPerDayShardingEntityTypes();
         }
 
         /// <summary>
