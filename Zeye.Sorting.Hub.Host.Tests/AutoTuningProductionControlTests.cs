@@ -2227,6 +2227,9 @@ public sealed class AutoTuningProductionControlTests {
         public IReadOnlyList<string> BuildAutonomousMaintenanceSql(string? schemaName, string tableName, bool inPeakWindow, bool highRisk) => Array.Empty<string>();
     }
 
+    /// <summary>
+    /// 模拟 SQL Server ProviderName 的方言测试桩，用于验证 batch probe 的 schema 透传语义。
+    /// </summary>
     private sealed class TestSqlServerDialect : IDatabaseDialect {
         public string ProviderName => "SQLServer";
         /// <summary>
