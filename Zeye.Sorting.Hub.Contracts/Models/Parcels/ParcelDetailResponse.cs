@@ -10,7 +10,6 @@ public sealed record ParcelDetailResponse : ParcelListItemResponse {
     /// <param name="source">列表项合同。</param>
     [System.Diagnostics.CodeAnalysis.SetsRequiredMembers]
     public ParcelDetailResponse(ParcelListItemResponse source)
-        : base(source) {
-        ArgumentNullException.ThrowIfNull(source);
+        : base(source ?? throw new ArgumentNullException(nameof(source))) {
     }
 }

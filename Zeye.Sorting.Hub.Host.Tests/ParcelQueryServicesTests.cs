@@ -108,8 +108,8 @@ public sealed class ParcelQueryServicesTests {
                     AfterCount = 200
                 },
                 CancellationToken.None);
-            Assert.Equal(100, response.BeforeCount);
-            Assert.Equal(100, response.AfterCount);
+            Assert.Equal(200, response.BeforeCount);
+            Assert.Equal(200, response.AfterCount);
             Assert.Equal(2, response.Items.Count);
             Assert.Equal("BC-ADJ-1", response.Items[0].BarCodes);
             Assert.Equal("BC-ADJ-3", response.Items[1].BarCodes);

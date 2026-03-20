@@ -11,7 +11,7 @@ public sealed class GetAdjacentParcelsQueryService {
     /// <summary>
     /// 邻近单侧最大条数。
     /// </summary>
-    private const int MaxAdjacentCountPerSide = 100;
+    private const int MaxAdjacentCountPerSide = 200;
 
     /// <summary>
     /// NLog 日志器。
