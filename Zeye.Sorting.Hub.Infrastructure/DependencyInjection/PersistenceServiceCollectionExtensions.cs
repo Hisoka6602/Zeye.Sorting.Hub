@@ -11,11 +11,13 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects;
+using Zeye.Sorting.Hub.Domain.Repositories;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding.Enums;
+using Zeye.Sorting.Hub.Infrastructure.Repositories;
 
 namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
 
@@ -108,35 +110,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 }
 
                 // DbContextPool：更低分配、更稳吞吐
-                services.AddDbContextPool<SortingHubDbContext>(static (sp, options) => {
-                    var cfg = sp.GetRequiredService<IConfiguration>();
-                    var interceptor = sp.GetRequiredService<SlowQueryCommandInterceptor>();
-                    var mySqlSessionInterceptor = sp.GetRequiredService<MySqlSessionBootstrapConnectionInterceptor>();
-                    var cs = cfg.GetConnectionString("MySql")!;
-                    var commandTimeoutSeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
-                    var maxRetryCount = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryCount", 5);
-                    var maxRetryDelaySeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryDelaySeconds", 10);
-
-                    // 建议：生产环境可改为固定版本，避免探测失败导致启动失败
-                    var serverVersion = ServerVersion.AutoDetect(cs);
-
-                    options.UseMySql(cs, serverVersion, mySqlOptions => {
-                        // 迁移程序集通常指向 Host 或 Infrastructure，按你迁移放置位置调整
-                        // mySqlOptions.MigrationsAssembly("Zeye.Sorting.Hub.Host");
-                        mySqlOptions.EnableRetryOnFailure(
-                            maxRetryCount: maxRetryCount,
-                            maxRetryDelay: TimeSpan.FromSeconds(maxRetryDelaySeconds),
-                            errorNumbersToAdd: null);
-                        mySqlOptions.CommandTimeout(commandTimeoutSeconds);
-                    });
-
-                    options.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
-                    options.AddInterceptors(interceptor, mySqlSessionInterceptor);
-
-                    // 开发环境建议开启，生产建议关闭
-                    // options.EnableSensitiveDataLogging();
-                    // options.EnableDetailedErrors();
-                });
+                // AddDbContextPool：兼容现有直接注入 SortingHubDbContext 的路径（如 HostedService）。
+                // AddPooledDbContextFactory：供仓储基类通过 IDbContextFactory 按调用创建短生命周期上下文。
+                services.AddDbContextPool<SortingHubDbContext>(ConfigureMySqlDbContextOptions);
+                services.AddPooledDbContextFactory<SortingHubDbContext>(ConfigureMySqlDbContextOptions);
 
                 services.AddEFCoreSharding(shardingBuilder => {
                     shardingBuilder
@@ -159,27 +136,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                     throw new InvalidOperationException("缺少连接字符串：ConnectionStrings:SqlServer");
                 }
 
-                services.AddDbContextPool<SortingHubDbContext>(static (sp, options) => {
-                    var cfg = sp.GetRequiredService<IConfiguration>();
-                    var interceptor = sp.GetRequiredService<SlowQueryCommandInterceptor>();
-                    var cs = cfg.GetConnectionString("SqlServer")!;
-                    var commandTimeoutSeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
-                    var maxRetryCount = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryCount", 5);
-                    var maxRetryDelaySeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryDelaySeconds", 10);
-
-                    options.UseSqlServer(cs, sqlServerOptions => {
-                        // 迁移程序集通常指向 Host 或 Infrastructure，按你迁移放置位置调整
-                        // sqlServerOptions.MigrationsAssembly("Zeye.Sorting.Hub.Host");
-                        sqlServerOptions.EnableRetryOnFailure(
-                            maxRetryCount: maxRetryCount,
-                            maxRetryDelay: TimeSpan.FromSeconds(maxRetryDelaySeconds),
-                            errorNumbersToAdd: null);
-                        sqlServerOptions.CommandTimeout(commandTimeoutSeconds);
-                    });
-
-                    options.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
-                    options.AddInterceptors(interceptor);
-                });
+                // AddDbContextPool：兼容现有直接注入 SortingHubDbContext 的路径（如 HostedService）。
+                // AddPooledDbContextFactory：供仓储基类通过 IDbContextFactory 按调用创建短生命周期上下文。
+                services.AddDbContextPool<SortingHubDbContext>(ConfigureSqlServerDbContextOptions);
+                services.AddPooledDbContextFactory<SortingHubDbContext>(ConfigureSqlServerDbContextOptions);
 
                 services.AddEFCoreSharding(shardingBuilder => {
                     shardingBuilder
@@ -200,10 +160,62 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 throw new InvalidOperationException($"不支持的数据库类型：{provider}，可选值：MySql / SqlServer");
             }
 
-            // 仓储注册（示例）：按你现有 RepositoryBase/MemoryCacheRepositoryBase 的实际泛型/接口进行补齐
-            // services.AddScoped(typeof(IRepository<>), typeof(RepositoryBase<>));
+            services.AddScoped<IParcelRepository, ParcelRepository>();
 
             return services;
+        }
+
+        /// <summary>
+        /// 配置 MySQL 场景下的 DbContext 选项（池化 DbContext 与池化工厂复用同一配置）。
+        /// </summary>
+        private static void ConfigureMySqlDbContextOptions(IServiceProvider sp, DbContextOptionsBuilder options) {
+            var cfg = sp.GetRequiredService<IConfiguration>();
+            var interceptor = sp.GetRequiredService<SlowQueryCommandInterceptor>();
+            var mySqlSessionInterceptor = sp.GetRequiredService<MySqlSessionBootstrapConnectionInterceptor>();
+            var cs = cfg.GetConnectionString("MySql")!;
+            var commandTimeoutSeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
+            var maxRetryCount = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryCount", 5);
+            var maxRetryDelaySeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryDelaySeconds", 10);
+
+            // 建议：生产环境可改为固定版本，避免探测失败导致启动失败
+            var serverVersion = ServerVersion.AutoDetect(cs);
+            options.UseMySql(cs, serverVersion, mySqlOptions => {
+                // 迁移程序集通常指向 Host 或 Infrastructure，按你迁移放置位置调整
+                // mySqlOptions.MigrationsAssembly("Zeye.Sorting.Hub.Host");
+                mySqlOptions.EnableRetryOnFailure(
+                    maxRetryCount: maxRetryCount,
+                    maxRetryDelay: TimeSpan.FromSeconds(maxRetryDelaySeconds),
+                    errorNumbersToAdd: null);
+                mySqlOptions.CommandTimeout(commandTimeoutSeconds);
+            });
+
+            options.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
+            options.AddInterceptors(interceptor, mySqlSessionInterceptor);
+        }
+
+        /// <summary>
+        /// 配置 SQL Server 场景下的 DbContext 选项（池化 DbContext 与池化工厂复用同一配置）。
+        /// </summary>
+        private static void ConfigureSqlServerDbContextOptions(IServiceProvider sp, DbContextOptionsBuilder options) {
+            var cfg = sp.GetRequiredService<IConfiguration>();
+            var interceptor = sp.GetRequiredService<SlowQueryCommandInterceptor>();
+            var cs = cfg.GetConnectionString("SqlServer")!;
+            var commandTimeoutSeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
+            var maxRetryCount = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryCount", 5);
+            var maxRetryDelaySeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryDelaySeconds", 10);
+
+            options.UseSqlServer(cs, sqlServerOptions => {
+                // 迁移程序集通常指向 Host 或 Infrastructure，按你迁移放置位置调整
+                // sqlServerOptions.MigrationsAssembly("Zeye.Sorting.Hub.Host");
+                sqlServerOptions.EnableRetryOnFailure(
+                    maxRetryCount: maxRetryCount,
+                    maxRetryDelay: TimeSpan.FromSeconds(maxRetryDelaySeconds),
+                    errorNumbersToAdd: null);
+                sqlServerOptions.CommandTimeout(commandTimeoutSeconds);
+            });
+
+            options.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
+            options.AddInterceptors(interceptor);
         }
 
         /// <summary>

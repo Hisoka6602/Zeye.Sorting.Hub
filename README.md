@@ -67,7 +67,17 @@
 │   ├── Primitives（领域基础类型目录）
 │   │   └── AuditableEntity.cs（可审计实体基类）
 │   ├── Repositories（领域仓储契约目录）
-│   │   └── IParcelRepository.cs（包裹仓储接口）
+│   │   ├── IParcelRepository.cs（包裹仓储接口）
+│   │   └── Models（Parcel 仓储查询与分页模型目录）
+│   │       ├── Filters（查询过滤模型目录）
+│   │       │   └── ParcelQueryFilter.cs（Parcel 查询过滤模型）
+│   │       ├── Paging（通用分页模型目录）
+│   │       │   ├── PageRequest.cs（通用分页请求模型）
+│   │       │   └── PageResult.cs（通用分页结果模型）
+│   │       ├── ReadModels（查询读模型目录）
+│   │       │   └── ParcelSummaryReadModel.cs（Parcel 列表摘要读模型）
+│   │       └── Validation（查询校验模型目录）
+│   │           └── MaxTimeRangeAttribute.cs（查询时间跨度限制特性，默认不超过 3 个月）
 │   └── Zeye.Sorting.Hub.Domain.csproj（Domain 项目定义）
 ├── Zeye.Sorting.Hub.Host（宿主层）
 │   ├── Enums（宿主层枚举目录）
@@ -86,6 +96,7 @@
 │   └── appsettings.json（默认运行配置（含分表策略结构化 Observation 与 PerDay 预建日期清单示例））
 ├── Zeye.Sorting.Hub.Host.Tests（自动调优行为测试工程）
 │   ├── AutoTuningProductionControlTests.cs（自动调优生产可控能力测试：dry-run/隔离器/告警恢复/普通与严重回归/探针双路径/闭环链路；含分表策略评估与 PerDay 预建守卫联动测试）
+│   ├── ParcelRepositoryTests.cs（Parcel 仓储第一阶段能力测试：分页过滤、详情与邻近查询、写操作与过期清理）
 │   └── Zeye.Sorting.Hub.Host.Tests.csproj（xUnit 测试项目定义）
 ├── Zeye.Sorting.Hub.Infrastructure（基础设施层）
 │   ├── DependencyInjection（依赖注入扩展目录）
@@ -133,6 +144,7 @@
 │   │   └── SortingHubDbContext.cs（EF Core DbContext）
 │   ├── Repositories（仓储基类与结果模型目录）
 │   │   ├── MemoryCacheRepositoryBase.cs（缓存仓储基类）
+│   │   ├── ParcelRepository.cs（Parcel 仓储第一阶段实现）
 │   │   ├── RepositoryBase.cs（通用仓储基类）
 │   │   └── RepositoryResult.cs（仓储调用结果封装模型）
 │   └── Zeye.Sorting.Hub.Infrastructure.csproj（Infrastructure 项目定义）
@@ -250,7 +262,22 @@
 - `AuditableEntity.cs`：可审计实体基类（创建/修改信息等）。
 
 #### `Zeye.Sorting.Hub.Domain/Repositories/`：领域仓储契约目录
-- `IParcelRepository.cs`：包裹仓储接口（当前为占位接口定义）。
+- `IParcelRepository.cs`：包裹仓储接口（第一阶段可落地契约：基础读写、分页查询、邻近查询）。
+
+##### `Zeye.Sorting.Hub.Domain/Repositories/Models/`：Parcel 仓储查询模型目录
+
+###### `Zeye.Sorting.Hub.Domain/Repositories/Models/Filters/`：查询过滤模型目录
+- `ParcelQueryFilter.cs`：Parcel 第一阶段列表过滤参数模型（BagCode、WorkstationName、Status、Chute、扫码时间范围等），并通过特性限制时间跨度默认不超过 3 个月。
+
+###### `Zeye.Sorting.Hub.Domain/Repositories/Models/Paging/`：通用分页模型目录
+- `PageRequest.cs`：通用分页请求参数（含页码/页大小归一化）。
+- `PageResult.cs`：通用分页结果模型（Items、页码、页大小、总数）。
+
+###### `Zeye.Sorting.Hub.Domain/Repositories/Models/ReadModels/`：查询读模型目录
+- `ParcelSummaryReadModel.cs`：Parcel 列表摘要读模型（包含 Parcel 全部扁平化字段，用于分页列表）。
+
+###### `Zeye.Sorting.Hub.Domain/Repositories/Models/Validation/`：查询校验模型目录
+- `MaxTimeRangeAttribute.cs`：时间范围校验特性（限制起止时间跨度，默认不超过 3 个月）。
 
 ### `Zeye.Sorting.Hub.Host/`：宿主层（程序入口、后台服务、启动配置）
 - `Program.cs`：应用入口与 Host 构建流程；使用 NLog 替换默认日志提供器，任何启动期异常均记录后再退出。
@@ -328,6 +355,7 @@
 
 #### `Zeye.Sorting.Hub.Infrastructure/Repositories/`：仓储基类与结果模型目录
 - `MemoryCacheRepositoryBase.cs`：带内存缓存失效逻辑的仓储基类。
+- `ParcelRepository.cs`：Parcel 仓储第一阶段实现（复用 `RepositoryBase` 与 `IDbContextFactory`，提供基础读写、分页查询、邻近查询与过期清理）。
 - `RepositoryBase.cs`：通用仓储基类（增删改查 + 自动持久化实现）。
 - `RepositoryResult.cs`：仓储调用结果封装模型。
 
@@ -346,6 +374,7 @@
 ### `Zeye.Sorting.Hub.Host.Tests/`：自动调优测试层
 - `Zeye.Sorting.Hub.Host.Tests.csproj`：xUnit 测试项目定义。
 - `AutoTuningProductionControlTests.cs`：覆盖 dry-run、危险动作隔离、告警防抖与恢复、普通/严重回归、unavailable 指标处理、执行计划探针 available/unavailable 双路径、闭环链路与分表覆盖守卫校验、迁移失败策略分环境解析、结构化扩容计划解析、Time/Volume/Hybrid 分表策略评估、PerDay 预建守卫（配置+物理探测）与分表观测口径/自动索引过滤规则回归。
+- `ParcelRepositoryTests.cs`：Parcel 仓储第一阶段能力测试，覆盖分页过滤、详情与邻近查询、新增/更新/删除、过期清理与批量新增。
 
 ## 本次更新内容（新增 Parcel 属性操作指南文档）
 
@@ -609,3 +638,32 @@
 1. finer-granularity 真实自动执行仍需严格在隔离器边界内演进（开关 + dry-run + 审计 + 回滚边界全部就绪后再放开）。
 2. 真实 `EXPLAIN` / `SHOWPLAN` 计划探针可在现有 provider-aware probe 扩展点上继续接入，默认 logging-only 语义保持不变。
 3. 哈希扩容/重分片自动执行仍属于下一阶段能力，不在本轮 PR 内继续膨胀。
+
+## 本次更新内容（IParcelRepository 第一阶段可落地仓储实现）
+
+1. **仓储契约落地**：将 `IParcelRepository` 从注释占位改为可执行契约，仅覆盖第一阶段能力（基础读写、分页列表、按 Bag/工作台/状态/格口查询、邻近查询、过期清理与批量新增），不扩散到统计/报表能力。
+2. **新增最小查询模型**：在 `Zeye.Sorting.Hub.Domain/Repositories/Models/` 新增 `ParcelQueryFilter`、`PageRequest`、`PageResult`、`ParcelSummaryReadModel`，实现“列表返回摘要读模型、详情返回聚合根”的职责分离。
+3. **新增基础设施实现**：在 `Zeye.Sorting.Hub.Infrastructure/Repositories/ParcelRepository.cs` 新增第一阶段仓储实现，复用 `RepositoryBase` / `IDbContextFactory` 风格，提供列表查询、详情查询、邻近查询与基础写操作。
+4. **DI 注册补齐且不破坏现有治理结构**：`PersistenceServiceCollectionExtensions` 新增 `IParcelRepository -> ParcelRepository` 注册，同时补充 `AddPooledDbContextFactory<SortingHubDbContext>` 并与既有 `AddDbContextPool` 复用同一配置方法，保持自动迁移/自动分表/自动调谐主结构不变。
+5. **测试补齐**：新增 `ParcelRepositoryTests.cs`，覆盖第一阶段核心路径（分页过滤、详情与邻近查询、写操作与过期清理）。
+
+## 本次更新内容（IParcelRepository 二次收敛）
+
+1. **分页模型复用化**：将 `ParcelPageRequest/ParcelPageResult` 收敛为通用 `PageRequest/PageResult<T>`，以便其他查询场景复用，移除重复分页模型代码。
+2. **读模型字段补齐**：`ParcelSummaryReadModel` 扩展为包含 `Parcel` 全部扁平化字段（含审计字段与业务标量字段），避免列表读模型信息缺失。
+3. **去除重复查询契约**：删除 `GetDetailByIdAsync`，保留 `GetByIdAsync` 作为“按主键获取完整聚合详情”的唯一入口，避免接口语义重叠。
+4. **强制时间段查询参数**：`GetByBagCode/GetByWorkstationName/GetByStatus/GetByChute` 增加必填 `scannedTimeStart/scannedTimeEnd` 参数，确保查询边界明确。
+5. **时间跨度治理**：新增 `MaxTimeRangeAttribute` 并应用于 `ParcelQueryFilter`，默认限制扫码时间跨度不超过 3 个月（同时校验结束时间不早于开始时间）。
+6. **Models 目录细分**：将 `Models` 细分为 `Filters/Paging/ReadModels/Validation` 子目录，职责清晰，便于后续扩展与复用。
+7. **无用代码清理**：删除不再使用的 `ParcelPageRequest.cs` 与 `ParcelPageResult.cs`，同步更新引用与测试，避免冗余实现残留。
+
+## 后续可完善点（IParcelRepository 二次收敛）
+
+1. 若后续仓储增多，可将 `MaxTimeRangeAttribute` 提升为更通用的查询验证组件，并在应用层统一入参校验链路中复用。
+2. 对于包含全部扁平字段的 `ParcelSummaryReadModel`，后续可按“接口场景”拆分成轻量/完整两个读模型版本，以平衡带宽与可用性。
+
+## 后续可完善点（Parcel 仓储阶段化演进）
+
+1. 在不破坏当前契约的前提下，为分页列表逐步补充更细粒度排序/筛选选项（保持 summary 模型边界不变）。
+2. 当 Application/Contracts 层正式接入查询用例后，再按阶段引入 DTO 映射与用例级验证，避免在仓储阶段过度扩展。
+3. 第二阶段再评估统计/报表类能力收敛位置（建议独立读模型查询服务），避免在聚合仓储中混入报表职责。
