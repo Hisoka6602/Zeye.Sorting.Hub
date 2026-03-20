@@ -598,10 +598,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证默认 appsettings 示例等价配置不会触发分表策略校验错误。
+    /// 验证与默认示例关键字段组合一致的内存配置不会触发分表策略校验错误。
     /// </summary>
     [Fact]
-    public void DefaultAppsettingsExample_ShouldPassValidation() {
+    public void DefaultExampleKeyCombinationInMemory_ShouldPassValidation() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Sharding:Strategy:Mode"] = "Hybrid",
