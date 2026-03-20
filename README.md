@@ -20,15 +20,27 @@
 │   ├── Class1.cs（程序集锚点类型）
 │   ├── Services（应用服务目录）
 │   │   └── Parcels（Parcel 查询应用服务目录）
+│   │       ├── CleanupExpiredParcelsCommandService.cs（过期包裹清理应用服务（治理型，调用仓储隔离器，不可绕过））
+│   │       ├── CreateParcelCommandService.cs（管理端新增包裹应用服务）
+│   │       ├── DeleteParcelCommandService.cs（管理端删除单个包裹应用服务）
 │   │       ├── GetAdjacentParcelsQueryService.cs（Parcel 邻近查询应用服务）
 │   │       ├── GetParcelByIdQueryService.cs（Parcel 详情查询应用服务）
 │   │       ├── GetParcelPagedQueryService.cs（Parcel 分页查询应用服务）
-│   │       └── ParcelContractMapper.cs（Parcel 领域模型到 Contracts 模型映射器）
+│   │       ├── ParcelContractMapper.cs（Parcel 领域模型到 Contracts 模型映射器）
+│   │       └── UpdateParcelStatusCommandService.cs（管理端更新包裹状态应用服务（仅支持领域允许的状态转换））
 │   └── Zeye.Sorting.Hub.Application.csproj（Application 项目定义）
 ├── Zeye.Sorting.Hub.Contracts（契约层）
 │   ├── Class1.cs（程序集锚点类型）
+│   ├── Enums（契约层枚举目录）
+│   │   └── Parcels（Parcel 枚举目录）
+│   │       └── ParcelUpdateOperation.cs（Parcel 更新操作类型枚举：MarkCompleted/MarkSortingException/UpdateRequestStatus）
 │   ├── Models（对外合同模型目录）
-│   │   └── Parcels（Parcel 查询合同目录）
+│   │   └── Parcels（Parcel 合同目录）
+│   │       ├── Admin（管理端写接口合同目录）
+│   │       │   ├── ParcelCleanupExpiredRequest.cs（过期清理治理接口请求合同）
+│   │       │   ├── ParcelCleanupExpiredResponse.cs（过期清理治理接口响应合同（含决策/计划量/执行量/补偿边界））
+│   │       │   ├── ParcelCreateRequest.cs（管理端新增包裹请求合同）
+│   │       │   └── ParcelUpdateRequest.cs（管理端更新包裹状态请求合同）
 │   │       ├── ParcelAdjacentRequest.cs（Parcel 邻近查询请求合同）
 │   │       ├── ParcelAdjacentResponse.cs（Parcel 邻近查询响应合同）
 │   │       ├── ParcelDetailResponse.cs（Parcel 详情响应合同）
@@ -102,7 +114,9 @@
 │   │   ├── AutoTuningLoggerObservability.cs（自动调优观测默认日志实现）
 │   │   ├── DatabaseAutoTuningHostedService.cs（数据库自动调谐托管服务（闭环阶段流转、执行隔离、自动验证标准化输出与回滚审计；分表命中/跨表占比/热点倾斜改为全量慢 SQL 口径，并在自动索引建议前做覆盖/重复/低价值过滤））
 │   │   └── DatabaseInitializerHostedService.cs（数据库初始化与迁移托管服务（含分表治理基线、Runbook 审计、PerDay 手工预建窗口守卫；新增“配置清单 + 物理分表存在性”双重校验））
-│   ├── Program.cs（应用入口与 Host 构建流程）
+│   ├── Program.cs（应用入口与 Host 构建流程；注册 Parcel 只读 + 管理端 API）
+│   ├── LocalDateTimeParsing.cs（本地时间解析共享工具：TryParseLocalDateTime/TryParseOptionalLocalDateTime/IsUtcKind，供所有路由扩展复用）
+│   ├── ParcelAdminApiRouteExtensions.cs（Parcel 管理端 API 路由扩展：POST/PUT/DELETE 普通写接口 + cleanup-expired 治理接口）
 │   ├── Properties（运行调试属性目录）
 │   │   └── launchSettings.json（本地启动配置）
 │   ├── Worker.cs（后台轮询任务示例服务）
@@ -112,7 +126,8 @@
 │   └── appsettings.json（默认运行配置（含分表策略结构化 Observation、PerDay 预建日期清单与仓储危险动作隔离默认策略））
 ├── Zeye.Sorting.Hub.Host.Tests（自动调优行为测试工程）
 │   ├── AutoTuningProductionControlTests.cs（自动调优生产可控能力测试：dry-run/隔离器/告警恢复/普通与严重回归/探针双路径/闭环链路；含分表策略评估与 PerDay 预建守卫联动测试）
-│   ├── ParcelReadOnlyApiTests.cs（Parcel 只读 API 端点测试：列表/详情/404/邻近参数异常）
+│   ├── ParcelAdminApiTests.cs（Parcel 管理端写接口测试：新增/更新状态/删除成功路径 + cleanup-expired 三态 + 参数非法校验）
+│   ├── ParcelReadOnlyApiTests.cs（Parcel 只读 API 端点测试：列表/详情/404/邻近参数异常；包含 FakeParcelRepository 测试替身（支持读写操作））
 │   ├── ParcelQueryServicesTests.cs（Parcel 应用层查询服务测试：列表/详情/邻近查询映射与最小校验）
 │   ├── ParcelRepositoryTests.cs（Parcel 仓储第一阶段能力测试：分页过滤、详情与邻近查询、写操作与过期清理；含阻断/dry-run/显式放开的危险动作治理回归）
 │   └── Zeye.Sorting.Hub.Host.Tests.csproj（xUnit 测试项目定义）
@@ -220,15 +235,22 @@
 - `Zeye.Sorting.Hub.Application.csproj`：Application 项目定义（引用 Domain + Contracts，承载应用服务实现）。
 - `Class1.cs`：程序集锚点类型。
 
-#### `Zeye.Sorting.Hub.Application/Services/Parcels/`：Parcel 查询应用服务目录
+#### `Zeye.Sorting.Hub.Application/Services/Parcels/`：Parcel 应用服务目录（查询 + 管理端写命令）
 - `GetParcelByIdQueryService.cs`：按 Id 查询 Parcel 详情应用服务（仓储调用 + 合同映射 + 最小参数校验）。
 - `GetParcelPagedQueryService.cs`：分页查询 Parcel 列表应用服务（请求校验、过滤映射、分页结果映射）。
 - `GetAdjacentParcelsQueryService.cs`：按基准扫码时间查询邻近 Parcel 应用服务（数量归一化、响应映射）。
 - `ParcelContractMapper.cs`：Parcel 领域模型/读模型到 Contracts 模型的统一映射器，避免 Host 层重复映射。
+- `CreateParcelCommandService.cs`：管理端新增包裹应用服务（枚举验证、领域工厂 Parcel.Create、仓储 AddAsync、合同映射）。
+- `UpdateParcelStatusCommandService.cs`：管理端更新包裹状态应用服务（仅支持 MarkCompleted/MarkSortingException/UpdateRequestStatus 三种领域方法，不允许任意字段修改）。
+- `DeleteParcelCommandService.cs`：管理端删除单个包裹应用服务（先加载聚合根，不存在返回 false，再调用 RemoveAsync）。
+- `CleanupExpiredParcelsCommandService.cs`：过期包裹清理应用服务（治理型，调用仓储 RemoveExpiredAsync，不绕过隔离器，映射 DangerousBatchActionResult 为外部合同响应）。
 
 ### `Zeye.Sorting.Hub.Contracts/`：契约层（对外 DTO / 接口模型）
 - `Zeye.Sorting.Hub.Contracts.csproj`：Contracts 项目定义。
 - `Class1.cs`：程序集锚点类型。
+
+#### `Zeye.Sorting.Hub.Contracts/Enums/Parcels/`：Parcel 枚举目录
+- `ParcelUpdateOperation.cs`：Parcel 更新操作类型枚举（MarkCompleted=1/MarkSortingException=2/UpdateRequestStatus=3，含 Description）。
 
 #### `Zeye.Sorting.Hub.Contracts/Models/Parcels/`：Parcel 对外查询合同目录
 - `ParcelListRequest.cs`：Parcel 列表查询请求合同（分页 + 过滤参数）。
@@ -237,6 +259,12 @@
 - `ParcelDetailResponse.cs`：Parcel 详情响应合同。
 - `ParcelAdjacentRequest.cs`：Parcel 邻近查询请求合同。
 - `ParcelAdjacentResponse.cs`：Parcel 邻近查询响应合同。
+
+#### `Zeye.Sorting.Hub.Contracts/Models/Parcels/Admin/`：管理端写接口合同目录
+- `ParcelCreateRequest.cs`：管理端新增包裹请求合同（含所有 Parcel.Create 必需字段，时间字段为 DateTime 类型，UTC 在 API 层拒绝）。
+- `ParcelUpdateRequest.cs`：管理端更新包裹状态请求合同（Operation 枚举决定操作类型，对应 CompletedTime/ExceptionType/RequestStatus）。
+- `ParcelCleanupExpiredRequest.cs`：过期清理治理接口请求合同（CreatedBefore 本地时间字符串，API 层强制解析校验）。
+- `ParcelCleanupExpiredResponse.cs`：过期清理治理接口响应合同（ActionName/Decision/PlannedCount/ExecutedCount/IsDryRun/IsBlockedByGuard/CompensationBoundary）。
 
 ### `Zeye.Sorting.Hub.Domain/`：核心领域层，存放聚合根、值对象、领域事件、枚举与仓储接口
 - `Zeye.Sorting.Hub.Domain.csproj`：Domain 项目定义。
@@ -314,7 +342,9 @@
 - `MaxTimeRangeAttribute.cs`：时间范围校验特性（限制起止时间跨度，默认不超过 3 个月）。
 
 ### `Zeye.Sorting.Hub.Host/`：宿主层（程序入口、后台服务、启动配置）
-- `Program.cs`：应用入口与 Host 构建流程；使用 NLog 替换默认日志提供器，任何启动期异常均记录后再退出。
+- `Program.cs`：应用入口与 Host 构建流程；注册 Parcel 只读 API 与管理端写 API；使用 NLog 替换默认日志提供器，任何启动期异常均记录后再退出。
+- `LocalDateTimeParsing.cs`：本地时间解析共享工具（`TryParseLocalDateTime`、`TryParseOptionalLocalDateTime`、`IsUtcKind`），统一供各路由扩展类复用，避免重复实现。
+- `ParcelAdminApiRouteExtensions.cs`：Parcel 管理端 API 路由扩展（`MapParcelAdminApis`），注册 `POST /api/admin/parcels`、`PUT /api/admin/parcels/{id}`、`DELETE /api/admin/parcels/{id}` 普通写接口及 `POST /api/admin/parcels/cleanup-expired` 危险治理接口。
 - `Worker.cs`：后台轮询任务示例服务。
 - `Zeye.Sorting.Hub.Host.csproj`：Host 项目定义。
 - `nlog.config`：NLog 日志配置，双路落盘（`logs/app-*.log` 全量 + `logs/database-*.log` 数据库专属），低开销设计（异步队列 + keepFileOpen + optimizeBufferReuse），保留 30 天。
@@ -404,10 +434,11 @@
 - `Zeye.Sorting.Hub.SharedKernel.csproj`：SharedKernel 项目定义。
 - `Class1.cs`：占位类，预留通用基础能力实现位置。
 
-### `Zeye.Sorting.Hub.Host.Tests/`：自动调优测试层
+### `Zeye.Sorting.Hub.Host.Tests/`：API 与应用层测试层
 - `Zeye.Sorting.Hub.Host.Tests.csproj`：xUnit 测试项目定义。
 - `AutoTuningProductionControlTests.cs`：覆盖 dry-run、危险动作隔离、告警防抖与恢复、普通/严重回归、unavailable 指标处理、执行计划探针 available/unavailable 双路径、闭环链路与分表覆盖守卫校验、迁移失败策略分环境解析、结构化扩容计划解析、Time/Volume/Hybrid 分表策略评估、PerDay 预建守卫（配置+物理探测）与分表观测口径/自动索引过滤规则回归。
-- `ParcelReadOnlyApiTests.cs`：Parcel 只读 API 端点测试，覆盖列表查询、详情查询、详情不存在返回 404、邻近查询参数异常返回 400。
+- `ParcelReadOnlyApiTests.cs`：Parcel 只读 API 端点测试，覆盖列表查询、详情查询、详情不存在返回 404、邻近查询参数异常返回 400；包含可复用的 `FakeParcelRepository`（支持读写操作与可配置 cleanup-expired 三态行为）。
+- `ParcelAdminApiTests.cs`：Parcel 管理端写接口测试，覆盖新增成功路径 + UTC 时间拒绝、更新状态成功路径 + 不存在 404 + 非法操作码 400、删除成功路径 + 不存在 404、cleanup-expired blocked/dry-run/execute 三态 + UTC 时间与非法参数拒绝，共 15 个测试用例。
 - `ParcelQueryServicesTests.cs`：Parcel 应用层查询服务测试（列表/详情/邻近查询映射与最小参数校验）。
 - `ParcelRepositoryTests.cs`：Parcel 仓储第一阶段能力测试，覆盖分页过滤、详情与邻近查询、新增/更新/删除、过期清理与批量新增，并回归验证危险清理动作的 blocked/dry-run/executed 三态。
 
@@ -761,3 +792,20 @@
 
 1. 可在后续迭代补充统一参数模型验证器（如分页上限、字符串长度）并输出字段级错误明细，进一步增强 API 可观测性与前端联调体验。
 2. 可补充 `/swagger/v1/swagger.json` 结构断言测试，防止后续重构时端点元数据（tags/summary/response）回退。
+
+## 本次更新内容（第 4 步：Parcel 管理端写接口）
+
+1. **普通写接口**：在 `/api/admin/parcels` 路由组下新增 `POST`（新增包裹）、`PUT /{id}`（更新包裹状态，支持 MarkCompleted/MarkSortingException/UpdateRequestStatus）、`DELETE /{id}`（删除单个包裹）三个端点，统一经 Application 层应用服务访问仓储，不在 API 层直接操作实体状态。
+2. **危险治理接口（单独分组）**：`POST /api/admin/parcels/cleanup-expired` 明确标记为治理型端点，不伪装为普通业务接口；返回 `ParcelCleanupExpiredResponse`（含决策 blocked/dry-run/execute、计划量、执行量、补偿边界）；隔离器由仓储内置，API 层不绕过。
+3. **时间参数 UTC 防护**：新增 `LocalDateTimeParsing.cs` 共享工具（提取自 `ParcelReadOnlyApiRouteExtensions`），包含 `TryParseLocalDateTime`、`TryParseOptionalLocalDateTime`、`IsUtcKind` 方法，供两个路由扩展类共用，消除重复代码。
+4. **Contracts 层扩充**：新增 `Enums/Parcels/ParcelUpdateOperation.cs`（操作类型枚举）及 `Models/Parcels/Admin/` 目录下四个合同模型（ParcelCreateRequest、ParcelUpdateRequest、ParcelCleanupExpiredRequest、ParcelCleanupExpiredResponse）。
+5. **Application 层扩充**：新增四个写命令服务（CreateParcelCommandService、UpdateParcelStatusCommandService、DeleteParcelCommandService、CleanupExpiredParcelsCommandService），均为 `sealed class` + NLog + 步骤注释 + 异常日志。
+6. **鉴权预留**：`ParcelAdminApiRouteExtensions.cs` 的 `MapGroup` 与治理端点处均有明确注释，指引如何追加 `.RequireAuthorization("AdminPolicy")`/`"DangerousActionPolicy"` 完成鉴权接入。
+7. **测试补齐**：新增 `ParcelAdminApiTests.cs`（15 个测试用例），覆盖普通写接口成功路径、参数非法、cleanup-expired 三态；同时扩展 `FakeParcelRepository` 支持写操作与可配置三态 cleanup 行为，原有 92 个只读测试全部继续通过（合计 107 个测试）。
+
+## 后续可完善点（管理端写接口）
+
+1. 引入鉴权体系（JWT/API-Key/RBAC）后，在 `MapParcelAdminApis` 的 `MapGroup` 上追加 `.RequireAuthorization("AdminPolicy")` 统一保护普通写接口，治理接口额外追加 `"DangerousActionPolicy"` 以更严格管控。
+2. 可在 Application 层为新增/更新接口引入 FluentValidation 或自定义 Validator，实现字段级错误聚合输出，提升前端联调体验。
+3. `AddRangeAsync` 目前未暴露为 API，如后续有批量导入业务需求，可在充分评估风险后，通过治理型端点（带 dry-run + 上限保护）暴露。
+4. cleanup-expired 端点可结合定时任务（如 `IHostedService` + Cron）实现自动触发，目前为纯手动调用。

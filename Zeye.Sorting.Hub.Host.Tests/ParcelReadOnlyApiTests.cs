@@ -132,9 +132,34 @@ public sealed class ParcelReadOnlyApiTests {
 }
 
 /// <summary>
-/// Parcel 仓储测试替身（仅覆盖只读查询）。
+/// Parcel 仓储测试替身（支持读写操作，RemoveExpiredAsync 行为可通过属性控制）。
 /// </summary>
 internal sealed class FakeParcelRepository : IParcelRepository {
+    /// <summary>
+    /// 内存存储（用于写操作测试）。
+    /// </summary>
+    private readonly Dictionary<long, Parcel> _store = new();
+
+    /// <summary>
+    /// 下一个分配的 Id（模拟数据库自增主键）。
+    /// </summary>
+    private long _nextId = 100;
+
+    /// <summary>
+    /// 清理治理接口决策（控制 RemoveExpiredAsync 返回的三态决策，默认 Execute）。
+    /// </summary>
+    public ActionIsolationDecision CleanupDecision { get; set; } = ActionIsolationDecision.Execute;
+
+    /// <summary>
+    /// 清理计划量（用于 RemoveExpiredAsync 测试断言）。
+    /// </summary>
+    public int CleanupPlannedCount { get; set; } = 5;
+
+    /// <summary>
+    /// 清理执行量（Execute 决策时生效，blocked/dry-run 返回 0）。
+    /// </summary>
+    public int CleanupExecutedCount { get; set; } = 5;
+
     /// <summary>
     /// 列表查询返回固定分页结果。
     /// </summary>
@@ -150,7 +175,7 @@ internal sealed class FakeParcelRepository : IParcelRepository {
     }
 
     /// <summary>
-    /// 详情查询返回固定包裹。
+    /// 详情查询返回固定包裹（仅 id==1 时有数据）。
     /// </summary>
     public Task<Parcel?> GetByIdAsync(long id, CancellationToken cancellationToken) {
         if (id != 1) {
@@ -222,38 +247,57 @@ internal sealed class FakeParcelRepository : IParcelRepository {
     }
 
     /// <summary>
-    /// 新增（测试未使用）。
+    /// 新增包裹（分配自增 Id，存入内存存储）。
     /// </summary>
     public Task<RepositoryResult> AddAsync(Parcel parcel, CancellationToken cancellationToken) {
-        throw new NotSupportedException("测试替身未实现该方法。");
+        parcel.Id = _nextId++;
+        _store[parcel.Id] = parcel;
+        return Task.FromResult(RepositoryResult.Success());
     }
 
     /// <summary>
-    /// 更新（测试未使用）。
+    /// 更新包裹（覆盖内存存储中对应记录）。
     /// </summary>
     public Task<RepositoryResult> UpdateAsync(Parcel parcel, CancellationToken cancellationToken) {
-        throw new NotSupportedException("测试替身未实现该方法。");
+        _store[parcel.Id] = parcel;
+        return Task.FromResult(RepositoryResult.Success());
     }
 
     /// <summary>
-    /// 删除（测试未使用）。
+    /// 删除包裹（移除内存存储中对应记录）。
     /// </summary>
     public Task<RepositoryResult> RemoveAsync(Parcel parcel, CancellationToken cancellationToken) {
-        throw new NotSupportedException("测试替身未实现该方法。");
+        _store.Remove(parcel.Id);
+        return Task.FromResult(RepositoryResult.Success());
     }
 
     /// <summary>
-    /// 过期清理（测试未使用）。
+    /// 过期清理（由 CleanupDecision 属性控制返回三态决策，不依赖真实隔离器）。
     /// </summary>
     public Task<RepositoryResult<DangerousBatchActionResult>> RemoveExpiredAsync(DateTime createdBefore, CancellationToken cancellationToken) {
-        throw new NotSupportedException("测试替身未实现该方法。");
+        var executedCount = CleanupDecision == ActionIsolationDecision.Execute ? CleanupExecutedCount : 0;
+        var result = new DangerousBatchActionResult {
+            ActionName = "remove-expired-parcels",
+            Decision = CleanupDecision,
+            PlannedCount = CleanupPlannedCount,
+            ExecutedCount = executedCount,
+            IsDryRun = CleanupDecision == ActionIsolationDecision.DryRunOnly,
+            IsBlockedByGuard = CleanupDecision == ActionIsolationDecision.BlockedByGuard,
+            CompensationBoundary = "此操作不可逆，回滚需从备份恢复。"
+        };
+        return Task.FromResult(RepositoryResult<DangerousBatchActionResult>.Success(result));
     }
 
     /// <summary>
-    /// 批量新增（测试未使用）。
+    /// 批量新增（分配自增 Id，存入内存存储）。
     /// </summary>
     public Task<RepositoryResult> AddRangeAsync(IReadOnlyCollection<Parcel> parcels, CancellationToken cancellationToken) {
-        throw new NotSupportedException("测试替身未实现该方法。");
+        foreach (var parcel in parcels) {
+            parcel.Id = _nextId++;
+            _store[parcel.Id] = parcel;
+        }
+
+        return Task.FromResult(RepositoryResult.Success());
     }
 
     /// <summary>
