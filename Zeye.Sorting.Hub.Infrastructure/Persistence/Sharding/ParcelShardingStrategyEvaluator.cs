@@ -22,7 +22,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
     /// <param name="ThresholdAction">阈值动作。</param>
     /// <param name="ThresholdReached">是否命中容量阈值。</param>
     /// <param name="EffectiveDateMode">最终用于注册的时间分表粒度。</param>
+    /// <param name="FinerGranularityExtensionPlan">下一层细粒度扩展规划结果。</param>
     /// <param name="Reason">决策原因摘要。</param>
+    /// <param name="ConfigSnapshot">策略配置快照。</param>
     public readonly record struct ParcelShardingStrategyDecision(
         ParcelShardingStrategyMode Mode,
         ParcelTimeShardingGranularity TimeGranularity,
@@ -30,19 +32,202 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
         ParcelShardingVolumeObservation VolumeObservation,
         bool ThresholdReached,
         ExpandByDateMode EffectiveDateMode,
-        bool RequiresFinerGranularityExtension,
-        string Reason);
+        ParcelFinerGranularityExtensionPlan FinerGranularityExtensionPlan,
+        string Reason,
+        ParcelShardingStrategyConfigSnapshot ConfigSnapshot);
 
     /// <summary>
     /// Parcel 容量阈值观测输入（结构化入口，便于未来接入数据库统计或监控采集）。
     /// </summary>
-    /// <param name="Source">观测数据来源标识。</param>
-    /// <param name="EstimatedRowsPerShard">单分表估算行数观测值。</param>
-    /// <param name="ObservedHotRatio">热点比例观测值（0~1）。</param>
-    public readonly record struct ParcelShardingVolumeObservation(
-        string Source,
-        long? EstimatedRowsPerShard,
-        decimal? ObservedHotRatio);
+    public readonly record struct ParcelShardingVolumeObservation {
+        /// <summary>
+        /// 初始化容量观测输入。
+        /// </summary>
+        /// <param name="Source">观测数据来源标识。</param>
+        /// <param name="EstimatedRowsPerShard">单分表估算行数观测值。</param>
+        /// <param name="ObservedHotRatio">热点比例观测值（0~1）。</param>
+        public ParcelShardingVolumeObservation(string Source, long? EstimatedRowsPerShard, decimal? ObservedHotRatio) {
+            this.Source = Source;
+            this.EstimatedRowsPerShard = EstimatedRowsPerShard;
+            this.ObservedHotRatio = ObservedHotRatio;
+        }
+
+        /// <summary>
+        /// 观测数据来源标识。
+        /// </summary>
+        public string Source { get; init; }
+
+        /// <summary>
+        /// 单分表估算行数观测值。
+        /// </summary>
+        public long? EstimatedRowsPerShard { get; init; }
+
+        /// <summary>
+        /// 热点比例观测值（0~1）。
+        /// </summary>
+        public decimal? ObservedHotRatio { get; init; }
+    }
+
+    /// <summary>
+    /// Parcel finer-granularity 策略配置快照。
+    /// </summary>
+    public readonly record struct ParcelFinerGranularityStrategySnapshot {
+        /// <summary>
+        /// 初始化 finer-granularity 配置快照。
+        /// </summary>
+        /// <param name="ModeWhenPerDayStillHot">当 PerDay 仍过热时推荐的下一层细粒度模式。</param>
+        /// <param name="Lifecycle">扩展治理生命周期（仅计划/仅告警/未来可执行）。</param>
+        /// <param name="RequirePrebuildGuard">是否要求治理守卫执行预建约束。</param>
+        /// <param name="BucketCount">当模式为 BucketedPerDay 时建议的桶数量。</param>
+        public ParcelFinerGranularityStrategySnapshot(
+            ParcelFinerGranularityMode ModeWhenPerDayStillHot,
+            ParcelFinerGranularityPlanLifecycle Lifecycle,
+            bool RequirePrebuildGuard,
+            int? BucketCount) {
+            this.ModeWhenPerDayStillHot = ModeWhenPerDayStillHot;
+            this.Lifecycle = Lifecycle;
+            this.RequirePrebuildGuard = RequirePrebuildGuard;
+            this.BucketCount = BucketCount;
+        }
+
+        /// <summary>
+        /// 当 PerDay 仍过热时推荐的下一层细粒度模式。
+        /// </summary>
+        public ParcelFinerGranularityMode ModeWhenPerDayStillHot { get; init; }
+
+        /// <summary>
+        /// 扩展治理生命周期（仅计划/仅告警/未来可执行）。
+        /// </summary>
+        public ParcelFinerGranularityPlanLifecycle Lifecycle { get; init; }
+
+        /// <summary>
+        /// 是否要求治理守卫执行预建约束。
+        /// </summary>
+        public bool RequirePrebuildGuard { get; init; }
+
+        /// <summary>
+        /// 当模式为 BucketedPerDay 时建议的桶数量。
+        /// </summary>
+        public int? BucketCount { get; init; }
+    }
+
+    /// <summary>
+    /// Parcel finer-granularity 扩展规划结果。
+    /// </summary>
+    public readonly record struct ParcelFinerGranularityExtensionPlan {
+        /// <summary>
+        /// 初始化 finer-granularity 扩展规划结果。
+        /// </summary>
+        /// <param name="ShouldPlanExtension">是否需要规划下一层细粒度扩展。</param>
+        /// <param name="SuggestedMode">建议的下一层细粒度模式。</param>
+        /// <param name="Lifecycle">扩展治理生命周期（仅计划/仅告警/未来可执行）。</param>
+        /// <param name="RequiresPrebuildGuard">是否需要预建守卫。</param>
+        /// <param name="Reason">规划原因。</param>
+        public ParcelFinerGranularityExtensionPlan(
+            bool ShouldPlanExtension,
+            ParcelFinerGranularityMode SuggestedMode,
+            ParcelFinerGranularityPlanLifecycle Lifecycle,
+            bool RequiresPrebuildGuard,
+            string Reason) {
+            this.ShouldPlanExtension = ShouldPlanExtension;
+            this.SuggestedMode = SuggestedMode;
+            this.Lifecycle = Lifecycle;
+            this.RequiresPrebuildGuard = RequiresPrebuildGuard;
+            this.Reason = Reason;
+        }
+
+        /// <summary>
+        /// 是否需要规划下一层细粒度扩展。
+        /// </summary>
+        public bool ShouldPlanExtension { get; init; }
+
+        /// <summary>
+        /// 建议的下一层细粒度模式。
+        /// </summary>
+        public ParcelFinerGranularityMode SuggestedMode { get; init; }
+
+        /// <summary>
+        /// 扩展治理生命周期（仅计划/仅告警/未来可执行）。
+        /// </summary>
+        public ParcelFinerGranularityPlanLifecycle Lifecycle { get; init; }
+
+        /// <summary>
+        /// 是否需要预建守卫。
+        /// </summary>
+        public bool RequiresPrebuildGuard { get; init; }
+
+        /// <summary>
+        /// 规划原因。
+        /// </summary>
+        public string Reason { get; init; }
+    }
+
+    /// <summary>
+    /// Parcel 分表策略配置快照（用于审计与守卫复用）。
+    /// </summary>
+    public readonly record struct ParcelShardingStrategyConfigSnapshot {
+        /// <summary>
+        /// 初始化分表策略配置快照。
+        /// </summary>
+        /// <param name="Mode">策略模式。</param>
+        /// <param name="TimeGranularity">时间粒度。</param>
+        /// <param name="ThresholdAction">阈值动作。</param>
+        /// <param name="MaxRowsPerShard">单分表最大行数阈值。</param>
+        /// <param name="HotThresholdRatio">热点阈值。</param>
+        /// <param name="VolumeObservation">容量观测输入。</param>
+        /// <param name="FinerGranularity">finer-granularity 配置快照。</param>
+        public ParcelShardingStrategyConfigSnapshot(
+            ParcelShardingStrategyMode Mode,
+            ParcelTimeShardingGranularity TimeGranularity,
+            ParcelVolumeThresholdAction ThresholdAction,
+            long? MaxRowsPerShard,
+            decimal? HotThresholdRatio,
+            ParcelShardingVolumeObservation VolumeObservation,
+            ParcelFinerGranularityStrategySnapshot FinerGranularity) {
+            this.Mode = Mode;
+            this.TimeGranularity = TimeGranularity;
+            this.ThresholdAction = ThresholdAction;
+            this.MaxRowsPerShard = MaxRowsPerShard;
+            this.HotThresholdRatio = HotThresholdRatio;
+            this.VolumeObservation = VolumeObservation;
+            this.FinerGranularity = FinerGranularity;
+        }
+
+        /// <summary>
+        /// 策略模式。
+        /// </summary>
+        public ParcelShardingStrategyMode Mode { get; init; }
+
+        /// <summary>
+        /// 时间粒度。
+        /// </summary>
+        public ParcelTimeShardingGranularity TimeGranularity { get; init; }
+
+        /// <summary>
+        /// 阈值动作。
+        /// </summary>
+        public ParcelVolumeThresholdAction ThresholdAction { get; init; }
+
+        /// <summary>
+        /// 单分表最大行数阈值。
+        /// </summary>
+        public long? MaxRowsPerShard { get; init; }
+
+        /// <summary>
+        /// 热点阈值。
+        /// </summary>
+        public decimal? HotThresholdRatio { get; init; }
+
+        /// <summary>
+        /// 容量观测输入。
+        /// </summary>
+        public ParcelShardingVolumeObservation VolumeObservation { get; init; }
+
+        /// <summary>
+        /// finer-granularity 配置快照。
+        /// </summary>
+        public ParcelFinerGranularityStrategySnapshot FinerGranularity { get; init; }
+    }
 
     /// <summary>
     /// Parcel 分表策略评估器（配置模型 + 规则决策 + 结构化校验）。
@@ -104,6 +289,36 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
         private const string DefaultObservationSource = "config-static";
 
         /// <summary>
+        /// finer-granularity 下一层模式配置键。
+        /// </summary>
+        private const string VolumeFinerModeConfigKey = "Persistence:Sharding:Strategy:Volume:FinerGranularity:ModeWhenPerDayStillHot";
+
+        /// <summary>
+        /// finer-granularity 生命周期配置键。
+        /// </summary>
+        private const string VolumeFinerLifecycleConfigKey = "Persistence:Sharding:Strategy:Volume:FinerGranularity:Lifecycle";
+
+        /// <summary>
+        /// finer-granularity 预建守卫配置键。
+        /// </summary>
+        private const string VolumeFinerRequirePrebuildConfigKey = "Persistence:Sharding:Strategy:Volume:FinerGranularity:RequirePrebuildGuard";
+
+        /// <summary>
+        /// finer-granularity bucket 数量配置键。
+        /// </summary>
+        private const string VolumeFinerBucketCountConfigKey = "Persistence:Sharding:Strategy:Volume:FinerGranularity:Bucket:BucketCount";
+
+        /// <summary>
+        /// BucketedPerDay 模式允许的最小桶数量。
+        /// </summary>
+        private const int MinBucketCount = 2;
+
+        /// <summary>
+        /// BucketedPerDay 模式允许的最大桶数量。
+        /// </summary>
+        private const int MaxBucketCount = 128;
+
+        /// <summary>
         /// 评估分表策略配置并产出决策与校验结果。
         /// </summary>
         /// <param name="configuration">配置源。</param>
@@ -117,6 +332,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
             var thresholdAction = ParcelVolumeThresholdAction.AlertOnly;
             long? maxRowsPerShard = null;
             decimal? hotThresholdRatio = null;
+            var finerGranularityStrategy = new ParcelFinerGranularityStrategySnapshot(
+                ModeWhenPerDayStillHot: ParcelFinerGranularityMode.PerHour,
+                Lifecycle: ParcelFinerGranularityPlanLifecycle.PlanOnly,
+                RequirePrebuildGuard: true,
+                BucketCount: null);
             var volumeObservation = new ParcelShardingVolumeObservation(
                 Source: DefaultObservationSource,
                 EstimatedRowsPerShard: null,
@@ -130,6 +350,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
                     VolumeHotThresholdConfigKey,
                     requiredWhenMissing: true,
                     validationErrors: validationErrors);
+                finerGranularityStrategy = ResolveFinerGranularityStrategy(configuration, validationErrors);
             }
 
             var thresholdReached = IsThresholdReached(
@@ -137,25 +358,36 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
                 volumeObservation.EstimatedRowsPerShard,
                 hotThresholdRatio,
                 volumeObservation.ObservedHotRatio);
-
+            var thresholdTrigger = ResolveThresholdTrigger(
+                maxRowsPerShard,
+                volumeObservation.EstimatedRowsPerShard,
+                hotThresholdRatio,
+                volumeObservation.ObservedHotRatio);
             var effectiveDateMode = ResolveEffectiveDateMode(mode, timeGranularity, thresholdAction, thresholdReached);
-            var requiresFinerGranularityExtension = ResolveRequiresFinerGranularityExtension(
+            var finerGranularityExtensionPlan = BuildFinerGranularityExtensionPlan(
                 mode,
                 thresholdAction,
                 thresholdReached,
-                effectiveDateMode);
+                effectiveDateMode,
+                thresholdTrigger,
+                finerGranularityStrategy);
+            var configSnapshot = new ParcelShardingStrategyConfigSnapshot(
+                Mode: mode,
+                TimeGranularity: timeGranularity,
+                ThresholdAction: thresholdAction,
+                MaxRowsPerShard: maxRowsPerShard,
+                HotThresholdRatio: hotThresholdRatio,
+                VolumeObservation: volumeObservation,
+                FinerGranularity: finerGranularityStrategy);
             var reason = BuildReason(
                 mode,
                 timeGranularity,
                 thresholdAction,
                 thresholdReached,
                 effectiveDateMode,
-                maxRowsPerShard,
-                volumeObservation.EstimatedRowsPerShard,
-                hotThresholdRatio,
-                volumeObservation.ObservedHotRatio,
                 volumeObservation.Source,
-                requiresFinerGranularityExtension);
+                thresholdTrigger,
+                finerGranularityExtensionPlan);
 
             var decision = new ParcelShardingStrategyDecision(
                 Mode: mode,
@@ -164,8 +396,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
                 VolumeObservation: volumeObservation,
                 ThresholdReached: thresholdReached,
                 EffectiveDateMode: effectiveDateMode,
-                RequiresFinerGranularityExtension: requiresFinerGranularityExtension,
-                Reason: reason);
+                FinerGranularityExtensionPlan: finerGranularityExtensionPlan,
+                Reason: reason,
+                ConfigSnapshot: configSnapshot);
             return new ParcelShardingStrategyEvaluation(decision, Array.AsReadOnly(validationErrors.ToArray()));
         }
 
@@ -176,23 +409,12 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
         /// <param name="validationErrors">错误集合。</param>
         /// <returns>策略模式。</returns>
         private static ParcelShardingStrategyMode ResolveMode(string? raw, ICollection<string> validationErrors) {
-            if (string.IsNullOrWhiteSpace(raw)) {
-                return ParcelShardingStrategyMode.Time;
-            }
-
-            var normalized = raw.Trim();
-            if (IsNumericEnumToken(normalized)) {
-                validationErrors.Add($"配置项 {ModeConfigKey} 值非法：{normalized}。允许值：Time/Volume/Hybrid。");
-                return ParcelShardingStrategyMode.Time;
-            }
-
-            if (Enum.TryParse<ParcelShardingStrategyMode>(normalized, ignoreCase: true, out var mode)
-                && Enum.IsDefined(mode)) {
-                return mode;
-            }
-
-            validationErrors.Add($"配置项 {ModeConfigKey} 值非法：{normalized}。允许值：Time/Volume/Hybrid。");
-            return ParcelShardingStrategyMode.Time;
+            return ParseEnumOrDefault(
+                raw,
+                ModeConfigKey,
+                ParcelShardingStrategyMode.Time,
+                "Time/Volume/Hybrid",
+                validationErrors);
         }
 
         /// <summary>
@@ -202,23 +424,12 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
         /// <param name="validationErrors">错误集合。</param>
         /// <returns>时间粒度。</returns>
         private static ParcelTimeShardingGranularity ResolveTimeGranularity(string? raw, ICollection<string> validationErrors) {
-            if (string.IsNullOrWhiteSpace(raw)) {
-                return ParcelTimeShardingGranularity.PerMonth;
-            }
-
-            var normalized = raw.Trim();
-            if (IsNumericEnumToken(normalized)) {
-                validationErrors.Add($"配置项 {TimeGranularityConfigKey} 值非法：{normalized}。允许值：PerMonth/PerDay。");
-                return ParcelTimeShardingGranularity.PerMonth;
-            }
-
-            if (Enum.TryParse<ParcelTimeShardingGranularity>(normalized, ignoreCase: true, out var granularity)
-                && Enum.IsDefined(granularity)) {
-                return granularity;
-            }
-
-            validationErrors.Add($"配置项 {TimeGranularityConfigKey} 值非法：{normalized}。允许值：PerMonth/PerDay。");
-            return ParcelTimeShardingGranularity.PerMonth;
+            return ParseEnumOrDefault(
+                raw,
+                TimeGranularityConfigKey,
+                ParcelTimeShardingGranularity.PerMonth,
+                "PerMonth/PerDay",
+                validationErrors);
         }
 
         /// <summary>
@@ -228,23 +439,69 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
         /// <param name="validationErrors">错误集合。</param>
         /// <returns>阈值动作。</returns>
         private static ParcelVolumeThresholdAction ResolveThresholdAction(string? raw, ICollection<string> validationErrors) {
-            if (string.IsNullOrWhiteSpace(raw)) {
-                return ParcelVolumeThresholdAction.AlertOnly;
+            return ParseEnumOrDefault(
+                raw,
+                VolumeActionConfigKey,
+                ParcelVolumeThresholdAction.AlertOnly,
+                "AlertOnly/SwitchToPerDay",
+                validationErrors);
+        }
+
+        /// <summary>
+        /// 解析 finer-granularity 配置快照。
+        /// </summary>
+        /// <param name="configuration">配置源。</param>
+        /// <param name="validationErrors">错误集合。</param>
+        /// <returns>配置快照。</returns>
+        private static ParcelFinerGranularityStrategySnapshot ResolveFinerGranularityStrategy(
+            IConfiguration configuration,
+            ICollection<string> validationErrors) {
+            var mode = ParseEnumOrDefault(
+                configuration[VolumeFinerModeConfigKey],
+                VolumeFinerModeConfigKey,
+                ParcelFinerGranularityMode.PerHour,
+                "PerHour/BucketedPerDay/None",
+                validationErrors);
+            var lifecycle = ParseEnumOrDefault(
+                configuration[VolumeFinerLifecycleConfigKey],
+                VolumeFinerLifecycleConfigKey,
+                ParcelFinerGranularityPlanLifecycle.PlanOnly,
+                "PlanOnly/AlertOnly/FutureExecutable",
+                validationErrors);
+            var requirePrebuildGuard = ReadBoolean(
+                configuration[VolumeFinerRequirePrebuildConfigKey],
+                VolumeFinerRequirePrebuildConfigKey,
+                defaultValue: true,
+                validationErrors: validationErrors);
+            var bucketCount = ReadOptionalPositiveInt(configuration[VolumeFinerBucketCountConfigKey], VolumeFinerBucketCountConfigKey, validationErrors);
+            ValidateBucketedPerDayConfiguration(mode, bucketCount, validationErrors);
+
+            return new ParcelFinerGranularityStrategySnapshot(mode, lifecycle, requirePrebuildGuard, bucketCount);
+        }
+
+        /// <summary>
+        /// 校验 BucketedPerDay 模式的必填参数完整性。
+        /// </summary>
+        /// <param name="mode">finer-granularity 模式。</param>
+        /// <param name="bucketCount">bucket 数量。</param>
+        /// <param name="validationErrors">错误集合。</param>
+        private static void ValidateBucketedPerDayConfiguration(
+            ParcelFinerGranularityMode mode,
+            int? bucketCount,
+            ICollection<string> validationErrors) {
+            if (mode != ParcelFinerGranularityMode.BucketedPerDay && bucketCount.HasValue) {
+                validationErrors.Add($"配置项 {VolumeFinerBucketCountConfigKey} 当前不会生效：仅当 {VolumeFinerModeConfigKey}=BucketedPerDay 时才会使用 BucketCount。");
+                return;
             }
 
-            var normalized = raw.Trim();
-            if (IsNumericEnumToken(normalized)) {
-                validationErrors.Add($"配置项 {VolumeActionConfigKey} 值非法：{normalized}。允许值：AlertOnly/SwitchToPerDay。");
-                return ParcelVolumeThresholdAction.AlertOnly;
+            if (!bucketCount.HasValue) {
+                validationErrors.Add($"配置项 {VolumeFinerBucketCountConfigKey} 必填，且需为正整数（当前 ModeWhenPerDayStillHot=BucketedPerDay）。");
+                return;
             }
 
-            if (Enum.TryParse<ParcelVolumeThresholdAction>(normalized, ignoreCase: true, out var action)
-                && Enum.IsDefined(action)) {
-                return action;
+            if (bucketCount.Value is < MinBucketCount or > MaxBucketCount) {
+                validationErrors.Add($"配置项 {VolumeFinerBucketCountConfigKey} 值非法：{bucketCount.Value}。范围必须在 {MinBucketCount}~{MaxBucketCount}。");
             }
-
-            validationErrors.Add($"配置项 {VolumeActionConfigKey} 值非法：{normalized}。允许值：AlertOnly/SwitchToPerDay。");
-            return ParcelVolumeThresholdAction.AlertOnly;
         }
 
         /// <summary>
@@ -301,6 +558,88 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
         /// <returns>纯数字令牌返回 true，否则 false。</returns>
         private static bool IsNumericEnumToken(string value) {
             return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out _);
+        }
+
+        /// <summary>
+        /// 通用枚举配置解析（空值回退默认值、拒绝数字枚举、输出统一校验错误）。
+        /// </summary>
+        /// <typeparam name="TEnum">枚举类型。</typeparam>
+        /// <param name="raw">原始配置。</param>
+        /// <param name="key">配置键。</param>
+        /// <param name="defaultValue">默认值。</param>
+        /// <param name="allowedValues">允许值文本。</param>
+        /// <param name="validationErrors">错误集合。</param>
+        /// <returns>解析后的枚举值。</returns>
+        private static TEnum ParseEnumOrDefault<TEnum>(
+            string? raw,
+            string key,
+            TEnum defaultValue,
+            string allowedValues,
+            ICollection<string> validationErrors)
+            where TEnum : struct, Enum {
+            if (string.IsNullOrWhiteSpace(raw)) {
+                return defaultValue;
+            }
+
+            var normalized = raw.Trim();
+            if (IsNumericEnumToken(normalized)) {
+                validationErrors.Add($"配置项 {key} 值非法：{normalized}。允许值：{allowedValues}。");
+                return defaultValue;
+            }
+
+            if (Enum.TryParse<TEnum>(normalized, ignoreCase: true, out var parsedValue)
+                && Enum.IsDefined(parsedValue)) {
+                return parsedValue;
+            }
+
+            validationErrors.Add($"配置项 {key} 值非法：{normalized}。允许值：{allowedValues}。");
+            return defaultValue;
+        }
+
+        /// <summary>
+        /// 读取布尔配置：缺失回退默认值；非法值输出校验错误并回退默认值。
+        /// </summary>
+        /// <param name="raw">原始配置。</param>
+        /// <param name="key">配置键。</param>
+        /// <param name="defaultValue">默认值。</param>
+        /// <param name="validationErrors">错误集合。</param>
+        /// <returns>解析结果。</returns>
+        private static bool ReadBoolean(
+            string? raw,
+            string key,
+            bool defaultValue,
+            ICollection<string> validationErrors) {
+            if (string.IsNullOrWhiteSpace(raw)) {
+                return defaultValue;
+            }
+
+            var normalized = raw.Trim();
+            if (bool.TryParse(normalized, out var parsedValue)) {
+                return parsedValue;
+            }
+
+            validationErrors.Add($"配置项 {key} 值非法：{normalized}。允许值：true/false。");
+            return defaultValue;
+        }
+
+        /// <summary>
+        /// 读取可选正整数配置。
+        /// </summary>
+        /// <param name="raw">原始配置。</param>
+        /// <param name="key">配置键。</param>
+        /// <param name="validationErrors">错误集合。</param>
+        /// <returns>解析值；未配置返回 null。</returns>
+        private static int? ReadOptionalPositiveInt(string? raw, string key, ICollection<string> validationErrors) {
+            if (string.IsNullOrWhiteSpace(raw)) {
+                return null;
+            }
+
+            if (!int.TryParse(raw.Trim(), out var value) || value <= 0) {
+                validationErrors.Add($"配置项 {key} 值非法：{raw}。必须为正整数。");
+                return null;
+            }
+
+            return value;
         }
 
         /// <summary>
@@ -447,22 +786,70 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
         }
 
         /// <summary>
-        /// 判断是否需要预留“PerDay 之后继续细粒度拆分”的扩展动作。
+        /// 基于当前决策与配置构建 finer-granularity 扩展规划。
         /// </summary>
         /// <param name="mode">策略模式。</param>
         /// <param name="thresholdAction">阈值动作。</param>
-        /// <param name="thresholdReached">是否命中阈值。</param>
-        /// <param name="effectiveDateMode">最终时间分表粒度。</param>
-        /// <returns>需要扩展返回 true，否则 false。</returns>
-        private static bool ResolveRequiresFinerGranularityExtension(
+        /// <param name="thresholdReached">阈值是否命中。</param>
+        /// <param name="effectiveDateMode">当前生效分表粒度。</param>
+        /// <param name="thresholdTrigger">阈值触发来源。</param>
+        /// <param name="finerGranularityStrategy">finer-granularity 配置快照。</param>
+        /// <returns>扩展规划结果。</returns>
+        private static ParcelFinerGranularityExtensionPlan BuildFinerGranularityExtensionPlan(
             ParcelShardingStrategyMode mode,
             ParcelVolumeThresholdAction thresholdAction,
             bool thresholdReached,
-            ExpandByDateMode effectiveDateMode) {
-            return mode is ParcelShardingStrategyMode.Volume or ParcelShardingStrategyMode.Hybrid
+            ExpandByDateMode effectiveDateMode,
+            string thresholdTrigger,
+            ParcelFinerGranularityStrategySnapshot finerGranularityStrategy) {
+            var shouldPlanExtension = mode is ParcelShardingStrategyMode.Volume or ParcelShardingStrategyMode.Hybrid
                 && thresholdAction == ParcelVolumeThresholdAction.SwitchToPerDay
                 && thresholdReached
-                && effectiveDateMode == ExpandByDateMode.PerDay;
+                && effectiveDateMode == ExpandByDateMode.PerDay
+                && finerGranularityStrategy.ModeWhenPerDayStillHot != ParcelFinerGranularityMode.None;
+            if (!shouldPlanExtension) {
+                return new ParcelFinerGranularityExtensionPlan(
+                    ShouldPlanExtension: false,
+                    SuggestedMode: ParcelFinerGranularityMode.None,
+                    Lifecycle: ParcelFinerGranularityPlanLifecycle.PlanOnly,
+                    RequiresPrebuildGuard: false,
+                    Reason: BuildNotTriggeredPlanReason(thresholdTrigger, effectiveDateMode));
+            }
+
+            return new ParcelFinerGranularityExtensionPlan(
+                ShouldPlanExtension: true,
+                SuggestedMode: finerGranularityStrategy.ModeWhenPerDayStillHot,
+                Lifecycle: finerGranularityStrategy.Lifecycle,
+                RequiresPrebuildGuard: finerGranularityStrategy.RequirePrebuildGuard,
+                Reason: BuildTriggeredPlanReason(thresholdTrigger, finerGranularityStrategy));
+        }
+
+        /// <summary>
+        /// 构建“未触发扩展规划”原因文本。
+        /// </summary>
+        /// <param name="thresholdTrigger">阈值触发来源。</param>
+        /// <param name="effectiveDateMode">当前生效分表粒度。</param>
+        /// <returns>原因文本。</returns>
+        private static string BuildNotTriggeredPlanReason(string thresholdTrigger, ExpandByDateMode effectiveDateMode) {
+            return $"not-triggered; Trigger={thresholdTrigger}; EffectiveDateMode={effectiveDateMode}";
+        }
+
+        /// <summary>
+        /// 构建“已触发扩展规划”原因文本。
+        /// </summary>
+        /// <param name="thresholdTrigger">阈值触发来源。</param>
+        /// <param name="finerGranularityStrategy">finer-granularity 配置快照。</param>
+        /// <returns>原因文本。</returns>
+        private static string BuildTriggeredPlanReason(
+            string thresholdTrigger,
+            ParcelFinerGranularityStrategySnapshot finerGranularityStrategy) {
+            var reason = $"per-day-still-hot-planning; Trigger={thresholdTrigger}; SuggestedMode={finerGranularityStrategy.ModeWhenPerDayStillHot}; Lifecycle={finerGranularityStrategy.Lifecycle}";
+            if (finerGranularityStrategy.ModeWhenPerDayStillHot == ParcelFinerGranularityMode.BucketedPerDay
+                && finerGranularityStrategy.BucketCount.HasValue) {
+                reason = $"{reason}; BucketCount={finerGranularityStrategy.BucketCount.Value}";
+            }
+
+            return reason;
         }
 
         /// <summary>
@@ -480,18 +867,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
             ParcelVolumeThresholdAction thresholdAction,
             bool thresholdReached,
             ExpandByDateMode effectiveDateMode,
-            long? maxRowsPerShard,
-            long? currentEstimatedRowsPerShard,
-            decimal? hotThresholdRatio,
-            decimal? currentObservedHotRatio,
             string observationSource,
-            bool requiresFinerGranularityExtension) {
-            var trigger = ResolveThresholdTrigger(
-                maxRowsPerShard,
-                currentEstimatedRowsPerShard,
-                hotThresholdRatio,
-                currentObservedHotRatio);
-            return $"Mode={mode}; TimeGranularity={timeGranularity}; Action={thresholdAction}; ThresholdReached={thresholdReached}; Trigger={trigger}; ObservationSource={observationSource}; EffectiveDateMode={effectiveDateMode}; RequiresFinerGranularityExtension={requiresFinerGranularityExtension}";
+            string thresholdTrigger,
+            ParcelFinerGranularityExtensionPlan finerGranularityExtensionPlan) {
+            return $"Mode={mode}; TimeGranularity={timeGranularity}; Action={thresholdAction}; ThresholdReached={thresholdReached}; Trigger={thresholdTrigger}; ObservationSource={observationSource}; EffectiveDateMode={effectiveDateMode}; FinerPlanNeeded={finerGranularityExtensionPlan.ShouldPlanExtension}; FinerSuggestedMode={finerGranularityExtensionPlan.SuggestedMode}; FinerLifecycle={finerGranularityExtensionPlan.Lifecycle}";
         }
 
         /// <summary>

@@ -100,8 +100,10 @@
 │   │   │   ├── SlowQueryCommandInterceptor.cs（EF Core 慢查询采集拦截器）
 │   │   │   └── SlowQuerySample.cs（慢查询采样记录模型）
 │   │   ├── Sharding（分表策略与治理决策目录）
-│   │   │   ├── ParcelShardingStrategyEvaluator.cs（Parcel 分表策略评估器：配置解析、结构化校验、容量观测输入收敛、阈值决策与最终时间粒度决策）
+│   │   │   ├── ParcelShardingStrategyEvaluator.cs（Parcel 分表策略评估器：配置解析、结构化校验、容量观测输入收敛、阈值决策、finer-granularity 扩展规划与统一决策快照）
 │   │   │   └── Enums（分表策略枚举目录）
+│   │   │       ├── ParcelFinerGranularityMode.cs（PerDay 仍过热时下一层细粒度模式枚举：None/PerHour/BucketedPerDay）
+│   │   │       ├── ParcelFinerGranularityPlanLifecycle.cs（finer-granularity 扩展规划生命周期枚举：PlanOnly/AlertOnly/FutureExecutable）
 │   │   │       ├── ParcelShardingStrategyMode.cs（分表模式枚举：Time/Volume/Hybrid）
 │   │   │       ├── ParcelTimeShardingGranularity.cs（时间粒度枚举：PerMonth/PerDay）
 │   │   │       └── ParcelVolumeThresholdAction.cs（容量阈值动作枚举：AlertOnly/SwitchToPerDay）
@@ -291,9 +293,11 @@
 - `SlowQuerySample.cs`：慢查询采样记录模型。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding/`：分表策略与治理决策目录
-- `ParcelShardingStrategyEvaluator.cs`：Parcel 分表策略评估器（分表模式/时间粒度/容量阈值/阈值动作配置解析，结构化校验，容量观测输入统一收敛为 Observation 对象，治理决策输出复用于注册入口与启动审计守卫）。
+- `ParcelShardingStrategyEvaluator.cs`：Parcel 分表策略评估器（分表模式/时间粒度/容量阈值/阈值动作配置解析，结构化校验，容量观测输入统一收敛为 Observation 对象，输出含 finer-granularity 扩展规划的统一决策结果，复用于注册入口与启动审计守卫）。
 
 ###### `Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding/Enums/`：分表策略枚举目录
+- `ParcelFinerGranularityMode.cs`：PerDay 仍过热时下一层细粒度模式枚举（`None` / `PerHour` / `BucketedPerDay`，含 `Description`）。
+- `ParcelFinerGranularityPlanLifecycle.cs`：finer-granularity 扩展规划生命周期枚举（`PlanOnly` / `AlertOnly` / `FutureExecutable`，含 `Description`）。
 - `ParcelShardingStrategyMode.cs`：分表模式枚举（`Time` / `Volume` / `Hybrid`，含 `Description`）。
 - `ParcelTimeShardingGranularity.cs`：时间分表粒度枚举（`PerMonth` / `PerDay`，含 `Description`）。
 - `ParcelVolumeThresholdAction.cs`：容量阈值动作枚举（`AlertOnly` / `SwitchToPerDay`，含 `Description`）。
@@ -543,3 +547,20 @@
 ## 后续可完善点（PR3 审查修复）
 
 1. 目前分表治理守卫已使用专用异常类型并完成启动期日志阻断；后续可继续扩展“未来周期物理分表存在性探测”，将治理从配置完整性校验升级为实际建表状态校验。
+
+## 本次更新内容（单天仍超大下一层粒度扩展设计）
+
+1. **布尔扩展信号升级为结构化规划模型**：`ParcelShardingStrategyEvaluator` 将 `RequiresFinerGranularityExtension` 升级为 `ParcelFinerGranularityExtensionPlan`，可表达是否继续细分、推荐模式（`PerHour`/`BucketedPerDay`/`None`）、推荐原因、是否要求预建守卫、生命周期（`PlanOnly`/`AlertOnly`/`FutureExecutable`）。
+2. **配置模型收口并支持未来细粒度策略**：在 `Persistence:Sharding:Strategy:Volume:FinerGranularity` 下新增结构化配置（`ModeWhenPerDayStillHot`、`Lifecycle`、`RequirePrebuildGuard`、`Bucket:BucketCount`），避免继续平铺字段导致 evaluator 膨胀。
+3. **治理守卫改为消费统一规划结果**：`DatabaseInitializerHostedService` 新增 `ShouldEnforcePerDayPrebuildGuard`，守卫判断从“只认 PerDay 的硬编码分支”收口为“统一决策对象 + 扩展规划结果”驱动，便于后续扩展到更多粒度策略时复用。
+4. **收口重复语义实现（去影分身）**：`ParcelShardingStrategyEvaluator` 引入通用枚举解析路径（拒绝数字枚举、统一默认值与错误输出），消除 Mode/Granularity/Action 三处重复解析实现，减少后续扩展重复代码。
+5. **边界保持不变（明确声明）**：
+   - Bootstrap SQL 仍保持“失败告警后继续（degraded）”语义，本次未改。
+   - Parcel 主表仍按 `CreatedTime` 分表，本次未改为 `ScannedTime`。
+   - Volume/Hybrid 仍是“容量驱动的时间粒度治理”；finer-granularity 当前属于“设计与治理层能力”，不是完整在线自动执行平台。
+
+## 后续可完善点（单天仍超大扩展）
+
+1. 在隔离器（开关 + dry-run + 审计 + 回滚）边界内，将 `FutureExecutable` 生命周期逐步接入可控执行编排。
+2. 为 `BucketedPerDay` 增加更细的策略参数（例如路由字段组合、桶热点重平衡提示），并补充运维演练 Runbook 模板。
+3. 在启动守卫中引入“规划目标的物理分表存在性探测”能力，减少纯配置清单方式的人工维护成本。

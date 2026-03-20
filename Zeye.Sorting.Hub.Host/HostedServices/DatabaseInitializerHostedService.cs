@@ -6,6 +6,7 @@ using System.Globalization;
 using Polly.Retry;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using EFCore.Sharding;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Zeye.Sorting.Hub.Host.Enums;
@@ -536,6 +537,13 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 _parcelShardingStrategyDecision.ThresholdReached,
                 _parcelShardingStrategyDecision.VolumeObservation.Source,
                 _parcelShardingStrategyDecision.Reason);
+            _logger.LogInformation(
+                "Parcel finer-granularity 扩展规划：ShouldPlanExtension={ShouldPlanExtension}, SuggestedMode={SuggestedMode}, Lifecycle={Lifecycle}, RequiresPrebuildGuard={RequiresPrebuildGuard}, PlanReason={PlanReason}",
+                _parcelShardingStrategyDecision.FinerGranularityExtensionPlan.ShouldPlanExtension,
+                _parcelShardingStrategyDecision.FinerGranularityExtensionPlan.SuggestedMode,
+                _parcelShardingStrategyDecision.FinerGranularityExtensionPlan.Lifecycle,
+                _parcelShardingStrategyDecision.FinerGranularityExtensionPlan.RequiresPrebuildGuard,
+                _parcelShardingStrategyDecision.FinerGranularityExtensionPlan.Reason);
 
             if (_parcelShardingStrategyDecision.Mode is ParcelShardingStrategyMode.Volume or ParcelShardingStrategyMode.Hybrid) {
                 _logger.LogInformation(
@@ -611,7 +619,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     $"分表治理守卫触发：生产环境要求使用结构化扩容计划，请至少配置 {HashShardingExpansionPlanStagesConfigKey}:0。");
             }
 
-            if (_parcelShardingStrategyDecision.EffectiveDateMode != ExpandByDateMode.PerDay) {
+            if (!ShouldEnforcePerDayPrebuildGuard(_parcelShardingStrategyDecision)) {
                 return;
             }
 
@@ -624,6 +632,18 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 throw new ShardingGovernanceGuardException(
                     $"分表治理守卫触发：当前策略已生效为 PerDay，且 {CreateShardingTableOnStartingConfigKey}=false。请先完成目标日表预建并配置 {ShardingPrebuiltPerDayDatesConfigKey}，缺失日期：{string.Join(", ", missingDates)}。");
             }
+        }
+
+        /// <summary>
+        /// 判断是否需要执行 PerDay 预建窗口守卫。
+        /// </summary>
+        /// <param name="decision">分表策略决策快照。</param>
+        /// <returns>
+        /// 当且仅当当前生效粒度为 PerDay 时返回 <c>true</c>，保持既有 PerDay 手工预建窗口守卫约束不变。
+        /// finer-granularity 规划中的守卫开关将用于后续更细粒度守卫扩展，不影响现有 PerDay 守卫触发。
+        /// </returns>
+        internal static bool ShouldEnforcePerDayPrebuildGuard(ParcelShardingStrategyDecision decision) {
+            return decision.EffectiveDateMode == ExpandByDateMode.PerDay;
         }
 
         /// <summary>
