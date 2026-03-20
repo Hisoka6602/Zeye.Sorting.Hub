@@ -176,6 +176,7 @@ public static class ParcelReadOnlyApiRouteExtensions {
                 BagCode = query.BagCode,
                 WorkstationName = query.WorkstationName,
                 Status = query.Status,
+                ExceptionType = query.ExceptionType,
                 ActualChuteId = query.ActualChuteId,
                 TargetChuteId = query.TargetChuteId,
                 ScannedTimeStart = scannedTimeStart,
@@ -284,6 +285,11 @@ public static class ParcelReadOnlyApiRouteExtensions {
         /// 包裹状态。
         /// </summary>
         public int? Status { get; init; }
+
+        /// <summary>
+        /// 包裹异常类型（对应 ParcelExceptionTypeDto 枚举数值，null 表示不限异常类型）。
+        /// </summary>
+        public int? ExceptionType { get; init; }
 
         /// <summary>
         /// 实际格口 Id。

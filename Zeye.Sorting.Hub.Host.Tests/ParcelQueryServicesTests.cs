@@ -128,6 +128,133 @@ public sealed class ParcelQueryServicesTests {
     }
 
     /// <summary>
+    /// 验证场景：多重过滤条件联合使用时，GetParcelPagedQueryService 仅返回同时满足所有条件的记录。
+    /// 覆盖 bagCode、workstationName、actualChuteId、status 多参数组合路径。
+    /// </summary>
+    [Fact]
+    public async Task GetParcelPagedQueryService_WithMultipleFilters_ShouldReturnOnlyMatchingParcels() {
+        var databaseName = $"parcel-multifilter-test-{Guid.NewGuid():N}";
+        var baseTime = LocalTimeTestConstraintHelper.CreateLocalTime(2026, 3, 20, 12, 0, 0);
+        try {
+            await SeedParcelsAsync(databaseName, [
+                // 完全匹配：BagCode + WorkstationName + ActualChuteId + Status 全部一致
+                CreateParcel("BC-MULTI-1", "BAG-MULTI", "WS-M1", ParcelStatus.Completed, baseTime.AddMinutes(-10), 900, 901),
+                // ActualChuteId 不匹配
+                CreateParcel("BC-MULTI-2", "BAG-MULTI", "WS-M1", ParcelStatus.Completed, baseTime.AddMinutes(-8), 900, 999),
+                // WorkstationName 不匹配
+                CreateParcel("BC-MULTI-3", "BAG-MULTI", "WS-OTHER", ParcelStatus.Completed, baseTime.AddMinutes(-6), 900, 901),
+                // Status 不匹配（仍为 Pending）
+                CreateParcel("BC-MULTI-4", "BAG-MULTI", "WS-M1", ParcelStatus.Pending, baseTime.AddMinutes(-4), 900, 901),
+                // BagCode 不匹配
+                CreateParcel("BC-MULTI-5", "BAG-OTHER", "WS-M1", ParcelStatus.Completed, baseTime.AddMinutes(-2), 900, 901)
+            ]);
+
+            var service = new GetParcelPagedQueryService(CreateRepository(databaseName));
+            var response = await service.ExecuteAsync(
+                new ParcelListRequest {
+                    PageNumber = 1,
+                    PageSize = 10,
+                    BagCode = "BAG-MULTI",
+                    WorkstationName = "WS-M1",
+                    ActualChuteId = 901L,
+                    Status = (int)ParcelStatus.Completed,
+                    ScannedTimeStart = baseTime.AddHours(-1),
+                    ScannedTimeEnd = baseTime
+                },
+                CancellationToken.None);
+
+            // 步骤 1：只有 BC-MULTI-1 满足全部四个过滤条件。
+            Assert.Equal(1, response.TotalCount);
+            Assert.Single(response.Items);
+            Assert.Equal("BC-MULTI-1", response.Items[0].BarCodes);
+        }
+        finally {
+            await CleanupDatabaseAsync(databaseName);
+        }
+    }
+
+    /// <summary>
+    /// 验证场景：ExceptionType 过滤条件可以单独筛选出对应异常类型的包裹。
+    /// </summary>
+    [Fact]
+    public async Task GetParcelPagedQueryService_WithExceptionTypeFilter_ShouldReturnOnlyMatchingParcels() {
+        var databaseName = $"parcel-exceptiontype-test-{Guid.NewGuid():N}";
+        var baseTime = LocalTimeTestConstraintHelper.CreateLocalTime(2026, 3, 20, 13, 0, 0);
+        try {
+            var parcelLost = CreateParcelWithException("BC-EX-1", "BAG-EX", "WS-EX", ParcelExceptionType.ParcelLost, baseTime.AddMinutes(-10), 910, 911);
+            var mechanical = CreateParcelWithException("BC-EX-2", "BAG-EX", "WS-EX", ParcelExceptionType.MechanicalFailure, baseTime.AddMinutes(-8), 910, 911);
+            var pending = CreateParcel("BC-EX-3", "BAG-EX", "WS-EX", ParcelStatus.Pending, baseTime.AddMinutes(-6), 910, 912);
+            await SeedParcelsAsync(databaseName, [parcelLost, mechanical, pending]);
+
+            var service = new GetParcelPagedQueryService(CreateRepository(databaseName));
+            var response = await service.ExecuteAsync(
+                new ParcelListRequest {
+                    PageNumber = 1,
+                    PageSize = 10,
+                    Status = (int)ParcelStatus.SortingException,
+                    ExceptionType = (int)ParcelExceptionType.ParcelLost,
+                    ScannedTimeStart = baseTime.AddHours(-1),
+                    ScannedTimeEnd = baseTime
+                },
+                CancellationToken.None);
+
+            // 步骤 1：只有 BC-EX-1（ParcelLost）满足条件，BC-EX-2 是 MechanicalFailure，BC-EX-3 是 Pending。
+            Assert.Equal(1, response.TotalCount);
+            Assert.Single(response.Items);
+            Assert.Equal("BC-EX-1", response.Items[0].BarCodes);
+            Assert.Equal((int)ParcelExceptionType.ParcelLost, response.Items[0].ExceptionType);
+        }
+        finally {
+            await CleanupDatabaseAsync(databaseName);
+        }
+    }
+
+    /// <summary>
+    /// 验证场景：传入非法 ExceptionType 时，GetParcelPagedQueryService 应抛出 ArgumentOutOfRangeException。
+    /// </summary>
+    [Fact]
+    public async Task GetParcelPagedQueryService_WithInvalidExceptionType_ShouldThrow() {
+        var databaseName = $"parcel-exceptiontype-invalid-{Guid.NewGuid():N}";
+        try {
+            var service = new GetParcelPagedQueryService(CreateRepository(databaseName));
+            await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => service.ExecuteAsync(
+                new ParcelListRequest {
+                    PageNumber = 1,
+                    PageSize = 10,
+                    ExceptionType = 9999 // 非法枚举值
+                },
+                CancellationToken.None));
+        }
+        finally {
+            await CleanupDatabaseAsync(databaseName);
+        }
+    }
+
+    /// <summary>
+    /// 创建已标记异常类型的测试包裹。
+    /// </summary>
+    /// <param name="barCode">条码。</param>
+    /// <param name="bagCode">集包号。</param>
+    /// <param name="workstation">工作台。</param>
+    /// <param name="exceptionType">分拣异常类型。</param>
+    /// <param name="scannedTime">扫码时间。</param>
+    /// <param name="targetChuteId">目标格口。</param>
+    /// <param name="actualChuteId">实际格口。</param>
+    /// <returns>已标记异常状态的包裹聚合。</returns>
+    private static Parcel CreateParcelWithException(
+        string barCode,
+        string bagCode,
+        string workstation,
+        ParcelExceptionType exceptionType,
+        DateTime scannedTime,
+        long targetChuteId,
+        long actualChuteId) {
+        var parcel = CreateParcel(barCode, bagCode, workstation, ParcelStatus.Pending, scannedTime, targetChuteId, actualChuteId);
+        parcel.MarkSortingException(exceptionType);
+        return parcel;
+    }
+
+    /// <summary>
     /// 创建仓储实例。
     /// </summary>
     /// <param name="databaseName">内存数据库名称。</param>

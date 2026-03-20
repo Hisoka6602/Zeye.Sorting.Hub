@@ -20,4 +20,10 @@
     <ProjectReference Include="..\Zeye.Sorting.Hub.Contracts\Zeye.Sorting.Hub.Contracts.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Zeye.Sorting.Hub.Host.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
 </Project>

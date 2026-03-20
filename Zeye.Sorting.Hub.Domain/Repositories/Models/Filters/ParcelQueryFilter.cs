@@ -29,6 +29,11 @@ public sealed record ParcelQueryFilter {
     public ParcelStatus? Status { get; init; }
 
     /// <summary>
+    /// 包裹异常类型（仅 Status=SortingException 时有意义，null 表示不限异常类型）。
+    /// </summary>
+    public ParcelExceptionType? ExceptionType { get; init; }
+
+    /// <summary>
     /// 实际格口 Id。
     /// </summary>
     public long? ActualChuteId { get; init; }
