@@ -216,10 +216,14 @@ internal static class ParcelContractMapper {
                 RequestStatus = (int)x.RequestStatus,
                 RequestUrl = x.RequestUrl,
                 QueryParams = x.QueryParams,
+                Headers = x.Headers,
+                RequestBody = x.RequestBody,
+                ResponseBody = x.ResponseBody,
                 RequestTime = x.RequestTime,
                 ResponseTime = x.ResponseTime,
                 ElapsedMilliseconds = x.ElapsedMilliseconds,
                 Exception = x.Exception,
+                RawData = x.RawData,
                 FormattedMessage = x.FormattedMessage
             }).ToList(),
             chuteInfo: parcel.ChuteInfo is null ? null : new ChuteInfoResponse {
