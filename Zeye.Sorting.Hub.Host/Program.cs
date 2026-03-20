@@ -1,5 +1,6 @@
 using NLog;
 using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.AspNetCore.Mvc;
 using System.Globalization;
 using Zeye.Sorting.Hub.Application.Services.Parcels;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels;
@@ -110,7 +111,7 @@ finally {
 /// <summary>
 /// Parcel 只读 API 路由扩展。
 /// </summary>
-internal static class ParcelReadOnlyApiRouteExtensions {
+public static class ParcelReadOnlyApiRouteExtensions {
     /// <summary>
     /// 邻近查询支持的本地时间格式（不允许 UTC/offset 表达）。
     /// </summary>
@@ -168,9 +169,9 @@ internal static class ParcelReadOnlyApiRouteExtensions {
         [AsParameters] ParcelListQueryParameters query,
         GetParcelPagedQueryService queryService,
         CancellationToken cancellationToken) {
-        if (!IsLocalOrUnspecifiedTime(query.ScannedTimeStart)
-            || !IsLocalOrUnspecifiedTime(query.ScannedTimeEnd)) {
-            return CreateBadRequestProblem("请求参数无效", "scannedTimeStart/scannedTimeEnd 必须使用本地时间语义，不允许 UTC 或时区偏移。");
+        if (!TryParseOptionalLocalDateTime(query.ScannedTimeStart, out var scannedTimeStart)
+            || !TryParseOptionalLocalDateTime(query.ScannedTimeEnd, out var scannedTimeEnd)) {
+            return CreateBadRequestProblem("请求参数无效", "scannedTimeStart/scannedTimeEnd 必须是本地时间格式，且不允许包含 UTC 或时区偏移。");
         }
 
         try {
@@ -183,8 +184,8 @@ internal static class ParcelReadOnlyApiRouteExtensions {
                 Status = query.Status,
                 ActualChuteId = query.ActualChuteId,
                 TargetChuteId = query.TargetChuteId,
-                ScannedTimeStart = query.ScannedTimeStart,
-                ScannedTimeEnd = query.ScannedTimeEnd
+                ScannedTimeStart = scannedTimeStart,
+                ScannedTimeEnd = scannedTimeEnd
             };
             var response = await queryService.ExecuteAsync(request, cancellationToken);
             return Results.Ok(response);
@@ -280,14 +281,24 @@ internal static class ParcelReadOnlyApiRouteExtensions {
     }
 
     /// <summary>
-    /// 校验时间值是否为本地时间语义（允许空值、Local、Unspecified）。
+    /// 尝试解析可空本地时间字符串（空值视为合法）。
     /// </summary>
-    /// <param name="dateTime">待校验时间。</param>
-    /// <returns>是否满足本地时间语义。</returns>
-    private static bool IsLocalOrUnspecifiedTime(DateTime? dateTime) {
-        return !dateTime.HasValue
-            || dateTime.Value.Kind == DateTimeKind.Local
-            || dateTime.Value.Kind == DateTimeKind.Unspecified;
+    /// <param name="input">可空输入字符串。</param>
+    /// <param name="parsedTime">解析结果。</param>
+    /// <returns>是否解析成功。</returns>
+    private static bool TryParseOptionalLocalDateTime(string? input, out DateTime? parsedTime) {
+        if (string.IsNullOrWhiteSpace(input)) {
+            parsedTime = null;
+            return true;
+        }
+
+        if (!TryParseLocalDateTime(input, out var localTime)) {
+            parsedTime = null;
+            return false;
+        }
+
+        parsedTime = localTime;
+        return true;
     }
 
     /// <summary>
@@ -297,9 +308,13 @@ internal static class ParcelReadOnlyApiRouteExtensions {
     /// <param name="detail">问题详情。</param>
     /// <returns>统一错误响应。</returns>
     private static IResult CreateBadRequestProblem(string title, string detail) {
-        return Results.Problem(
-            title: title,
-            detail: detail,
+        return Results.Json(
+            new ProblemDetails {
+                Title = title,
+                Detail = detail,
+                Status = StatusCodes.Status400BadRequest
+            },
+            contentType: "application/problem+json",
             statusCode: StatusCodes.Status400BadRequest);
     }
 
@@ -350,12 +365,12 @@ internal static class ParcelReadOnlyApiRouteExtensions {
         /// <summary>
         /// 扫码开始时间。
         /// </summary>
-        public DateTime? ScannedTimeStart { get; init; }
+        public string? ScannedTimeStart { get; init; }
 
         /// <summary>
         /// 扫码结束时间。
         /// </summary>
-        public DateTime? ScannedTimeEnd { get; init; }
+        public string? ScannedTimeEnd { get; init; }
     }
 
     /// <summary>

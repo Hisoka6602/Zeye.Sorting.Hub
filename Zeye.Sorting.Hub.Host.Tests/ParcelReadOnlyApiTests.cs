@@ -83,6 +83,35 @@ public sealed class ParcelReadOnlyApiTests {
     }
 
     /// <summary>
+    /// 验证场景：列表查询拒绝 UTC/offset 时间参数。
+    /// </summary>
+    [Fact]
+    public async Task GetParcels_WithUtcOrOffsetTime_ShouldReturnBadRequest() {
+        await using var app = await BuildTestAppAsync();
+        using var client = app.GetTestClient();
+
+        var utcResponse = await client.GetAsync("/api/parcels?scannedTimeStart=2026-03-20T10:00:00Z");
+        Assert.Equal(HttpStatusCode.BadRequest, utcResponse.StatusCode);
+
+        var offsetResponse = await client.GetAsync("/api/parcels?scannedTimeEnd=2026-03-20T10:00:00+08:00");
+        Assert.Equal(HttpStatusCode.BadRequest, offsetResponse.StatusCode);
+    }
+
+    /// <summary>
+    /// 验证场景：邻近查询拒绝 UTC 时间参数。
+    /// </summary>
+    [Fact]
+    public async Task GetAdjacentParcels_WithUtcTime_ShouldReturnBadRequest() {
+        await using var app = await BuildTestAppAsync();
+        using var client = app.GetTestClient();
+        var response = await client.GetAsync("/api/parcels/adjacent?scannedTime=2026-03-20T10:00:00Z&beforeCount=1&afterCount=1");
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("scannedTime", body, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// 构建测试用 WebApplication。
     /// </summary>
     /// <returns>已启动的测试应用。</returns>
