@@ -182,50 +182,21 @@ internal static class ParcelContractMapper {
     public static ParcelDetailResponse ToDetail(Parcel parcel) {
         var args = BuildFromAggregate(parcel);
         var listItem = CreateParcelListItemResponse(args);
-        return new ParcelDetailResponse {
-            Id = listItem.Id,
-            CreatedTime = listItem.CreatedTime,
-            ModifyTime = listItem.ModifyTime,
-            ModifyIp = listItem.ModifyIp,
-            ParcelTimestamp = listItem.ParcelTimestamp,
-            Type = listItem.Type,
-            Status = listItem.Status,
-            ExceptionType = listItem.ExceptionType,
-            NoReadType = listItem.NoReadType,
-            SorterCarrierId = listItem.SorterCarrierId,
-            SegmentCodes = listItem.SegmentCodes,
-            LifecycleMilliseconds = listItem.LifecycleMilliseconds,
-            TargetChuteId = listItem.TargetChuteId,
-            ActualChuteId = listItem.ActualChuteId,
-            BarCodes = listItem.BarCodes,
-            Weight = listItem.Weight,
-            RequestStatus = listItem.RequestStatus,
-            BagCode = listItem.BagCode,
-            WorkstationName = listItem.WorkstationName,
-            IsSticking = listItem.IsSticking,
-            Length = listItem.Length,
-            Width = listItem.Width,
-            Height = listItem.Height,
-            Volume = listItem.Volume,
-            ScannedTime = listItem.ScannedTime,
-            DischargeTime = listItem.DischargeTime,
-            CompletedTime = listItem.CompletedTime,
-            HasImages = listItem.HasImages,
-            HasVideos = listItem.HasVideos,
-            Coordinate = listItem.Coordinate,
-            BarCodeInfos = parcel.BarCodeInfos.Select(x => new BarCodeInfoResponse {
+        return new ParcelDetailResponse(
+            listItem,
+            barCodeInfos: parcel.BarCodeInfos.Select(x => new BarCodeInfoResponse {
                 BarCode = x.BarCode,
                 BarCodeType = (int)x.BarCodeType,
                 CapturedTime = x.CapturedTime
             }).ToList(),
-            WeightInfos = parcel.WeightInfos.Select(x => new WeightInfoResponse {
+            weightInfos: parcel.WeightInfos.Select(x => new WeightInfoResponse {
                 RawWeight = x.RawWeight,
                 EvidenceCode = x.EvidenceCode,
                 FormattedWeight = x.FormattedWeight,
                 WeighingTime = x.WeighingTime,
                 AdjustedWeight = x.AdjustedWeight
             }).ToList(),
-            VolumeInfo = parcel.VolumeInfo is null ? null : new VolumeInfoResponse {
+            volumeInfo: parcel.VolumeInfo is null ? null : new VolumeInfoResponse {
                 SourceType = (int)parcel.VolumeInfo.SourceType,
                 RawVolume = parcel.VolumeInfo.RawVolume,
                 EvidenceCode = parcel.VolumeInfo.EvidenceCode,
@@ -240,28 +211,24 @@ internal static class ParcelContractMapper {
                 MeasurementTime = parcel.VolumeInfo.MeasurementTime,
                 BindTime = parcel.VolumeInfo.BindTime
             },
-            ApiRequests = parcel.ApiRequests.Select(x => new ApiRequestInfoResponse {
+            apiRequests: parcel.ApiRequests.Select(x => new ApiRequestInfoResponse {
                 ApiType = (int)x.ApiType,
                 RequestStatus = (int)x.RequestStatus,
                 RequestUrl = x.RequestUrl,
                 QueryParams = x.QueryParams,
-                Headers = x.Headers,
-                RequestBody = x.RequestBody,
-                ResponseBody = x.ResponseBody,
                 RequestTime = x.RequestTime,
                 ResponseTime = x.ResponseTime,
                 ElapsedMilliseconds = x.ElapsedMilliseconds,
                 Exception = x.Exception,
-                RawData = x.RawData,
                 FormattedMessage = x.FormattedMessage
             }).ToList(),
-            ChuteInfo = parcel.ChuteInfo is null ? null : new ChuteInfoResponse {
+            chuteInfo: parcel.ChuteInfo is null ? null : new ChuteInfoResponse {
                 TargetChuteId = parcel.ChuteInfo.TargetChuteId,
                 ActualChuteId = parcel.ChuteInfo.ActualChuteId,
                 BackupChuteId = parcel.ChuteInfo.BackupChuteId,
                 LandedTime = parcel.ChuteInfo.LandedTime
             },
-            CommandInfos = parcel.CommandInfos.Select(x => new CommandInfoResponse {
+            commandInfos: parcel.CommandInfos.Select(x => new CommandInfoResponse {
                 ProtocolType = (int)x.ProtocolType,
                 ProtocolName = x.ProtocolName,
                 ConnectionName = x.ConnectionName,
@@ -271,7 +238,7 @@ internal static class ParcelContractMapper {
                 FormattedMessage = x.FormattedMessage,
                 Direction = (int)x.Direction
             }).ToList(),
-            ImageInfos = parcel.ImageInfos.Select(x => new ImageInfoResponse {
+            imageInfos: parcel.ImageInfos.Select(x => new ImageInfoResponse {
                 CameraName = x.CameraName,
                 CustomName = x.CustomName,
                 CameraSerialNumber = x.CameraSerialNumber,
@@ -279,30 +246,30 @@ internal static class ParcelContractMapper {
                 RelativePath = x.RelativePath,
                 CaptureType = (int)x.CaptureType
             }).ToList(),
-            VideoInfos = parcel.VideoInfos.Select(x => new VideoInfoResponse {
+            videoInfos: parcel.VideoInfos.Select(x => new VideoInfoResponse {
                 Channel = x.Channel,
                 NvrSerialNumber = x.NvrSerialNumber,
                 NodeType = (int)x.NodeType
             }).ToList(),
-            SorterCarrierInfo = parcel.SorterCarrierInfo is null ? null : new SorterCarrierInfoResponse {
+            sorterCarrierInfo: parcel.SorterCarrierInfo is null ? null : new SorterCarrierInfoResponse {
                 SorterCarrierId = parcel.SorterCarrierInfo.SorterCarrierId,
                 LoadedTime = parcel.SorterCarrierInfo.LoadedTime,
                 ConveyorSpeedWhenLoaded = parcel.SorterCarrierInfo.ConveyorSpeedWhenLoaded,
                 LinkedCarrierCount = parcel.SorterCarrierInfo.LinkedCarrierCount
             },
-            BagInfo = parcel.BagInfo is null ? null : new BagInfoResponse {
+            bagInfo: parcel.BagInfo is null ? null : new BagInfoResponse {
                 ChuteId = parcel.BagInfo.ChuteId,
                 ChuteName = parcel.BagInfo.ChuteName,
                 BagCode = parcel.BagInfo.BagCode,
                 ParcelCount = parcel.BagInfo.ParcelCount,
                 BaggingTime = parcel.BagInfo.BaggingTime
             },
-            DeviceInfo = parcel.DeviceInfo is null ? null : new ParcelDeviceInfoResponse {
+            deviceInfo: parcel.DeviceInfo is null ? null : new ParcelDeviceInfoResponse {
                 WorkstationName = parcel.DeviceInfo.WorkstationName,
                 MachineCode = parcel.DeviceInfo.MachineCode,
                 CustomName = parcel.DeviceInfo.CustomName
             },
-            GrayDetectorInfo = parcel.GrayDetectorInfo is null ? null : new GrayDetectorInfoResponse {
+            grayDetectorInfo: parcel.GrayDetectorInfo is null ? null : new GrayDetectorInfoResponse {
                 CarrierNumber = parcel.GrayDetectorInfo.CarrierNumber,
                 AttachBoxInfo = parcel.GrayDetectorInfo.AttachBoxInfo,
                 MainBoxInfo = parcel.GrayDetectorInfo.MainBoxInfo,
@@ -311,13 +278,13 @@ internal static class ParcelContractMapper {
                 ResultTime = parcel.GrayDetectorInfo.ResultTime,
                 RawResult = parcel.GrayDetectorInfo.RawResult
             },
-            StickingParcelInfo = parcel.StickingParcelInfo is null ? null : new StickingParcelInfoResponse {
+            stickingParcelInfo: parcel.StickingParcelInfo is null ? null : new StickingParcelInfoResponse {
                 IsSticking = parcel.StickingParcelInfo.IsSticking,
                 ReceiveTime = parcel.StickingParcelInfo.ReceiveTime,
                 RawData = parcel.StickingParcelInfo.RawData,
                 ElapsedMilliseconds = parcel.StickingParcelInfo.ElapsedMilliseconds
             },
-            ParcelPositionInfo = parcel.ParcelPositionInfo is null ? null : new ParcelPositionInfoResponse {
+            parcelPositionInfo: parcel.ParcelPositionInfo is null ? null : new ParcelPositionInfoResponse {
                 X1 = parcel.ParcelPositionInfo.X1,
                 X2 = parcel.ParcelPositionInfo.X2,
                 Y1 = parcel.ParcelPositionInfo.Y1,
@@ -327,7 +294,7 @@ internal static class ParcelContractMapper {
                 BackgroundY1 = parcel.ParcelPositionInfo.BackgroundY1,
                 BackgroundY2 = parcel.ParcelPositionInfo.BackgroundY2
             }
-        };
+        );
     }
 
     /// <summary>

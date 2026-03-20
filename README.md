@@ -207,8 +207,6 @@
 │   ├── Class1.cs（占位类，预留通用基础能力）
 │   └── Zeye.Sorting.Hub.SharedKernel.csproj（SharedKernel 项目定义）
 ├── Zeye.Sorting.Hub.sln（.NET 解决方案入口）
-├── BACKLOG.md（待完善事项列表，仅记录代码中尚未实现的可完善点）
-├── CHANGELOG.md（更新记录，按时间倒序记录每次 PR 更新内容）
 ├── EFCore-Migration.md（EF Core CodeFirst 迁移使用说明文档）
 ├── EFCore9-UpgradePlan.md（EF Core 8 → 9 升级记录：已完成，EFCore 9.0.14 / Pomelo 9.0.0 / HasPendingModelChanges 守卫已集成）
 ├── NewDatabaseProvider-Guide.md（接入新数据库提供器（如 SQLite / PostgreSQL）的逐步操作指南）

@@ -1,7 +1,7 @@
 namespace Zeye.Sorting.Hub.Contracts.Models.Parcels.ValueObjects;
 
 /// <summary>
-/// 外部接口请求记录响应合同。
+/// 外部接口请求记录响应合同（对外仅暴露脱敏后的摘要信息，不暴露原始载荷与鉴权头）。
 /// </summary>
 public sealed record ApiRequestInfoResponse {
     /// <summary>
@@ -20,32 +20,17 @@ public sealed record ApiRequestInfoResponse {
     public required string RequestUrl { get; init; }
 
     /// <summary>
-    /// 参数（URL 或 Query 参数）。
+    /// 参数（URL 或 Query 参数，不包含敏感字段）。
     /// </summary>
     public required string QueryParams { get; init; }
 
     /// <summary>
-    /// 协议头。
-    /// </summary>
-    public required string Headers { get; init; }
-
-    /// <summary>
-    /// 请求内容（原始请求体）。
-    /// </summary>
-    public required string RequestBody { get; init; }
-
-    /// <summary>
-    /// 响应内容（原始响应体）。
-    /// </summary>
-    public required string ResponseBody { get; init; }
-
-    /// <summary>
-    /// 请求时间。
+    /// 请求时间（本地时间语义）。
     /// </summary>
     public required DateTime RequestTime { get; init; }
 
     /// <summary>
-    /// 响应时间。
+    /// 响应时间（本地时间语义）。
     /// </summary>
     public required DateTime? ResponseTime { get; init; }
 
@@ -55,14 +40,9 @@ public sealed record ApiRequestInfoResponse {
     public required int ElapsedMilliseconds { get; init; }
 
     /// <summary>
-    /// 异常信息。
+    /// 异常信息（已脱敏的错误描述）。
     /// </summary>
     public required string Exception { get; init; }
-
-    /// <summary>
-    /// 直接可访问的原始数据。
-    /// </summary>
-    public required string RawData { get; init; }
 
     /// <summary>
     /// 格式化后的业务消息。
