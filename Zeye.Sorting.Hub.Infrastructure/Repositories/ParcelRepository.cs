@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
@@ -364,7 +365,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     /// <summary>
     /// Parcel 摘要投影表达式。
     /// </summary>
-    private static readonly System.Linq.Expressions.Expression<Func<Parcel, ParcelSummaryReadModel>> SelectSummaryExpression = x => new ParcelSummaryReadModel {
+    private static readonly Expression<Func<Parcel, ParcelSummaryReadModel>> SelectSummaryExpression = x => new ParcelSummaryReadModel {
         Id = x.Id,
         CreatedTime = x.CreatedTime,
         ModifyTime = x.ModifyTime,

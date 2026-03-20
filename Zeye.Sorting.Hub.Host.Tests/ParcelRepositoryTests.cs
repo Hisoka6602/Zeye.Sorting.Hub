@@ -21,12 +21,13 @@ public sealed class ParcelRepositoryTests {
     [Fact]
     public async Task GetPagedAsync_ShouldReturnSummaryWithExpectedFilterAndPaging() {
         var databaseName = $"parcel-repo-test-{Guid.NewGuid():N}";
+        var baseTime = DateTime.Now;
         try {
             var repository = CreateRepository(databaseName);
             await SeedParcelsAsync(databaseName, [
-                CreateParcel("BC-001", "BAG-A", "WS-1", ParcelStatus.Pending, DateTime.Now.AddMinutes(-3), 100, 101),
-                CreateParcel("BC-002", "BAG-A", "WS-1", ParcelStatus.Pending, DateTime.Now.AddMinutes(-2), 100, 101),
-                CreateParcel("BC-003", "BAG-B", "WS-2", ParcelStatus.Completed, DateTime.Now.AddMinutes(-1), 200, 201)
+                CreateParcel("BC-001", "BAG-A", "WS-1", ParcelStatus.Pending, baseTime.AddMinutes(-3), 100, 101),
+                CreateParcel("BC-002", "BAG-A", "WS-1", ParcelStatus.Pending, baseTime.AddMinutes(-2), 100, 101),
+                CreateParcel("BC-003", "BAG-B", "WS-2", ParcelStatus.Completed, baseTime.AddMinutes(-1), 200, 201)
             ]);
 
             var result = await repository.GetPagedAsync(
@@ -34,8 +35,8 @@ public sealed class ParcelRepositoryTests {
                     BagCode = "BAG-A",
                     WorkstationName = "WS-1",
                     Status = ParcelStatus.Pending,
-                    ScannedTimeStart = DateTime.Now.AddHours(-2),
-                    ScannedTimeEnd = DateTime.Now
+                    ScannedTimeStart = baseTime.AddHours(-2),
+                    ScannedTimeEnd = baseTime
                 },
                 new PageRequest { PageNumber = 1, PageSize = 1 },
                 CancellationToken.None);
@@ -97,14 +98,15 @@ public sealed class ParcelRepositoryTests {
     [Fact]
     public async Task GetBySpecificFilters_ShouldRequireTimeRangeAndWork() {
         var databaseName = $"parcel-repo-test-{Guid.NewGuid():N}";
+        var baseTime = DateTime.Now;
         try {
             var repository = CreateRepository(databaseName);
-            var startTime = DateTime.Now.AddHours(-2);
-            var endTime = DateTime.Now;
+            var startTime = baseTime.AddHours(-2);
+            var endTime = baseTime;
 
             await SeedParcelsAsync(databaseName, [
-                CreateParcel("BC-F-1", "BAG-F", "WS-F", ParcelStatus.Pending, DateTime.Now.AddMinutes(-30), 700, 800),
-                CreateParcel("BC-F-2", "BAG-F", "WS-F", ParcelStatus.Completed, DateTime.Now.AddMinutes(-20), 700, 801)
+                CreateParcel("BC-F-1", "BAG-F", "WS-F", ParcelStatus.Pending, baseTime.AddMinutes(-30), 700, 800),
+                CreateParcel("BC-F-2", "BAG-F", "WS-F", ParcelStatus.Completed, baseTime.AddMinutes(-20), 700, 801)
             ]);
 
             var byBag = await repository.GetByBagCodeAsync("BAG-F", startTime, endTime, new PageRequest(), CancellationToken.None);
@@ -130,12 +132,13 @@ public sealed class ParcelRepositoryTests {
     [Fact]
     public async Task GetPagedAsync_ShouldRejectTimeRangeExceedingThreeMonths() {
         var databaseName = $"parcel-repo-test-{Guid.NewGuid():N}";
+        var baseTime = DateTime.Now;
         try {
             var repository = CreateRepository(databaseName);
             var exception = await Assert.ThrowsAsync<System.ComponentModel.DataAnnotations.ValidationException>(() => repository.GetPagedAsync(
                 new ParcelQueryFilter {
-                    ScannedTimeStart = DateTime.Now.AddMonths(-4),
-                    ScannedTimeEnd = DateTime.Now
+                    ScannedTimeStart = baseTime.AddMonths(-4),
+                    ScannedTimeEnd = baseTime
                 },
                 new PageRequest(),
                 CancellationToken.None));
@@ -153,11 +156,12 @@ public sealed class ParcelRepositoryTests {
     [Fact]
     public async Task WriteOperations_ShouldAddUpdateRemoveAndCleanupExpired() {
         var databaseName = $"parcel-repo-test-{Guid.NewGuid():N}";
+        var baseTime = DateTime.Now;
         try {
             var repository = CreateRepository(databaseName);
             var contractRepository = (IParcelRepository)repository;
 
-            var parcel = CreateParcel("BC-W-1", "BAG-W", "WS-W", ParcelStatus.Pending, DateTime.Now.AddMinutes(-10), 501, 601);
+            var parcel = CreateParcel("BC-W-1", "BAG-W", "WS-W", ParcelStatus.Pending, baseTime.AddMinutes(-10), 501, 601);
             await contractRepository.AddAsync(parcel, CancellationToken.None);
 
             var saved = await repository.GetByIdAsync(parcel.Id, CancellationToken.None);
@@ -170,13 +174,13 @@ public sealed class ParcelRepositoryTests {
             Assert.NotNull(updated);
             Assert.Equal(ApiRequestStatus.Failed, updated!.RequestStatus);
 
-            var oldParcel = CreateParcel("BC-W-2", "BAG-W", "WS-W", ParcelStatus.Completed, DateTime.Now.AddMinutes(-20), 502, 602);
+            var oldParcel = CreateParcel("BC-W-2", "BAG-W", "WS-W", ParcelStatus.Completed, baseTime.AddMinutes(-20), 502, 602);
             await contractRepository.AddRangeAsync([oldParcel], CancellationToken.None);
 
-            var removedExpiredCount = await repository.RemoveExpiredAsync(DateTime.Now.AddMinutes(1), CancellationToken.None);
+            var removedExpiredCount = await repository.RemoveExpiredAsync(baseTime.AddMinutes(1), CancellationToken.None);
             Assert.True(removedExpiredCount >= 2);
 
-            var deleteTarget = CreateParcel("BC-W-3", "BAG-W", "WS-W", ParcelStatus.Pending, DateTime.Now.AddMinutes(-5), 503, 603);
+            var deleteTarget = CreateParcel("BC-W-3", "BAG-W", "WS-W", ParcelStatus.Pending, baseTime.AddMinutes(-5), 503, 603);
             await contractRepository.AddAsync(deleteTarget, CancellationToken.None);
             await contractRepository.RemoveAsync(deleteTarget, CancellationToken.None);
 
