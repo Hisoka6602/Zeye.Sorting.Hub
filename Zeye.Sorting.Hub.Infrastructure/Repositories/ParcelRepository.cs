@@ -39,17 +39,17 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     /// <summary>
     /// 过期清理隔离器开关配置键。
     /// </summary>
-    private const string RemoveExpiredEnableGuardConfigKey = "Persistence:RepositoryDangerousActions:ParcelRemoveExpired:Isolator:EnableGuard";
+    internal const string RemoveExpiredEnableGuardConfigKey = "Persistence:RepositoryDangerousActions:ParcelRemoveExpired:Isolator:EnableGuard";
 
     /// <summary>
     /// 过期清理允许执行危险动作配置键。
     /// </summary>
-    private const string RemoveExpiredAllowExecutionConfigKey = "Persistence:RepositoryDangerousActions:ParcelRemoveExpired:Isolator:AllowDangerousActionExecution";
+    internal const string RemoveExpiredAllowExecutionConfigKey = "Persistence:RepositoryDangerousActions:ParcelRemoveExpired:Isolator:AllowDangerousActionExecution";
 
     /// <summary>
     /// 过期清理 dry-run 配置键。
     /// </summary>
-    private const string RemoveExpiredDryRunConfigKey = "Persistence:RepositoryDangerousActions:ParcelRemoveExpired:Isolator:DryRun";
+    internal const string RemoveExpiredDryRunConfigKey = "Persistence:RepositoryDangerousActions:ParcelRemoveExpired:Isolator:DryRun";
 
     /// <summary>
     /// 邻近查询最大返回条数（单侧）。
@@ -287,7 +287,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     public async Task<RepositoryResult<DangerousBatchActionResult>> RemoveExpiredAsync(DateTime createdBefore, CancellationToken cancellationToken) {
         try {
             await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
-            // 步骤 1：先受控评估本次动作决策（默认阻断且默认 dry-run，避免误删）。
+            // 步骤 1：先受控评估本次动作决策（守卫优先于 dry-run，默认将先阻断危险动作，避免误删）。
             var isolationDecision = ActionIsolationPolicy.Evaluate(
                 _removeExpiredEnableGuard,
                 _removeExpiredAllowDangerousActionExecution,
@@ -400,13 +400,15 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
         SortingHubDbContext db,
         DateTime createdBefore,
         CancellationToken cancellationToken) {
-        // 步骤 1：统计总候选量（不触发真实删除）。
-        var totalCandidateCount = await db.Set<Parcel>()
+        // 步骤 1：在数据库侧按单次上限读取主键集合，确保统计开销具备明确上界。
+        var plannedIds = await db.Set<Parcel>()
             .AsNoTracking()
             .Where(x => x.CreatedTime < createdBefore)
-            .CountAsync(cancellationToken);
-        // 步骤 2：按单次上限裁剪为本次计划处理量。
-        return Math.Min(totalCandidateCount, MaxExpiredDeleteCountPerCall);
+            .Select(x => x.Id)
+            .Take(MaxExpiredDeleteCountPerCall)
+            .ToListAsync(cancellationToken);
+        // 步骤 2：计划处理量即为上界化读取后的候选计数。
+        return plannedIds.Count;
     }
 
     /// <summary>

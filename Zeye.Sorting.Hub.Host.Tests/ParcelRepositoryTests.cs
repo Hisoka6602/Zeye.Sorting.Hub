@@ -267,9 +267,9 @@ public sealed class ParcelRepositoryTests {
         bool allowDangerousActionExecution,
         bool dryRun) {
         var values = new Dictionary<string, string?> {
-            ["Persistence:RepositoryDangerousActions:ParcelRemoveExpired:Isolator:EnableGuard"] = enableGuard.ToString(),
-            ["Persistence:RepositoryDangerousActions:ParcelRemoveExpired:Isolator:AllowDangerousActionExecution"] = allowDangerousActionExecution.ToString(),
-            ["Persistence:RepositoryDangerousActions:ParcelRemoveExpired:Isolator:DryRun"] = dryRun.ToString()
+            [ParcelRepository.RemoveExpiredEnableGuardConfigKey] = enableGuard.ToString(),
+            [ParcelRepository.RemoveExpiredAllowExecutionConfigKey] = allowDangerousActionExecution.ToString(),
+            [ParcelRepository.RemoveExpiredDryRunConfigKey] = dryRun.ToString()
         };
         return new ConfigurationBuilder()
             .AddInMemoryCollection(values)
