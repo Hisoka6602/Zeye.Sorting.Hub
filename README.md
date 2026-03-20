@@ -16,11 +16,25 @@
 ├── Zeye.Sorting.Hub.Analytics（分析与报表子域，占位工程）
 │   ├── Class1.cs（占位类，预留统计指标/报表能力）
 │   └── Zeye.Sorting.Hub.Analytics.csproj（Analytics 项目定义）
-├── Zeye.Sorting.Hub.Application（应用层，占位工程）
-│   ├── Class1.cs（占位类，预留命令/查询/应用服务）
+├── Zeye.Sorting.Hub.Application（应用层）
+│   ├── Class1.cs（程序集锚点类型）
+│   ├── Services（应用服务目录）
+│   │   └── Parcels（Parcel 查询应用服务目录）
+│   │       ├── GetAdjacentParcelsQueryService.cs（Parcel 邻近查询应用服务）
+│   │       ├── GetParcelByIdQueryService.cs（Parcel 详情查询应用服务）
+│   │       ├── GetParcelPagedQueryService.cs（Parcel 分页查询应用服务）
+│   │       └── ParcelContractMapper.cs（Parcel 领域模型到 Contracts 模型映射器）
 │   └── Zeye.Sorting.Hub.Application.csproj（Application 项目定义）
-├── Zeye.Sorting.Hub.Contracts（契约层，占位工程）
-│   ├── Class1.cs（占位类，预留请求/响应契约）
+├── Zeye.Sorting.Hub.Contracts（契约层）
+│   ├── Class1.cs（程序集锚点类型）
+│   ├── Models（对外合同模型目录）
+│   │   └── Parcels（Parcel 查询合同目录）
+│   │       ├── ParcelAdjacentRequest.cs（Parcel 邻近查询请求合同）
+│   │       ├── ParcelAdjacentResponse.cs（Parcel 邻近查询响应合同）
+│   │       ├── ParcelDetailResponse.cs（Parcel 详情响应合同）
+│   │       ├── ParcelListItemResponse.cs（Parcel 列表项响应合同）
+│   │       ├── ParcelListRequest.cs（Parcel 列表查询请求合同）
+│   │       └── ParcelListResponse.cs（Parcel 列表分页响应合同）
 │   └── Zeye.Sorting.Hub.Contracts.csproj（Contracts 项目定义）
 ├── Zeye.Sorting.Hub.Domain（核心领域层）
 │   ├── Abstractions（领域抽象接口目录）
@@ -98,6 +112,7 @@
 │   └── appsettings.json（默认运行配置（含分表策略结构化 Observation、PerDay 预建日期清单与仓储危险动作隔离默认策略））
 ├── Zeye.Sorting.Hub.Host.Tests（自动调优行为测试工程）
 │   ├── AutoTuningProductionControlTests.cs（自动调优生产可控能力测试：dry-run/隔离器/告警恢复/普通与严重回归/探针双路径/闭环链路；含分表策略评估与 PerDay 预建守卫联动测试）
+│   ├── ParcelQueryServicesTests.cs（Parcel 应用层查询服务测试：列表/详情/邻近查询映射与最小校验）
 │   ├── ParcelRepositoryTests.cs（Parcel 仓储第一阶段能力测试：分页过滤、详情与邻近查询、写操作与过期清理；含阻断/dry-run/显式放开的危险动作治理回归）
 │   └── Zeye.Sorting.Hub.Host.Tests.csproj（xUnit 测试项目定义）
 ├── Zeye.Sorting.Hub.Infrastructure（基础设施层）
@@ -200,13 +215,27 @@
 - `Zeye.Sorting.Hub.Analytics.csproj`：Analytics 项目定义。
 - `Class1.cs`：占位类，预留统计指标/报表能力实现位置。
 
-### `Zeye.Sorting.Hub.Application/`：应用层（Use Case 编排层，当前为占位工程）
-- `Zeye.Sorting.Hub.Application.csproj`：Application 项目定义。
-- `Class1.cs`：占位类，预留命令/查询/应用服务实现位置。
+### `Zeye.Sorting.Hub.Application/`：应用层（Use Case 编排层）
+- `Zeye.Sorting.Hub.Application.csproj`：Application 项目定义（引用 Domain + Contracts，承载应用服务实现）。
+- `Class1.cs`：程序集锚点类型。
 
-### `Zeye.Sorting.Hub.Contracts/`：契约层（对外 DTO / 接口模型，当前为占位工程）
+#### `Zeye.Sorting.Hub.Application/Services/Parcels/`：Parcel 查询应用服务目录
+- `GetParcelByIdQueryService.cs`：按 Id 查询 Parcel 详情应用服务（仓储调用 + 合同映射 + 最小参数校验）。
+- `GetParcelPagedQueryService.cs`：分页查询 Parcel 列表应用服务（请求校验、过滤映射、分页结果映射）。
+- `GetAdjacentParcelsQueryService.cs`：按基准扫码时间查询邻近 Parcel 应用服务（数量归一化、响应映射）。
+- `ParcelContractMapper.cs`：Parcel 领域模型/读模型到 Contracts 模型的统一映射器，避免 Host 层重复映射。
+
+### `Zeye.Sorting.Hub.Contracts/`：契约层（对外 DTO / 接口模型）
 - `Zeye.Sorting.Hub.Contracts.csproj`：Contracts 项目定义。
-- `Class1.cs`：占位类，预留请求/响应契约定义位置。
+- `Class1.cs`：程序集锚点类型。
+
+#### `Zeye.Sorting.Hub.Contracts/Models/Parcels/`：Parcel 对外查询合同目录
+- `ParcelListRequest.cs`：Parcel 列表查询请求合同（分页 + 过滤参数）。
+- `ParcelListItemResponse.cs`：Parcel 列表项响应合同（扁平化字段，不暴露领域聚合根）。
+- `ParcelListResponse.cs`：Parcel 列表分页响应合同。
+- `ParcelDetailResponse.cs`：Parcel 详情响应合同。
+- `ParcelAdjacentRequest.cs`：Parcel 邻近查询请求合同。
+- `ParcelAdjacentResponse.cs`：Parcel 邻近查询响应合同。
 
 ### `Zeye.Sorting.Hub.Domain/`：核心领域层，存放聚合根、值对象、领域事件、枚举与仓储接口
 - `Zeye.Sorting.Hub.Domain.csproj`：Domain 项目定义。
@@ -377,6 +406,7 @@
 ### `Zeye.Sorting.Hub.Host.Tests/`：自动调优测试层
 - `Zeye.Sorting.Hub.Host.Tests.csproj`：xUnit 测试项目定义。
 - `AutoTuningProductionControlTests.cs`：覆盖 dry-run、危险动作隔离、告警防抖与恢复、普通/严重回归、unavailable 指标处理、执行计划探针 available/unavailable 双路径、闭环链路与分表覆盖守卫校验、迁移失败策略分环境解析、结构化扩容计划解析、Time/Volume/Hybrid 分表策略评估、PerDay 预建守卫（配置+物理探测）与分表观测口径/自动索引过滤规则回归。
+- `ParcelQueryServicesTests.cs`：Parcel 应用层查询服务测试（列表/详情/邻近查询映射与最小参数校验）。
 - `ParcelRepositoryTests.cs`：Parcel 仓储第一阶段能力测试，覆盖分页过滤、详情与邻近查询、新增/更新/删除、过期清理与批量新增，并回归验证危险清理动作的 blocked/dry-run/executed 三态。
 
 ## 本次更新内容（新增 Parcel 属性操作指南文档）
@@ -704,3 +734,16 @@
 
 1. 在具备成熟数据备份/归档体系后，可评估将“删除前归档 + 可执行补偿脚本路径”纳入 `DangerousBatchActionResult`，将当前文本边界升级为可执行治理资产。
 2. 可在告警平台增加“危险删除被阻断次数 / dry-run 次数 / 真实执行次数”指标看板，提升治理策略可观测性。
+
+## 本次更新内容（Parcel API 合同层与应用层查询骨架）
+
+1. **Contracts 补齐**：在 `Zeye.Sorting.Hub.Contracts/Models/Parcels/` 新增 `ParcelListRequest`、`ParcelListItemResponse`、`ParcelListResponse`、`ParcelDetailResponse`、`ParcelAdjacentRequest`、`ParcelAdjacentResponse`，建立对外查询合同，避免直接暴露领域实体 `Parcel`。
+2. **Application 查询服务落地**：在 `Zeye.Sorting.Hub.Application/Services/Parcels/` 新增 `GetParcelByIdQueryService`、`GetParcelPagedQueryService`、`GetAdjacentParcelsQueryService`，统一在应用层调用 `IParcelRepository` 并向 Contracts 映射输出。
+3. **映射收口**：新增 `ParcelContractMapper`，集中完成领域模型/读模型到合同模型的转换，避免 Host 层复制映射逻辑。
+4. **最小参数校验与日志**：分页查询与邻近查询加入最小必要参数校验（页码/页大小、时间范围先后、枚举合法性、邻近数量非负与上限归一化），并在异常/非法参数路径使用 NLog 记录日志。
+5. **测试补齐**：新增 `ParcelQueryServicesTests.cs`，覆盖应用层列表/详情/邻近查询骨架的映射与校验行为。
+
+## 后续可完善点（Parcel API 查询骨架）
+
+1. 在 Host 接入 HTTP 端点时，可直接复用本次查询服务，后续可按场景拆分“轻量列表 DTO / 完整列表 DTO”以降低网络负载。
+2. 当前详情合同保持与列表合同字段一致，后续可按前端展示需求补充值对象级明细合同（图片/视频/命令轨迹等）并保持 Application 统一映射。

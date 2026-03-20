@@ -14,4 +14,13 @@
     <Folder Include="Notifications\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="NLog" Version="6.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Zeye.Sorting.Hub.Contracts\Zeye.Sorting.Hub.Contracts.csproj" />
+    <ProjectReference Include="..\Zeye.Sorting.Hub.Domain\Zeye.Sorting.Hub.Domain.csproj" />
+  </ItemGroup>
+
 </Project>
