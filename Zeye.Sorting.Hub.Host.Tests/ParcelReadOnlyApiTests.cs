@@ -112,6 +112,56 @@ public sealed class ParcelReadOnlyApiTests {
     }
 
     /// <summary>
+    /// 验证场景：邻近查询传入合法本地时间参数，正常返回 200 + 邻近结果列表。
+    /// </summary>
+    [Fact]
+    public async Task GetAdjacentParcels_WithValidParams_ShouldReturnAdjacentItems() {
+        await using var app = await BuildTestAppAsync();
+        using var client = app.GetTestClient();
+
+        var response = await client.GetAsync("/api/parcels/adjacent?scannedTime=2026-03-20T10:00:00&beforeCount=2&afterCount=2");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var payload = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.NotNull(payload);
+        // beforeCount / afterCount 应与请求参数一致（FakeRepo 固定返回 2 条）
+        Assert.Equal(2, payload.RootElement.GetProperty("beforeCount").GetInt32());
+        Assert.Equal(2, payload.RootElement.GetProperty("afterCount").GetInt32());
+        Assert.NotEmpty(payload.RootElement.GetProperty("items").EnumerateArray().ToList());
+    }
+
+    /// <summary>
+    /// 验证场景：邻近查询未传入 scannedTime 参数时返回 400 Bad Request。
+    /// </summary>
+    [Fact]
+    public async Task GetAdjacentParcels_WithMissingScannedTime_ShouldReturnBadRequest() {
+        await using var app = await BuildTestAppAsync();
+        using var client = app.GetTestClient();
+
+        // 不传 scannedTime，beforeCount/afterCount 使用默认值
+        var response = await client.GetAsync("/api/parcels/adjacent?beforeCount=1&afterCount=1");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("scannedTime 必须是本地时间格式，且不允许包含 UTC 或时区偏移", body, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// 验证场景：邻近查询 afterCount 为负数时返回 400 Bad Request（beforeCount 负数已有用例，此处补充 afterCount）。
+    /// </summary>
+    [Fact]
+    public async Task GetAdjacentParcels_WithNegativeAfterCount_ShouldReturnBadRequest() {
+        await using var app = await BuildTestAppAsync();
+        using var client = app.GetTestClient();
+
+        var response = await client.GetAsync("/api/parcels/adjacent?scannedTime=2026-03-20T10:00:00&beforeCount=1&afterCount=-1");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("后向查询条数不能小于 0", body, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// 构建测试用 WebApplication。
     /// </summary>
     /// <returns>已启动的测试应用。</returns>
@@ -149,6 +199,11 @@ internal sealed class FakeParcelRepository : IParcelRepository {
     /// 清理治理接口决策（控制 RemoveExpiredAsync 返回的三态决策，默认 Execute）。
     /// </summary>
     public ActionIsolationDecision CleanupDecision { get; set; } = ActionIsolationDecision.Execute;
+
+    /// <summary>
+    /// 当设置为 true 时，AddAsync 返回失败结果以模拟仓储写入异常场景。
+    /// </summary>
+    public bool ShouldFailOnAdd { get; set; } = false;
 
     /// <summary>
     /// 清理计划量（用于 RemoveExpiredAsync 测试断言）。
@@ -253,9 +308,13 @@ internal sealed class FakeParcelRepository : IParcelRepository {
     }
 
     /// <summary>
-    /// 新增包裹（分配自增 Id，存入内存存储）。
+    /// 新增包裹（分配自增 Id，存入内存存储；若 ShouldFailOnAdd=true 则返回失败结果）。
     /// </summary>
     public Task<RepositoryResult> AddAsync(Parcel parcel, CancellationToken cancellationToken) {
+        if (ShouldFailOnAdd) {
+            return Task.FromResult(RepositoryResult.Fail("模拟仓储写入失败：数据库不可用。"));
+        }
+
         parcel.Id = _nextId++;
         _store[parcel.Id] = parcel;
         return Task.FromResult(RepositoryResult.Success());

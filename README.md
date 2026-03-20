@@ -809,3 +809,74 @@
 2. 可在 Application 层为新增/更新接口引入 FluentValidation 或自定义 Validator，实现字段级错误聚合输出，提升前端联调体验。
 3. `AddRangeAsync` 目前未暴露为 API，如后续有批量导入业务需求，可在充分评估风险后，通过治理型端点（带 dry-run + 上限保护）暴露。
 4. cleanup-expired 端点可结合定时任务（如 `IHostedService` + Cron）实现自动触发，目前为纯手动调用。
+
+## 本次更新内容（第 5 步：API 级测试补全、鉴权接入点与发布门禁说明）
+
+1. **只读 API 测试补全**：`ParcelReadOnlyApiTests.cs` 新增 3 个测试用例，并扩展 `FakeParcelRepository`：
+   - `GetAdjacentParcels_WithValidParams_ShouldReturnAdjacentItems`：邻近查询合法参数返回 200 + 结果列表（此前缺少成功路径覆盖）。
+   - `GetAdjacentParcels_WithMissingScannedTime_ShouldReturnBadRequest`：未传 scannedTime 时返回 400，错误提示明确。
+   - `GetAdjacentParcels_WithNegativeAfterCount_ShouldReturnBadRequest`：afterCount 为负时返回 400（补充 beforeCount 已有用例的对称覆盖）。
+   - `FakeParcelRepository` 新增 `ShouldFailOnAdd` 属性，允许注入仓储写入失败，供管理端失败路径测试复用。
+2. **管理端 API 测试补全**：`ParcelAdminApiTests.cs` 新增 1 个测试用例：
+   - `CreateParcel_WhenRepositoryFails_ShouldReturn500`：当仓储 AddAsync 返回失败时，CommandService 抛 `InvalidOperationException`，Host 层捕获后返回 500，日志链路被覆盖（覆盖写接口失败路径）。
+3. **鉴权接入点明确说明**：`ParcelAdminApiRouteExtensions.cs` 已有清晰注释标记两类接入点：
+   - 普通写接口：`MapGroup` 上追加 `.RequireAuthorization("AdminPolicy")` 即可统一保护。
+   - 危险治理接口（cleanup-expired）：追加 `.RequireAuthorization("DangerousActionPolicy")` 实施更严格管控。
+   - 当前无鉴权框架，上述位置是唯一需修改的接入点，不伪装已有完整安全体系。
+4. **发布门禁说明**：README 新增 Parcel API 最小发布门禁说明（见下文"Parcel API 发布门禁"节）。
+
+## 后续可完善点（API 测试与发布门禁）
+
+1. 可为 `GET /api/parcels` 补充"带多重过滤条件的成功路径"测试，覆盖 bagCode、workstationName、actualChuteId 等过滤参数的联合使用。
+2. 引入 FluentValidation 或统一参数模型验证器后，可追加字段级错误明细的结构化断言（断言 JSON 错误字段名而非字符串包含）。
+3. 引入真实鉴权框架后，补充鉴权测试：未携带 Token 时管理端接口返回 401，权限不足时返回 403。
+4. 建立面向 Swagger 规范的契约断言测试，防止重构时端点 tags/summary/response 回退。
+
+---
+
+## Parcel API 发布门禁 / 使用边界说明
+
+> **以下为最小化发布门禁准则，在正式环境上线前必须逐条确认。**
+
+### 一、只读接口（可先行开放）
+
+| 接口 | 路径 | 可开放条件 |
+|------|------|-----------|
+| 分页列表查询 | `GET /api/parcels` | 无需鉴权，可先行对内部系统开放 |
+| 详情查询 | `GET /api/parcels/{id}` | 无需鉴权，可先行对内部系统开放 |
+| 邻近查询 | `GET /api/parcels/adjacent` | 无需鉴权，可先行对内部系统开放 |
+
+- 只读接口无副作用，建议先行开放并验证查询链路可用性。
+- 若有多租户/数据隔离需求，应在开放前完成数据范围过滤的鉴权接入（添加 `.RequireAuthorization("ReadPolicy")`）。
+
+### 二、管理端写接口（默认仅内网/受控开放）
+
+| 接口 | 路径 | 开放条件 |
+|------|------|---------|
+| 新增 Parcel | `POST /api/admin/parcels` | 须接入鉴权（AdminPolicy）+ 内网限制 |
+| 更新 Parcel 状态 | `PUT /api/admin/parcels/{id}` | 须接入鉴权（AdminPolicy）+ 内网限制 |
+| 删除 Parcel | `DELETE /api/admin/parcels/{id}` | 须接入鉴权（AdminPolicy）+ 内网限制 |
+
+- 管理端写接口默认仅在受控内网环境开放，**禁止直接暴露在公网**。
+- 正式上线前须在 `MapParcelAdminApis` 的 `MapGroup` 上追加 `.RequireAuthorization("AdminPolicy")`。
+- 鉴权方案（JWT / API-Key / RBAC）选型确定后一并实施。
+
+### 三、危险治理接口（必须结合配置、审计和权限）
+
+| 接口 | 路径 | 开放条件 |
+|------|------|---------|
+| 过期清理 | `POST /api/admin/parcels/cleanup-expired` | 必须结合配置开关 + dry-run + 审计 + 权限 |
+
+- **当前状态**：隔离器默认配置为守卫阻断 + dry-run 模式，真实执行需显式调整 `appsettings.json`。
+- **上线前必须满足**：
+  1. `Persistence:RepositoryDangerousActions:ParcelRemoveExpired:Isolator` 配置已审核并锁定。
+  2. 接口追加 `.RequireAuthorization("DangerousActionPolicy")` 严格限制调用方。
+  3. 审计日志（BarCodes、PlannedCount、ExecutedCount、Decision）已落盘且可查询。
+  4. 有明确的回滚/补偿预案（当前为"此操作不可逆，回滚需从备份恢复"）。
+
+### 四、后续应补充的上线保障
+
+1. **鉴权/授权体系**：引入 JWT 或 API-Key，区分只读权限（ReadPolicy）、管理员权限（AdminPolicy）、危险操作权限（DangerousActionPolicy）。
+2. **限流策略**：为写接口和危险接口配置速率限制（Rate Limiting），防止误操作大量触发。
+3. **审计看板**：建立清理接口调用记录可视化看板，显示 blocked / dry-run / execute 次数趋势。
+4. **回滚/补偿资产**：为危险删除操作建立可执行的数据归档方案，将当前文本边界升级为可执行治理资产。
