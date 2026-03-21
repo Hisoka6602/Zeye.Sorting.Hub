@@ -9,23 +9,13 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
     /// <inheritdoc />
     public partial class InitialCreate : Migration
     {
-        /// <summary>
-        /// SQL Server Provider 名称。
-        /// </summary>
-        private const string SqlServerProvider = "Microsoft.EntityFrameworkCore.SqlServer";
-
-        /// <summary>
-        /// SQL Server 默认 schema。
-        /// </summary>
-        private const string SqlServerDefaultSchema = "dbo";
-
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            if (migrationBuilder.ActiveProvider == SqlServerProvider)
+            if (MigrationSchemaResolver.IsSqlServer(migrationBuilder))
             {
                 migrationBuilder.EnsureSchema(
-                    name: SqlServerDefaultSchema);
+                    name: MigrationSchemaResolver.SqlServerDefaultSchema);
             }
 
             migrationBuilder.AlterDatabase()
@@ -33,7 +23,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
             migrationBuilder.CreateTable(
                 name: "Bags",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 columns: table => new
                 {
                     BagId = table.Column<long>(type: "bigint", nullable: false)
@@ -54,7 +44,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
             migrationBuilder.CreateTable(
                 name: "Parcels",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 columns: table => new
                 {
                     Id = table.Column<long>(type: "bigint", nullable: false)
@@ -101,7 +91,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                     table.ForeignKey(
                         name: "FK_Parcels_Bags_BagId",
                         column: x => x.BagId,
-                        principalSchema: ResolveSchema(migrationBuilder),
+                        principalSchema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                         principalTable: "Bags",
                         principalColumn: "BagId",
                         onDelete: ReferentialAction.Restrict);
@@ -110,7 +100,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
             migrationBuilder.CreateTable(
                 name: "Parcel_ApiRequests",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 columns: table => new
                 {
                     Id = table.Column<long>(type: "bigint", nullable: false)
@@ -144,7 +134,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                     table.ForeignKey(
                         name: "FK_Parcel_ApiRequests_Parcels_ParcelId",
                         column: x => x.ParcelId,
-                        principalSchema: ResolveSchema(migrationBuilder),
+                        principalSchema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                         principalTable: "Parcels",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
@@ -153,7 +143,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
             migrationBuilder.CreateTable(
                 name: "Parcel_BarCodeInfos",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 columns: table => new
                 {
                     Id = table.Column<long>(type: "bigint", nullable: false)
@@ -170,7 +160,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                     table.ForeignKey(
                         name: "FK_Parcel_BarCodeInfos_Parcels_ParcelId",
                         column: x => x.ParcelId,
-                        principalSchema: ResolveSchema(migrationBuilder),
+                        principalSchema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                         principalTable: "Parcels",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
@@ -179,7 +169,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
             migrationBuilder.CreateTable(
                 name: "Parcel_ChuteInfos",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 columns: table => new
                 {
                     Id = table.Column<long>(type: "bigint", nullable: false)
@@ -196,7 +186,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                     table.ForeignKey(
                         name: "FK_Parcel_ChuteInfos_Parcels_ParcelId",
                         column: x => x.ParcelId,
-                        principalSchema: ResolveSchema(migrationBuilder),
+                        principalSchema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                         principalTable: "Parcels",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
@@ -205,7 +195,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
             migrationBuilder.CreateTable(
                 name: "Parcel_CommandInfos",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 columns: table => new
                 {
                     Id = table.Column<long>(type: "bigint", nullable: false)
@@ -230,7 +220,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                     table.ForeignKey(
                         name: "FK_Parcel_CommandInfos_Parcels_ParcelId",
                         column: x => x.ParcelId,
-                        principalSchema: ResolveSchema(migrationBuilder),
+                        principalSchema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                         principalTable: "Parcels",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
@@ -239,7 +229,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
             migrationBuilder.CreateTable(
                 name: "Parcel_DeviceInfos",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 columns: table => new
                 {
                     Id = table.Column<long>(type: "bigint", nullable: false)
@@ -258,7 +248,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                     table.ForeignKey(
                         name: "FK_Parcel_DeviceInfos_Parcels_ParcelId",
                         column: x => x.ParcelId,
-                        principalSchema: ResolveSchema(migrationBuilder),
+                        principalSchema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                         principalTable: "Parcels",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
@@ -267,7 +257,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
             migrationBuilder.CreateTable(
                 name: "Parcel_GrayDetectorInfos",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 columns: table => new
                 {
                     Id = table.Column<long>(type: "bigint", nullable: false)
@@ -292,7 +282,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                     table.ForeignKey(
                         name: "FK_Parcel_GrayDetectorInfos_Parcels_ParcelId",
                         column: x => x.ParcelId,
-                        principalSchema: ResolveSchema(migrationBuilder),
+                        principalSchema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                         principalTable: "Parcels",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
@@ -301,7 +291,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
             migrationBuilder.CreateTable(
                 name: "Parcel_ImageInfos",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 columns: table => new
                 {
                     Id = table.Column<long>(type: "bigint", nullable: false)
@@ -324,7 +314,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                     table.ForeignKey(
                         name: "FK_Parcel_ImageInfos_Parcels_ParcelId",
                         column: x => x.ParcelId,
-                        principalSchema: ResolveSchema(migrationBuilder),
+                        principalSchema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                         principalTable: "Parcels",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
@@ -333,7 +323,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
             migrationBuilder.CreateTable(
                 name: "Parcel_PositionInfos",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 columns: table => new
                 {
                     Id = table.Column<long>(type: "bigint", nullable: false)
@@ -354,7 +344,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                     table.ForeignKey(
                         name: "FK_Parcel_PositionInfos_Parcels_ParcelId",
                         column: x => x.ParcelId,
-                        principalSchema: ResolveSchema(migrationBuilder),
+                        principalSchema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                         principalTable: "Parcels",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
@@ -363,7 +353,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
             migrationBuilder.CreateTable(
                 name: "Parcel_SorterCarrierInfos",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 columns: table => new
                 {
                     Id = table.Column<long>(type: "bigint", nullable: false)
@@ -380,7 +370,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                     table.ForeignKey(
                         name: "FK_Parcel_SorterCarrierInfos_Parcels_ParcelId",
                         column: x => x.ParcelId,
-                        principalSchema: ResolveSchema(migrationBuilder),
+                        principalSchema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                         principalTable: "Parcels",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
@@ -389,7 +379,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
             migrationBuilder.CreateTable(
                 name: "Parcel_StickingParcelInfos",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 columns: table => new
                 {
                     Id = table.Column<long>(type: "bigint", nullable: false)
@@ -407,7 +397,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                     table.ForeignKey(
                         name: "FK_Parcel_StickingParcelInfos_Parcels_ParcelId",
                         column: x => x.ParcelId,
-                        principalSchema: ResolveSchema(migrationBuilder),
+                        principalSchema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                         principalTable: "Parcels",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
@@ -416,7 +406,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
             migrationBuilder.CreateTable(
                 name: "Parcel_VideoInfos",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 columns: table => new
                 {
                     Id = table.Column<long>(type: "bigint", nullable: false)
@@ -433,7 +423,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                     table.ForeignKey(
                         name: "FK_Parcel_VideoInfos_Parcels_ParcelId",
                         column: x => x.ParcelId,
-                        principalSchema: ResolveSchema(migrationBuilder),
+                        principalSchema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                         principalTable: "Parcels",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
@@ -442,7 +432,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
             migrationBuilder.CreateTable(
                 name: "Parcel_VolumeInfos",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 columns: table => new
                 {
                     Id = table.Column<long>(type: "bigint", nullable: false)
@@ -470,7 +460,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                     table.ForeignKey(
                         name: "FK_Parcel_VolumeInfos_Parcels_ParcelId",
                         column: x => x.ParcelId,
-                        principalSchema: ResolveSchema(migrationBuilder),
+                        principalSchema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                         principalTable: "Parcels",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
@@ -479,7 +469,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
             migrationBuilder.CreateTable(
                 name: "Parcel_WeightInfos",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 columns: table => new
                 {
                     Id = table.Column<long>(type: "bigint", nullable: false)
@@ -499,7 +489,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                     table.ForeignKey(
                         name: "FK_Parcel_WeightInfos_Parcels_ParcelId",
                         column: x => x.ParcelId,
-                        principalSchema: ResolveSchema(migrationBuilder),
+                        principalSchema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                         principalTable: "Parcels",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
@@ -508,220 +498,220 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
             migrationBuilder.CreateIndex(
                 name: "IX_Bags_BagCode",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Bags",
                 column: "BagCode",
                 unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Bags_ChuteId",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Bags",
                 column: "ChuteId",
                 unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_ApiRequests_ApiType",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcel_ApiRequests",
                 column: "ApiType");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_ApiRequests_ParcelId",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcel_ApiRequests",
                 column: "ParcelId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_ApiRequests_RequestTime",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcel_ApiRequests",
                 column: "RequestTime");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_BarCodeInfos_BarCode",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcel_BarCodeInfos",
                 column: "BarCode");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_BarCodeInfos_CapturedTime",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcel_BarCodeInfos",
                 column: "CapturedTime");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_BarCodeInfos_ParcelId",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcel_BarCodeInfos",
                 column: "ParcelId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_ChuteInfos_ActualChuteId",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcel_ChuteInfos",
                 column: "ActualChuteId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_ChuteInfos_ParcelId",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcel_ChuteInfos",
                 column: "ParcelId",
                 unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_ChuteInfos_TargetChuteId",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcel_ChuteInfos",
                 column: "TargetChuteId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_CommandInfos_ActionType",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcel_CommandInfos",
                 column: "ActionType");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_CommandInfos_GeneratedTime",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcel_CommandInfos",
                 column: "GeneratedTime");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_CommandInfos_ParcelId",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcel_CommandInfos",
                 column: "ParcelId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_DeviceInfos_MachineCode",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcel_DeviceInfos",
                 column: "MachineCode");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_DeviceInfos_ParcelId",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcel_DeviceInfos",
                 column: "ParcelId",
                 unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_GrayDetectorInfos_CarrierNumber",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcel_GrayDetectorInfos",
                 column: "CarrierNumber");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_GrayDetectorInfos_ParcelId",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcel_GrayDetectorInfos",
                 column: "ParcelId",
                 unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_ImageInfos_ImageType",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcel_ImageInfos",
                 column: "ImageType");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_ImageInfos_ParcelId",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcel_ImageInfos",
                 column: "ParcelId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_PositionInfos_ParcelId",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcel_PositionInfos",
                 column: "ParcelId",
                 unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_SorterCarrierInfos_ParcelId",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcel_SorterCarrierInfos",
                 column: "ParcelId",
                 unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_SorterCarrierInfos_SorterCarrierId",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcel_SorterCarrierInfos",
                 column: "SorterCarrierId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_StickingParcelInfos_ParcelId",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcel_StickingParcelInfos",
                 column: "ParcelId",
                 unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_VideoInfos_NodeType",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcel_VideoInfos",
                 column: "NodeType");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_VideoInfos_NvrSerialNumber",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcel_VideoInfos",
                 column: "NvrSerialNumber");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_VideoInfos_ParcelId",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcel_VideoInfos",
                 column: "ParcelId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_VolumeInfos_ParcelId",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcel_VolumeInfos",
                 column: "ParcelId",
                 unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_WeightInfos_ParcelId",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcel_WeightInfos",
                 column: "ParcelId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_WeightInfos_WeighingTime",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcel_WeightInfos",
                 column: "WeighingTime");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcels_BagCode",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcels",
                 column: "BagCode");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcels_BagId",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcels",
                 column: "BagId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcels_ParcelTimestamp",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcels",
                 column: "ParcelTimestamp");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcels_ScannedTime",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcels",
                 column: "ScannedTime");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcels_WorkstationName",
-                schema: ResolveSchema(migrationBuilder),
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcels",
                 column: "WorkstationName");
         }
@@ -731,63 +721,94 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
         {
             migrationBuilder.DropTable(
                 name: "Parcel_ApiRequests",
-                schema: ResolveSchema(migrationBuilder));
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder));
 
             migrationBuilder.DropTable(
                 name: "Parcel_BarCodeInfos",
-                schema: ResolveSchema(migrationBuilder));
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder));
 
             migrationBuilder.DropTable(
                 name: "Parcel_ChuteInfos",
-                schema: ResolveSchema(migrationBuilder));
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder));
 
             migrationBuilder.DropTable(
                 name: "Parcel_CommandInfos",
-                schema: ResolveSchema(migrationBuilder));
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder));
 
             migrationBuilder.DropTable(
                 name: "Parcel_DeviceInfos",
-                schema: ResolveSchema(migrationBuilder));
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder));
 
             migrationBuilder.DropTable(
                 name: "Parcel_GrayDetectorInfos",
-                schema: ResolveSchema(migrationBuilder));
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder));
 
             migrationBuilder.DropTable(
                 name: "Parcel_ImageInfos",
-                schema: ResolveSchema(migrationBuilder));
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder));
 
             migrationBuilder.DropTable(
                 name: "Parcel_PositionInfos",
-                schema: ResolveSchema(migrationBuilder));
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder));
 
             migrationBuilder.DropTable(
                 name: "Parcel_SorterCarrierInfos",
-                schema: ResolveSchema(migrationBuilder));
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder));
 
             migrationBuilder.DropTable(
                 name: "Parcel_StickingParcelInfos",
-                schema: ResolveSchema(migrationBuilder));
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder));
 
             migrationBuilder.DropTable(
                 name: "Parcel_VideoInfos",
-                schema: ResolveSchema(migrationBuilder));
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder));
 
             migrationBuilder.DropTable(
                 name: "Parcel_VolumeInfos",
-                schema: ResolveSchema(migrationBuilder));
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder));
 
             migrationBuilder.DropTable(
                 name: "Parcel_WeightInfos",
-                schema: ResolveSchema(migrationBuilder));
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder));
 
             migrationBuilder.DropTable(
                 name: "Parcels",
-                schema: ResolveSchema(migrationBuilder));
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder));
 
             migrationBuilder.DropTable(
                 name: "Bags",
-                schema: ResolveSchema(migrationBuilder));
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder));
+        }
+    }
+
+    /// <summary>
+    /// 迁移脚本共享的 schema 解析器：统一处理 SQL Server 与 MySQL 的 schema 差异。
+    /// </summary>
+    /// <remarks>
+    /// 该解析器集中封装 Provider 名称与默认 schema 常量，避免多个迁移文件复制相同字符串与判断逻辑，
+    /// 防止后续调整 schema 策略时发生“部分迁移遗漏更新”的漂移问题。
+    /// 采用 <c>internal static</c> 以确保仅在 Infrastructure 迁移边界内复用，且无实例化开销。
+    /// </remarks>
+    internal static class MigrationSchemaResolver
+    {
+        /// <summary>
+        /// SQL Server Provider 名称。
+        /// </summary>
+        internal const string SqlServerProvider = "Microsoft.EntityFrameworkCore.SqlServer";
+
+        /// <summary>
+        /// SQL Server 默认 schema。
+        /// </summary>
+        internal const string SqlServerDefaultSchema = "dbo";
+
+        /// <summary>
+        /// 判定当前迁移是否运行在 SQL Server Provider。
+        /// </summary>
+        /// <param name="migrationBuilder">迁移构建器。</param>
+        /// <returns>是 SQL Server 返回 true，否则返回 false。</returns>
+        internal static bool IsSqlServer(MigrationBuilder migrationBuilder)
+        {
+            return migrationBuilder.ActiveProvider == SqlServerProvider;
         }
 
         /// <summary>
@@ -795,9 +816,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
         /// - SQL Server 使用 dbo；
         /// - MySQL 不使用 schema（返回 null）。
         /// </summary>
-        private static string ResolveSchema(MigrationBuilder migrationBuilder)
+        /// <param name="migrationBuilder">迁移构建器。</param>
+        /// <returns>SQL Server 返回 dbo，其他 Provider 返回 null。</returns>
+        internal static string ResolveSchema(MigrationBuilder migrationBuilder)
         {
-            return migrationBuilder.ActiveProvider == SqlServerProvider
+            return IsSqlServer(migrationBuilder)
                 ? SqlServerDefaultSchema
                 : null;
         }

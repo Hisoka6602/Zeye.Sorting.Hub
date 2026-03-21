@@ -11,6 +11,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
 using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Host.Enums;
@@ -1776,6 +1777,88 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
+    /// 验证场景：ResolveMySqlServerVersion_UsesConfiguredVersion_WhenConfigIsValid。
+    /// </summary>
+    [Fact]
+    public void ResolveMySqlServerVersion_UsesConfiguredVersion_WhenConfigIsValid() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:MySql:ServerVersion"] = "8.0.36"
+            })
+            .Build();
+        var logger = new CaptureWarningLogger();
+
+        var resolved = PersistenceServiceCollectionExtensions.ResolveMySqlServerVersion(
+            configuration,
+            "server=127.0.0.1;port=3306;database=zeye_sorting_hub;uid=root;pwd=Admin@1234;SslMode=None;",
+            logger);
+
+        Assert.IsType<MySqlServerVersion>(resolved);
+        Assert.Equal(new Version(8, 0, 36), resolved.Version);
+    }
+
+    /// <summary>
+    /// 验证场景：ResolveMySqlServerVersion_FallsBackToDefault_WhenConfiguredVersionIsInvalid。
+    /// </summary>
+    [Fact]
+    public void ResolveMySqlServerVersion_FallsBackToDefault_WhenConfiguredVersionIsInvalid() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:MySql:ServerVersion"] = "invalid-version"
+            })
+            .Build();
+        var logger = new CaptureWarningLogger();
+
+        var resolved = PersistenceServiceCollectionExtensions.ResolveMySqlServerVersion(
+            configuration,
+            "invalid-connection-string",
+            logger);
+
+        Assert.Equal(new Version(8, 0, 0), resolved.Version);
+        Assert.Contains(logger.WarningMessages, static message => message.Contains("非法或不受支持", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// 验证场景：ResolveMySqlServerVersion_FallsBackToDefault_WhenAutoDetectThrows。
+    /// </summary>
+    [Fact]
+    public void ResolveMySqlServerVersion_FallsBackToDefault_WhenAutoDetectThrows() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>())
+            .Build();
+        var logger = new CaptureWarningLogger();
+
+        var resolved = PersistenceServiceCollectionExtensions.ResolveMySqlServerVersion(
+            configuration,
+            "invalid-connection-string",
+            logger);
+
+        Assert.Equal(new Version(8, 0, 0), resolved.Version);
+        Assert.Contains(logger.WarningMessages, static message => message.Contains("自动探测失败", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// 验证场景：ResolveMySqlServerVersion_TreatsMajorLowerThanFiveAsInvalidAndFallsBack。
+    /// </summary>
+    [Fact]
+    public void ResolveMySqlServerVersion_TreatsMajorLowerThanFiveAsInvalidAndFallsBack() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:MySql:ServerVersion"] = "4.1.0"
+            })
+            .Build();
+        var logger = new CaptureWarningLogger();
+
+        var resolved = PersistenceServiceCollectionExtensions.ResolveMySqlServerVersion(
+            configuration,
+            "invalid-connection-string",
+            logger);
+
+        Assert.Equal(new Version(8, 0, 0), resolved.Version);
+        Assert.Contains(logger.WarningMessages, static message => message.Contains("Major>=5", StringComparison.Ordinal));
+    }
+
+    /// <summary>
     /// 验证场景：ParcelRelatedValueObjects_ShouldExposeClrParcelId_ForShardingFieldRecognition。
     /// </summary>
     [Fact]
@@ -2644,6 +2727,42 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     private sealed record ObservabilityEntry(string Name, double Value, IReadOnlyDictionary<string, string> Tags);
+
+    private sealed class CaptureWarningLogger : ILogger {
+        /// <summary>
+        /// 记录 Warning 级别日志消息。
+        /// </summary>
+        public readonly List<string> WarningMessages = new();
+
+        public IDisposable BeginScope<TState>(TState state) where TState : notnull => CaptureNullScope.Instance;
+        /// <summary>
+        /// 对测试场景始终返回 true，确保各级别日志都能进入 Log 方法供断言。
+        /// </summary>
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        /// <summary>
+        /// 仅收集 Warning 及以上级别日志消息，便于断言版本解析回退路径是否产生日志。
+        /// </summary>
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) {
+            if (logLevel < LogLevel.Warning) {
+                return;
+            }
+
+            WarningMessages.Add(formatter(state, exception));
+        }
+    }
+
+    private sealed class CaptureNullScope : IDisposable {
+        /// <summary>
+        /// 空作用域单例。
+        /// </summary>
+        public static readonly CaptureNullScope Instance = new();
+
+        /// <summary>
+        /// 空实现，无需释放资源。
+        /// </summary>
+        public void Dispose() { }
+    }
 
     private sealed class TestLogger<T> : ILogger<T> {
         public readonly List<string> Messages = new();

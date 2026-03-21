@@ -203,7 +203,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// </summary>
         /// <param name="configuration">应用配置。</param>
         /// <param name="connectionString">MySQL 连接字符串。</param>
-        /// <param name="logger">可选日志记录器（用于记录配置非法与探测失败）。</param>
+        /// <param name="logger">日志记录器（用于记录配置非法与探测失败）。</param>
         /// <returns>可用于 EF Core UseMySql 的服务端版本对象。</returns>
         /// <remarks>
         /// 处理策略：
@@ -211,14 +211,16 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// 2) 若配置缺失或非法，尝试 <c>ServerVersion.AutoDetect</c>；
         /// 3) 若探测失败，回退到 MySQL 8.0.0。
         /// </remarks>
-        internal static ServerVersion ResolveMySqlServerVersion(IConfiguration configuration, string connectionString, ILogger? logger = null) {
+        internal static ServerVersion ResolveMySqlServerVersion(IConfiguration configuration, string connectionString, ILogger logger) {
             var configuredVersion = configuration["Persistence:MySql:ServerVersion"];
             if (!string.IsNullOrWhiteSpace(configuredVersion)) {
                 if (Version.TryParse(configuredVersion, out var parsedVersion) && parsedVersion.Major >= 5) {
                     return new MySqlServerVersion(parsedVersion);
                 }
 
-                logger?.LogWarning(
+                LogResolveWarning(
+                    logger,
+                    exception: null,
                     "配置项 Persistence:MySql:ServerVersion 非法或不受支持（要求 Major>=5），将回退到自动探测，Value={ConfiguredServerVersion}",
                     configuredVersion);
             }
@@ -227,8 +229,24 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 return ServerVersion.AutoDetect(connectionString);
             }
             catch (Exception ex) {
-                logger?.LogWarning(ex, "MySQL ServerVersion 自动探测失败，将回退到默认版本 8.0.0");
+                LogResolveWarning(logger, ex, "MySQL ServerVersion 自动探测失败，将回退到默认版本 8.0.0");
                 return new MySqlServerVersion(new Version(8, 0, 0));
+            }
+        }
+
+        /// <summary>
+        /// 统一记录 MySQL ServerVersion 解析告警。
+        /// </summary>
+        /// <param name="logger">日志器。</param>
+        /// <param name="exception">异常对象。</param>
+        /// <param name="messageTemplate">消息模板。</param>
+        /// <param name="args">模板参数。</param>
+        private static void LogResolveWarning(ILogger logger, Exception? exception, string messageTemplate, params object[] args) {
+            if (exception is null) {
+                logger.LogWarning(messageTemplate, args);
+            }
+            else {
+                logger.LogWarning(exception, messageTemplate, args);
             }
         }
 

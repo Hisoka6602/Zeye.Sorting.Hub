@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
@@ -58,10 +59,16 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
                 return factory.CreateDbContext(config);
             }
 
-            var connectionString = config.GetConnectionString(MySqlProviderName) ?? FallbackConnectionString;
-            var serverVersion = ResolveServerVersion(config, connectionString);
+            var connectionString = config.GetConnectionString(MySqlProviderName);
+            var normalizedConnectionString = string.IsNullOrWhiteSpace(connectionString)
+                ? FallbackConnectionString
+                : connectionString.Trim();
+            var serverVersion = DependencyInjection.PersistenceServiceCollectionExtensions.ResolveMySqlServerVersion(
+                config,
+                normalizedConnectionString,
+                DesignTimeConsoleLogger.Instance);
             var options = new DbContextOptionsBuilder<SortingHubDbContext>()
-                .UseMySql(connectionString, serverVersion)
+                .UseMySql(normalizedConnectionString, serverVersion)
                 .Options;
             return new SortingHubDbContext(options);
         }
@@ -151,22 +158,48 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
         }
 
         /// <summary>
-        /// 按“配置优先、探测兜底”解析 MySQL 服务端版本：
-        /// <list type="number">
-        ///   <item><description>
-        ///     <c>Persistence:MySql:ServerVersion</c> — 最优先（示例：<c>8.0.36</c>）。
-        ///   </description></item>
-        ///   <item><description>
-        ///     <c>ServerVersion.AutoDetect</c> — 配置未提供或非法时尝试探测。
-        ///   </description></item>
-        ///   <item><description>
-        ///     兜底 MySQL 8.0 — 仅当探测失败时使用（设计时无数据库为正常场景）。
-        ///     该值用于兜底设计时模型分析；运行时同样遵循“配置优先、探测兜底”。
-        ///   </description></item>
-        /// </list>
+        /// 设计时版本解析日志器：在无 Host 管道时将告警输出到标准错误流。
         /// </summary>
-        private static ServerVersion ResolveServerVersion(IConfiguration config, string connectionString) {
-            return DependencyInjection.PersistenceServiceCollectionExtensions.ResolveMySqlServerVersion(config, connectionString);
+        private sealed class DesignTimeConsoleLogger : ILogger {
+            /// <summary>
+            /// 单例实例。
+            /// </summary>
+            public static readonly DesignTimeConsoleLogger Instance = new();
+
+            /// <inheritdoc />
+            public IDisposable BeginScope<TState>(TState state) where TState : notnull => NoopScope.Instance;
+
+            /// <inheritdoc />
+            public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Warning;
+
+            /// <inheritdoc />
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) {
+                if (!IsEnabled(logLevel)) {
+                    return;
+                }
+
+                var message = formatter(state, exception);
+                if (exception is null) {
+                    Console.Error.WriteLine($"[{logLevel}] {message}");
+                }
+                else {
+                    Console.Error.WriteLine($"[{logLevel}] {message}{Environment.NewLine}{exception}");
+                }
+            }
         }
+
+        /// <summary>
+        /// 无操作日志作用域。
+        /// </summary>
+        private sealed class NoopScope : IDisposable {
+            /// <summary>
+            /// 单例实例。
+            /// </summary>
+            public static readonly NoopScope Instance = new();
+
+            /// <inheritdoc />
+            public void Dispose() { }
+        }
+
     }
 }
