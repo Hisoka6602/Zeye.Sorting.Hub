@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Linq;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
@@ -9,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Host.Enums;
@@ -19,6 +21,7 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding.Enums;
+using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects;
 
 namespace Zeye.Sorting.Hub.Host.Tests;
 
@@ -1770,6 +1773,63 @@ public sealed class AutoTuningProductionControlTests {
         }
 
         Assert.Null(exception);
+    }
+
+    /// <summary>
+    /// 验证场景：ParcelRelatedValueObjects_ShouldExposeClrParcelId_ForShardingFieldRecognition。
+    /// </summary>
+    [Fact]
+    public void ParcelRelatedValueObjects_ShouldExposeClrParcelId_ForShardingFieldRecognition() {
+        var parcelIdPropertyByType = new Dictionary<Type, System.Reflection.PropertyInfo?> {
+            [typeof(ParcelDeviceInfo)] = typeof(ParcelDeviceInfo).GetProperty("ParcelId"),
+            [typeof(ParcelPositionInfo)] = typeof(ParcelPositionInfo).GetProperty("ParcelId"),
+            [typeof(StickingParcelInfo)] = typeof(StickingParcelInfo).GetProperty("ParcelId"),
+            [typeof(BarCodeInfo)] = typeof(BarCodeInfo).GetProperty("ParcelId"),
+            [typeof(ImageInfo)] = typeof(ImageInfo).GetProperty("ParcelId"),
+            [typeof(VideoInfo)] = typeof(VideoInfo).GetProperty("ParcelId")
+        };
+
+        foreach (var pair in parcelIdPropertyByType) {
+            Assert.NotNull(pair.Value);
+            Assert.Equal(typeof(long), pair.Value!.PropertyType);
+            var setMethod = pair.Value.SetMethod;
+            Assert.NotNull(setMethod);
+            Assert.True(setMethod!.IsPrivate);
+            Assert.Contains(
+                setMethod.ReturnParameter.GetRequiredCustomModifiers(),
+                modifier => modifier == typeof(System.Runtime.CompilerServices.IsExternalInit));
+        }
+    }
+
+    /// <summary>
+    /// 验证场景：ParcelRelatedValueObjects_ParcelId_ShouldMapToExistingParcelIdColumn。
+    /// </summary>
+    [Fact]
+    public void ParcelRelatedValueObjects_ParcelId_ShouldMapToExistingParcelIdColumn() {
+        using var dbContext = CreateTestingDbContext();
+        var mappingPlans = new (Type ValueObjectType, string TableName)[] {
+            (typeof(ParcelDeviceInfo), "Parcel_DeviceInfos"),
+            (typeof(ParcelPositionInfo), "Parcel_PositionInfos"),
+            (typeof(StickingParcelInfo), "Parcel_StickingParcelInfos"),
+            (typeof(BarCodeInfo), "Parcel_BarCodeInfos"),
+            (typeof(ImageInfo), "Parcel_ImageInfos"),
+            (typeof(VideoInfo), "Parcel_VideoInfos")
+        };
+
+        foreach (var mappingPlan in mappingPlans) {
+            var entityType = dbContext.Model.GetEntityTypes()
+                .FirstOrDefault(type =>
+                    type.IsOwned()
+                    && type.ClrType == mappingPlan.ValueObjectType
+                    && string.Equals(type.GetTableName(), mappingPlan.TableName, StringComparison.Ordinal));
+            Assert.NotNull(entityType);
+            var checkedEntityType = entityType!;
+            var parcelIdProperty = checkedEntityType.FindProperty("ParcelId");
+            Assert.NotNull(parcelIdProperty);
+            Assert.False(parcelIdProperty!.IsShadowProperty());
+            var store = StoreObjectIdentifier.Table(mappingPlan.TableName, checkedEntityType.GetSchema());
+            Assert.Equal("ParcelId", parcelIdProperty.GetColumnName(store));
+        }
     }
 
     /// <summary>

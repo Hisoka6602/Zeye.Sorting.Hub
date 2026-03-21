@@ -12,6 +12,11 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
     /// </summary>
     public sealed record class StickingParcelInfo {
         /// <summary>
+        /// 关联包裹主键（仅用于基础设施层持久化映射与分片路由，不参与领域业务输入）
+        /// </summary>
+        public long ParcelId { get; private init; }
+
+        /// <summary>
         /// 是否叠包（true=存在叠包，false=无叠包）
         /// </summary>
         public required bool IsSticking { get; init; }

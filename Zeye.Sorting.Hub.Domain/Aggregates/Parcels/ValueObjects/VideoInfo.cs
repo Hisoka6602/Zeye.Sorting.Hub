@@ -13,6 +13,11 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
     /// </summary>
     public sealed record class VideoInfo {
         /// <summary>
+        /// 关联包裹主键（仅用于基础设施层持久化映射与分片路由，不参与领域业务输入）
+        /// </summary>
+        public long ParcelId { get; private init; }
+
+        /// <summary>
         /// 通道号（摄像头编号）
         /// </summary>
         public required int Channel { get; init; }
