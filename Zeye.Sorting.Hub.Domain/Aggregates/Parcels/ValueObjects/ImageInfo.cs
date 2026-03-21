@@ -50,5 +50,38 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
         /// 图片获取方式（相机获取、本地匹配等）
         /// </summary>
         public required ImageCaptureType CaptureType { get; init; }
+
+        /// <summary>
+        /// 按领域语义比较图片信息（忽略仅用于基础设施映射的 ParcelId）。
+        /// </summary>
+        /// <param name="other">待比较对象。</param>
+        /// <returns>当领域字段一致时返回 true。</returns>
+        public bool Equals(ImageInfo? other) {
+            return other is not null
+                && string.Equals(CameraName, other.CameraName, StringComparison.Ordinal)
+                && string.Equals(CustomName, other.CustomName, StringComparison.Ordinal)
+                && string.Equals(CameraSerialNumber, other.CameraSerialNumber, StringComparison.Ordinal)
+                && ImageType == other.ImageType
+                && string.Equals(RelativePath, other.RelativePath, StringComparison.Ordinal)
+                && CaptureType == other.CaptureType;
+        }
+
+        /// <summary>
+        /// 生成仅基于领域字段的哈希码（忽略 ParcelId）。
+        /// </summary>
+        /// <returns>领域字段哈希码。</returns>
+        public override int GetHashCode() {
+            return HashCode.Combine(
+                HashCode.Combine(CameraName, CustomName, CameraSerialNumber),
+                HashCode.Combine(ImageType, RelativePath, CaptureType));
+        }
+
+        /// <summary>
+        /// 输出仅包含领域字段的调试字符串（忽略 ParcelId）。
+        /// </summary>
+        /// <returns>调试字符串。</returns>
+        public override string ToString() {
+            return $"{nameof(ImageInfo)} {{ {nameof(CameraName)} = {CameraName}, {nameof(CustomName)} = {CustomName}, {nameof(CameraSerialNumber)} = {CameraSerialNumber}, {nameof(ImageType)} = {ImageType}, {nameof(RelativePath)} = {RelativePath}, {nameof(CaptureType)} = {CaptureType} }}";
+        }
     }
 }

@@ -82,5 +82,40 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
         /// 背景区域中心点 Y 坐标
         /// </summary>
         public decimal BackgroundCenterY => (BackgroundY1 + BackgroundY2) / 2m;
+
+        /// <summary>
+        /// 按领域语义比较坐标信息（忽略仅用于基础设施映射的 ParcelId）。
+        /// </summary>
+        /// <param name="other">待比较对象。</param>
+        /// <returns>当领域字段一致时返回 true。</returns>
+        public bool Equals(ParcelPositionInfo? other) {
+            return other is not null
+                && X1 == other.X1
+                && X2 == other.X2
+                && Y1 == other.Y1
+                && Y2 == other.Y2
+                && BackgroundX1 == other.BackgroundX1
+                && BackgroundX2 == other.BackgroundX2
+                && BackgroundY1 == other.BackgroundY1
+                && BackgroundY2 == other.BackgroundY2;
+        }
+
+        /// <summary>
+        /// 生成仅基于领域字段的哈希码（忽略 ParcelId）。
+        /// </summary>
+        /// <returns>领域字段哈希码。</returns>
+        public override int GetHashCode() {
+            return HashCode.Combine(
+                HashCode.Combine(X1, X2, Y1, Y2),
+                HashCode.Combine(BackgroundX1, BackgroundX2, BackgroundY1, BackgroundY2));
+        }
+
+        /// <summary>
+        /// 输出仅包含领域字段的调试字符串（忽略 ParcelId）。
+        /// </summary>
+        /// <returns>调试字符串。</returns>
+        public override string ToString() {
+            return $"{nameof(ParcelPositionInfo)} {{ {nameof(X1)} = {X1}, {nameof(X2)} = {X2}, {nameof(Y1)} = {Y1}, {nameof(Y2)} = {Y2}, {nameof(BackgroundX1)} = {BackgroundX1}, {nameof(BackgroundX2)} = {BackgroundX2}, {nameof(BackgroundY1)} = {BackgroundY1}, {nameof(BackgroundY2)} = {BackgroundY2} }}";
+        }
     }
 }

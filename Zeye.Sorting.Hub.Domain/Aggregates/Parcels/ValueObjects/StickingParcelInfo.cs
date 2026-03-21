@@ -36,5 +36,34 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
         /// 总耗时（单位：毫秒，含判断请求发送到接收返回的总时间）
         /// </summary>
         public int? ElapsedMilliseconds { get; init; }
+
+        /// <summary>
+        /// 按领域语义比较叠包信息（忽略仅用于基础设施映射的 ParcelId）。
+        /// </summary>
+        /// <param name="other">待比较对象。</param>
+        /// <returns>当领域字段一致时返回 true。</returns>
+        public bool Equals(StickingParcelInfo? other) {
+            return other is not null
+                && IsSticking == other.IsSticking
+                && ReceiveTime == other.ReceiveTime
+                && string.Equals(RawData, other.RawData, StringComparison.Ordinal)
+                && ElapsedMilliseconds == other.ElapsedMilliseconds;
+        }
+
+        /// <summary>
+        /// 生成仅基于领域字段的哈希码（忽略 ParcelId）。
+        /// </summary>
+        /// <returns>领域字段哈希码。</returns>
+        public override int GetHashCode() {
+            return HashCode.Combine(IsSticking, ReceiveTime, RawData, ElapsedMilliseconds);
+        }
+
+        /// <summary>
+        /// 输出仅包含领域字段的调试字符串（忽略 ParcelId）。
+        /// </summary>
+        /// <returns>调试字符串。</returns>
+        public override string ToString() {
+            return $"{nameof(StickingParcelInfo)} {{ {nameof(IsSticking)} = {IsSticking}, {nameof(ReceiveTime)} = {ReceiveTime}, {nameof(RawData)} = {RawData}, {nameof(ElapsedMilliseconds)} = {ElapsedMilliseconds} }}";
+        }
     }
 }

@@ -33,5 +33,33 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
         /// </summary>
         [MaxLength(128)]
         public required string CustomName { get; init; }
+
+        /// <summary>
+        /// 按领域语义比较设备信息（忽略仅用于基础设施映射的 ParcelId）。
+        /// </summary>
+        /// <param name="other">待比较对象。</param>
+        /// <returns>当领域字段一致时返回 true。</returns>
+        public bool Equals(ParcelDeviceInfo? other) {
+            return other is not null
+                && string.Equals(WorkstationName, other.WorkstationName, StringComparison.Ordinal)
+                && string.Equals(MachineCode, other.MachineCode, StringComparison.Ordinal)
+                && string.Equals(CustomName, other.CustomName, StringComparison.Ordinal);
+        }
+
+        /// <summary>
+        /// 生成仅基于领域字段的哈希码（忽略 ParcelId）。
+        /// </summary>
+        /// <returns>领域字段哈希码。</returns>
+        public override int GetHashCode() {
+            return HashCode.Combine(WorkstationName, MachineCode, CustomName);
+        }
+
+        /// <summary>
+        /// 输出仅包含领域字段的调试字符串（忽略 ParcelId）。
+        /// </summary>
+        /// <returns>调试字符串。</returns>
+        public override string ToString() {
+            return $"{nameof(ParcelDeviceInfo)} {{ {nameof(WorkstationName)} = {WorkstationName}, {nameof(MachineCode)} = {MachineCode}, {nameof(CustomName)} = {CustomName} }}";
+        }
     }
 }
