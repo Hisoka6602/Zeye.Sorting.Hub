@@ -150,7 +150,7 @@ public sealed class EnumDescriptionSchemaFilter : ISchemaFilter {
     }
 
     /// <summary>
-    /// 解析枚举项中文描述；若未配置 Description，则使用内置兜底文案。
+    /// 解析枚举项中文描述；若未配置 Description，则按需返回精简兜底文案。
     /// </summary>
     /// <param name="enumType">枚举类型。</param>
     /// <param name="field">枚举字段。</param>
@@ -166,7 +166,7 @@ public sealed class EnumDescriptionSchemaFilter : ISchemaFilter {
             return protocolDescription;
         }
 
-        return "未提供中文描述";
+        return string.Empty;
     }
 
     /// <summary>
