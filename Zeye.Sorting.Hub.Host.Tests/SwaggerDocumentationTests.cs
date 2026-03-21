@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.OpenApi.Models;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.Admin;
 using Zeye.Sorting.Hub.Host.Swagger;
 
@@ -13,6 +14,11 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 /// </summary>
 public sealed class SwaggerDocumentationTests {
     /// <summary>
+    /// Swagger 文档版本。
+    /// </summary>
+    private const string ApiVersion = "v1";
+
+    /// <summary>
     /// 验证场景：枚举型 int 字段会在 Swagger 中输出“数值 + 枚举名 + 中文描述”。
     /// </summary>
     [Fact]
@@ -21,10 +27,14 @@ public sealed class SwaggerDocumentationTests {
         builder.WebHost.UseTestServer();
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSwaggerGen(options => {
+            options.SwaggerDoc(ApiVersion, new OpenApiInfo {
+                Title = "test",
+                Version = ApiVersion
+            });
             options.SchemaFilter<EnumDescriptionSchemaFilter>();
         });
 
-        var app = builder.Build();
+        await using var app = builder.Build();
         app.UseSwagger();
         app.MapPost("/swagger-enum-test", (ParcelUpdateRequest request) => Results.Ok(request));
         await app.StartAsync();

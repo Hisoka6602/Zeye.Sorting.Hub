@@ -17,13 +17,17 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 // 启动期引导日志：在 DI 容器就绪之前捕获启动异常
 // ──────────────────────────────────────────────────────────
 var bootstrapLogger = LogManager.GetCurrentClassLogger();
+const string UrlsConfigKey = "urls";
 
 try {
     var builder = WebApplication.CreateBuilder(args);
     var hostingOptions = builder.Configuration.GetSection("Hosting").Get<HostingOptions>() ?? new HostingOptions();
-    var bindingUrls = hostingOptions.GetUrlBindings();
-    if (bindingUrls.Count > 0) {
-        builder.WebHost.UseUrls(bindingUrls.ToArray());
+    var urlsFromConfiguration = builder.Configuration[UrlsConfigKey];
+    if (string.IsNullOrWhiteSpace(urlsFromConfiguration)) {
+        var bindingUrls = hostingOptions.GetUrlBindings();
+        if (bindingUrls.Count > 0) {
+            builder.WebHost.UseUrls(bindingUrls.ToArray());
+        }
     }
 
     // ──────────────────────────────────────────────────────

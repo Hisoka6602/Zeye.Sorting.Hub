@@ -60,6 +60,10 @@ public sealed class DevelopmentBrowserLauncherHostedService : IHostedService {
         if (!options.BrowserAutoOpen.Enabled) {
             return Task.CompletedTask;
         }
+        if (!options.Swagger.Enabled) {
+            _logger.LogInformation("跳过自动打开浏览器：Swagger 未启用。");
+            return Task.CompletedTask;
+        }
 
         var isRunningInContainer = string.Equals(
             Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER"),
