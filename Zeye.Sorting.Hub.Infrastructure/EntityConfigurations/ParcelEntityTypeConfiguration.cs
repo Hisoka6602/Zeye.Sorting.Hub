@@ -13,14 +13,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
     /// Parcel 聚合 EF Core 映射（Infrastructure 层）
     /// </summary>
     public sealed class ParcelEntityTypeConfiguration : IEntityTypeConfiguration<Parcel> {
-
-        private const string SchemaDbo = "dbo";
-
         /// <summary>
         /// 执行逻辑：Configure。
         /// </summary>
         public void Configure(EntityTypeBuilder<Parcel> builder) {
-            builder.ToTable("Parcels", SchemaDbo);
+            builder.ToTable("Parcels");
 
             builder.HasKey(x => x.Id);
             builder.Property(x => x.Id).ValueGeneratedOnAdd();
@@ -46,7 +43,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
 
             // 值对象：一对一（独立表）
             builder.OwnsOne(x => x.VolumeInfo, b => {
-                b.ToTable("Parcel_VolumeInfos", SchemaDbo);
+                b.ToTable("Parcel_VolumeInfos");
                 b.WithOwner().HasForeignKey("ParcelId");
                 b.Property<long>("Id").ValueGeneratedOnAdd();
                 b.HasKey("Id");
@@ -55,7 +52,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
             });
 
             builder.OwnsOne(x => x.ChuteInfo, b => {
-                b.ToTable("Parcel_ChuteInfos", SchemaDbo);
+                b.ToTable("Parcel_ChuteInfos");
                 b.WithOwner().HasForeignKey("ParcelId");
                 b.Property<long>("Id").ValueGeneratedOnAdd();
                 b.HasKey("Id");
@@ -66,7 +63,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
             });
 
             builder.OwnsOne(x => x.SorterCarrierInfo, b => {
-                b.ToTable("Parcel_SorterCarrierInfos", SchemaDbo);
+                b.ToTable("Parcel_SorterCarrierInfos");
                 b.WithOwner().HasForeignKey("ParcelId");
                 b.Property<long>("Id").ValueGeneratedOnAdd();
                 b.HasKey("Id");
@@ -76,7 +73,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
             });
 
             builder.OwnsOne(x => x.DeviceInfo, b => {
-                b.ToTable("Parcel_DeviceInfos", SchemaDbo);
+                b.ToTable("Parcel_DeviceInfos");
                 b.WithOwner().HasForeignKey("ParcelId");
                 b.Property(x => x.ParcelId).HasColumnName("ParcelId");
                 b.Property<long>("Id").ValueGeneratedOnAdd();
@@ -87,7 +84,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
             });
 
             builder.OwnsOne(x => x.GrayDetectorInfo, b => {
-                b.ToTable("Parcel_GrayDetectorInfos", SchemaDbo);
+                b.ToTable("Parcel_GrayDetectorInfos");
                 b.WithOwner().HasForeignKey("ParcelId");
                 b.Property<long>("Id").ValueGeneratedOnAdd();
                 b.HasKey("Id");
@@ -97,7 +94,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
             });
 
             builder.OwnsOne(x => x.StickingParcelInfo, b => {
-                b.ToTable("Parcel_StickingParcelInfos", SchemaDbo);
+                b.ToTable("Parcel_StickingParcelInfos");
                 b.WithOwner().HasForeignKey("ParcelId");
                 b.Property(x => x.ParcelId).HasColumnName("ParcelId");
                 b.Property<long>("Id").ValueGeneratedOnAdd();
@@ -107,7 +104,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
             });
 
             builder.OwnsOne(x => x.ParcelPositionInfo, b => {
-                b.ToTable("Parcel_PositionInfos", SchemaDbo);
+                b.ToTable("Parcel_PositionInfos");
                 b.WithOwner().HasForeignKey("ParcelId");
                 b.Property(x => x.ParcelId).HasColumnName("ParcelId");
                 b.Property<long>("Id").ValueGeneratedOnAdd();
@@ -118,7 +115,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
 
             // 值对象：一对多（独立表）
             builder.OwnsMany(x => x.BarCodeInfos, b => {
-                b.ToTable("Parcel_BarCodeInfos", SchemaDbo);
+                b.ToTable("Parcel_BarCodeInfos");
                 b.WithOwner().HasForeignKey("ParcelId");
                 b.Property(x => x.ParcelId).HasColumnName("ParcelId");
                 b.Property<long>("Id").ValueGeneratedOnAdd();
@@ -130,7 +127,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
             });
 
             builder.OwnsMany(x => x.WeightInfos, b => {
-                b.ToTable("Parcel_WeightInfos", SchemaDbo);
+                b.ToTable("Parcel_WeightInfos");
                 b.WithOwner().HasForeignKey("ParcelId");
                 b.Property<long>("Id").ValueGeneratedOnAdd();
                 b.HasKey("Id");
@@ -140,7 +137,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
             });
 
             builder.OwnsMany(x => x.ApiRequests, b => {
-                b.ToTable("Parcel_ApiRequests", SchemaDbo);
+                b.ToTable("Parcel_ApiRequests");
                 b.WithOwner().HasForeignKey("ParcelId");
                 b.Property<long>("Id").ValueGeneratedOnAdd();
                 b.HasKey("Id");
@@ -151,7 +148,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
             });
 
             builder.OwnsMany(x => x.CommandInfos, b => {
-                b.ToTable("Parcel_CommandInfos", SchemaDbo);
+                b.ToTable("Parcel_CommandInfos");
                 b.WithOwner().HasForeignKey("ParcelId");
                 b.Property<long>("Id").ValueGeneratedOnAdd();
                 b.HasKey("Id");
@@ -162,7 +159,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
             });
 
             builder.OwnsMany(x => x.ImageInfos, b => {
-                b.ToTable("Parcel_ImageInfos", SchemaDbo);
+                b.ToTable("Parcel_ImageInfos");
                 b.WithOwner().HasForeignKey("ParcelId");
                 b.Property(x => x.ParcelId).HasColumnName("ParcelId");
                 b.Property<long>("Id").ValueGeneratedOnAdd();
@@ -173,7 +170,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
             });
 
             builder.OwnsMany(x => x.VideoInfos, b => {
-                b.ToTable("Parcel_VideoInfos", SchemaDbo);
+                b.ToTable("Parcel_VideoInfos");
                 b.WithOwner().HasForeignKey("ParcelId");
                 b.Property(x => x.ParcelId).HasColumnName("ParcelId");
                 b.Property<long>("Id").ValueGeneratedOnAdd();

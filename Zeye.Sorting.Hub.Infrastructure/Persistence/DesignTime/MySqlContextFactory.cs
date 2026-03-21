@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
@@ -58,10 +59,16 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
                 return factory.CreateDbContext(config);
             }
 
-            var connectionString = config.GetConnectionString(MySqlProviderName) ?? FallbackConnectionString;
-            var serverVersion = ResolveServerVersion(connectionString);
+            var connectionString = config.GetConnectionString(MySqlProviderName);
+            var normalizedConnectionString = string.IsNullOrWhiteSpace(connectionString)
+                ? FallbackConnectionString
+                : connectionString.Trim();
+            var serverVersion = DependencyInjection.PersistenceServiceCollectionExtensions.ResolveMySqlServerVersion(
+                config,
+                normalizedConnectionString,
+                DesignTimeConsoleLogger.Instance);
             var options = new DbContextOptionsBuilder<SortingHubDbContext>()
-                .UseMySql(connectionString, serverVersion)
+                .UseMySql(normalizedConnectionString, serverVersion)
                 .Options;
             return new SortingHubDbContext(options);
         }
@@ -151,26 +158,48 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
         }
 
         /// <summary>
-        /// 按优先级解析 MySQL 服务端版本，不主动锁定版本号：
-        /// <list type="number">
-        ///   <item><description>
-        ///     <c>ServerVersion.AutoDetect</c> — 最优先；数据库可连通时自动探测，无任何版本限制。
-        ///   </description></item>
-        ///   <item><description>
-        ///     兜底 MySQL 8.0 — 仅当 AutoDetect 失败时使用（设计时无数据库为正常场景）。
-        ///     该值仅影响 <c>dotnet ef</c> 设计时模型分析，不影响运行时的 AutoDetect 行为。
-        ///   </description></item>
-        /// </list>
+        /// 设计时版本解析日志器：在无 Host 管道时将告警输出到标准错误流。
         /// </summary>
-        private static ServerVersion ResolveServerVersion(string connectionString) {
-            try {
-                return ServerVersion.AutoDetect(connectionString);
-            }
-            catch {
-                // 设计时无数据库连接属正常情况，静默降级到兜底版本
-            }
+        private sealed class DesignTimeConsoleLogger : ILogger {
+            /// <summary>
+            /// 单例实例。
+            /// </summary>
+            public static readonly DesignTimeConsoleLogger Instance = new();
 
-            return new MySqlServerVersion(new Version(8, 0, 0));
+            /// <inheritdoc />
+            public IDisposable BeginScope<TState>(TState state) where TState : notnull => NoopScope.Instance;
+
+            /// <inheritdoc />
+            public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Warning;
+
+            /// <inheritdoc />
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) {
+                if (!IsEnabled(logLevel)) {
+                    return;
+                }
+
+                var message = formatter(state, exception);
+                if (exception is null) {
+                    Console.Error.WriteLine($"[{logLevel}] {message}");
+                }
+                else {
+                    Console.Error.WriteLine($"[{logLevel}] {message}{Environment.NewLine}{exception}");
+                }
+            }
         }
+
+        /// <summary>
+        /// 无操作日志作用域。
+        /// </summary>
+        private sealed class NoopScope : IDisposable {
+            /// <summary>
+            /// 单例实例。
+            /// </summary>
+            public static readonly NoopScope Instance = new();
+
+            /// <inheritdoc />
+            public void Dispose() { }
+        }
+
     }
 }

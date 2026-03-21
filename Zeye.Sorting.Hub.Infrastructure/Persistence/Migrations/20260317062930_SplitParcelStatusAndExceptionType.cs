@@ -7,15 +7,17 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
     /// <inheritdoc />
     public partial class SplitParcelStatusAndExceptionType : Migration
     {
+        /// <summary>
+        /// MySQL Provider 名称。
+        /// </summary>
         private const string MySqlProvider = "Pomelo.EntityFrameworkCore.MySql";
-        private const string SqlServerProvider = "Microsoft.EntityFrameworkCore.SqlServer";
 
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.AddColumn<int>(
                 name: "ExceptionType",
-                schema: "dbo",
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcels",
                 type: "int",
                 nullable: true);
@@ -52,7 +54,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                     END;
                     """);
             }
-            else if (migrationBuilder.ActiveProvider == SqlServerProvider)
+            else if (MigrationSchemaResolver.IsSqlServer(migrationBuilder))
             {
                 // 旧状态回填映射同 MySQL 分支，确保跨 Provider 行为一致。
                 migrationBuilder.Sql(
@@ -82,7 +84,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
         {
             migrationBuilder.DropColumn(
                 name: "ExceptionType",
-                schema: "dbo",
+                schema: MigrationSchemaResolver.ResolveSchema(migrationBuilder),
                 table: "Parcels");
         }
     }
