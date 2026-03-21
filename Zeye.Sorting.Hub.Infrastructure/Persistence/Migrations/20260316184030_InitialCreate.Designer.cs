@@ -173,7 +173,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("WorkstationName");
 
-                    b.ToTable("Parcels", "dbo");
+                    b.ToTable("Parcels");
                 });
 
             modelBuilder.Entity("Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects.BagInfo", b =>
@@ -217,7 +217,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                     b.HasIndex("ChuteId")
                         .IsUnique();
 
-                    b.ToTable("Bags", "dbo");
+                    b.ToTable("Bags");
                 });
 
             modelBuilder.Entity("Zeye.Sorting.Hub.Domain.Aggregates.Parcels.Parcel", b =>
@@ -311,7 +311,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
                             b1.HasIndex("RequestTime");
 
-                            b1.ToTable("Parcel_ApiRequests", "dbo");
+                            b1.ToTable("Parcel_ApiRequests");
 
                             b1.WithOwner()
                                 .HasForeignKey("ParcelId");
@@ -350,7 +350,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
                             b1.HasIndex("ParcelId");
 
-                            b1.ToTable("Parcel_BarCodeInfos", "dbo");
+                            b1.ToTable("Parcel_BarCodeInfos");
 
                             b1.WithOwner()
                                 .HasForeignKey("ParcelId");
@@ -392,7 +392,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
                             b1.HasIndex("TargetChuteId");
 
-                            b1.ToTable("Parcel_ChuteInfos", "dbo");
+                            b1.ToTable("Parcel_ChuteInfos");
 
                             b1.WithOwner()
                                 .HasForeignKey("ParcelId");
@@ -456,7 +456,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
                             b1.HasIndex("ParcelId");
 
-                            b1.ToTable("Parcel_CommandInfos", "dbo");
+                            b1.ToTable("Parcel_CommandInfos");
 
                             b1.WithOwner()
                                 .HasForeignKey("ParcelId");
@@ -517,7 +517,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                             b1.HasIndex("ParcelId")
                                 .IsUnique();
 
-                            b1.ToTable("Parcel_GrayDetectorInfos", "dbo");
+                            b1.ToTable("Parcel_GrayDetectorInfos");
 
                             b1.WithOwner()
                                 .HasForeignKey("ParcelId");
@@ -572,7 +572,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
                             b1.HasIndex("ParcelId");
 
-                            b1.ToTable("Parcel_ImageInfos", "dbo");
+                            b1.ToTable("Parcel_ImageInfos");
 
                             b1.WithOwner()
                                 .HasForeignKey("ParcelId");
@@ -614,7 +614,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                             b1.HasIndex("ParcelId")
                                 .IsUnique();
 
-                            b1.ToTable("Parcel_DeviceInfos", "dbo");
+                            b1.ToTable("Parcel_DeviceInfos");
 
                             b1.WithOwner()
                                 .HasForeignKey("ParcelId");
@@ -668,7 +668,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                             b1.HasIndex("ParcelId")
                                 .IsUnique();
 
-                            b1.ToTable("Parcel_PositionInfos", "dbo");
+                            b1.ToTable("Parcel_PositionInfos");
 
                             b1.WithOwner()
                                 .HasForeignKey("ParcelId");
@@ -708,7 +708,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
                             b1.HasIndex("SorterCarrierId");
 
-                            b1.ToTable("Parcel_SorterCarrierInfos", "dbo");
+                            b1.ToTable("Parcel_SorterCarrierInfos");
 
                             b1.WithOwner()
                                 .HasForeignKey("ParcelId");
@@ -748,7 +748,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                             b1.HasIndex("ParcelId")
                                 .IsUnique();
 
-                            b1.ToTable("Parcel_StickingParcelInfos", "dbo");
+                            b1.ToTable("Parcel_StickingParcelInfos");
 
                             b1.WithOwner()
                                 .HasForeignKey("ParcelId");
@@ -787,7 +787,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
                             b1.HasIndex("ParcelId");
 
-                            b1.ToTable("Parcel_VideoInfos", "dbo");
+                            b1.ToTable("Parcel_VideoInfos");
 
                             b1.WithOwner()
                                 .HasForeignKey("ParcelId");
@@ -865,7 +865,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                             b1.HasIndex("ParcelId")
                                 .IsUnique();
 
-                            b1.ToTable("Parcel_VolumeInfos", "dbo");
+                            b1.ToTable("Parcel_VolumeInfos");
 
                             b1.WithOwner()
                                 .HasForeignKey("ParcelId");
@@ -912,7 +912,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
                             b1.HasIndex("WeighingTime");
 
-                            b1.ToTable("Parcel_WeightInfos", "dbo");
+                            b1.ToTable("Parcel_WeightInfos");
 
                             b1.WithOwner()
                                 .HasForeignKey("ParcelId");

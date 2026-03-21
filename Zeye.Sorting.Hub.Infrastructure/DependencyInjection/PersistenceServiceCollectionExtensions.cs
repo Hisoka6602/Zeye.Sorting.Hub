@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects;
 using Zeye.Sorting.Hub.Domain.Repositories;
@@ -172,13 +173,13 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             var cfg = sp.GetRequiredService<IConfiguration>();
             var interceptor = sp.GetRequiredService<SlowQueryCommandInterceptor>();
             var mySqlSessionInterceptor = sp.GetRequiredService<MySqlSessionBootstrapConnectionInterceptor>();
+            var logger = sp.GetRequiredService<ILogger<PersistenceServiceCollectionExtensions>>();
             var cs = cfg.GetConnectionString("MySql")!;
             var commandTimeoutSeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
             var maxRetryCount = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryCount", 5);
             var maxRetryDelaySeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryDelaySeconds", 10);
 
-            // 建议：生产环境可改为固定版本，避免探测失败导致启动失败
-            var serverVersion = ServerVersion.AutoDetect(cs);
+            var serverVersion = ResolveMySqlServerVersion(cfg, cs, logger);
             options.UseMySql(cs, serverVersion, mySqlOptions => {
                 // 迁移程序集通常指向 Host 或 Infrastructure，按你迁移放置位置调整
                 // mySqlOptions.MigrationsAssembly("Zeye.Sorting.Hub.Host");
@@ -191,6 +192,33 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
 
             options.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
             options.AddInterceptors(interceptor, mySqlSessionInterceptor);
+        }
+
+        /// <summary>
+        /// 按“配置优先、探测兜底”解析 MySQL ServerVersion。
+        /// </summary>
+        /// <param name="configuration">应用配置。</param>
+        /// <param name="connectionString">MySQL 连接字符串。</param>
+        /// <returns>可用于 EF Core UseMySql 的服务端版本对象。</returns>
+        internal static ServerVersion ResolveMySqlServerVersion(IConfiguration configuration, string connectionString, ILogger? logger = null) {
+            var configuredVersion = configuration["Persistence:MySql:ServerVersion"];
+            if (!string.IsNullOrWhiteSpace(configuredVersion)) {
+                if (Version.TryParse(configuredVersion, out var parsedVersion)) {
+                    return new MySqlServerVersion(parsedVersion);
+                }
+
+                logger?.LogWarning(
+                    "配置项 Persistence:MySql:ServerVersion 格式非法，将回退到自动探测，Value={ConfiguredServerVersion}",
+                    configuredVersion);
+            }
+
+            try {
+                return ServerVersion.AutoDetect(connectionString);
+            }
+            catch (Exception ex) {
+                logger?.LogWarning(ex, "MySQL ServerVersion 自动探测失败，将回退到默认版本 8.0.0");
+                return new MySqlServerVersion(new Version(8, 0, 0));
+            }
         }
 
         /// <summary>

@@ -59,7 +59,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
             }
 
             var connectionString = config.GetConnectionString(MySqlProviderName) ?? FallbackConnectionString;
-            var serverVersion = ResolveServerVersion(connectionString);
+            var serverVersion = ResolveServerVersion(config, connectionString);
             var options = new DbContextOptionsBuilder<SortingHubDbContext>()
                 .UseMySql(connectionString, serverVersion)
                 .Options;
@@ -151,26 +151,22 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
         }
 
         /// <summary>
-        /// 按优先级解析 MySQL 服务端版本，不主动锁定版本号：
+        /// 按“配置优先、探测兜底”解析 MySQL 服务端版本：
         /// <list type="number">
         ///   <item><description>
-        ///     <c>ServerVersion.AutoDetect</c> — 最优先；数据库可连通时自动探测，无任何版本限制。
+        ///     <c>Persistence:MySql:ServerVersion</c> — 最优先（示例：<c>8.0.36</c>）。
         ///   </description></item>
         ///   <item><description>
-        ///     兜底 MySQL 8.0 — 仅当 AutoDetect 失败时使用（设计时无数据库为正常场景）。
-        ///     该值仅影响 <c>dotnet ef</c> 设计时模型分析，不影响运行时的 AutoDetect 行为。
+        ///     <c>ServerVersion.AutoDetect</c> — 配置未提供或非法时尝试探测。
+        ///   </description></item>
+        ///   <item><description>
+        ///     兜底 MySQL 8.0 — 仅当探测失败时使用（设计时无数据库为正常场景）。
+        ///     该值用于兜底设计时模型分析；运行时同样遵循“配置优先、探测兜底”。
         ///   </description></item>
         /// </list>
         /// </summary>
-        private static ServerVersion ResolveServerVersion(string connectionString) {
-            try {
-                return ServerVersion.AutoDetect(connectionString);
-            }
-            catch {
-                // 设计时无数据库连接属正常情况，静默降级到兜底版本
-            }
-
-            return new MySqlServerVersion(new Version(8, 0, 0));
+        private static ServerVersion ResolveServerVersion(IConfiguration config, string connectionString) {
+            return DependencyInjection.PersistenceServiceCollectionExtensions.ResolveMySqlServerVersion(config, connectionString);
         }
     }
 }

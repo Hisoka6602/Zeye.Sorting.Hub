@@ -19,14 +19,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
     /// - [MaxLength] 特征标记已在 Domain 层声明，此处无需重复配置 HasMaxLength。
     /// </summary>
     public sealed class BagInfoEntityTypeConfiguration : IEntityTypeConfiguration<BagInfo> {
-
-        private const string SchemaDbo = "dbo";
-
         /// <summary>
         /// 执行逻辑：Configure。
         /// </summary>
         public void Configure(EntityTypeBuilder<BagInfo> builder) {
-            builder.ToTable("Bags", SchemaDbo);
+            builder.ToTable("Bags");
 
             // 影子主键（Shadow Key）：Domain 中不暴露 Id，避免领域污染
             builder.Property<long>("BagId").ValueGeneratedOnAdd();
