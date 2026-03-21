@@ -1144,6 +1144,42 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
+    /// 验证场景：AutoTuningConfigurationHelper_BuildAutoTuningKey_ShouldProduceCorrectPath（参数化）。
+    /// 覆盖多个常用配置项后缀，确保拼装规则对未来新增配置项持续有效。
+    /// </summary>
+    [Theory]
+    [InlineData("TriggerCount", "Persistence:AutoTuning:TriggerCount")]
+    [InlineData("SlowQueryThresholdMilliseconds", "Persistence:AutoTuning:SlowQueryThresholdMilliseconds")]
+    [InlineData("AnalysisBatchSize", "Persistence:AutoTuning:AnalysisBatchSize")]
+    [InlineData("AlertP99Milliseconds", "Persistence:AutoTuning:AlertP99Milliseconds")]
+    [InlineData("AlertTimeoutRatePercent", "Persistence:AutoTuning:AlertTimeoutRatePercent")]
+    [InlineData("AlertDeadlockCount", "Persistence:AutoTuning:AlertDeadlockCount")]
+    [InlineData("AlertDebounceWindowSeconds", "Persistence:AutoTuning:AlertDebounceWindowSeconds")]
+    [InlineData("AlertConsecutiveWindows", "Persistence:AutoTuning:AlertConsecutiveWindows")]
+    [InlineData("AlertRecoveryConsecutiveWindows", "Persistence:AutoTuning:AlertRecoveryConsecutiveWindows")]
+    [InlineData("AlertDebounceMinCallCount", "Persistence:AutoTuning:AlertDebounceMinCallCount")]
+    public void AutoTuningConfigurationHelper_BuildAutoTuningKey_ShouldProduceCorrectPath(string suffix, string expectedKey) {
+        var actual = AutoTuningConfigurationHelper.BuildAutoTuningKey(suffix);
+        Assert.Equal(expectedKey, actual);
+    }
+
+    /// <summary>
+    /// 验证场景：AutoTuningConfigurationHelper_BuildAutonomousKey_ShouldProduceCorrectPath（参数化）。
+    /// 覆盖多个 Autonomous 配置子路径，确保前缀拼装规则对嵌套层级一致有效。
+    /// </summary>
+    [Theory]
+    [InlineData("EnableFullAutomation", "Persistence:AutoTuning:Autonomous:EnableFullAutomation")]
+    [InlineData("Validation:DelayCycles", "Persistence:AutoTuning:Autonomous:Validation:DelayCycles")]
+    [InlineData("CapacityPrediction:EnableCapacityPrediction", "Persistence:AutoTuning:Autonomous:CapacityPrediction:EnableCapacityPrediction")]
+    [InlineData("CapacityPrediction:PredictionWindowDays", "Persistence:AutoTuning:Autonomous:CapacityPrediction:PredictionWindowDays")]
+    [InlineData("CapacityPrediction:GrowthRateThreshold", "Persistence:AutoTuning:Autonomous:CapacityPrediction:GrowthRateThreshold")]
+    [InlineData("SchemaSync:EnableAutoSchemaSync", "Persistence:AutoTuning:Autonomous:SchemaSync:EnableAutoSchemaSync")]
+    public void AutoTuningConfigurationHelper_BuildAutonomousKey_ShouldProduceCorrectPath(string suffix, string expectedKey) {
+        var actual = AutoTuningConfigurationHelper.BuildAutonomousKey(suffix);
+        Assert.Equal(expectedKey, actual);
+    }
+
+    /// <summary>
     /// 验证场景：AutoTuningConfigurationHelper_NormalizeToLocalTime_UsesLocalSemantics。
     /// </summary>
     [Fact]

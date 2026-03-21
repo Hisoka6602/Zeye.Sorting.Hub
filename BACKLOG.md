@@ -46,7 +46,6 @@
 ## 规则治理
 
 1. 增加 CI 静态检查（如 Roslyn Analyzer 或自定义脚本）自动门禁"字段/方法注释、事件载荷目录与类型、枚举 Description 完整性"，避免回归。
-2. 为事件载荷结构体（`ParcelScannedEventArgs`、`ParcelChuteAssignedEventArgs`）补充业务字段与对应单元测试，替换当前最小占位定义（当前仅为空结构体）。
 
 ---
 
@@ -62,8 +61,7 @@
 
 ## Parcel 异常治理
 
-1. 在 Application/Contracts 层补充 `ParcelExceptionType` 的对外 DTO/查询筛选条件，减少字符串化状态判断。
-2. 按异常类型建立告警分级策略（例如机械故障/包裹丢失优先级高于超时类），提升运维响应效率。
+1. 按异常类型建立告警分级策略（例如机械故障/包裹丢失优先级高于超时类），提升运维响应效率。
 
 ---
 
@@ -91,15 +89,13 @@
 4. 引入鉴权体系（JWT/API-Key/RBAC）后，在 `MapParcelAdminApis` 的 `MapGroup` 上追加 `.RequireAuthorization("AdminPolicy")` 统一保护普通写接口，治理接口额外追加 `"DangerousActionPolicy"`。
 5. 可在 Application 层为新增/更新接口引入 FluentValidation 或自定义 Validator，实现字段级错误聚合输出。
 6. `AddRangeAsync` 目前未暴露为 API，如后续有批量导入业务需求，可在充分评估风险后，通过治理型端点（带 dry-run + 上限保护）暴露。
-7. 可为 `GET /api/parcels` 补充"带多重过滤条件的成功路径"测试，覆盖 bagCode、workstationName、actualChuteId 等过滤参数的联合使用。
-8. 引入 FluentValidation 或统一参数模型验证器后，可追加字段级错误明细的结构化断言。
-9. 引入真实鉴权框架后，补充鉴权测试：未携带 Token 时管理端接口返回 401，权限不足时返回 403。
-10. 建立面向 Swagger 规范的契约断言测试，防止重构时端点 tags/summary/response 回退。
+7. 引入 FluentValidation 或统一参数模型验证器后，可追加字段级错误明细的结构化断言。
+8. 引入真实鉴权框架后，补充鉴权测试：未携带 Token 时管理端接口返回 401，权限不足时返回 403。
+9. 建立面向 Swagger 规范的契约断言测试，防止重构时端点 tags/summary/response 回退。
 
 ---
 
 ## 可观测性与运营
 
-1. 可在测试层补充统一的"本地时间语义输入构造约束"测试工具或约定，进一步降低后续引入 UTC 相关 API 的回归风险。
-2. 可进一步抽取方言层"表名转义/限定名拼装"公共骨架，在不改变方言 SQL 细节的前提下继续降低重复率。
-3. 可在 AutoTuning 相关测试中增加配置键拼装的参数化覆盖，减少未来配置项扩展时的回归风险。
+1. 可进一步抽取方言层"表名转义/限定名拼装"公共骨架，在不改变方言 SQL 细节的前提下继续降低重复率。
+

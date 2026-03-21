@@ -520,6 +520,10 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
             query = query.Where(x => x.Status == filter.Status.Value);
         }
 
+        if (filter.ExceptionType.HasValue) {
+            query = query.Where(x => x.ExceptionType == filter.ExceptionType.Value);
+        }
+
         if (filter.ActualChuteId.HasValue) {
             query = query.Where(x => x.ActualChuteId == filter.ActualChuteId.Value);
         }

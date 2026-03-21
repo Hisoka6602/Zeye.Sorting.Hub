@@ -107,6 +107,11 @@ public sealed class GetParcelPagedQueryService {
             Logger.Warn("分页查询 Parcel 列表参数非法，Status={0}", request.Status);
             throw new ArgumentOutOfRangeException(nameof(request.Status), "包裹状态无效。");
         }
+
+        if (request.ExceptionType.HasValue && !Enum.IsDefined(typeof(ParcelExceptionType), request.ExceptionType.Value)) {
+            Logger.Warn("分页查询 Parcel 列表参数非法，ExceptionType={0}", request.ExceptionType);
+            throw new ArgumentOutOfRangeException(nameof(request.ExceptionType), "包裹异常类型无效。");
+        }
     }
 
     /// <summary>
@@ -120,6 +125,7 @@ public sealed class GetParcelPagedQueryService {
             BagCode = request.BagCode,
             WorkstationName = request.WorkstationName,
             Status = request.Status.HasValue ? (ParcelStatus?)request.Status.Value : null,
+            ExceptionType = request.ExceptionType.HasValue ? (ParcelExceptionType?)request.ExceptionType.Value : null,
             ActualChuteId = request.ActualChuteId,
             TargetChuteId = request.TargetChuteId,
             ScannedTimeStart = request.ScannedTimeStart,

@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Zeye.Sorting.Hub.Application\Zeye.Sorting.Hub.Application.csproj" />
+    <ProjectReference Include="..\Zeye.Sorting.Hub.Domain\Zeye.Sorting.Hub.Domain.csproj" />
     <ProjectReference Include="..\Zeye.Sorting.Hub.Host\Zeye.Sorting.Hub.Host.csproj" />
     <ProjectReference Include="..\Zeye.Sorting.Hub.Infrastructure\Zeye.Sorting.Hub.Infrastructure.csproj" />
   </ItemGroup>

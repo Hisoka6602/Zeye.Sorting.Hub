@@ -4,6 +4,7 @@ using Zeye.Sorting.Hub.Contracts.Models.Parcels;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.Admin;
 using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Repositories;
+using DomainParcelExceptionType = Zeye.Sorting.Hub.Domain.Enums.ParcelExceptionType;
 
 namespace Zeye.Sorting.Hub.Application.Services.Parcels;
 
@@ -72,12 +73,12 @@ public sealed class UpdateParcelStatusCommandService {
                     break;
 
                 case ParcelUpdateOperation.MarkSortingException:
-                    if (!Enum.IsDefined(typeof(ParcelExceptionType), request.ExceptionType!.Value)) {
+                    if (!Enum.IsDefined(typeof(DomainParcelExceptionType), request.ExceptionType!.Value)) {
                         Logger.Warn("更新包裹状态参数非法，ExceptionType={ExceptionType}", request.ExceptionType);
                         throw new ArgumentOutOfRangeException(nameof(request.ExceptionType), "异常类型无效。");
                     }
 
-                    parcel.MarkSortingException((ParcelExceptionType)request.ExceptionType.Value);
+                    parcel.MarkSortingException((DomainParcelExceptionType)request.ExceptionType.Value);
                     break;
 
                 case ParcelUpdateOperation.UpdateRequestStatus:
