@@ -56,4 +56,18 @@ public sealed class HostingOptionsTests {
 
         Assert.Equal("http://localhost:5078/custom-swagger", url);
     }
+
+    /// <summary>
+    /// 验证场景：未配置可解析监听地址时返回 null，交由托管服务跳过副作用。
+    /// </summary>
+    [Fact]
+    public void BuildBrowserAutoOpenUrl_ShouldReturnNull_WhenBindingsAreInvalid() {
+        var options = new HostingOptions {
+            Urls = "not-a-valid-url"
+        };
+
+        var url = options.BuildBrowserAutoOpenUrl();
+
+        Assert.Null(url);
+    }
 }

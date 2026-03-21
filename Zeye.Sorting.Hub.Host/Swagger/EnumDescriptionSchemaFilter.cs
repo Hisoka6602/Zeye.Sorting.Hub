@@ -3,6 +3,7 @@ using System.Reflection;
 using Zeye.Sorting.Hub.Contracts.Enums.Parcels;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.Admin;
+using Zeye.Sorting.Hub.Contracts.Models.Parcels.ValueObjects;
 using Zeye.Sorting.Hub.Domain.Enums;
 using Microsoft.OpenApi.Any;
 using Microsoft.OpenApi.Models;
@@ -40,6 +41,28 @@ public sealed class EnumDescriptionSchemaFilter : ISchemaFilter {
                 ["exceptionType"] = typeof(ContractParcelExceptionType),
                 ["noReadType"] = typeof(NoReadType),
                 ["requestStatus"] = typeof(ApiRequestStatus)
+            },
+            [typeof(BarCodeInfoResponse)] = new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase) {
+                ["barCodeType"] = typeof(BarCodeType)
+            },
+            [typeof(CommandInfoResponse)] = new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase) {
+                ["protocolType"] = typeof(System.Net.Sockets.ProtocolType),
+                ["actionType"] = typeof(ActionType),
+                ["direction"] = typeof(CommandDirection)
+            },
+            [typeof(ImageInfoResponse)] = new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase) {
+                ["imageType"] = typeof(ImageType),
+                ["captureType"] = typeof(ImageCaptureType)
+            },
+            [typeof(VideoInfoResponse)] = new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase) {
+                ["nodeType"] = typeof(VideoNodeType)
+            },
+            [typeof(ApiRequestInfoResponse)] = new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase) {
+                ["apiType"] = typeof(ApiRequestType),
+                ["requestStatus"] = typeof(ApiRequestStatus)
+            },
+            [typeof(VolumeInfoResponse)] = new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase) {
+                ["sourceType"] = typeof(VolumeSourceType)
             }
         };
 
@@ -117,12 +140,52 @@ public sealed class EnumDescriptionSchemaFilter : ISchemaFilter {
         for (var index = 0; index < fields.Length; index++) {
             var field = fields[index];
             var value = Convert.ToInt64(field.GetRawConstantValue());
-            var description = field.GetCustomAttribute<DescriptionAttribute>()?.Description;
+            var description = ResolveEnumDescription(enumType, field);
             lines[index] = string.IsNullOrWhiteSpace(description)
                 ? $"{value} = {field.Name}"
                 : $"{value} = {field.Name}（{description}）";
         }
 
         return lines;
+    }
+
+    /// <summary>
+    /// 解析枚举项中文描述；若未配置 Description，则使用内置兜底文案。
+    /// </summary>
+    /// <param name="enumType">枚举类型。</param>
+    /// <param name="field">枚举字段。</param>
+    /// <returns>中文描述。</returns>
+    private static string ResolveEnumDescription(Type enumType, FieldInfo field) {
+        var attributeDescription = field.GetCustomAttribute<DescriptionAttribute>()?.Description;
+        if (!string.IsNullOrWhiteSpace(attributeDescription)) {
+            return attributeDescription;
+        }
+
+        if (enumType == typeof(System.Net.Sockets.ProtocolType)
+            && TryResolveProtocolTypeDescription(field.Name, out var protocolDescription)) {
+            return protocolDescription;
+        }
+
+        return "未提供中文描述";
+    }
+
+    /// <summary>
+    /// 解析常见网络协议类型的中文说明。
+    /// </summary>
+    /// <param name="name">枚举名称。</param>
+    /// <param name="description">解析出的中文描述。</param>
+    /// <returns>解析成功返回 true。</returns>
+    private static bool TryResolveProtocolTypeDescription(string name, out string description) {
+        description = name switch {
+            "IP" => "互联网协议",
+            "IPv6" => "IPv6 协议",
+            "Tcp" => "传输控制协议",
+            "Udp" => "用户数据报协议",
+            "Icmp" => "Internet 控制报文协议",
+            "Igmp" => "Internet 组管理协议",
+            _ => string.Empty
+        };
+
+        return !string.IsNullOrWhiteSpace(description);
     }
 }
