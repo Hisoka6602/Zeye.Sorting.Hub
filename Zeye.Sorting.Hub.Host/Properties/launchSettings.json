@@ -4,7 +4,7 @@
     "Zeye.Sorting.Hub.Host": {
       "commandName": "Project",
       "dotnetRunMessages": true,
-      "launchBrowser": true,
+      "launchBrowser": false,
       "launchUrl": "swagger",
       "applicationUrl": "http://localhost:5078;https://localhost:7078",
       "environmentVariables": {

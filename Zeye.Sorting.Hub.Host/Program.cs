@@ -1,9 +1,11 @@
 using NLog;
 using Zeye.Sorting.Hub.Host;
+using Microsoft.OpenApi.Models;
 using NLog.Extensions.Logging;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Diagnostics;
 using Zeye.Sorting.Hub.Host.HostedServices;
+using Zeye.Sorting.Hub.Host.Swagger;
 using Zeye.Sorting.Hub.SharedKernel.Utilities;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels;
 using Zeye.Sorting.Hub.Domain.Options.LogCleanup;
@@ -18,6 +20,11 @@ var bootstrapLogger = LogManager.GetCurrentClassLogger();
 
 try {
     var builder = WebApplication.CreateBuilder(args);
+    var hostingOptions = builder.Configuration.GetSection("Hosting").Get<HostingOptions>() ?? new HostingOptions();
+    var bindingUrls = hostingOptions.GetUrlBindings();
+    if (bindingUrls.Count > 0) {
+        builder.WebHost.UseUrls(bindingUrls.ToArray());
+    }
 
     // ──────────────────────────────────────────────────────
     // NLog：替换默认日志提供器，双路落盘（详见 nlog.config）
@@ -30,14 +37,32 @@ try {
     builder.Logging.AddNLog();
     builder.Services.Configure<LogCleanupSettings>(
         builder.Configuration.GetSection("LogCleanup"));
+    builder.Services.Configure<HostingOptions>(builder.Configuration.GetSection("Hosting"));
     builder.Services.AddHostedService<LogCleanupService>();
     builder.Services.AddHostedService<Worker>();
+    builder.Services.AddHostedService<DevelopmentBrowserLauncherHostedService>();
     builder.Services.AddSingleton<SafeExecutor>();
     builder.Services.AddSortingHubPersistence(builder.Configuration);
     builder.Services.AddSingleton<IAutoTuningObservability, AutoTuningLoggerObservability>();
     builder.Services.AddProblemDetails();
     builder.Services.AddEndpointsApiExplorer();
-    builder.Services.AddSwaggerGen();
+    builder.Services.AddSwaggerGen(options => {
+        var documentName = hostingOptions.GetSwaggerDocumentName();
+        options.SwaggerDoc(documentName, new OpenApiInfo {
+            Title = hostingOptions.GetSwaggerDocumentTitle(),
+            Version = documentName,
+            Description = "Zeye.Sorting.Hub API 文档（本地时间语义，禁止 UTC/时区偏移输入）。"
+        });
+
+        foreach (var assemblyName in HostingOptions.XmlCommentAssemblyNames) {
+            var xmlPath = Path.Combine(AppContext.BaseDirectory, $"{assemblyName}.xml");
+            if (File.Exists(xmlPath)) {
+                options.IncludeXmlComments(xmlPath, includeControllerXmlComments: true);
+            }
+        }
+
+        options.SchemaFilter<EnumDescriptionSchemaFilter>();
+    });
     builder.Services.AddScoped<GetParcelPagedQueryService>();
     builder.Services.AddScoped<GetParcelByIdQueryService>();
     builder.Services.AddScoped<GetAdjacentParcelsQueryService>();
@@ -88,17 +113,29 @@ try {
     });
 
     // 仅在显式开启时启用 HTTPS 重定向，避免纯 HTTP / 反向代理终止 TLS 场景影响探活
-    if (bool.TryParse(app.Configuration["Hosting:EnableHttpsRedirection"], out var enableHttpsRedirection)
-        && enableHttpsRedirection) {
+    if (hostingOptions.EnableHttpsRedirection) {
         app.UseHttpsRedirection();
     }
-    if (app.Environment.IsDevelopment()) {
-        app.UseSwagger();
-        app.UseSwaggerUI();
+    var isSwaggerEnabled = app.Environment.IsDevelopment() && hostingOptions.Swagger.Enabled;
+    if (isSwaggerEnabled) {
+        app.UseSwagger(options => {
+            options.RouteTemplate = hostingOptions.BuildSwaggerJsonRouteTemplate();
+        });
+
+        app.UseSwaggerUI(options => {
+            options.RoutePrefix = hostingOptions.GetSwaggerRoutePrefix();
+            options.DocumentTitle = hostingOptions.GetSwaggerDocumentTitle();
+            options.SwaggerEndpoint(
+                hostingOptions.BuildSwaggerJsonEndpoint(),
+                $"{hostingOptions.GetSwaggerDocumentTitle()} ({hostingOptions.GetSwaggerDocumentName()})");
+        });
     }
 
     // 最小探活端点：用于容器/网关健康检查，不承载业务语义
-    app.MapGet("/health", () => Results.Ok(new { status = "Healthy" }));
+    app.MapGet("/health", () => Results.Ok(new { status = "Healthy" }))
+        .WithName("HealthCheck")
+        .WithSummary("服务健康检查")
+        .WithDescription("用于容器与网关探活，仅返回服务存活状态，不承载任何业务语义。");
     // Parcel 只读查询端点：统一走 Application 查询服务，不直接暴露领域模型。
     app.MapParcelReadOnlyApis();
     // Parcel 管理端写接口：普通写操作 + 危险治理接口（cleanup-expired）分开治理。
@@ -136,12 +173,14 @@ public static class ParcelReadOnlyApiRouteExtensions {
         group.MapGet(string.Empty, GetParcelListAsync)
             .WithName("GetParcelList")
             .WithSummary("分页查询 Parcel 列表")
+            .WithDescription("按页码、分页大小与可选过滤条件（条码、集包号、状态、异常类型、格口、扫码时间范围）查询包裹摘要列表。时间参数必须为本地时间字符串，不允许 UTC 或时区偏移。")
             .Produces<ParcelListResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest);
 
         group.MapGet("/{id:long}", GetParcelByIdAsync)
             .WithName("GetParcelById")
             .WithSummary("按 Id 查询 Parcel 详情")
+            .WithDescription("按包裹主键查询完整详情；当资源不存在时返回 404。")
             .Produces<ParcelDetailResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status400BadRequest);
@@ -149,6 +188,7 @@ public static class ParcelReadOnlyApiRouteExtensions {
         group.MapGet("/adjacent", GetAdjacentParcelsAsync)
             .WithName("GetAdjacentParcels")
             .WithSummary("按扫描时间查询 Parcel 邻近记录")
+            .WithDescription("以指定扫描时间为基准，查询前后邻近记录数量。scannedTime 必须是本地时间字符串，不允许 UTC 或时区偏移。")
             .Produces<ParcelAdjacentResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest);
 
