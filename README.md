@@ -132,11 +132,11 @@
 │   │   ├── AutoTuningLoggerObservability.cs（自动调优观测默认日志实现）
 │   │   ├── DatabaseAutoTuningHostedService.cs（数据库自动调谐托管服务（闭环阶段流转、执行隔离、自动验证标准化输出与回滚审计；分表命中/跨表占比/热点倾斜改为全量慢 SQL 口径，并在自动索引建议前做覆盖/重复/低价值过滤））
 │   │   └── DatabaseInitializerHostedService.cs（数据库初始化与迁移托管服务（含分表治理基线、Runbook 审计、PerDay 手工预建窗口守卫；新增“配置清单 + 物理分表存在性”双重校验））
-│   ├── Program.cs（应用入口与 Host 构建流程；注册 Parcel 只读 + 管理端 API）
+│   ├── Program.cs（应用入口与 Host 构建流程；注册 Parcel 只读 + 管理端 API；Swagger 仅在 Development 环境启用）
 │   ├── LocalDateTimeParsing.cs（本地时间解析共享工具：TryParseLocalDateTime/TryParseOptionalLocalDateTime/IsUtcKind，供所有路由扩展复用）
 │   ├── ParcelAdminApiRouteExtensions.cs（Parcel 管理端 API 路由扩展：POST/PUT/DELETE 普通写接口 + cleanup-expired 治理接口）
 │   ├── Properties（运行调试属性目录）
-│   │   └── launchSettings.json（本地启动配置）
+│   │   └── launchSettings.json（本地调试启动配置：Development 环境变量 + 启动时自动打开默认浏览器到 /swagger）
 │   ├── Worker.cs（后台轮询任务示例服务）
 │   ├── Zeye.Sorting.Hub.Host.csproj（Host 项目定义）
 │   ├── nlog.config（NLog 日志配置：双路落盘，低开销异步写盘）
@@ -381,7 +381,7 @@
 - `MaxTimeRangeAttribute.cs`：时间范围校验特性（限制起止时间跨度，默认不超过 3 个月）。
 
 ### `Zeye.Sorting.Hub.Host/`：宿主层（程序入口、后台服务、启动配置）
-- `Program.cs`：应用入口与 Host 构建流程；注册 Parcel 只读 API 与管理端写 API；使用 NLog 替换默认日志提供器，任何启动期异常均记录后再退出。
+- `Program.cs`：应用入口与 Host 构建流程；注册 Parcel 只读 API 与管理端写 API；Swagger 仅在 Development 环境启用；使用 NLog 替换默认日志提供器，任何启动期异常均记录后再退出。
 - `LocalDateTimeParsing.cs`：本地时间解析共享工具（`TryParseLocalDateTime`、`TryParseOptionalLocalDateTime`、`IsUtcKind`），统一供各路由扩展类复用，避免重复实现。
 - `ParcelAdminApiRouteExtensions.cs`：Parcel 管理端 API 路由扩展（`MapParcelAdminApis`），注册 `POST /api/admin/parcels`、`PUT /api/admin/parcels/{id}`、`DELETE /api/admin/parcels/{id}` 普通写接口及 `POST /api/admin/parcels/cleanup-expired` 危险治理接口。
 - `Worker.cs`：后台轮询任务示例服务。
@@ -399,7 +399,7 @@
 - `DatabaseInitializerHostedService.cs`：数据库初始化与迁移托管服务（支持生产/非生产迁移失败策略分流：FailFast/Degraded；启动期执行分表治理程序化守卫，新增 Time/Volume/Hybrid 策略配置校验与审计输出；PerDay 手工预建守卫升级为“配置日期清单完整性 + 物理分表存在性”双重校验，且仅做探测/阻断/审计，不自动建表）。
 
 #### `Zeye.Sorting.Hub.Host/Properties/`：项目运行调试属性目录
-- `launchSettings.json`：本地启动配置（Profile、环境变量等）。
+- `launchSettings.json`：本地调试启动配置（Development Profile、环境变量、本地 `applicationUrl`）；调试启动时自动打开系统默认浏览器并进入 `/swagger`。
 
 ### `Zeye.Sorting.Hub.Infrastructure/`：基础设施层（EF Core 持久化、仓储实现、DI 注册、数据库方言）
 - `Zeye.Sorting.Hub.Infrastructure.csproj`：Infrastructure 项目定义。
@@ -488,6 +488,17 @@
 
 - 更新记录（CHANGELOG）详见：[CHANGELOG.md](CHANGELOG.md)
 - 待完善事项（BACKLOG）详见：[BACKLOG.md](BACKLOG.md)
+
+### 本次更新内容
+
+- 已补齐 `Zeye.Sorting.Hub.Host/Properties/launchSettings.json` 的本地调试体验：`launchBrowser=true`、`launchUrl=swagger`，并补充稳定的本地 `applicationUrl`。
+- 已同步更新 Host 相关职责说明：`Program.cs` 明确为仅 Development 环境启用 Swagger；`launchSettings.json` 明确为调试启动自动打开 Swagger 页面。
+- 未改动生产环境运行逻辑：未在 `Program.cs` 增加任何运行时浏览器启动代码，非 Development 环境 Swagger 暴露策略保持不变。
+
+### 可继续完善内容
+
+- 后续可补充 Swagger 安全策略（如文档访问鉴权、最小暴露原则）与分环境文档暴露治理策略。
+- 后续可结合发布门禁，细化非开发环境下 API 文档可见性控制与审计策略。
 
 ## Parcel API 发布门禁 / 使用边界说明
 
