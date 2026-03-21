@@ -77,16 +77,22 @@ public sealed class DevelopmentBrowserLauncherHostedService : IHostedService {
             return Task.CompletedTask;
         }
 
-        _ = _safeExecutor.Execute(
+        var launchSuccess = _safeExecutor.Execute(
             () => {
                 var startInfo = new ProcessStartInfo {
                     FileName = targetUrl,
                     UseShellExecute = true
                 };
-                Process.Start(startInfo);
-                _logger.LogInformation("已在 Development 环境触发浏览器自动打开：{SwaggerUrl}", targetUrl);
+                var process = Process.Start(startInfo);
+                _logger.LogInformation(
+                    "已在 Development 环境触发浏览器自动打开：{SwaggerUrl}，进程创建：{ProcessStarted}",
+                    targetUrl,
+                    process is not null);
             },
             "Development 启动自动打开 Swagger 页面");
+        if (!launchSuccess) {
+            _logger.LogWarning("Development 浏览器自动打开执行失败，已由 SafeExecutor 隔离。");
+        }
 
         return Task.CompletedTask;
     }

@@ -35,6 +35,8 @@ try {
     // ──────────────────────────────────────────────────────
     builder.Logging.ClearProviders();
     builder.Logging.AddNLog();
+    using var startupLoggerFactory = LoggerFactory.Create(logging => logging.AddNLog());
+    var startupLogger = startupLoggerFactory.CreateLogger("Startup");
     builder.Services.Configure<LogCleanupSettings>(
         builder.Configuration.GetSection("LogCleanup"));
     builder.Services.Configure<HostingOptions>(builder.Configuration.GetSection("Hosting"));
@@ -58,6 +60,11 @@ try {
             var xmlPath = Path.Combine(AppContext.BaseDirectory, $"{assemblyName}.xml");
             if (File.Exists(xmlPath)) {
                 options.IncludeXmlComments(xmlPath, includeControllerXmlComments: true);
+                continue;
+            }
+
+            if (builder.Environment.IsDevelopment()) {
+                startupLogger.LogWarning("Swagger XML 注释文件未找到：{XmlPath}", xmlPath);
             }
         }
 

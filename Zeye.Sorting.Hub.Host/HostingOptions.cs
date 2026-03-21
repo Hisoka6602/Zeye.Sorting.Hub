@@ -79,10 +79,9 @@ public sealed class HostingOptions {
     /// </summary>
     /// <returns>Swagger JSON 路由模板。</returns>
     public string BuildSwaggerJsonRouteTemplate() {
-        var endpoint = string.IsNullOrWhiteSpace(Swagger.JsonEndpoint)
+        return string.IsNullOrWhiteSpace(Swagger.JsonEndpoint)
             ? "swagger/{documentName}/swagger.json"
             : Swagger.JsonEndpoint.Trim().TrimStart('/');
-        return endpoint.Replace("{documentName}", "{documentName}", StringComparison.Ordinal);
     }
 
     /// <summary>

@@ -112,12 +112,17 @@ public sealed class EnumDescriptionSchemaFilter : ISchemaFilter {
     /// <param name="enumType">枚举类型。</param>
     /// <returns>“数值 = 名称（中文描述）”行列表。</returns>
     private static string[] BuildEnumLines(Type enumType) {
-        return enumType.GetFields(BindingFlags.Public | BindingFlags.Static)
-            .Select(field => {
-                var value = Convert.ToInt64(field.GetRawConstantValue());
-                var description = field.GetCustomAttribute<DescriptionAttribute>()?.Description;
-                return $"{value} = {field.Name}（{(string.IsNullOrWhiteSpace(description) ? "未提供中文说明" : description)}）";
-            })
-            .ToArray();
+        var fields = enumType.GetFields(BindingFlags.Public | BindingFlags.Static);
+        var lines = new string[fields.Length];
+        for (var index = 0; index < fields.Length; index++) {
+            var field = fields[index];
+            var value = Convert.ToInt64(field.GetRawConstantValue());
+            var description = field.GetCustomAttribute<DescriptionAttribute>()?.Description;
+            lines[index] = string.IsNullOrWhiteSpace(description)
+                ? $"{value} = {field.Name}"
+                : $"{value} = {field.Name}（{description}）";
+        }
+
+        return lines;
     }
 }
