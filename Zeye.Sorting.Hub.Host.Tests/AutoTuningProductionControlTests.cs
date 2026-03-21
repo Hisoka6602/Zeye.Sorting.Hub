@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Linq;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
@@ -9,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Host.Enums;
@@ -19,6 +21,7 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding.Enums;
+using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects;
 
 namespace Zeye.Sorting.Hub.Host.Tests;
 
@@ -1773,6 +1776,168 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
+    /// 验证场景：ParcelRelatedValueObjects_ShouldExposeClrParcelId_ForShardingFieldRecognition。
+    /// </summary>
+    [Fact]
+    public void ParcelRelatedValueObjects_ShouldExposeClrParcelId_ForShardingFieldRecognition() {
+        var parcelIdPropertyByType = new Dictionary<Type, System.Reflection.PropertyInfo?> {
+            [typeof(ParcelDeviceInfo)] = typeof(ParcelDeviceInfo).GetProperty("ParcelId"),
+            [typeof(ParcelPositionInfo)] = typeof(ParcelPositionInfo).GetProperty("ParcelId"),
+            [typeof(StickingParcelInfo)] = typeof(StickingParcelInfo).GetProperty("ParcelId"),
+            [typeof(BarCodeInfo)] = typeof(BarCodeInfo).GetProperty("ParcelId"),
+            [typeof(ImageInfo)] = typeof(ImageInfo).GetProperty("ParcelId"),
+            [typeof(VideoInfo)] = typeof(VideoInfo).GetProperty("ParcelId")
+        };
+
+        foreach (var pair in parcelIdPropertyByType) {
+            Assert.NotNull(pair.Value);
+            Assert.Equal(typeof(long), pair.Value!.PropertyType);
+            var setMethod = pair.Value.SetMethod;
+            Assert.NotNull(setMethod);
+            Assert.True(setMethod!.IsPrivate);
+            Assert.Contains(
+                setMethod.ReturnParameter.GetRequiredCustomModifiers(),
+                modifier => modifier == typeof(System.Runtime.CompilerServices.IsExternalInit));
+        }
+    }
+
+    /// <summary>
+    /// 验证场景：ParcelRelatedValueObjects_ParcelId_ShouldMapToExistingParcelIdColumn。
+    /// </summary>
+    [Fact]
+    public void ParcelRelatedValueObjects_ParcelId_ShouldMapToExistingParcelIdColumn() {
+        using var dbContext = CreateTestingDbContext();
+        var mappingPlans = new (Type ValueObjectType, string TableName)[] {
+            (typeof(ParcelDeviceInfo), "Parcel_DeviceInfos"),
+            (typeof(ParcelPositionInfo), "Parcel_PositionInfos"),
+            (typeof(StickingParcelInfo), "Parcel_StickingParcelInfos"),
+            (typeof(BarCodeInfo), "Parcel_BarCodeInfos"),
+            (typeof(ImageInfo), "Parcel_ImageInfos"),
+            (typeof(VideoInfo), "Parcel_VideoInfos")
+        };
+
+        foreach (var mappingPlan in mappingPlans) {
+            var entityType = dbContext.Model.GetEntityTypes()
+                .FirstOrDefault(type =>
+                    type.IsOwned()
+                    && type.ClrType == mappingPlan.ValueObjectType
+                    && string.Equals(type.GetTableName(), mappingPlan.TableName, StringComparison.Ordinal));
+            Assert.NotNull(entityType);
+            var checkedEntityType = entityType!;
+            var parcelIdProperty = checkedEntityType.FindProperty("ParcelId");
+            Assert.NotNull(parcelIdProperty);
+            Assert.False(parcelIdProperty!.IsShadowProperty());
+            var store = StoreObjectIdentifier.Table(mappingPlan.TableName, checkedEntityType.GetSchema());
+            Assert.Equal("ParcelId", parcelIdProperty.GetColumnName(store));
+        }
+    }
+
+    /// <summary>
+    /// 验证场景：ParcelRelatedValueObjects_EqualityAndHashCode_ShouldIgnoreParcelId。
+    /// </summary>
+    [Fact]
+    public void ParcelRelatedValueObjects_EqualityAndHashCode_ShouldIgnoreParcelId() {
+        var fixedReceiveTime = new DateTime(2024, 1, 1, 12, 0, 0, DateTimeKind.Local);
+        var fixedCapturedTime = new DateTime(2024, 1, 1, 12, 5, 0, DateTimeKind.Local);
+
+        var leftDevice = SetParcelIdForTesting(new ParcelDeviceInfo {
+            WorkstationName = "WS-A",
+            MachineCode = "M-1",
+            CustomName = "Device-1"
+        }, 101L);
+        var rightDevice = SetParcelIdForTesting(new ParcelDeviceInfo {
+            WorkstationName = "WS-A",
+            MachineCode = "M-1",
+            CustomName = "Device-1"
+        }, 202L);
+        Assert.Equal(leftDevice, rightDevice);
+        Assert.Equal(leftDevice.GetHashCode(), rightDevice.GetHashCode());
+
+        var leftPosition = SetParcelIdForTesting(new ParcelPositionInfo {
+            X1 = 1m,
+            X2 = 2m,
+            Y1 = 3m,
+            Y2 = 4m,
+            BackgroundX1 = 5m,
+            BackgroundX2 = 6m,
+            BackgroundY1 = 7m,
+            BackgroundY2 = 8m
+        }, 101L);
+        var rightPosition = SetParcelIdForTesting(new ParcelPositionInfo {
+            X1 = 1m,
+            X2 = 2m,
+            Y1 = 3m,
+            Y2 = 4m,
+            BackgroundX1 = 5m,
+            BackgroundX2 = 6m,
+            BackgroundY1 = 7m,
+            BackgroundY2 = 8m
+        }, 202L);
+        Assert.Equal(leftPosition, rightPosition);
+        Assert.Equal(leftPosition.GetHashCode(), rightPosition.GetHashCode());
+
+        var leftSticking = SetParcelIdForTesting(new StickingParcelInfo {
+            IsSticking = true,
+            ReceiveTime = fixedReceiveTime,
+            RawData = "raw",
+            ElapsedMilliseconds = 10
+        }, 101L);
+        var rightSticking = SetParcelIdForTesting(new StickingParcelInfo {
+            IsSticking = true,
+            ReceiveTime = leftSticking.ReceiveTime,
+            RawData = "raw",
+            ElapsedMilliseconds = 10
+        }, 202L);
+        Assert.Equal(leftSticking, rightSticking);
+        Assert.Equal(leftSticking.GetHashCode(), rightSticking.GetHashCode());
+
+        var leftBarCode = SetParcelIdForTesting(new BarCodeInfo {
+            BarCode = "BC-1",
+            BarCodeType = BarCodeType.ExpressSheet,
+            CapturedTime = fixedCapturedTime
+        }, 101L);
+        var rightBarCode = SetParcelIdForTesting(new BarCodeInfo {
+            BarCode = "BC-1",
+            BarCodeType = BarCodeType.ExpressSheet,
+            CapturedTime = leftBarCode.CapturedTime
+        }, 202L);
+        Assert.Equal(leftBarCode, rightBarCode);
+        Assert.Equal(leftBarCode.GetHashCode(), rightBarCode.GetHashCode());
+
+        var leftImage = SetParcelIdForTesting(new ImageInfo {
+            CameraName = "Cam-1",
+            CustomName = "TopCam",
+            CameraSerialNumber = "SN-1",
+            ImageType = ImageType.Scan,
+            RelativePath = "images/a.jpg",
+            CaptureType = ImageCaptureType.Camera
+        }, 101L);
+        var rightImage = SetParcelIdForTesting(new ImageInfo {
+            CameraName = "Cam-1",
+            CustomName = "TopCam",
+            CameraSerialNumber = "SN-1",
+            ImageType = ImageType.Scan,
+            RelativePath = "images/a.jpg",
+            CaptureType = ImageCaptureType.Camera
+        }, 202L);
+        Assert.Equal(leftImage, rightImage);
+        Assert.Equal(leftImage.GetHashCode(), rightImage.GetHashCode());
+
+        var leftVideo = SetParcelIdForTesting(new VideoInfo {
+            Channel = 1,
+            NvrSerialNumber = "NVR-1",
+            NodeType = VideoNodeType.Scan
+        }, 101L);
+        var rightVideo = SetParcelIdForTesting(new VideoInfo {
+            Channel = 1,
+            NvrSerialNumber = "NVR-1",
+            NodeType = VideoNodeType.Scan
+        }, 202L);
+        Assert.Equal(leftVideo, rightVideo);
+        Assert.Equal(leftVideo.GetHashCode(), rightVideo.GetHashCode());
+    }
+
+    /// <summary>
     /// 验证场景：AutoRollbackDecisionEngine_TriggersSevereRollback。
     /// </summary>
     [Fact]
@@ -2582,6 +2747,23 @@ public sealed class AutoTuningProductionControlTests {
             .UseInMemoryDatabase($"sharding-guard-test-{Guid.NewGuid():N}")
             .Options;
         return new SortingHubDbContext(options);
+    }
+
+    /// <summary>
+    /// 仅用于测试：通过反射写入值对象 ParcelId，验证该字段不影响领域相等语义。
+    /// </summary>
+    /// <typeparam name="TValueObject">值对象类型。</typeparam>
+    /// <param name="valueObject">值对象实例。</param>
+    /// <param name="parcelId">测试用 ParcelId。</param>
+    /// <returns>写入后的值对象实例。</returns>
+    private static TValueObject SetParcelIdForTesting<TValueObject>(TValueObject valueObject, long parcelId)
+        where TValueObject : class {
+        var property = valueObject.GetType().GetProperty("ParcelId", BindingFlags.Instance | BindingFlags.Public);
+        Assert.NotNull(property);
+        var setMethod = property!.GetSetMethod(nonPublic: true);
+        Assert.NotNull(setMethod);
+        setMethod!.Invoke(valueObject, [parcelId]);
+        return valueObject;
     }
 
     /// <summary>

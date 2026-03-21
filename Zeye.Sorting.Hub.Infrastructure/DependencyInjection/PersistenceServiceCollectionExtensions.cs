@@ -38,14 +38,14 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         private const int DefaultParcelRelatedHashShardingMod = 16;
 
         /// <summary>
-        /// Parcel 关联属性表使用的影子外键字段名。
+        /// Parcel 关联属性表使用的外键字段名。
         /// </summary>
         /// <remarks>
         /// 这些值对象表通过 `WithOwner().HasForeignKey("ParcelId")` 建模，
-        /// `ParcelId` 属于 EF Core 影子属性，不在 CLR 类型上声明，
+        /// 并在值对象 CLR 类型上显式声明 `ParcelId` 属性用于分片字段识别；
         /// 因此这里集中定义常量，避免魔法字符串散落。
         /// </remarks>
-        private const string ParcelIdShadowField = "ParcelId";
+        private const string ParcelIdField = "ParcelId";
 
         /// <summary>
         /// 检测配置字符串结尾是否携带时区后缀（Z、+08:00、-0500 等）。
@@ -65,15 +65,15 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             CreateDateShardingRule<ChuteInfo>(nameof(ChuteInfo.LandedTime)),
             CreateDateShardingRule<SorterCarrierInfo>(nameof(SorterCarrierInfo.LoadedTime)),
             CreateDateShardingRule<GrayDetectorInfo>(nameof(GrayDetectorInfo.ResultTime)),
-            CreateHashShardingRule<ParcelDeviceInfo>(ParcelIdShadowField),
-            CreateHashShardingRule<ParcelPositionInfo>(ParcelIdShadowField),
-            CreateHashShardingRule<StickingParcelInfo>(ParcelIdShadowField),
+            CreateHashShardingRule<ParcelDeviceInfo>(ParcelIdField),
+            CreateHashShardingRule<ParcelPositionInfo>(ParcelIdField),
+            CreateHashShardingRule<StickingParcelInfo>(ParcelIdField),
             CreateDateShardingRule<ApiRequestInfo>(nameof(ApiRequestInfo.RequestTime)),
             CreateDateShardingRule<CommandInfo>(nameof(CommandInfo.GeneratedTime)),
             CreateDateShardingRule<WeightInfo>(nameof(WeightInfo.WeighingTime)),
-            CreateHashShardingRule<BarCodeInfo>(ParcelIdShadowField),
-            CreateHashShardingRule<ImageInfo>(ParcelIdShadowField),
-            CreateHashShardingRule<VideoInfo>(ParcelIdShadowField)
+            CreateHashShardingRule<BarCodeInfo>(ParcelIdField),
+            CreateHashShardingRule<ImageInfo>(ParcelIdField),
+            CreateHashShardingRule<VideoInfo>(ParcelIdField)
         ];
 
         /// <summary>
