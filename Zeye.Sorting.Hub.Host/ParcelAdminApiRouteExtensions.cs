@@ -32,12 +32,14 @@ public static class ParcelAdminApiRouteExtensions {
         group.MapPost(string.Empty, CreateParcelAsync)
             .WithName("AdminCreateParcel")
             .WithSummary("管理端新增 Parcel")
+            .WithDescription("新增单个包裹记录。请求体中的 scannedTime、dischargeTime 必须是本地时间字符串，不允许 UTC 或时区偏移。")
             .Produces<ParcelDetailResponse>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status400BadRequest);
 
         group.MapPut("/{id:long}", UpdateParcelStatusAsync)
             .WithName("AdminUpdateParcelStatus")
             .WithSummary("管理端更新 Parcel 状态（支持标记完结/分拣异常/更新接口状态）")
+            .WithDescription("按操作码更新包裹状态。MarkCompleted 需提供 completedTime，MarkSortingException 需提供 exceptionType，UpdateRequestStatus 需提供 requestStatus；时间字段仅接受本地时间。")
             .Produces<ParcelDetailResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound);
@@ -45,6 +47,7 @@ public static class ParcelAdminApiRouteExtensions {
         group.MapDelete("/{id:long}", DeleteParcelAsync)
             .WithName("AdminDeleteParcel")
             .WithSummary("管理端删除单个 Parcel")
+            .WithDescription("按主键删除单个包裹记录。删除后不可恢复，调用前应确保调用方具备管理权限。")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound);
@@ -53,6 +56,7 @@ public static class ParcelAdminApiRouteExtensions {
         group.MapPost("/cleanup-expired", CleanupExpiredParcelsAsync)
             .WithName("AdminCleanupExpiredParcels")
             .WithSummary("[治理接口] 触发过期包裹清理（由仓储隔离器决策 blocked/dry-run/execute，不可绕过）")
+            .WithDescription("治理型危险接口：仅用于按 createdBefore 清理过期包裹。执行结果受仓储隔离器决策（blocked/dry-run/execute）约束，异常会被记录日志且返回问题详情。")
             .Produces<ParcelCleanupExpiredResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status500InternalServerError);
