@@ -797,12 +797,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
         /// </summary>
         private static string ResolveSchema(MigrationBuilder migrationBuilder)
         {
-            if (migrationBuilder.ActiveProvider == SqlServerProvider)
-            {
-                return SqlServerDefaultSchema;
-            }
-
-            return null;
+            return migrationBuilder.ActiveProvider == SqlServerProvider
+                ? SqlServerDefaultSchema
+                : null;
         }
     }
 }

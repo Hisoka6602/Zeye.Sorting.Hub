@@ -26,6 +26,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
     /// 持久化模块注册扩展（仅负责能力注册，不负责进程启动编排）
     /// </summary>
     public static class PersistenceServiceCollectionExtensions {
+        /// <summary>
+        /// MySQL ServerVersion 解析日志分类。
+        /// </summary>
+        private const string MySqlServerVersionLoggerCategory = "Infrastructure.Persistence.MySql.ServerVersion";
 
         /// <summary>
         /// 针对“无天然时间字段/时间字段可为空”的属性表，采用固定哈希分表。
@@ -173,7 +177,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             var cfg = sp.GetRequiredService<IConfiguration>();
             var interceptor = sp.GetRequiredService<SlowQueryCommandInterceptor>();
             var mySqlSessionInterceptor = sp.GetRequiredService<MySqlSessionBootstrapConnectionInterceptor>();
-            var logger = sp.GetRequiredService<ILogger<PersistenceServiceCollectionExtensions>>();
+            var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger(MySqlServerVersionLoggerCategory);
             var cs = cfg.GetConnectionString("MySql")!;
             var commandTimeoutSeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
             var maxRetryCount = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryCount", 5);
@@ -199,16 +203,23 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// </summary>
         /// <param name="configuration">应用配置。</param>
         /// <param name="connectionString">MySQL 连接字符串。</param>
+        /// <param name="logger">可选日志记录器（用于记录配置非法与探测失败）。</param>
         /// <returns>可用于 EF Core UseMySql 的服务端版本对象。</returns>
+        /// <remarks>
+        /// 处理策略：
+        /// 1) 若配置项 <c>Persistence:MySql:ServerVersion</c> 合法（Major &gt;= 5），直接使用；
+        /// 2) 若配置缺失或非法，尝试 <c>ServerVersion.AutoDetect</c>；
+        /// 3) 若探测失败，回退到 MySQL 8.0.0。
+        /// </remarks>
         internal static ServerVersion ResolveMySqlServerVersion(IConfiguration configuration, string connectionString, ILogger? logger = null) {
             var configuredVersion = configuration["Persistence:MySql:ServerVersion"];
             if (!string.IsNullOrWhiteSpace(configuredVersion)) {
-                if (Version.TryParse(configuredVersion, out var parsedVersion)) {
+                if (Version.TryParse(configuredVersion, out var parsedVersion) && parsedVersion.Major >= 5) {
                     return new MySqlServerVersion(parsedVersion);
                 }
 
                 logger?.LogWarning(
-                    "配置项 Persistence:MySql:ServerVersion 格式非法，将回退到自动探测，Value={ConfiguredServerVersion}",
+                    "配置项 Persistence:MySql:ServerVersion 非法或不受支持（要求 Major>=5），将回退到自动探测，Value={ConfiguredServerVersion}",
                     configuredVersion);
             }
 
