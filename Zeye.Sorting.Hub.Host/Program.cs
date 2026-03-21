@@ -1,12 +1,13 @@
 using NLog;
-using Microsoft.AspNetCore.Diagnostics;
-using Microsoft.AspNetCore.Mvc;
-using Zeye.Sorting.Hub.Application.Services.Parcels;
-using Zeye.Sorting.Hub.Contracts.Models.Parcels;
 using Zeye.Sorting.Hub.Host;
 using NLog.Extensions.Logging;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Diagnostics;
 using Zeye.Sorting.Hub.Host.HostedServices;
+using Zeye.Sorting.Hub.SharedKernel.Utilities;
+using Zeye.Sorting.Hub.Contracts.Models.Parcels;
 using Zeye.Sorting.Hub.Domain.Options.LogCleanup;
+using Zeye.Sorting.Hub.Application.Services.Parcels;
 using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 
@@ -31,6 +32,7 @@ try {
         builder.Configuration.GetSection("LogCleanup"));
     builder.Services.AddHostedService<LogCleanupService>();
     builder.Services.AddHostedService<Worker>();
+    builder.Services.AddSingleton<SafeExecutor>();
     builder.Services.AddSortingHubPersistence(builder.Configuration);
     builder.Services.AddSingleton<IAutoTuningObservability, AutoTuningLoggerObservability>();
     builder.Services.AddProblemDetails();
@@ -117,6 +119,7 @@ finally {
 /// Parcel 只读 API 路由扩展。
 /// </summary>
 public static class ParcelReadOnlyApiRouteExtensions {
+
     /// <summary>
     /// NLog 日志器。
     /// </summary>

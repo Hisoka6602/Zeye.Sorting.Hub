@@ -78,18 +78,18 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             if (string.IsNullOrWhiteSpace(value)) {
                 return fallback;
             }
-
+            value = value.Trim();
             if (!TimeSpan.TryParseExact(
                     value,
                     ["HH\\:mm\\:ss", "HH\\:mm"],
                     CultureInfo.InvariantCulture,
                     TimeSpanStyles.None,
                     out var parsed)) {
-                throw new InvalidOperationException($"{key} 配置格式无效，仅支持 HH:mm:ss 或 HH:mm（本地时间语义）。");
+                return fallback;
             }
 
             if (parsed < TimeSpan.Zero || parsed >= TimeSpan.FromDays(1)) {
-                throw new InvalidOperationException($"{key} 必须位于 [00:00:00, 24:00:00) 区间。");
+                return fallback;
             }
 
             return parsed;
