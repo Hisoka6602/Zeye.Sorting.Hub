@@ -32,7 +32,7 @@
 │   │       └── UpdateParcelStatusCommandService.cs（管理端更新包裹状态应用服务（仅支持领域允许的状态转换））
 │   ├── Utilities（应用层内部共享工具目录）
 │   │   ├── EnumGuard.cs（枚举值合法性校验工具：统一封装 Enum.IsDefined + Warn 日志 + 异常抛出）
-│   │   └── Guard.cs（基础参数边界守卫工具：AgainstZeroOrNegative / AgainstNegative，消除各服务重复检查代码）
+│   │   └── Guard.cs（基础参数边界守卫工具：ThrowIfZeroOrNegative / ThrowIfNegative，消除各服务重复检查代码）
 │   └── Zeye.Sorting.Hub.Application.csproj（Application 项目定义）
 ├── Zeye.Sorting.Hub.Contracts（契约层）
 │   ├── Class1.cs（程序集锚点类型）
@@ -535,8 +535,8 @@
 - 集中管理 Provider 名称常量：新增 `DbProviderNames.cs`，统一定义 `MySql` / `SqlServer` 常量，仓储与所有迁移文件均改引此处，消除跨文件重复硬编码。
 - 补充 `ParcelRepositoryTests` 中 BarCodeKeyword 过滤路径回归测试：覆盖含 `-` 分隔符条码的子串匹配、空格修剪、无匹配三个场景（InMemory Provider 自动走 Contains 回退路径）。
 - 消除应用层重复实现与魔法数字：新增 `Application/Utilities/EnumGuard.cs` 和 `Application/Utilities/Guard.cs`，将 8 处枚举验证、7 处参数边界检查统一收口；将 `MaxAdjacentCountPerSide = 200` 常量上移至 `IParcelRepository` 接口（唯一权威来源），Infrastructure 与 Application 均引用接口常量，消除两层各自定义魔法数字的重复。
-- 全面落实"日志只能使用 NLog"规范：① 将 `SafeExecutor`（SharedKernel）从 MEL `ILogger<T>` 迁移至 NLog 静态 logger，移除构造注入依赖，`SharedKernel.csproj` 改引用 `NLog 6.1.1`；② 将 `RepositoryBase` / `MemoryCacheRepositoryBase`（Infrastructure）从 MEL ILogger 迁移至 NLog ILogger（构造传入模式，确保日志来源类名为实际仓储类）；③ `ParcelRepository` 新增静态 NLog logger，移除 MEL `ILogger<ParcelRepository>` 构造参数，简化 DI 注册；`Infrastructure.csproj` 新增 `NLog 6.1.1` 引用；同步清理 `ParcelRepositoryTests` / `ParcelQueryServicesTests` 中的 `NullLogger` 依赖。
-- 提取 404 Not Found 响应工厂方法：`LocalDateTimeParsing` 新增 `CreateNotFoundProblem(long id)` 方法，消除只读 API（`GetParcelByIdAsync`）与管理端 API（`UpdateParcelStatusAsync`、`DeleteParcelAsync`）3 处重复的 `Results.Problem(title: "资源不存在", ...)` 构造。
+- 落实"日志只能使用 NLog"规范（仓储层与 SharedKernel）：① 将 `SafeExecutor`（SharedKernel）从 MEL `ILogger<T>` 迁移至 NLog 静态 logger，移除构造注入依赖，`SharedKernel.csproj` 改引用 `NLog 6.1.1`；② 将 `RepositoryBase` / `MemoryCacheRepositoryBase`（Infrastructure 仓储层）从 MEL ILogger 迁移至 NLog ILogger（构造传入模式，确保日志来源类名为实际仓储类）；③ `ParcelRepository` 新增静态 NLog logger，移除 MEL `ILogger<ParcelRepository>` 构造参数，简化 DI 注册；`Infrastructure.csproj` 新增 `NLog 6.1.1` 引用；同步清理 `ParcelRepositoryTests` / `ParcelQueryServicesTests` 中的 `NullLogger` 依赖。注意：`AutoTuning/` 下的 EF Core 拦截器与 `PersistenceServiceCollectionExtensions` 等 DI 绑定组件因须接入 EF Core MEL 管道，有意保留 MEL ILogger 注入，不在本轮迁移范围内。
+- 提取 404 Not Found 响应工厂方法：`LocalDateTimeParsing` 新增 `CreateNotFoundProblem(long id)` 方法（detail 使用通用描述"未找到 Id 为 {id} 的资源。"），消除只读 API（`GetParcelByIdAsync`）与管理端 API（`UpdateParcelStatusAsync`、`DeleteParcelAsync`）3 处重复的 `Results.Problem(title: "资源不存在", ...)` 构造。
 
 ### 可继续完善内容
 
