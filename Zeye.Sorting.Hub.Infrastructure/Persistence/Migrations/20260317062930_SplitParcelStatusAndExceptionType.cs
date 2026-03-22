@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore.Migrations;
+using Zeye.Sorting.Hub.Infrastructure.Persistence;
 
 #nullable disable
 
@@ -7,11 +8,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
     /// <inheritdoc />
     public partial class SplitParcelStatusAndExceptionType : Migration
     {
-        /// <summary>
-        /// MySQL Provider 名称。
-        /// </summary>
-        private const string MySqlProvider = "Pomelo.EntityFrameworkCore.MySql";
-
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
@@ -22,7 +18,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                 type: "int",
                 nullable: true);
 
-            if (migrationBuilder.ActiveProvider == MySqlProvider)
+            if (migrationBuilder.ActiveProvider == DbProviderNames.MySql)
             {
                 // 旧状态回填映射：
                 // InterfaceError(2)->InterfaceResponseException(1)

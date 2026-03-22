@@ -27,11 +27,6 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
         .Build();
 
     /// <summary>
-    /// MySQL Provider 名称常量（用于查询分支判断）。
-    /// </summary>
-    private const string MySqlProvider = "Pomelo.EntityFrameworkCore.MySql";
-
-    /// <summary>
     /// 过期清理动作名（用于结构化审计）。
     /// </summary>
     private const string RemoveExpiredActionName = "ParcelRepository.RemoveExpired";
@@ -514,9 +509,17 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
         if (!string.IsNullOrWhiteSpace(filter.BarCodeKeyword)) {
             var barCodeKeyword = filter.BarCodeKeyword.Trim();
             // 步骤 1：MySQL 使用 FULLTEXT BOOLEAN MODE，让 MATCH...AGAINST 走 FTX_Parcels_BarCodes 全文索引；
-            // providerName 为 null 或非 MySqlProvider（如 SQL Server）时，均进入 else 分支，回退 LIKE '%keyword%'。
-            if (providerName == MySqlProvider) {
-                query = query.Where(x => EF.Functions.IsMatch(x.BarCodes, barCodeKeyword, MySqlMatchSearchMode.Boolean));
+            // providerName 为 null 或非 MySql 时，均进入 else 分支，回退 LIKE '%keyword%'。
+            if (providerName == DbProviderNames.MySql) {
+                // 步骤 2：BOOLEAN MODE 对 -、+、*、" 等字符有特殊语义（如 - 表示"排除"）；
+                // 条码通常含 -（如 BC-001），直接传入会产生意外排除结果。
+                // 用双引号包裹关键词作为 phrase 搜索，使 - 等字符被当作普通字面量。
+                // 转义顺序：先处理反斜杠（防止其转义后续添加的 \"），再处理双引号。
+                var escaped = barCodeKeyword
+                    .Replace("\\", "\\\\")   // 步骤 2a：先转义 \ 为 \\，防止其干扰后续 " 转义
+                    .Replace("\"", "\\\"");  // 步骤 2b：转义 " 为 \"，防止破坏 phrase 外层引号
+                var phrase = "\"" + escaped + "\"";
+                query = query.Where(x => EF.Functions.IsMatch(x.BarCodes, phrase, MySqlMatchSearchMode.Boolean));
             } else {
                 query = query.Where(x => x.BarCodes.Contains(barCodeKeyword));
             }

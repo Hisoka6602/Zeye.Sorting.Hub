@@ -1,6 +1,7 @@
 ﻿using System;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Zeye.Sorting.Hub.Infrastructure.Persistence;
 
 #nullable disable
 
@@ -792,11 +793,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
     internal static class MigrationSchemaResolver
     {
         /// <summary>
-        /// SQL Server Provider 名称。
-        /// </summary>
-        internal const string SqlServerProvider = "Microsoft.EntityFrameworkCore.SqlServer";
-
-        /// <summary>
         /// SQL Server 默认 schema。
         /// </summary>
         internal const string SqlServerDefaultSchema = "dbo";
@@ -808,7 +804,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
         /// <returns>是 SQL Server 返回 true，否则返回 false。</returns>
         internal static bool IsSqlServer(MigrationBuilder migrationBuilder)
         {
-            return migrationBuilder.ActiveProvider == SqlServerProvider;
+            return migrationBuilder.ActiveProvider == DbProviderNames.SqlServer;
         }
 
         /// <summary>

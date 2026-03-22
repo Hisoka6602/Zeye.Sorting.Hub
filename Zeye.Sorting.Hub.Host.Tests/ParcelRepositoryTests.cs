@@ -171,6 +171,68 @@ public sealed class ParcelRepositoryTests {
     }
 
     /// <summary>
+    /// 验证场景：GetPagedAsync_BarCodeKeyword_ShouldMatchViaFallbackContains。
+    /// InMemory Provider（非 MySQL）走 Contains() 回退路径（子串匹配）。
+    /// 覆盖含 - 的条码关键词（BC-001）在回退路径下的正确匹配行为。
+    /// MySQL FULLTEXT phrase 搜索分支（EF.Functions.IsMatch）需真实 MySQL 环境，
+    /// 超出当前 InMemory 测试基础设施范围，由集成测试覆盖。
+    /// </summary>
+    [Fact]
+    public async Task GetPagedAsync_BarCodeKeyword_ShouldMatchViaFallbackContains() {
+        var databaseName = $"parcel-repo-barcode-kw-{Guid.NewGuid():N}";
+        var baseTime = DateTime.Now;
+        try {
+            var repository = CreateRepository(databaseName);
+            await SeedParcelsAsync(databaseName, [
+                // 步骤 1：种入含 - 分隔符条码的包裹（覆盖 - 字符在非 BOOLEAN MODE 路径下不被当作排除操作符）。
+                CreateParcel("BC-001-XYZ", "BAG-KW", "WS-KW", ParcelStatus.Pending, baseTime.AddMinutes(-5), 900, 901),
+                CreateParcel("BC-001-ABC", "BAG-KW", "WS-KW", ParcelStatus.Pending, baseTime.AddMinutes(-4), 900, 901),
+                CreateParcel("UNRELATED-999", "BAG-KW", "WS-KW", ParcelStatus.Pending, baseTime.AddMinutes(-3), 900, 901)
+            ]);
+
+            // 步骤 2：用前缀关键词搜索，应命中两条含 BC-001 的记录，第三条不匹配。
+            var result = await repository.GetPagedAsync(
+                new ParcelQueryFilter {
+                    BarCodeKeyword = "BC-001",
+                    ScannedTimeStart = baseTime.AddHours(-1),
+                    ScannedTimeEnd = baseTime.AddHours(1)
+                },
+                new PageRequest { PageNumber = 1, PageSize = 10 },
+                CancellationToken.None);
+
+            Assert.Equal(2, result.TotalCount);
+            Assert.All(result.Items, item => Assert.Contains("BC-001", item.BarCodes));
+
+            // 步骤 3：空格修剪 — 两端空白不影响匹配结果。
+            var resultTrimmed = await repository.GetPagedAsync(
+                new ParcelQueryFilter {
+                    BarCodeKeyword = "  BC-001  ",
+                    ScannedTimeStart = baseTime.AddHours(-1),
+                    ScannedTimeEnd = baseTime.AddHours(1)
+                },
+                new PageRequest { PageNumber = 1, PageSize = 10 },
+                CancellationToken.None);
+
+            Assert.Equal(2, resultTrimmed.TotalCount);
+
+            // 步骤 4：不存在的关键词 — 应返回空结果集。
+            var resultNone = await repository.GetPagedAsync(
+                new ParcelQueryFilter {
+                    BarCodeKeyword = "NOTEXIST",
+                    ScannedTimeStart = baseTime.AddHours(-1),
+                    ScannedTimeEnd = baseTime.AddHours(1)
+                },
+                new PageRequest { PageNumber = 1, PageSize = 10 },
+                CancellationToken.None);
+
+            Assert.Equal(0, resultNone.TotalCount);
+        }
+        finally {
+            await CleanupDatabaseAsync(databaseName);
+        }
+    }
+
+    /// <summary>
     /// 验证场景：WriteOperations_ShouldAddUpdateRemoveAndCleanupExpired。
     /// </summary>
     [Fact]
