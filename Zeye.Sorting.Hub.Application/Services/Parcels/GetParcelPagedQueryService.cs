@@ -1,4 +1,5 @@
 using NLog;
+using Zeye.Sorting.Hub.Application.Utilities;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels;
 using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Repositories;
@@ -85,15 +86,8 @@ public sealed class GetParcelPagedQueryService {
     /// </summary>
     /// <param name="request">列表查询请求。</param>
     private static void ValidateRequest(ParcelListRequest request) {
-        if (request.PageNumber <= 0) {
-            Logger.Warn("分页查询 Parcel 列表参数非法，PageNumber={0}", request.PageNumber);
-            throw new ArgumentOutOfRangeException(nameof(request.PageNumber), "页码必须大于 0。");
-        }
-
-        if (request.PageSize <= 0) {
-            Logger.Warn("分页查询 Parcel 列表参数非法，PageSize={0}", request.PageSize);
-            throw new ArgumentOutOfRangeException(nameof(request.PageSize), "页大小必须大于 0。");
-        }
+        Guard.ThrowIfZeroOrNegative(request.PageNumber, nameof(request.PageNumber), "页码必须大于 0。", "分页查询 Parcel 列表");
+        Guard.ThrowIfZeroOrNegative(request.PageSize, nameof(request.PageSize), "页大小必须大于 0。", "分页查询 Parcel 列表");
 
         if (request.ScannedTimeStart.HasValue && request.ScannedTimeEnd.HasValue && request.ScannedTimeEnd.Value < request.ScannedTimeStart.Value) {
             Logger.Warn(
@@ -103,15 +97,8 @@ public sealed class GetParcelPagedQueryService {
             throw new ArgumentException("扫码结束时间不能早于开始时间。", nameof(request));
         }
 
-        if (request.Status.HasValue && !Enum.IsDefined(typeof(ParcelStatus), request.Status.Value)) {
-            Logger.Warn("分页查询 Parcel 列表参数非法，Status={0}", request.Status);
-            throw new ArgumentOutOfRangeException(nameof(request.Status), "包裹状态无效。");
-        }
-
-        if (request.ExceptionType.HasValue && !Enum.IsDefined(typeof(ParcelExceptionType), request.ExceptionType.Value)) {
-            Logger.Warn("分页查询 Parcel 列表参数非法，ExceptionType={0}", request.ExceptionType);
-            throw new ArgumentOutOfRangeException(nameof(request.ExceptionType), "包裹异常类型无效。");
-        }
+        EnumGuard.ThrowIfUndefined<ParcelStatus>(request.Status, nameof(request.Status), "包裹状态无效。", "分页查询 Parcel 列表");
+        EnumGuard.ThrowIfUndefined<ParcelExceptionType>(request.ExceptionType, nameof(request.ExceptionType), "包裹异常类型无效。", "分页查询 Parcel 列表");
     }
 
     /// <summary>

@@ -12,6 +12,12 @@ namespace Zeye.Sorting.Hub.Domain.Repositories {
     /// </summary>
     public interface IParcelRepository {
         /// <summary>
+        /// 按扫码时间邻近查询的单侧最大条数上限（避免单次查询开销过大）。
+        /// Application 层与 Infrastructure 层均以此为唯一来源，禁止各自硬编码魔法数字。
+        /// </summary>
+        const int MaxAdjacentCountPerSide = 200;
+
+        /// <summary>
         /// 根据主键获取包裹完整聚合详情（包含值对象与集合）。
         /// </summary>
         Task<Parcel?> GetByIdAsync(long id, CancellationToken cancellationToken);

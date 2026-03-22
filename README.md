@@ -30,6 +30,9 @@
 │   │       ├── GetParcelPagedQueryService.cs（Parcel 分页查询应用服务）
 │   │       ├── ParcelContractMapper.cs（Parcel 领域模型到 Contracts 模型映射器）
 │   │       └── UpdateParcelStatusCommandService.cs（管理端更新包裹状态应用服务（仅支持领域允许的状态转换））
+│   ├── Utilities（应用层内部共享工具目录）
+│   │   ├── EnumGuard.cs（枚举值合法性校验工具：统一封装 Enum.IsDefined + Warn 日志 + 异常抛出）
+│   │   └── Guard.cs（基础参数边界守卫工具：AgainstZeroOrNegative / AgainstNegative，消除各服务重复检查代码）
 │   └── Zeye.Sorting.Hub.Application.csproj（Application 项目定义）
 ├── Zeye.Sorting.Hub.Contracts（契约层）
 │   ├── Class1.cs（程序集锚点类型）
@@ -267,10 +270,14 @@
 - `Zeye.Sorting.Hub.Application.csproj`：Application 项目定义（引用 Domain + Contracts，承载应用服务实现）。
 - `Class1.cs`：程序集锚点类型。
 
+#### `Zeye.Sorting.Hub.Application/Utilities/`：应用层内部共享工具目录
+- `EnumGuard.cs`：枚举值合法性校验工具；统一封装 `Enum.IsDefined` 判断、Warn 日志记录与 `ArgumentOutOfRangeException` 抛出，消除各应用服务中重复的枚举验证模板代码；提供 `int` 和 `int?` 两个重载。
+- `Guard.cs`：基础参数边界守卫工具；提供 `ThrowIfZeroOrNegative`（Id 正数校验，有 long/int 两个重载）和 `ThrowIfNegative`（可选数量非负校验），统一记录 Warn 日志并抛出 `ArgumentOutOfRangeException`。
+
 #### `Zeye.Sorting.Hub.Application/Services/Parcels/`：Parcel 应用服务目录（查询 + 管理端写命令）
 - `GetParcelByIdQueryService.cs`：按 Id 查询 Parcel 详情应用服务（仓储调用 + 合同映射 + 最小参数校验）。
 - `GetParcelPagedQueryService.cs`：分页查询 Parcel 列表应用服务（请求校验、过滤映射、分页结果映射）。
-- `GetAdjacentParcelsQueryService.cs`：按基准扫码时间查询邻近 Parcel 应用服务（数量归一化、响应映射）。
+- `GetAdjacentParcelsQueryService.cs`：按基准扫码时间查询邻近 Parcel 应用服务（数量归一化至 `IParcelRepository.MaxAdjacentCountPerSide`、响应映射）。
 - `ParcelContractMapper.cs`：Parcel 领域模型/读模型到 Contracts 模型的统一映射器，避免 Host 层重复映射。
 - `CreateParcelCommandService.cs`：管理端新增包裹应用服务（枚举验证、领域工厂 Parcel.Create、仓储 AddAsync、合同映射）。
 - `UpdateParcelStatusCommandService.cs`：管理端更新包裹状态应用服务（仅支持 MarkCompleted/MarkSortingException/UpdateRequestStatus 三种领域方法，不允许任意字段修改）。
@@ -370,7 +377,7 @@
 - `AuditableEntity.cs`：可审计实体基类（创建/修改信息等）。
 
 #### `Zeye.Sorting.Hub.Domain/Repositories/`：领域仓储契约目录
-- `IParcelRepository.cs`：包裹仓储接口（第一阶段可落地契约：基础读写、分页查询、邻近查询、过期清理危险动作治理结果返回）。
+- `IParcelRepository.cs`：包裹仓储接口（第一阶段可落地契约：基础读写、分页查询、邻近查询、过期清理危险动作治理结果返回；同时定义 `MaxAdjacentCountPerSide = 200` 常量，为 Application 层与 Infrastructure 层提供唯一权威数字来源，禁止各自硬编码）。
 
 ##### `Zeye.Sorting.Hub.Domain/Repositories/Models/`：Parcel 仓储查询模型目录
 
@@ -522,6 +529,7 @@
 - 已彻底解决 BarCodeKeyword 技术债务：在 MySQL 下为 `Parcels.BarCodes` 列添加 FULLTEXT 全文索引（`FTX_Parcels_BarCodes`），并将 `ParcelRepository.ApplyFilter` 改为 Provider 分支查询：MySQL 走双引号包裹的 `EF.Functions.IsMatch(phrase, Boolean)`（phrase 搜索防止条码中 `-` 等字符被 BOOLEAN MODE 解析为操作符），SQL Server 保留 `Contains()`（已知限制）。查询语义由任意子串匹配变更为 MySQL FULLTEXT 词级匹配，建议调用方传入完整词元（完整条码）。
 - 集中管理 Provider 名称常量：新增 `DbProviderNames.cs`，统一定义 `MySql` / `SqlServer` 常量，仓储与所有迁移文件均改引此处，消除跨文件重复硬编码。
 - 补充 `ParcelRepositoryTests` 中 BarCodeKeyword 过滤路径回归测试：覆盖含 `-` 分隔符条码的子串匹配、空格修剪、无匹配三个场景（InMemory Provider 自动走 Contains 回退路径）。
+- 消除应用层重复实现与魔法数字：新增 `Application/Utilities/EnumGuard.cs` 和 `Application/Utilities/Guard.cs`，将 8 处枚举验证、7 处参数边界检查统一收口；将 `MaxAdjacentCountPerSide = 200` 常量上移至 `IParcelRepository` 接口（唯一权威来源），Infrastructure 与 Application 均引用接口常量，消除两层各自定义魔法数字的重复。
 
 ### 可继续完善内容
 

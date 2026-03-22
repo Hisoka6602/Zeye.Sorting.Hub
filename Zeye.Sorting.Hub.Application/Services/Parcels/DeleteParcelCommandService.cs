@@ -1,4 +1,5 @@
 using NLog;
+using Zeye.Sorting.Hub.Application.Utilities;
 using Zeye.Sorting.Hub.Domain.Repositories;
 
 namespace Zeye.Sorting.Hub.Application.Services.Parcels;
@@ -32,10 +33,7 @@ public sealed class DeleteParcelCommandService {
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>true 表示删除成功；false 表示包裹不存在。</returns>
     public async Task<bool> ExecuteAsync(long parcelId, CancellationToken cancellationToken) {
-        if (parcelId <= 0) {
-            Logger.Warn("删除包裹参数非法，ParcelId={ParcelId}", parcelId);
-            throw new ArgumentOutOfRangeException(nameof(parcelId), "包裹 Id 必须大于 0。");
-        }
+        Guard.ThrowIfZeroOrNegative(parcelId, nameof(parcelId), "包裹 Id 必须大于 0。", "删除包裹");
 
         try {
             // 步骤 1：加载包裹聚合根；不存在则返回 false，由 Host 层返回 404。

@@ -1,4 +1,5 @@
 using NLog;
+using Zeye.Sorting.Hub.Application.Utilities;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.Admin;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
@@ -43,20 +44,9 @@ public sealed class CreateParcelCommandService {
         }
 
         // 步骤 1：验证并映射枚举类型，拒绝无效的整型枚举值。
-        if (!Enum.IsDefined(typeof(ParcelType), request.Type)) {
-            Logger.Warn("新增包裹参数非法，Type={Type}", request.Type);
-            throw new ArgumentOutOfRangeException(nameof(request.Type), "包裹类型无效。");
-        }
-
-        if (!Enum.IsDefined(typeof(ApiRequestStatus), request.RequestStatus)) {
-            Logger.Warn("新增包裹参数非法，RequestStatus={RequestStatus}", request.RequestStatus);
-            throw new ArgumentOutOfRangeException(nameof(request.RequestStatus), "接口访问状态无效。");
-        }
-
-        if (!Enum.IsDefined(typeof(NoReadType), request.NoReadType)) {
-            Logger.Warn("新增包裹参数非法，NoReadType={NoReadType}", request.NoReadType);
-            throw new ArgumentOutOfRangeException(nameof(request.NoReadType), "NoRead 类型无效。");
-        }
+        EnumGuard.ThrowIfUndefined<ParcelType>(request.Type, nameof(request.Type), "包裹类型无效。", "新增包裹");
+        EnumGuard.ThrowIfUndefined<ApiRequestStatus>(request.RequestStatus, nameof(request.RequestStatus), "接口访问状态无效。", "新增包裹");
+        EnumGuard.ThrowIfUndefined<NoReadType>(request.NoReadType, nameof(request.NoReadType), "NoRead 类型无效。", "新增包裹");
 
         try {
             // 步骤 2：通过领域工厂方法构建聚合根，由领域层统一做字段合法性校验。

@@ -52,11 +52,6 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     internal const string RemoveExpiredDryRunConfigKey = "Persistence:RepositoryDangerousActions:ParcelRemoveExpired:Isolator:DryRun";
 
     /// <summary>
-    /// 邻近查询最大返回条数（单侧）。
-    /// </summary>
-    private const int MaxAdjacentCountPerSide = 200;
-
-    /// <summary>
     /// 过期数据分批删除批次大小。
     /// </summary>
     private const int ExpiredDeleteBatchSize = 1000;
@@ -578,13 +573,14 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
 
     /// <summary>
     /// 归一化邻近查询条数，限制单侧最大返回量。
+    /// 上限以 <see cref="IParcelRepository.MaxAdjacentCountPerSide"/> 为唯一权威来源。
     /// </summary>
     private static int NormalizeAdjacentCount(int count) {
         if (count <= 0) {
             return 0;
         }
 
-        return count > MaxAdjacentCountPerSide ? MaxAdjacentCountPerSide : count;
+        return Math.Min(count, IParcelRepository.MaxAdjacentCountPerSide);
     }
 
     /// <summary>
