@@ -77,4 +77,16 @@ internal static class LocalDateTimeParsing {
             contentType: "application/problem+json",
             statusCode: StatusCodes.Status400BadRequest);
     }
+
+    /// <summary>
+    /// 创建统一的 404 ProblemDetails 响应（供所有 API 路由扩展共用，避免重复的"资源不存在"响应构造）。
+    /// </summary>
+    /// <param name="id">未找到的资源主键（用于构造详情描述）。</param>
+    /// <returns>统一 404 响应。</returns>
+    internal static IResult CreateNotFoundProblem(long id) {
+        return Results.Problem(
+            title: "资源不存在",
+            detail: $"未找到 Id 为 {id} 的包裹。",
+            statusCode: StatusCodes.Status404NotFound);
+    }
 }

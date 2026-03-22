@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging.Abstractions;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects;
 using Zeye.Sorting.Hub.Domain.Enums;
@@ -25,7 +24,6 @@ public sealed class ParcelRepositoryTests {
         var databaseName = $"parcel-repo-di-test-{Guid.NewGuid():N}";
         var options = BuildOptions(databaseName);
         var services = new ServiceCollection();
-        services.AddLogging();
         services.AddSingleton<IDbContextFactory<SortingHubDbContext>>(new TestDbContextFactory(options));
         services.AddScoped<IParcelRepository, ParcelRepository>();
 
@@ -318,7 +316,7 @@ public sealed class ParcelRepositoryTests {
     private static ParcelRepository CreateRepository(string databaseName, IConfiguration? configuration = null) {
         var options = BuildOptions(databaseName);
         var factory = new TestDbContextFactory(options);
-        return new ParcelRepository(factory, NullLogger<ParcelRepository>.Instance, configuration);
+        return new ParcelRepository(factory, configuration);
     }
 
     /// <summary>

@@ -3,7 +3,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Collections.Generic;
-using Microsoft.Extensions.Logging;
+using NLog;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.Results;
@@ -80,7 +80,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
                 }
             }
             catch (Exception ex) {
-                Logger.LogWarning(ex, "缓存失效执行失败，实体类型={EntityType}", typeof(TEntity).Name);
+                Logger.Warn(ex, "缓存失效执行失败，实体类型={EntityType}", typeof(TEntity).Name);
             }
         }
     }

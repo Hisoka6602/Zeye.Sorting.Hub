@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging.Abstractions;
 using Zeye.Sorting.Hub.Application.Services.Parcels;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
@@ -263,7 +262,6 @@ public sealed class ParcelQueryServicesTests {
         var options = BuildOptions(databaseName);
         return new ParcelRepository(
             new TestDbContextFactory(options),
-            NullLogger<ParcelRepository>.Instance,
             BuildConfiguration());
     }
 

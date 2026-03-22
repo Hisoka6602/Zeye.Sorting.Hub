@@ -2,7 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
+using NLog;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Repositories;
@@ -19,6 +19,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
 /// Parcel 仓储第一阶段实现。
 /// </summary>
 public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContext>, IParcelRepository {
+    /// <summary>
+    /// NLog 日志器（静态，无需 DI 注入；日志来源类名为 ParcelRepository）。
+    /// </summary>
+    private static readonly ILogger NLogLogger = LogManager.GetCurrentClassLogger();
     /// <summary>
     /// 空配置（用于保持默认值读取语义）。
     /// </summary>
@@ -80,9 +84,8 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     /// 创建 ParcelRepository。
     /// </summary>
     public ParcelRepository(
-        IDbContextFactory<SortingHubDbContext> contextFactory,
-        ILogger<ParcelRepository> logger)
-        : this(contextFactory, logger, EmptyConfiguration) {
+        IDbContextFactory<SortingHubDbContext> contextFactory)
+        : this(contextFactory, EmptyConfiguration) {
     }
 
     /// <summary>
@@ -90,9 +93,8 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     /// </summary>
     public ParcelRepository(
         IDbContextFactory<SortingHubDbContext> contextFactory,
-        ILogger<ParcelRepository> logger,
         IConfiguration? configuration)
-        : base(contextFactory, logger) {
+        : base(contextFactory, NLogLogger) {
         var effectiveConfiguration = configuration ?? EmptyConfiguration;
         // 步骤 1：守卫开关默认开启（保守默认值，避免危险动作默认放开）。
         _removeExpiredEnableGuard = AutoTuningConfigurationHelper.GetBoolOrDefault(
@@ -139,7 +141,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
                 .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
         }
         catch (Exception ex) {
-            Logger.LogError(ex, "根据 Id 查询包裹详情失败，Id={ParcelId}", id);
+            Logger.Error(ex, "根据 Id 查询包裹详情失败，Id={ParcelId}", id);
             throw;
         }
     }
@@ -164,7 +166,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
             return ExecutePagedQueryAsync((db, query) => ApplyFilter(query, filter, db.Database.ProviderName), pageRequest, cancellationToken);
         }
         catch (ValidationException ex) {
-            Logger.LogWarning(
+            Logger.Warn(
                 ex,
                 "分页查询包裹摘要参数校验失败，Filter={@Filter}, PageNumber={PageNumber}, PageSize={PageSize}",
                 filter,
@@ -267,7 +269,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
             return [.. beforeItems, .. afterItems];
         }
         catch (Exception ex) {
-            Logger.LogError(ex,
+            Logger.Error(ex,
                 "按扫描时间查询邻近记录失败，ScannedTime={ScannedTime}, BeforeCount={BeforeCount}, AfterCount={AfterCount}",
                 scannedTime,
                 beforeCount,
@@ -345,7 +347,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
 
             // 步骤 5：如果触达上限则记录告警，防止误调用造成大范围清理。
             if (totalDeleted >= MaxExpiredDeleteCountPerCall) {
-                Logger.LogWarning(
+                Logger.Warn(
                     "删除过期包裹触达单次上限，TotalDeleted={TotalDeleted}, CreatedBefore={CreatedBefore}, Limit={DeleteLimit}",
                     totalDeleted,
                     createdBefore,
@@ -365,7 +367,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
                 executedCount: totalDeleted));
         }
         catch (OperationCanceledException ex) {
-            Logger.LogWarning(ex, "删除过期包裹操作被取消，CreatedBefore={CreatedBefore}", createdBefore);
+            Logger.Warn(ex, "删除过期包裹操作被取消，CreatedBefore={CreatedBefore}", createdBefore);
             EmitRemoveExpiredAuditLog(
                 createdBefore,
                 plannedCount: 0,
@@ -376,7 +378,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
             return RepositoryResult<DangerousBatchActionResult>.Fail("操作已取消");
         }
         catch (Exception ex) {
-            Logger.LogError(ex, "删除过期包裹失败，CreatedBefore={CreatedBefore}", createdBefore);
+            Logger.Error(ex, "删除过期包裹失败，CreatedBefore={CreatedBefore}", createdBefore);
             EmitRemoveExpiredAuditLog(
                 createdBefore,
                 plannedCount: 0,
@@ -434,7 +436,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
         bool dryRun,
         bool blockedByGuard,
         string reason) {
-        Logger.LogInformation(
+        Logger.Info(
             "仓储危险动作审计：ActionName={ActionName}, CreatedBefore={CreatedBefore}, PlannedCount={PlannedCount}, ExecutedCount={ExecutedCount}, DryRun={DryRun}, BlockedByGuard={BlockedByGuard}, CompensationBoundary={CompensationBoundary}, Reason={Reason}",
             RemoveExpiredActionName,
             createdBefore,
@@ -487,7 +489,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
             };
         }
         catch (Exception ex) {
-            Logger.LogError(ex, "分页查询包裹失败，PageNumber={PageNumber}, PageSize={PageSize}", pageNumber, pageSize);
+            Logger.Error(ex, "分页查询包裹失败，PageNumber={PageNumber}, PageSize={PageSize}", pageNumber, pageSize);
             throw;
         }
     }
