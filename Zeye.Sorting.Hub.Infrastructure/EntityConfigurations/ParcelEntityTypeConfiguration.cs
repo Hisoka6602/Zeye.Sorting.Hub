@@ -24,12 +24,16 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
             builder.HasIndex(x => x.ParcelTimestamp);
             builder.HasIndex(x => x.ScannedTime);
             builder.HasIndex(x => x.CreatedTime);
-            builder.HasIndex(x => x.BagCode);
+            // BagCode 等值 + ScannedTime 范围/排序，升级为复合索引覆盖 GetByBagCodeAsync 路径
+            builder.HasIndex(x => new { x.BagCode, x.ScannedTime });
             builder.HasIndex(x => new { x.Status, x.ScannedTime });
             builder.HasIndex(x => new { x.NoReadType, x.ScannedTime });
             builder.HasIndex(x => new { x.RequestStatus, x.ScannedTime });
             builder.HasIndex(x => new { x.Status, x.ExceptionType, x.ScannedTime });
+            // 保留 (ActualChuteId, DischargeTime) 用于落格时间维度查询/统计
             builder.HasIndex(x => new { x.ActualChuteId, x.DischargeTime });
+            // 新增 (ActualChuteId, ScannedTime) 覆盖 GetByChuteAsync 的过滤 + ScannedTime 排序路径
+            builder.HasIndex(x => new { x.ActualChuteId, x.ScannedTime });
             builder.HasIndex(x => new { x.TargetChuteId, x.ScannedTime });
             builder.HasIndex(x => new { x.WorkstationName, x.ScannedTime });
 
