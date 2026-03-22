@@ -132,13 +132,13 @@
 │   │   ├── AutoTuningLoggerObservability.cs（自动调优观测默认日志实现）
 │   │   ├── DatabaseAutoTuningHostedService.cs（数据库自动调谐托管服务（闭环阶段流转、执行隔离、自动验证标准化输出与回滚审计；分表命中/跨表占比/热点倾斜改为全量慢 SQL 口径，并在自动索引建议前做覆盖/重复/低价值过滤））
 │   │   ├── DatabaseInitializerHostedService.cs（数据库初始化与迁移托管服务（含分表治理基线、Runbook 审计、PerDay 手工预建窗口守卫；新增“配置清单 + 物理分表存在性”双重校验））
-│   │   └── DevelopmentBrowserLauncherHostedService.cs（Development 启动浏览器隔离器：仅交互式场景 + 配置开启时自动打开 Swagger，异常由 SafeExecutor 隔离）
+│   │   └── DevelopmentBrowserLauncherHostedService.cs（Development 启动浏览器隔离器：仅 Development + 配置开启 + 交互式/本机/非容器/非CI 场景生效；在 ApplicationStarted 后再打开 Swagger，异常由 SafeExecutor 隔离）
 │   ├── Program.cs（应用入口与 Host 构建流程；运行地址/Swagger 路径由 appsettings 的 Hosting 配置驱动；接入 XML 注释与枚举中文说明增强）
 │   ├── HostingOptions.cs（Hosting 配置模型与 Swagger/浏览器自动打开地址拼装逻辑）
 │   ├── LocalDateTimeParsing.cs（本地时间解析共享工具：TryParseLocalDateTime/TryParseOptionalLocalDateTime/IsUtcKind，供所有路由扩展复用）
 │   ├── ParcelAdminApiRouteExtensions.cs（Parcel 管理端 API 路由扩展：POST/PUT/DELETE 普通写接口 + cleanup-expired 治理接口）
 │   ├── Swagger（Swagger 扩展目录）
-│   │   └── EnumDescriptionSchemaFilter.cs（枚举 Schema 中文增强：显示“数值=枚举名（中文描述）”）
+│   │   └── EnumDescriptionSchemaFilter.cs（枚举 Schema 中文增强：真实 enum 与 Contracts 中枚举数值 int 字段均显示“数值=枚举名（中文描述）”）
 │   ├── Properties（运行调试属性目录）
 │   │   └── launchSettings.json（本地调试启动配置：Development 环境变量 + 本地 applicationUrl，浏览器自动打开由运行时隔离器负责）
 │   ├── Worker.cs（后台轮询任务示例服务）
@@ -150,7 +150,7 @@
 │   ├── AutoTuningProductionControlTests.cs（自动调优生产可控能力测试：dry-run/隔离器/告警恢复/普通与严重回归/探针双路径/闭环链路；含分表策略评估与 PerDay 预建守卫联动测试；配置键拼装参数化覆盖（Theory））
 │   ├── DomainEventArgsTests.cs（领域事件载荷单元测试：验证 ParcelScannedEventArgs/ParcelChuteAssignedEventArgs 业务字段赋值与值语义）
 │   ├── LocalTimeTestConstraintHelper.cs（测试层本地时间语义约束工具类：提供 CreateLocalTime/AssertIsLocalTime/AssertNotUtc，防止测试引入 UTC 语义）
-│   ├── HostingOptionsTests.cs（Hosting 配置拼装测试：监听地址拆分、Swagger 地址拼装与显式地址优先级）
+│   ├── HostingOptionsTests.cs（Hosting 配置拼装测试：监听地址拆分、Swagger 地址拼装、显式地址优先级与无效监听地址兜底）
 │   ├── ParcelAdminApiTests.cs（Parcel 管理端写接口测试：新增/更新状态/删除成功路径 + cleanup-expired 三态 + 参数非法校验）
 │   ├── ParcelReadOnlyApiTests.cs（Parcel 只读 API 端点测试：列表/详情/404/邻近参数异常；包含 FakeParcelRepository 测试替身（支持读写操作））
 │   ├── ParcelQueryServicesTests.cs（Parcel 应用层查询服务测试：列表/详情/邻近查询映射与最小校验；多重过滤条件联合成功路径；ExceptionType 筛选覆盖）
@@ -397,7 +397,7 @@
 - `appsettings.Development.json`：开发环境配置覆盖文件。
 
 #### `Zeye.Sorting.Hub.Host/Swagger/`：Swagger 扩展目录
-- `EnumDescriptionSchemaFilter.cs`：枚举 Schema 中文增强过滤器，向 Swagger 输出“数值 = 枚举名（Description 中文）”的可选值说明。
+- `EnumDescriptionSchemaFilter.cs`：枚举 Schema 中文增强过滤器，保留真实 enum 增强逻辑，并扩展 Contracts 中“枚举数值 int 字段”的全量映射，向 Swagger 输出“数值 = 枚举名（Description 中文）”可选值说明。
 
 #### `Zeye.Sorting.Hub.Host/Enums/`：宿主层枚举目录
 - `MigrationFailureMode.cs`：数据库迁移失败策略枚举（`FailFast` / `Degraded`，带 `Description` 标记），供初始化服务与测试复用，避免枚举内嵌导致扩展困难。
@@ -406,7 +406,7 @@
 - `AutoTuningLoggerObservability.cs`：自动调优观测默认日志实现（统一日志 + 指标抽象默认落地）。
 - `DatabaseAutoTuningHostedService.cs`：数据库自动调谐托管服务（显式闭环阶段迁移、执行隔离、标准化自动验证结果、回滚触发与审计日志；分表观测指标基于全量慢 SQL 解析并覆盖子查询/集合运算场景；自动索引建议在执行前统一执行覆盖、语义重复、低价值过滤）。
 - `DatabaseInitializerHostedService.cs`：数据库初始化与迁移托管服务（支持生产/非生产迁移失败策略分流：FailFast/Degraded；启动期执行分表治理程序化守卫，新增 Time/Volume/Hybrid 策略配置校验与审计输出；PerDay 手工预建守卫升级为“配置日期清单完整性 + 物理分表存在性”双重校验，且仅做探测/阻断/审计，不自动建表）。
-- `DevelopmentBrowserLauncherHostedService.cs`：Development 浏览器启动隔离器，仅在 Development + `Hosting:BrowserAutoOpen:Enabled=true` + 交互式运行场景触发，且使用 `SafeExecutor` 隔离异常，避免影响宿主启动。
+- `DevelopmentBrowserLauncherHostedService.cs`：Development 浏览器启动隔离器，仅在 Development + `Hosting:BrowserAutoOpen:Enabled=true` + 交互式/本机/非容器/非 CI 场景触发；通过 `IHostApplicationLifetime.ApplicationStarted` 确保服务可访问后再尝试打开，并持续使用 `SafeExecutor` 隔离异常，避免影响宿主启动。
 
 #### `Zeye.Sorting.Hub.Host/Properties/`：项目运行调试属性目录
 - `launchSettings.json`：本地调试启动配置（Development Profile、环境变量、本地 `applicationUrl`）；`launchBrowser=false`，避免与运行时浏览器隔离器重复打开窗口。
@@ -492,7 +492,8 @@
 - `ParcelAdminApiTests.cs`：Parcel 管理端写接口测试，覆盖新增成功路径 + UTC 时间拒绝、更新状态成功路径 + 不存在 404 + 非法操作码 400、删除成功路径 + 不存在 404、cleanup-expired blocked/dry-run/execute 三态 + UTC 时间与非法参数拒绝，共 15 个测试用例。
 - `ParcelQueryServicesTests.cs`：Parcel 应用层查询服务测试（列表/详情/邻近查询映射与最小参数校验）；多重过滤条件联合成功路径（bagCode + workstationName + actualChuteId + status）；ExceptionType 筛选成功路径与非法值校验。
 - `ParcelRepositoryTests.cs`：Parcel 仓储第一阶段能力测试，覆盖分页过滤、详情与邻近查询、新增/更新/删除、过期清理与批量新增，并回归验证危险清理动作的 blocked/dry-run/executed 三态。
-- `HostingOptionsTests.cs`：Hosting 配置单元测试，覆盖监听地址分号拆分去重、`0.0.0.0` 归一化为 `localhost` 的 Swagger 地址拼装，以及 `BrowserAutoOpen:Url` 显式配置优先级。
+- `HostingOptionsTests.cs`：Hosting 配置单元测试，覆盖监听地址分号拆分去重、`0.0.0.0` 归一化为 `localhost` 的 Swagger 地址拼装、`BrowserAutoOpen:Url` 显式配置优先级与无效监听地址返回 null 的兜底行为。
+- `SwaggerDocumentationTests.cs`：Swagger 文档增强回归测试，覆盖管理端更新请求与值对象响应中的枚举型 int 字段，验证均输出“数值 + 枚举名 + 中文描述”。
 
 
 ## 更新记录与待完善事项
@@ -503,16 +504,16 @@
 ### 本次更新内容
 
 - 已将 Host 监听地址与 Swagger 暴露参数切换为 `appsettings.json` 的 `Hosting` 配置主驱动：`Hosting:Urls`、`Hosting:EnableHttpsRedirection`、`Hosting:Swagger:*`、`Hosting:BrowserAutoOpen:*`。
-- 已在 Host 增加 Development 浏览器启动隔离器 `DevelopmentBrowserLauncherHostedService`：仅 Development + 配置开启 + 交互式场景触发，并通过 `SafeExecutor` 包装副作用异常，避免影响应用启动。
+- 已收口 Development 浏览器启动时机：`DevelopmentBrowserLauncherHostedService` 改为在 `ApplicationStarted` 后执行打开浏览器，保留 `SafeExecutor` 副作用隔离，并继续限制为 Development + 配置开启 + 交互式/本机/非容器/非 CI 场景。
 - 已将 `launchSettings.json` 的 `launchBrowser` 调整为 `false`，防止与运行时自动打开逻辑重复触发。
-- 已增强 Swagger 文档：补齐只读/管理端点中文 `WithSummary + WithDescription`，接入 Host/Contracts/Application/Domain 四个程序集 XML 注释，并新增 `EnumDescriptionSchemaFilter` 展示“数值 + 枚举名 + 中文描述”。
-- 已补充 `HostingOptionsTests`，验证监听地址解析与 Swagger 地址拼装逻辑，确保配置化行为可回归验证。
+- 已增强 Swagger 文档：在保留真实 enum 本体增强的基础上，补齐 Contracts 值对象响应模型中的枚举数值字段映射（如 `BarCodeType`、`ProtocolType`、`ActionType`、`Direction`、`ImageType`、`CaptureType`、`NodeType` 等），统一展示“数值 + 枚举名 + 中文描述”。
+- 已补充/增强测试：`SwaggerDocumentationTests` 新增值对象枚举数值字段覆盖断言，`HostingOptionsTests` 增加无效监听地址兜底断言，确保回归可验证。
 
 ### 可继续完善内容
 
 - 后续可补充 Swagger 鉴权策略（如文档访问令牌、角色分级可见性）并统一与 API 鉴权体系联动。
 - 后续可细化非开发环境文档暴露治理（例如内网白名单、按环境开关、发布审批审计）。
-- 后续可完善反向代理与子路径部署适配（例如 `PathBase`、网关前缀下 Swagger JSON/UI 地址自动拼装）。
+- 后续可完善反向代理与子路径部署适配（例如 `PathBase`、网关前缀下 Swagger JSON/UI 地址自动拼装），并评估自动打开地址的反向代理本机回环兼容策略。
 - 后续可补充 OpenAPI 示例值与示例请求体（含典型成功/失败样例），提升调用方接入效率。
 
 ## Parcel API 发布门禁 / 使用边界说明
