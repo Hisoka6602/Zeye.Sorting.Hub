@@ -200,6 +200,8 @@
 │   │   │   ├── 20260318024421_OptimizeParcelAggregateQueryIndexes.Designer.cs（迁移元数据，自动生成）
 │   │   │   ├── 20260322050329_OptimizeBagCodeAndActualChuteIdQueryIndexes.cs（BagCode 单列→复合索引 + ActualChuteId_ScannedTime 新增复合索引迁移）
 │   │   │   ├── 20260322050329_OptimizeBagCodeAndActualChuteIdQueryIndexes.Designer.cs（迁移元数据，自动生成）
+│   │   │   ├── 20260322072600_AddBarCodesFullTextIndex.cs（BarCodes 列 FULLTEXT 全文索引迁移，仅 MySQL）
+│   │   │   ├── 20260322072600_AddBarCodesFullTextIndex.Designer.cs（迁移元数据，自动生成）
 │   │   │   └── SortingHubDbContextModelSnapshot.cs（当前模型快照，自动生成）
 │   │   └── SortingHubDbContext.cs（EF Core DbContext）
 │   ├── Repositories（仓储基类与结果模型目录）
@@ -468,6 +470,8 @@
 - `20260318024421_OptimizeParcelAggregateQueryIndexes.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
 - `20260322050329_OptimizeBagCodeAndActualChuteIdQueryIndexes.cs`：补齐两处索引覆盖缺口迁移：① 将 `BagCode` 单列索引升级为 `(BagCode, ScannedTime)` 复合索引（覆盖 GetByBagCodeAsync 的等值 + 范围 + 排序路径）；② 新增 `(ActualChuteId, ScannedTime)` 复合索引（覆盖 GetByChuteAsync 的 ScannedTime 排序路径，原有 ActualChuteId_DischargeTime 索引保留）。
 - `20260322050329_OptimizeBagCodeAndActualChuteIdQueryIndexes.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
+- `20260322072600_AddBarCodesFullTextIndex.cs`：为 Parcels.BarCodes 列添加 MySQL FULLTEXT 全文索引（`FTX_Parcels_BarCodes`），仅 MySQL Provider 生效；SQL Server 路径为空操作。配合 ParcelRepository 中的 Provider 分支查询，使 BarCodeKeyword 搜索在 MySQL 下改走 MATCH...AGAINST 替代原 LIKE '%xxx%'（技术债务彻底消除）。
+- `20260322072600_AddBarCodesFullTextIndex.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
 - `SortingHubDbContextModelSnapshot.cs`：当前模型快照，EF Core 用于计算下次迁移的差量（自动生成，勿手动修改）。
 
 #### `Zeye.Sorting.Hub.Infrastructure/Repositories/`：仓储基类与结果模型目录
@@ -513,6 +517,7 @@
 - 已增强 Swagger 文档：在保留真实 enum 本体增强的基础上，补齐 Contracts 值对象响应模型中的枚举数值字段映射（如 `BarCodeType`、`ProtocolType`、`ActionType`、`Direction`、`ImageType`、`CaptureType`、`NodeType` 等），统一展示“数值 + 枚举名 + 中文描述”。
 - 已补充/增强测试：`SwaggerDocumentationTests` 新增值对象枚举数值字段覆盖断言，`HostingOptionsTests` 增加无效监听地址兜底断言，确保回归可验证。
 - 已补齐 Parcels 主表两处索引覆盖缺口：① 将 `IX_Parcels_BagCode` 单列索引升级为 `(BagCode, ScannedTime)` 复合索引，覆盖 `GetByBagCodeAsync` 的等值过滤 + ScannedTime 范围 + 降序排序路径；② 新增 `IX_Parcels_ActualChuteId_ScannedTime` 复合索引，覆盖 `GetByChuteAsync` 的 ActualChuteId 过滤 + ScannedTime 降序排序路径（原有 `ActualChuteId_DischargeTime` 索引保留，服务落格时间维度查询）。
+- 已彻底解决 BarCodeKeyword 技术债务：在 MySQL 下为 `Parcels.BarCodes` 列添加 FULLTEXT 全文索引（`FTX_Parcels_BarCodes`），并将 `ParcelRepository.ApplyFilter` 改为 Provider 分支查询：MySQL 走 `EF.Functions.IsMatch()`（MATCH...AGAINST BOOLEAN MODE），SQL Server 保留 `Contains()`（已知限制）。查询语义由任意子串匹配变更为 MySQL FULLTEXT 词级匹配，建议调用方传入完整词元（完整条码）。
 
 ### 可继续完善内容
 
@@ -520,7 +525,7 @@
 - 后续可细化非开发环境文档暴露治理（例如内网白名单、按环境开关、发布审批审计）。
 - 后续可完善反向代理与子路径部署适配（例如 `PathBase`、网关前缀下 Swagger JSON/UI 地址自动拼装），并评估自动打开地址的反向代理本机回环兼容策略。
 - 后续可补充 OpenAPI 示例值与示例请求体（含典型成功/失败样例），提升调用方接入效率。
-- 后续可评估对 `BarCodes.Contains(keyword)` 的 LIKE '%xxx%' 查询添加 MySQL FULLTEXT INDEX（目前 B-Tree 索引对前导通配符无效），并同步改写查询为 `MATCH...AGAINST` 以覆盖条码模糊搜索场景。
+- 后续可为 SQL Server 路径配置 Full-Text Catalog 并改写为 `EF.Functions.Contains()`，彻底消除 SQL Server 侧的 LIKE '%xxx%' 限制。
 
 ## Parcel API 发布门禁 / 使用边界说明
 

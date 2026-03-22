@@ -27,6 +27,11 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
         .Build();
 
     /// <summary>
+    /// MySQL Provider 名称常量（用于查询分支判断）。
+    /// </summary>
+    private const string MySqlProvider = "Pomelo.EntityFrameworkCore.MySql";
+
+    /// <summary>
     /// 过期清理动作名（用于结构化审计）。
     /// </summary>
     private const string RemoveExpiredActionName = "ParcelRepository.RemoveExpired";
@@ -166,7 +171,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
 
         try {
             ValidateQueryFilter(filter);
-            return ExecutePagedQueryAsync(query => ApplyFilter(query, filter), pageRequest, cancellationToken);
+            return ExecutePagedQueryAsync((db, query) => ApplyFilter(query, filter, db.Database.ProviderName), pageRequest, cancellationToken);
         }
         catch (ValidationException ex) {
             Logger.LogWarning(
@@ -465,7 +470,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     /// 执行分页查询。
     /// </summary>
     private async Task<PageResult<ParcelSummaryReadModel>> ExecutePagedQueryAsync(
-        Func<IQueryable<Parcel>, IQueryable<Parcel>> queryBuilder,
+        Func<SortingHubDbContext, IQueryable<Parcel>, IQueryable<Parcel>> queryBuilder,
         PageRequest pageRequest,
         CancellationToken cancellationToken) {
         var pageNumber = pageRequest.NormalizePageNumber();
@@ -473,7 +478,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
 
         try {
             await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
-            var query = queryBuilder(Query(db));
+            var query = queryBuilder(db, Query(db));
 
             var totalCount = await query.LongCountAsync(cancellationToken);
             var items = await query
@@ -500,10 +505,21 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     /// <summary>
     /// 应用过滤条件。
     /// </summary>
-    private static IQueryable<Parcel> ApplyFilter(IQueryable<Parcel> query, ParcelQueryFilter filter) {
+    /// <param name="query">基础查询。</param>
+    /// <param name="filter">过滤参数。</param>
+    /// <param name="providerName">数据库提供器名称，用于选择 BarCodeKeyword 的查询实现：
+    /// MySQL（Pomelo.EntityFrameworkCore.MySql）使用 FULLTEXT MATCH...AGAINST（词级匹配，需 BarCodes 列具备 FULLTEXT 索引），
+    /// 其他提供器（含 null）均回退为 LIKE '%keyword%'（子串匹配，无索引支持，属已知限制）。</param>
+    private static IQueryable<Parcel> ApplyFilter(IQueryable<Parcel> query, ParcelQueryFilter filter, string? providerName) {
         if (!string.IsNullOrWhiteSpace(filter.BarCodeKeyword)) {
             var barCodeKeyword = filter.BarCodeKeyword.Trim();
-            query = query.Where(x => x.BarCodes.Contains(barCodeKeyword));
+            // 步骤 1：MySQL 使用 FULLTEXT BOOLEAN MODE，让 MATCH...AGAINST 走 FTX_Parcels_BarCodes 全文索引；
+            // providerName 为 null 或非 MySqlProvider（如 SQL Server）时，均进入 else 分支，回退 LIKE '%keyword%'。
+            if (providerName == MySqlProvider) {
+                query = query.Where(x => EF.Functions.IsMatch(x.BarCodes, barCodeKeyword, MySqlMatchSearchMode.Boolean));
+            } else {
+                query = query.Where(x => x.BarCodes.Contains(barCodeKeyword));
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(filter.BagCode)) {
