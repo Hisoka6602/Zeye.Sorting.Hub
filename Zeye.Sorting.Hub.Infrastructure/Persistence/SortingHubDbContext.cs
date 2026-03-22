@@ -12,11 +12,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence {
     /// </summary>
     public sealed class SortingHubDbContext : DbContext {
         /// <summary>
-        /// SQL Server Provider 名称常量。
-        /// </summary>
-        private const string SqlServerProvider = "Microsoft.EntityFrameworkCore.SqlServer";
-
-        /// <summary>
         /// SQL Server 默认 schema。
         /// </summary>
         private const string SqlServerDefaultSchema = "dbo";
@@ -28,7 +23,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence {
         /// 应用程序集内全部实体类型配置。
         /// </summary>
         protected override void OnModelCreating(ModelBuilder modelBuilder) {
-            if (Database.ProviderName == SqlServerProvider) {
+            if (Database.ProviderName == DbProviderNames.SqlServer) {
                 modelBuilder.HasDefaultSchema(SqlServerDefaultSchema);
             }
 
