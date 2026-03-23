@@ -21,6 +21,10 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 /// Parcel 只读 API 端点回归测试。
 /// </summary>
 public sealed class ParcelReadOnlyApiTests {
+    /// <summary>
+    /// 邻近查询稳定排序测试锚点 Id。
+    /// </summary>
+    private const long StableOrderAnchorId = 11;
 
     /// <summary>
     /// 验证场景：正常获取列表。
@@ -150,7 +154,7 @@ public sealed class ParcelReadOnlyApiTests {
     public async Task GetAdjacentParcels_WithSameScannedTime_ShouldKeepStableOrder() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
-        var response = await client.GetAsync("/api/parcels/adjacent?id=11&beforeCount=1&afterCount=2");
+        var response = await client.GetAsync($"/api/parcels/adjacent?id={StableOrderAnchorId}&beforeCount=1&afterCount=2");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var payload = await response.Content.ReadFromJsonAsync<JsonDocument>();
         Assert.NotNull(payload);
@@ -186,6 +190,15 @@ public sealed class ParcelReadOnlyApiTests {
 /// Parcel 仓储测试替身（支持读写操作，RemoveExpiredAsync 行为可通过属性控制）。
 /// </summary>
 internal sealed class FakeParcelRepository : IParcelRepository {
+    /// <summary>
+    /// 邻近查询稳定排序测试锚点 Id。
+    /// </summary>
+    private const long StableOrderAnchorId = 11;
+
+    /// <summary>
+    /// 详情查询预置样本 Id（未写入 _store，仅用于只读详情与更新路径兼容）。
+    /// </summary>
+    private const long DetailQuerySampleId = 1;
     /// <summary>
     /// 内存存储（用于写操作测试）。
     /// </summary>
@@ -235,13 +248,13 @@ internal sealed class FakeParcelRepository : IParcelRepository {
         }
 
         // 若内存存储未命中，仅对 id==1 返回固定样本包裹，其余返回 null
-        if (id != 1) {
+        if (id != DetailQuerySampleId) {
             return Task.FromResult<Parcel?>(null);
         }
 
         var scannedTime = new DateTime(2026, 3, 20, 10, 0, 0, DateTimeKind.Local);
         var parcel = Parcel.Create(
-            id: 1,
+            id: DetailQuerySampleId,
             parcelTimestamp: scannedTime.Ticks,
             type: ParcelType.Normal,
             barCodes: "BC-DETAIL-1",
@@ -273,7 +286,7 @@ internal sealed class FakeParcelRepository : IParcelRepository {
             return Task.FromResult(RepositoryResult<IReadOnlyList<ParcelSummaryReadModel>>.Fail("未找到 Id 为 999 的资源。"));
         }
 
-        if (id == 11) {
+        if (id == StableOrderAnchorId) {
             IReadOnlyList<ParcelSummaryReadModel> stableItems = [
                 CreateSummary(10, "BC-SAME-10", "BAG-ADJ", baseTime),
                 CreateSummary(12, "BC-SAME-12", "BAG-ADJ", baseTime),
@@ -337,7 +350,8 @@ internal sealed class FakeParcelRepository : IParcelRepository {
     /// 更新包裹（覆盖内存存储中对应记录）。
     /// </summary>
     public Task<RepositoryResult> UpdateAsync(Parcel parcel, CancellationToken cancellationToken) {
-        if (!_store.ContainsKey(parcel.Id) && parcel.Id != 1) {
+        // 说明：DetailQuerySampleId 为详情查询预置样本（未放入 _store），允许更新以覆盖管理端更新接口测试路径。
+        if (!_store.ContainsKey(parcel.Id) && parcel.Id != DetailQuerySampleId) {
             return Task.FromResult(RepositoryResult.Fail("目标包裹不存在。"));
         }
 

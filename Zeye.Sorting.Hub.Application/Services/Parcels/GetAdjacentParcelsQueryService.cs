@@ -53,7 +53,7 @@ public sealed class GetAdjacentParcelsQueryService {
                 afterCount,
                 cancellationToken);
             if (!adjacentResult.IsSuccess) {
-                throw new KeyNotFoundException(adjacentResult.ErrorMessage ?? $"未找到 Id 为 {request.Id} 的资源。");
+                throw new KeyNotFoundException(adjacentResult.ErrorMessage);
             }
 
             var adjacent = adjacentResult.Value ?? Array.Empty<Domain.Repositories.Models.ReadModels.ParcelSummaryReadModel>();

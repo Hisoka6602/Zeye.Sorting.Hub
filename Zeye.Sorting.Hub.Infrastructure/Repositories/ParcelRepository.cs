@@ -129,13 +129,6 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
 
         try {
             await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
-            var exists = await Query(db)
-                .AnyAsync(x => x.Id == parcel.Id, cancellationToken);
-            if (exists) {
-                Logger.Warn("新增包裹主键冲突，Id={ParcelId}", parcel.Id);
-                return RepositoryResult.Fail(DuplicateParcelIdErrorMessage);
-            }
-
             await db.Set<Parcel>().AddAsync(parcel, cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
             return RepositoryResult.Success();
@@ -146,6 +139,20 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
         }
         catch (DbUpdateException ex) when (IsDuplicatePrimaryKeyException(ex)) {
             Logger.Warn(ex, "新增包裹主键冲突，Id={ParcelId}", parcel.Id);
+            return RepositoryResult.Fail(DuplicateParcelIdErrorMessage);
+        }
+        catch (DbUpdateException ex) when (ContainsDuplicateKeyMessage(ex.Message) || ContainsDuplicateKeyMessage(ex.InnerException?.Message)) {
+            Logger.Warn(ex, "新增包裹主键冲突（DbUpdateException 回退分支），Id={ParcelId}", parcel.Id);
+            return RepositoryResult.Fail(DuplicateParcelIdErrorMessage);
+        }
+        // InMemory Provider(当前测试基线 .NET8 + EFCore.InMemory 9.x) 在主键冲突场景下通常抛出 InvalidOperationException，
+        // 且无稳定错误码，仅有消息文本。该分支仅为测试基础设施兼容兜底；真实数据库优先走上方错误码分支。
+        catch (InvalidOperationException ex) when (ContainsDuplicateKeyMessage(ex.Message)) {
+            Logger.Warn(ex, "新增包裹主键冲突（提供器回退分支），Id={ParcelId}", parcel.Id);
+            return RepositoryResult.Fail(DuplicateParcelIdErrorMessage);
+        }
+        catch (Exception ex) when (ContainsDuplicateKeyMessage(ex.Message) || ContainsDuplicateKeyMessage(ex.InnerException?.Message)) {
+            Logger.Warn(ex, "新增包裹主键冲突（通用回退分支），Id={ParcelId}", parcel.Id);
             return RepositoryResult.Fail(DuplicateParcelIdErrorMessage);
         }
         catch (Exception ex) {
@@ -648,6 +655,21 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// 判断异常消息是否包含“重复键”语义。
+    /// </summary>
+    /// <param name="message">异常消息。</param>
+    /// <returns>是否包含重复键语义。</returns>
+    private static bool ContainsDuplicateKeyMessage(string? message) {
+        if (string.IsNullOrWhiteSpace(message)) {
+            return false;
+        }
+
+        return message.Contains("same key", StringComparison.OrdinalIgnoreCase)
+               || message.Contains("duplicate", StringComparison.OrdinalIgnoreCase)
+               || message.Contains("已存在", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

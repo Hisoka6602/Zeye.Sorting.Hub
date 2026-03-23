@@ -17,7 +17,7 @@ public sealed class ParcelQueryServicesTests {
     /// <summary>
     /// 测试包裹 Id 自增序列。
     /// </summary>
-    private static long _nextParcelId = 1000;
+    private static long _testParcelIdSequence = 1000;
     /// <summary>
     /// 验证场景：GetParcelPagedQueryService_ShouldMapAndValidate。
     /// </summary>
@@ -356,7 +356,7 @@ public sealed class ParcelQueryServicesTests {
         long targetChuteId,
         long actualChuteId) {
         var parcel = Parcel.Create(
-            id: Interlocked.Increment(ref _nextParcelId),
+            id: Interlocked.Increment(ref _testParcelIdSequence),
             parcelTimestamp: Math.Abs(scannedTime.Ticks),
             type: ParcelType.Normal,
             barCodes: barCode,

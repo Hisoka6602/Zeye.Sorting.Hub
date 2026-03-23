@@ -19,7 +19,7 @@ public sealed class ParcelRepositoryTests {
     /// <summary>
     /// 测试包裹 Id 自增序列。
     /// </summary>
-    private static long _nextParcelId = 2000;
+    private static long _testParcelIdSequence = 2000;
     /// <summary>
     /// 验证场景：IParcelRepository_ShouldResolveFromDependencyInjection。
     /// </summary>
@@ -583,7 +583,7 @@ public sealed class ParcelRepositoryTests {
         long actualChuteId,
         long? idOverride = null) {
         var parcel = Parcel.Create(
-            id: idOverride ?? Interlocked.Increment(ref _nextParcelId),
+            id: idOverride ?? Interlocked.Increment(ref _testParcelIdSequence),
             parcelTimestamp: Math.Abs(scannedTime.Ticks),
             type: ParcelType.Normal,
             barCodes: barCodes,
