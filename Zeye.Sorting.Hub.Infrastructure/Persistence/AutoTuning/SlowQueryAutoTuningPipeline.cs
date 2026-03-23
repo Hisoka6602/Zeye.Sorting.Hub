@@ -11,64 +11,121 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
     public sealed class SlowQueryAutoTuningPipeline {
         private const string AutoTuningMarker = "AUTO_TUNING";
         private const int MaxWhereColumns = 3;
+        /// <summary>
+        /// 告警状态跟踪上限，防止状态字典无限增长。
+        /// </summary>
         private const int MaxAlertTrackingStates = 2048;
+        /// <summary>
+        /// 多空白折叠正则，用于 SQL 归一化。
+        /// </summary>
         private static readonly Regex MultiWhitespaceRegex = new(@"\s+", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        /// <summary>
+        /// 参数占位符正则（@Param）。
+        /// </summary>
         private static readonly Regex ParameterRegex = new(@"@[A-Za-z_][A-Za-z0-9_]*", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        /// <summary>
+        /// 字符串字面量正则（用于脱敏归一化）。
+        /// </summary>
         private static readonly Regex StringLiteralRegex = new(@"'[^']*'", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        /// <summary>
+        /// FROM 子句表名提取正则。
+        /// </summary>
         private static readonly Regex FromRegex = new(@"\bfrom\s+(?:[`""\[]?([A-Za-z_][A-Za-z0-9_]*)[`""\]]?\s*\.\s*)?[`""\[]?([A-Za-z_][A-Za-z0-9_]*)[`""\]]?", RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        /// <summary>
+        /// UPDATE 语句表名提取正则。
+        /// </summary>
         private static readonly Regex UpdateRegex = new(@"\bupdate\s+(?:[`""\[]?([A-Za-z_][A-Za-z0-9_]*)[`""\]]?\s*\.\s*)?[`""\[]?([A-Za-z_][A-Za-z0-9_]*)[`""\]]?", RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        /// <summary>
+        /// WHERE 子句捕获正则。
+        /// </summary>
         private static readonly Regex WhereRegex = new(@"\bwhere\b(?<where>.+?)(\border\s+by\b|\bgroup\s+by\b|\blimit\b|;|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
+        /// <summary>
+        /// WHERE 列名与操作符提取正则。
+        /// </summary>
         private static readonly Regex WhereColumnRegex = new(@"(?:[A-Za-z_][A-Za-z0-9_]*\.)?[`""\[]?([A-Za-z_][A-Za-z0-9_]*)[`""\]]?\s*(=|>|<|>=|<=|like\b|in\b)", RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        /// <summary>
+        /// 安全标识符校验正则。
+        /// </summary>
         private static readonly Regex SafeIdentifierRegex = new(@"^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
         /// <summary>
         /// 慢查询样本队列，用于聚合分析。
         /// </summary>
         private readonly Queue<SlowQuerySample> _slowQueries = new();
+        /// <summary>
+        /// 慢查询阈值（毫秒）。
+        /// </summary>
         private readonly int _slowQueryThresholdMilliseconds;
         /// <summary>
         /// 单次分析批次大小。
         /// </summary>
         private readonly int _analysisBatchSize;
+        /// <summary>
+        /// 触发调优动作所需最小调用次数。
+        /// </summary>
         private readonly int _triggerCount;
         /// <summary>
         /// 每轮最多输出的调优建议数量。
         /// </summary>
         private readonly int _maxSuggestionsPerCycle;
+        /// <summary>
+        /// 慢查询样本队列最大容量。
+        /// </summary>
         private readonly int _maxQueueSize;
         /// <summary>
         /// 聚合分析 TopN 上限。
         /// </summary>
         private readonly int _aggregationTopN;
+        /// <summary>
+        /// 告警防抖最小调用次数阈值。
+        /// </summary>
         private readonly int _alertDebounceMinCallCount;
         /// <summary>
         /// P99 告警阈值（毫秒）。
         /// </summary>
         private readonly int _alertP99Milliseconds;
+        /// <summary>
+        /// 超时率告警阈值（百分比）。
+        /// </summary>
         private readonly decimal _alertTimeoutRatePercent;
         /// <summary>
         /// 死锁告警阈值计数。
         /// </summary>
         private readonly int _alertDeadlockCount;
+        /// <summary>
+        /// 告警防抖窗口。
+        /// </summary>
         private readonly TimeSpan _alertDebounceWindow;
         /// <summary>
         /// 告警触发所需连续窗口数。
         /// </summary>
         private readonly int _alertConsecutiveWindows;
+        /// <summary>
+        /// 告警恢复所需连续健康窗口数。
+        /// </summary>
         private readonly int _alertRecoveryConsecutiveWindows;
         /// <summary>
         /// 每日汇总输出本地时间点。
         /// </summary>
         private readonly TimeSpan _dailyReportTime;
+        /// <summary>
+        /// 可观测输出器（指标/事件）。
+        /// </summary>
         private readonly IAutoTuningObservability _observability;
         /// <summary>
         /// 队列与状态访问同步锁。
         /// </summary>
         private readonly object _queueSync = new();
+        /// <summary>
+        /// 告警防抖状态字典（按 SQL 指纹跟踪）。
+        /// </summary>
         private readonly Dictionary<string, AlertTrackingState> _alertStates = new(StringComparer.OrdinalIgnoreCase);
         /// <summary>
         /// 队列溢出时的丢弃样本计数。
         /// </summary>
         private int _droppedCount;
+        /// <summary>
+        /// 下一次应输出日报的本地时间。
+        /// </summary>
         private DateTime _nextDailyReportTime;
 
         /// <summary>初始化慢查询采集、分析和告警阈值配置。</summary>

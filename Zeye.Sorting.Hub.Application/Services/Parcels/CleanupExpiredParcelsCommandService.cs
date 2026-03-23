@@ -59,10 +59,7 @@ public sealed class CleanupExpiredParcelsCommandService {
                 CompensationBoundary = actionResult.CompensationBoundary
             };
         }
-        catch (InvalidOperationException) {
-            throw;
-        }
-        catch (Exception ex) {
+        catch (Exception ex) when (ex is not InvalidOperationException) {
             Logger.Error(ex, "过期包裹清理发生意外异常，CreatedBefore={CreatedBefore}", createdBefore);
             throw;
         }

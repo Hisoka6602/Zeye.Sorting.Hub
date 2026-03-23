@@ -96,37 +96,33 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 deletedCount, failedCount);
         }
 
-        private async Task<(int DeletedCount, int FailedCount)> CleanupDirectoryAsync(string directory, DateTime cutoffDate) {
-            return await Task.Run(() => {
-                var deletedCount = 0;
-                var failedCount = 0;
+        private Task<(int DeletedCount, int FailedCount)> CleanupDirectoryAsync(string directory, DateTime cutoffDate) {
+            var deletedCount = 0;
+            var failedCount = 0;
 
-                try {
-                    var files = Directory.GetFiles(directory, "*.log");
+            try {
+                foreach (var file in Directory.EnumerateFiles(directory, "*.log")) {
+                    try {
+                        var fileInfo = new FileInfo(file);
+                        if (fileInfo.LastWriteTime < cutoffDate) {
+                            _logger.LogInformation("删除旧日志文件: {FileName}, 最后修改时间: {LastWriteTime}",
+                                fileInfo.Name, fileInfo.LastWriteTime);
 
-                    foreach (var file in files) {
-                        try {
-                            var fileInfo = new FileInfo(file);
-                            if (fileInfo.LastWriteTime < cutoffDate) {
-                                _logger.LogInformation("删除旧日志文件: {FileName}, 最后修改时间: {LastWriteTime}",
-                                    fileInfo.Name, fileInfo.LastWriteTime);
-
-                                fileInfo.Delete();
-                                deletedCount++;
-                            }
-                        }
-                        catch (Exception ex) {
-                            _logger.LogWarning(ex, "删除日志文件失败: {FileName}", file);
-                            failedCount++;
+                            fileInfo.Delete();
+                            deletedCount++;
                         }
                     }
+                    catch (Exception ex) {
+                        _logger.LogWarning(ex, "删除日志文件失败: {FileName}", file);
+                        failedCount++;
+                    }
                 }
-                catch (Exception ex) {
-                    _logger.LogError(ex, "扫描日志目录失败: {Directory}", directory);
-                }
+            }
+            catch (Exception ex) {
+                _logger.LogError(ex, "扫描日志目录失败: {Directory}", directory);
+            }
 
-                return (deletedCount, failedCount);
-            });
+            return Task.FromResult((deletedCount, failedCount));
         }
     }
 }

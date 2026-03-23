@@ -51,13 +51,7 @@ public sealed class DeleteParcelCommandService {
 
             return true;
         }
-        catch (ArgumentException) {
-            throw;
-        }
-        catch (InvalidOperationException) {
-            throw;
-        }
-        catch (Exception ex) {
+        catch (Exception ex) when (ex is not ArgumentException && ex is not InvalidOperationException) {
             Logger.Error(ex, "删除包裹发生意外异常，ParcelId={ParcelId}", parcelId);
             throw;
         }
