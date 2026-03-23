@@ -125,6 +125,60 @@ SELECT CASE WHEN EXISTS (
         }
 
         /// <summary>
+        /// 基于 SQL Server sys.indexes/schemas/tables 探测物理分表缺失索引（仅探测，不执行 DDL）。
+        /// </summary>
+        /// <param name="dbContext">数据库上下文。</param>
+        /// <param name="schemaName">schema 名称；为空时回退 dbo。</param>
+        /// <param name="physicalTableName">物理表名。</param>
+        /// <param name="indexNames">期望存在的索引名集合。</param>
+        /// <param name="cancellationToken">取消令牌。</param>
+        /// <returns>缺失索引名集合。</returns>
+        public async Task<IReadOnlyList<string>> FindMissingIndexesAsync(
+            DbContext dbContext,
+            string? schemaName,
+            string physicalTableName,
+            IReadOnlyList<string> indexNames,
+            CancellationToken cancellationToken) {
+            ArgumentNullException.ThrowIfNull(dbContext);
+            ArgumentNullException.ThrowIfNull(indexNames);
+            if (string.IsNullOrWhiteSpace(physicalTableName)) {
+                throw new ArgumentException("物理表名不能为空。", nameof(physicalTableName));
+            }
+
+            var normalizedExpectedIndexNames = indexNames
+                .Where(static indexName => !string.IsNullOrWhiteSpace(indexName))
+                .Select(static indexName => indexName.Trim())
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            if (normalizedExpectedIndexNames.Length == 0) {
+                return Array.Empty<string>();
+            }
+
+            var normalizedSchemaName = string.IsNullOrWhiteSpace(schemaName) ? "dbo" : schemaName.Trim();
+            var normalizedPhysicalTableName = physicalTableName.Trim();
+
+            const string sql = """
+SELECT i.name
+FROM sys.indexes AS i
+INNER JOIN sys.tables AS t ON t.object_id = i.object_id
+INNER JOIN sys.schemas AS s ON s.schema_id = t.schema_id
+WHERE s.name = @p0
+  AND t.name = @p1
+  AND i.name IS NOT NULL
+""";
+            var existingIndexNames = await dbContext.Database
+                .SqlQueryRaw<string>(sql, normalizedSchemaName, normalizedPhysicalTableName)
+                .ToListAsync(cancellationToken);
+            var existingIndexSet = existingIndexNames
+                .Where(static indexName => !string.IsNullOrWhiteSpace(indexName))
+                .ToHashSet(StringComparer.Ordinal);
+
+            return normalizedExpectedIndexNames
+                .Where(indexName => !existingIndexSet.Contains(indexName))
+                .ToArray();
+        }
+
+        /// <summary>
         /// 批量探测 SQL Server 物理分表缺失项（单次查询目标 schema 全量表名后做内存对比）。
         /// </summary>
         /// <param name="dbContext">数据库上下文。</param>
