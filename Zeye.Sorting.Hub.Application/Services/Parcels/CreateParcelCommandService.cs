@@ -102,14 +102,7 @@ public sealed class CreateParcelCommandService {
             // 步骤 4：映射领域对象到合同响应并返回。
             return ParcelContractMapper.ToDetail(parcel);
         }
-        catch (ArgumentException) {
-            // 领域层验证异常直接向上传播，由 Host 层统一返回 400 Bad Request。
-            throw;
-        }
-        catch (InvalidOperationException) {
-            throw;
-        }
-        catch (Exception ex) {
+        catch (Exception ex) when (ex is not ArgumentException && ex is not InvalidOperationException) {
             Logger.Error(ex, "新增包裹发生意外异常，BarCodes={BarCodes}", request.BarCodes);
             throw;
         }

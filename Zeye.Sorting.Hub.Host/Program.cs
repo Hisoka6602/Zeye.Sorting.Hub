@@ -157,6 +157,7 @@ try {
 catch (Exception ex) {
     // 捕获启动期间的顶层异常，确保日志落盘后再退出
     bootstrapLogger.Fatal(ex, "宿主启动失败，程序即将退出");
+    throw;
 }
 finally {
     // 强制刷新所有 NLog 缓冲，确保所有日志写入磁盘
@@ -191,15 +192,17 @@ public static class ParcelReadOnlyApiRouteExtensions {
         group.MapGet("/{id:long}", GetParcelByIdAsync)
             .WithName("GetParcelById")
             .WithSummary("按 Id 查询 Parcel 详情")
-            .WithDescription("按包裹主键查询完整详情；当包裹不存在时返回 400。")
+            .WithDescription("按包裹主键查询完整详情；当包裹不存在时返回 404。")
             .Produces<ParcelDetailResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status400BadRequest);
 
         group.MapGet("/adjacent", GetAdjacentParcelsAsync)
             .WithName("GetAdjacentParcels")
             .WithSummary("按包裹 Id 查询 Parcel 邻近记录")
-            .WithDescription("以指定包裹 Id 为锚点，基于稳定排序键 (ScannedTime, Id) 查询前后邻近记录数量。锚点不存在返回 400。")
+            .WithDescription("以指定包裹 Id 为锚点，基于稳定排序键 (ScannedTime, Id) 查询前后邻近记录数量。锚点不存在返回 404。")
             .Produces<ParcelAdjacentResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status400BadRequest);
 
         return routeBuilder;

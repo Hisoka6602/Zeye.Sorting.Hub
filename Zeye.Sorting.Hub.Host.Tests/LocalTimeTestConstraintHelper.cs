@@ -3,7 +3,7 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 /// <summary>
 /// 测试层本地时间语义约束工具类。
 /// 提供统一的本地时间构造与断言方法，确保测试数据不引入 UTC 相关语义，
-/// 降低后续测试中误用 DateTime.UtcNow / DateTimeKind.Utc 的回归风险。
+/// 降低后续测试中误用 UTC 语义的回归风险。
 /// </summary>
 internal static class LocalTimeTestConstraintHelper {
 
@@ -30,10 +30,18 @@ internal static class LocalTimeTestConstraintHelper {
         => Assert.Equal(DateTimeKind.Local, value.Kind);
 
     /// <summary>
-    /// 断言 <paramref name="value"/> 的 <see cref="DateTime.Kind"/> 不是 <see cref="DateTimeKind.Utc"/>。
-    /// 用于快速验证某个时间值未被错误地标记为 UTC。
+    /// 断言 <paramref name="value"/> 的 <see cref="DateTime.Kind"/> 不是 UTC 语义。
+    /// 用于快速验证某个时间值未被错误地标记为 UTC（Unknown/Local 均允许）。
     /// </summary>
     /// <param name="value">待断言的时间值。</param>
-    public static void AssertNotUtc(DateTime value)
-        => Assert.NotEqual(DateTimeKind.Utc, value.Kind);
+    public static void AssertNotUtc(DateTime value) {
+        switch (value.Kind) {
+            case DateTimeKind.Local:
+            case DateTimeKind.Unspecified:
+                return;
+            default:
+                Assert.Fail("时间值 Kind 不允许为 UTC 语义。");
+                return;
+        }
+    }
 }

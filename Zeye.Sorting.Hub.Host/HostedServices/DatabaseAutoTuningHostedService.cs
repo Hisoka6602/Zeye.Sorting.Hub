@@ -14,21 +14,66 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
     /// <summary>数据库自动调谐后台服务：慢查询分析 + 闭环自治执行/验证/回退 + 审计日志</summary>
     public sealed class DatabaseAutoTuningHostedService : BackgroundService {
+        /// <summary>
+        /// 性能调优配置节前缀。
+        /// </summary>
         private const string PerformanceConfigPrefix = "Persistence:PerformanceTuning";
+        /// <summary>
+        /// 可跟踪慢查询指纹数量上限，防止状态集合无限增长。
+        /// </summary>
         private const int MaxTrackedFingerprintCount = 1000;
+        /// <summary>
+        /// 可跟踪热点表上限，避免内存无限增长。
+        /// </summary>
         private const int MaxTrackedTableCount = 500;
+        /// <summary>
+        /// 单表容量快照保留上限，用于容量趋势预测。
+        /// </summary>
         private const int MaxCapacitySnapshotsPerTable = 64;
+        /// <summary>
+        /// 不可用标签占位值，用于缺失维度的统一输出。
+        /// </summary>
         private const string NotAvailableTag = "n/a";
         // 风险项采用加权叠加后再截断到 [0,1]，刻意不要求权重和为 1。
+        /// <summary>
+        /// 危险 DDL 动作风险权重。
+        /// </summary>
         private const decimal DangerousActionRiskWeight = 0.45m;
+        /// <summary>
+        /// 高峰时段风险权重。
+        /// </summary>
         private const decimal PeakWindowRiskWeight = 0.20m;
+        /// <summary>
+        /// 高 P99 延迟风险权重。
+        /// </summary>
         private const decimal HighP99RiskWeight = 0.15m;
+        /// <summary>
+        /// 高超时率风险权重。
+        /// </summary>
         private const decimal HighTimeoutRiskWeight = 0.15m;
+        /// <summary>
+        /// 高错误率风险权重。
+        /// </summary>
         private const decimal HighErrorRiskWeight = 0.10m;
+        /// <summary>
+        /// 死锁风险权重。
+        /// </summary>
         private const decimal DeadlockRiskWeight = 0.20m;
+        /// <summary>
+        /// 高 P99 判定阈值（毫秒）。
+        /// </summary>
         private const double HighP99ThresholdMilliseconds = 1000d;
+        /// <summary>
+        /// 高超时率判定阈值（百分比）。
+        /// </summary>
         private const decimal HighTimeoutThresholdPercent = 1m;
+        /// <summary>
+        /// 高错误率判定阈值（百分比）。
+        /// </summary>
         private const decimal HighErrorThresholdPercent = 1m;
+        /// <summary>
+        /// 待回滚动作保留时长，超时后清理。
+        /// </summary>
         private static readonly TimeSpan PendingRollbackRetention = TimeSpan.FromHours(24);
         private static readonly Regex SqlServerCreateIndexRegex = new(
             @"\bcreate\s+(?:unique\s+)?index\s+\[(?<index>[^\]]+)\]\s+on\s+(?<table>\[[^\]]+\](?:\.\[[^\]]+\])?)",
@@ -61,132 +106,213 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// 字段：_logger。
         /// </summary>
         private readonly ILogger<DatabaseAutoTuningHostedService> _logger;
+        /// <summary>
+        /// 自动调优可观测输出器（指标/事件）。
+        /// </summary>
         private readonly IAutoTuningObservability _observability;
         /// <summary>
         /// 字段：_planRegressionProbe。
         /// </summary>
         private readonly IExecutionPlanRegressionProbe _planRegressionProbe;
+        /// <summary>
+        /// DI 作用域工厂，用于按周期解析仓储依赖。
+        /// </summary>
         private readonly IServiceScopeFactory _scopeFactory;
         /// <summary>
         /// 字段：_dialect。
         /// </summary>
         private readonly IDatabaseDialect _dialect;
+        /// <summary>
+        /// 慢查询采集与分析管道。
+        /// </summary>
         private readonly SlowQueryAutoTuningPipeline _pipeline;
         /// <summary>
         /// 字段：_analyzeIntervalSeconds。
         /// </summary>
         private readonly int _analyzeIntervalSeconds;
+        /// <summary>
+        /// 每轮最多执行的自动动作数。
+        /// </summary>
         private readonly int _maxExecuteActionsPerCycle;
         /// <summary>
         /// 字段：_actionExecutionTimeoutSeconds。
         /// </summary>
         private readonly int _actionExecutionTimeoutSeconds;
+        /// <summary>
+        /// 高峰期是否跳过自动执行。
+        /// </summary>
         private readonly bool _skipExecutionDuringPeak;
         /// <summary>
         /// 字段：_peakStartTime。
         /// </summary>
         private readonly TimeSpan _peakStartTime;
+        /// <summary>
+        /// 高峰时段结束时间（本地时间）。
+        /// </summary>
         private readonly TimeSpan _peakEndTime;
         /// <summary>
         /// 字段：_enableAutoRollback。
         /// </summary>
         private readonly bool _enableAutoRollback;
+        /// <summary>
+        /// 危险动作隔离器总开关。
+        /// </summary>
         private readonly bool _enableDangerousActionIsolator;
         /// <summary>
         /// 字段：_allowDangerousActionExecution。
         /// </summary>
         private readonly bool _allowDangerousActionExecution;
+        /// <summary>
+        /// 自动动作是否启用演练模式。
+        /// </summary>
         private readonly bool _enableActionDryRun;
         /// <summary>
         /// 字段：_whitelistedTables。
         /// </summary>
         private readonly HashSet<string> _whitelistedTables;
+        /// <summary>
+        /// 指纹到待回滚动作的索引表，用于验证后触发回滚。
+        /// </summary>
         private readonly Dictionary<string, PendingRollbackAction> _pendingRollbackByFingerprint = new(StringComparer.OrdinalIgnoreCase);
         /// <summary>
         /// 字段：_baselineCommandTimeoutSeconds。
         /// </summary>
         private readonly int _baselineCommandTimeoutSeconds;
+        /// <summary>
+        /// 基线重试次数配置。
+        /// </summary>
         private readonly int _baselineMaxRetryCount;
         /// <summary>
         /// 字段：_baselineMaxRetryDelaySeconds。
         /// </summary>
         private readonly int _baselineMaxRetryDelaySeconds;
+        /// <summary>
+        /// 当前命令超时配置（秒）。
+        /// </summary>
         private readonly int _configuredCommandTimeoutSeconds;
         /// <summary>
         /// 字段：_configuredMaxRetryCount。
         /// </summary>
         private readonly int _configuredMaxRetryCount;
+        /// <summary>
+        /// 当前最大重试间隔配置（秒）。
+        /// </summary>
         private readonly int _configuredMaxRetryDelaySeconds;
         /// <summary>
         /// 字段：_enableFullAutomation。
         /// </summary>
         private readonly bool _enableFullAutomation;
+        /// <summary>
+        /// 进入执行策略评估的最小表热度调用次数。
+        /// </summary>
         private readonly int _policyMinTableHeatCalls;
         /// <summary>
         /// 字段：_policyMaxRiskScore。
         /// </summary>
         private readonly decimal _policyMaxRiskScore;
+        /// <summary>
+        /// 高峰窗口最大允许风险分。
+        /// </summary>
         private readonly decimal _policyPeakMaxRiskScore;
         /// <summary>
         /// 字段：_policyPeakMaxTableHeatCalls。
         /// </summary>
         private readonly int _policyPeakMaxTableHeatCalls;
+        /// <summary>
+        /// 自动验证总开关。
+        /// </summary>
         private readonly bool _enableAutoValidation;
         /// <summary>
         /// 字段：_validationDelayCycles。
         /// </summary>
         private readonly int _validationDelayCycles;
+        /// <summary>
+        /// P95 回归判定阈值（百分比）。
+        /// </summary>
         private readonly decimal _validationP95IncreasePercent;
         /// <summary>
         /// 字段：_validationP99IncreasePercent。
         /// </summary>
         private readonly decimal _validationP99IncreasePercent;
+        /// <summary>
+        /// 错误率回归判定阈值（百分比）。
+        /// </summary>
         private readonly decimal _validationErrorRateIncreasePercent;
         /// <summary>
         /// 字段：_validationTimeoutRateIncreasePercent。
         /// </summary>
         private readonly decimal _validationTimeoutRateIncreasePercent;
+        /// <summary>
+        /// 死锁数回归判定阈值（增量计数）。
+        /// </summary>
         private readonly int _validationDeadlockIncreaseCount;
         /// <summary>
         /// 字段：_enableCapacityPrediction。
         /// </summary>
         private readonly bool _enableCapacityPrediction;
+        /// <summary>
+        /// 容量预测天数窗口。
+        /// </summary>
         private readonly int _capacityProjectionDays;
         /// <summary>
         /// 字段：_capacityGrowthAlertRows。
         /// </summary>
         private readonly int _capacityGrowthAlertRows;
+        /// <summary>
+        /// 热点分层建议阈值（行数）。
+        /// </summary>
         private readonly int _capacityHotLayeringRows;
         /// <summary>
         /// 字段：_configuredSlowQueryThresholdMilliseconds。
         /// </summary>
         private readonly int _configuredSlowQueryThresholdMilliseconds;
+        /// <summary>
+        /// 慢查询触发次数配置。
+        /// </summary>
         private readonly int _configuredTriggerCount;
         /// <summary>
         /// 字段：_configuredMaxSuggestionsPerCycle。
         /// </summary>
         private readonly int _configuredMaxSuggestionsPerCycle;
+        /// <summary>
+        /// 告警 P99 阈值配置（毫秒）。
+        /// </summary>
         private readonly int _configuredAlertP99Milliseconds;
         /// <summary>
         /// 字段：_configuredAlertTimeoutRatePercent。
         /// </summary>
         private readonly decimal _configuredAlertTimeoutRatePercent;
+        /// <summary>
+        /// 告警死锁阈值配置（计数）。
+        /// </summary>
         private readonly int _configuredAlertDeadlockCount;
         /// <summary>
         /// 字段：_severeRollbackP99IncreasePercent。
         /// </summary>
         private readonly decimal _severeRollbackP99IncreasePercent;
+        /// <summary>
+        /// 严重回归触发回滚的超时率阈值（百分比）。
+        /// </summary>
         private readonly decimal _severeRollbackTimeoutIncreasePercent;
         /// <summary>
         /// 字段：_pauseActionCyclesOnRegression。
         /// </summary>
         private readonly int _pauseActionCyclesOnRegression;
+        /// <summary>
+        /// 执行计划探针开关。
+        /// </summary>
         private readonly bool _enablePlanProbe;
         /// <summary>
         /// 字段：_planProbeSampleRate。
         /// </summary>
         private readonly decimal _planProbeSampleRate;
+        /// <summary>
+        /// 表级热度计数（用于策略评估）。
+        /// </summary>
         private readonly Dictionary<string, int> _tableHeatByTable = new(StringComparer.OrdinalIgnoreCase);
+        /// <summary>
+        /// 表级容量快照序列（用于容量趋势预测）。
+        /// </summary>
         private readonly Dictionary<string, Queue<TableCapacitySnapshot>> _capacitySnapshotsByTable = new(StringComparer.OrdinalIgnoreCase);
         /// <summary>
         /// 字段：_modelIndexColumnsByTable。
@@ -196,11 +322,17 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// 字段：_analysisCycleCounter。
         /// </summary>
         private int _analysisCycleCounter;
+        /// <summary>
+        /// 暂停自动执行截止周期（含）。
+        /// </summary>
         private int _pauseExecutionUntilCycle;
         /// <summary>
         /// 字段：_currentStage。
         /// </summary>
         private AutoTuningClosedLoopStage _currentStage = AutoTuningClosedLoopStage.Monitor;
+        /// <summary>
+        /// 闭环阶段追踪器，用于审计阶段迁移链路。
+        /// </summary>
         private readonly AutoTuningClosedLoopTracker _closedLoopTracker = new();
 
         /// <summary>初始化数据库自动调谐后台服务及其运行策略参数。</summary>

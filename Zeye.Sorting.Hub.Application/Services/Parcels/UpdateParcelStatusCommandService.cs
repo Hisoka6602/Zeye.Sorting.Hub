@@ -92,13 +92,7 @@ public sealed class UpdateParcelStatusCommandService {
             // 步骤 6：返回更新后的包裹详情合同。
             return ParcelContractMapper.ToDetail(parcel);
         }
-        catch (ArgumentException) {
-            throw;
-        }
-        catch (InvalidOperationException) {
-            throw;
-        }
-        catch (Exception ex) {
+        catch (Exception ex) when (ex is not ArgumentException && ex is not InvalidOperationException) {
             Logger.Error(ex, "更新包裹状态发生意外异常，ParcelId={ParcelId}, Operation={Operation}", parcelId, operation);
             throw;
         }
