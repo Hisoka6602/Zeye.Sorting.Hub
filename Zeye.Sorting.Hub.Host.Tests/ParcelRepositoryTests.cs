@@ -29,7 +29,7 @@ public sealed class ParcelRepositoryTests {
         var databaseName = $"parcel-repo-di-test-{Guid.NewGuid():N}";
         var options = BuildOptions(databaseName);
         var services = new ServiceCollection();
-        services.AddSingleton<IDbContextFactory<SortingHubDbContext>>(new TestDbContextFactory(options));
+        services.AddSingleton<IDbContextFactory<SortingHubDbContext>>(new SortingHubTestDbContextFactory(options));
         services.AddScoped<IParcelRepository, ParcelRepository>();
 
         using var serviceProvider = services.BuildServiceProvider();
@@ -525,7 +525,7 @@ public sealed class ParcelRepositoryTests {
     /// </summary>
     private static ParcelRepository CreateRepository(string databaseName, IConfiguration? configuration = null) {
         var options = BuildOptions(databaseName);
-        var factory = new TestDbContextFactory(options);
+        var factory = new SortingHubTestDbContextFactory(options);
         return new ParcelRepository(factory, configuration);
     }
 
@@ -620,36 +620,5 @@ public sealed class ParcelRepositoryTests {
         var options = BuildOptions(databaseName);
         await using var db = new SortingHubDbContext(options);
         await db.Database.EnsureDeletedAsync();
-    }
-
-    /// <summary>
-    /// 测试用 DbContextFactory。
-    /// </summary>
-    private sealed class TestDbContextFactory : IDbContextFactory<SortingHubDbContext> {
-        /// <summary>
-        /// 用于创建 InMemory 测试数据库上下文的配置选项。
-        /// </summary>
-        private readonly DbContextOptions<SortingHubDbContext> _options;
-
-        /// <summary>
-        /// 创建测试 DbContextFactory。
-        /// </summary>
-        public TestDbContextFactory(DbContextOptions<SortingHubDbContext> options) {
-            _options = options;
-        }
-
-        /// <summary>
-        /// 创建 DbContext。
-        /// </summary>
-        public SortingHubDbContext CreateDbContext() {
-            return new SortingHubDbContext(_options);
-        }
-
-        /// <summary>
-        /// 异步创建 DbContext。
-        /// </summary>
-        public Task<SortingHubDbContext> CreateDbContextAsync(CancellationToken cancellationToken = default) {
-            return Task.FromResult(new SortingHubDbContext(_options));
-        }
     }
 }
