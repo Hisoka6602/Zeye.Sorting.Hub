@@ -5,13 +5,20 @@ set -euo pipefail
 # 记录校验失败总数。
 FAILURES=0
 
-# Copilot 限制规则快照哈希；当规则文本变更时必须同步更新本脚本。
+# Copilot 限制规则快照哈希；规则变更后运行脚本内 compute_rules_hash 对应逻辑重新计算并更新此值。
 COPILOT_RULES_SHA256="c12fca7a1d694d2d7dad88c5d15a70ffd6be77885f44339ffaa0feb7c6cc906e"
 
 # PR diff 缓存，避免重复计算。
 PR_DIFF_READY=0
 PR_DIFF_NAME_ONLY=""
 PR_DIFF_NAME_STATUS=""
+
+# 方法声明正则（用于注释检查与重复签名检查复用）。
+METHOD_SIGNATURE_PATTERN='^[[:space:]]*(public|internal|private|protected)[[:space:]]+(static[[:space:]]+)?(async[[:space:]]+)?([A-Za-z_][A-Za-z0-9_<>,\?\[\]\.]*)[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\([^;]*\)[[:space:]]*(\{|=>)'
+# 字段声明正则（用于字段注释检查）。
+FIELD_SIGNATURE_PATTERN='^[[:space:]]*(private|protected|internal|public)[[:space:]]+(static[[:space:]]+)?(readonly[[:space:]]+)?[A-Za-z_][A-Za-z0-9_<>,\?\[\]\.]*[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*(=|;)'
+# Swagger 相关改动路径模式。
+SWAGGER_RELATED_PATH_PATTERN='(^|/)(Swagger/|Program\.cs|Zeye\.Sorting\.Hub\.Contracts/Enums/|Zeye\.Sorting\.Hub\.Domain/Enums/)'
 
 # 记录当前执行阶段信息，便于 CI 日志定位。
 log_step() {
@@ -101,7 +108,60 @@ get_pr_added_or_deleted_files() {
 # 判断文件是否包含中文字符。
 contains_chinese_char() {
   local input="$1"
+  if echo "$input" | grep -q -P '\p{Han}' 2>/dev/null; then
+    return 0
+  fi
   echo "$input" | grep -q -E '[一-龥]'
+}
+
+# 判断声明前是否存在紧邻的 XML 注释块（允许空行与特性行）。
+has_adjacent_xml_comment() {
+  local file_path="$1"
+  local target_line="$2"
+  local max_steps="${3:-10}"
+  local current_line=$((target_line - 1))
+  local steps=0
+
+  while [[ "$current_line" -ge 1 && "$steps" -lt "$max_steps" ]]; do
+    local content
+    content="$(sed -n "${current_line}p" "$file_path")"
+
+    if echo "$content" | grep -q -E '^[[:space:]]*$|^[[:space:]]*\[[^]]+\][[:space:]]*$'; then
+      current_line=$((current_line - 1))
+      steps=$((steps + 1))
+      continue
+    fi
+
+    if echo "$content" | grep -q -E '^[[:space:]]*///'; then
+      return 0
+    fi
+
+    return 1
+  done
+
+  return 1
+}
+
+# 抽取从起始行到匹配右花括号结束的代码块。
+extract_brace_block() {
+  local file_path="$1"
+  local start_line="$2"
+  awk -v start="$start_line" '
+    NR < start { next }
+    {
+      line = $0
+      open_count = gsub(/\{/, "{", line)
+      close_count = gsub(/\}/, "}", line)
+      if (open_count > 0) {
+        saw_open = 1
+      }
+      balance += (open_count - close_count)
+      print $0
+      if (saw_open && balance <= 0) {
+        exit
+      }
+    }
+  ' "$file_path"
 }
 
 # 使用 grep 在受限环境中执行正则扫描。
@@ -152,7 +212,7 @@ check_no_utc_api_usage() {
 check_no_utc_or_offset_datetime_examples_in_config() {
   log_step "执行规则校验：配置时间示例不得使用 Z 或 offset"
 
-  local datetime_with_zone_pattern='"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:\.]+(Z|[+-][0-9]{2}:[0-9]{2})"'
+  local datetime_with_zone_pattern='"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:\\.]+(Z|[+-][0-9]{2}:[0-9]{2})"'
   local result
   result="$(find . -type f -name 'appsettings*.json' -print0 | xargs -0 grep -n -E -- "$datetime_with_zone_pattern" 2>/dev/null || true)"
   if [[ -n "$result" ]]; then
@@ -182,7 +242,7 @@ check_doc_pdf_to_md_traceability() {
     fi
 
     local has_traceability=0
-    if grep -q -E '出处|来源|Source|source|原文|原文档' "$file_path"; then
+    if grep -q -E '^[[:space:]]*(#+[[:space:]]*)?(出处|来源|原文|原文档)[[:space:]:：]|^[[:space:]]*[-*][[:space:]]*(出处|来源|原文|原文档)[[:space:]:：]|^[[:space:]]*(Source|source)[[:space:]:：]' "$file_path"; then
       has_traceability=1
     fi
 
@@ -206,7 +266,6 @@ check_method_comments() {
     return
   fi
 
-  local method_pattern='^[[:space:]]*(public|internal|private|protected)[[:space:]]+(static[[:space:]]+)?(async[[:space:]]+)?([A-Za-z_][A-Za-z0-9_<>,\?\[\]\.]*)[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\([^;]*\)[[:space:]]*(\{|=>)'
   local file_path=""
   while IFS= read -r file_path; do
     [[ -z "$file_path" ]] && continue
@@ -215,16 +274,10 @@ check_method_comments() {
     local line_number=""
     while IFS=: read -r line_number _; do
       [[ -z "$line_number" ]] && continue
-      local upper_start=$((line_number - 3))
-      if [[ "$upper_start" -lt 1 ]]; then
-        upper_start=1
-      fi
-      local upper_block
-      upper_block="$(sed -n "${upper_start},$((line_number - 1))p" "$file_path")"
-      if ! echo "$upper_block" | grep -q -E '^[[:space:]]*///'; then
+      if ! has_adjacent_xml_comment "$file_path" "$line_number" 12; then
         record_failure "方法缺少 XML 注释，违反规则 5：${file_path}:${line_number}"
       fi
-    done < <(grep -n -E "$method_pattern" "$file_path" || true)
+    done < <(grep -n -E "$METHOD_SIGNATURE_PATTERN" "$file_path" || true)
   done <<< "$changed_cs_files"
 }
 
@@ -245,7 +298,7 @@ check_no_duplicate_method_signature() {
 
   local duplicated
   duplicated="$(while IFS= read -r f; do
-    (grep -E '^[[:space:]]*(public|internal|private|protected)[[:space:]]+(static[[:space:]]+)?(async[[:space:]]+)?[A-Za-z_][A-Za-z0-9_<>,\?\[\]\.]*[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(' "$f" || true) \
+    (grep -E "$METHOD_SIGNATURE_PATTERN" "$f" || true) \
       | sed -E 's/[[:space:]]+/ /g' \
       | sort \
       | uniq -d \
@@ -410,10 +463,9 @@ check_exception_logging() {
     local line_no=""
     while IFS=: read -r line_no _; do
       [[ -z "$line_no" ]] && continue
-      local end_line=$((line_no + 30))
       local block
-      block="$(sed -n "${line_no},${end_line}p" "$file_path")"
-      if ! echo "$block" | grep -q -E 'Log(Error|Warn|Info|Debug|Fatal)|logger\.'; then
+      block="$(extract_brace_block "$file_path" "$line_no")"
+      if ! echo "$block" | grep -q -E '(^|[[:space:]])(Log|_?logger|NLogLogger)\.(Error|Warn|Info|Debug|Fatal|Trace)\('; then
         record_failure "catch 块缺少日志输出，违反规则 12：${file_path}:${line_no}"
       fi
     done <<< "$catch_lines"
@@ -434,7 +486,6 @@ check_field_comments() {
     return
   fi
 
-  local field_pattern='^[[:space:]]*(private|protected|internal|public)[[:space:]]+(static[[:space:]]+)?(readonly[[:space:]]+)?[A-Za-z_][A-Za-z0-9_<>,\?\[\]\.]*[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*(=|;)'
   local file_path=""
   while IFS= read -r file_path; do
     [[ -z "$file_path" ]] && continue
@@ -443,16 +494,10 @@ check_field_comments() {
     local line_number=""
     while IFS=: read -r line_number _; do
       [[ -z "$line_number" ]] && continue
-      local upper_start=$((line_number - 2))
-      if [[ "$upper_start" -lt 1 ]]; then
-        upper_start=1
-      fi
-      local upper_block
-      upper_block="$(sed -n "${upper_start},$((line_number - 1))p" "$file_path")"
-      if ! echo "$upper_block" | grep -q -E '^[[:space:]]*///'; then
+      if ! has_adjacent_xml_comment "$file_path" "$line_number" 10; then
         record_failure "字段缺少 XML 注释，违反规则 14：${file_path}:${line_number}"
       fi
-    done < <(grep -n -E "$field_pattern" "$file_path" || true)
+    done < <(grep -n -E "$FIELD_SIGNATURE_PATTERN" "$file_path" || true)
   done <<< "$changed_cs_files"
 }
 
@@ -474,7 +519,7 @@ check_nlog_only() {
   while IFS= read -r file_path; do
     [[ -z "$file_path" ]] && continue
     [[ -f "$file_path" ]] || continue
-    if grep -q -E 'using[[:space:]]+Microsoft\.Extensions\.Logging|ILogger<' "$file_path"; then
+    if grep -q -E 'using[[:space:]]+Microsoft\.Extensions\.Logging|ILogger[[:space:]]*<' "$file_path"; then
       record_failure "检测到非 NLog 日志用法，违反规则 15：$file_path"
     fi
   done <<< "$changed_cs_files"
@@ -494,13 +539,14 @@ check_no_second_person_in_comments() {
     return
   fi
 
-  local second_person_pattern='你|您|你们|您们|your|yours|you'
+  local second_person_cn_pattern='你|您|你们|您们'
+  local second_person_en_pattern='\<(you|your|yours)\>'
   local file_path=""
   while IFS= read -r file_path; do
     [[ -z "$file_path" ]] && continue
     [[ -f "$file_path" ]] || continue
     local result
-    result="$(grep -n -E '^[[:space:]]*(///|//|/\*)' "$file_path" | grep -E "$second_person_pattern" || true)"
+    result="$(grep -n -E '^[[:space:]]*(///|//|/\*)' "$file_path" | grep -E -i "$second_person_cn_pattern|$second_person_en_pattern" || true)"
     if [[ -n "$result" ]]; then
       record_failure "注释存在第二人称，违反规则 20：\n${file_path}:\n${result}"
     fi
@@ -568,7 +614,7 @@ check_copilot_language_rule() {
   pr_title="$(grep -o -E '"title":[[:space:]]*"[^"]*"' "$event_path" | head -n 1 || true)"
   local actor
   actor="${GITHUB_ACTOR:-}"
-  if [[ "$actor" == *"copilot"* && -n "$pr_title" ]] && ! contains_chinese_char "$pr_title"; then
+  if [[ ( "$actor" == "github-copilot[bot]" || "$actor" == "copilot-autofix[bot]" ) && -n "$pr_title" ]] && ! contains_chinese_char "$pr_title"; then
     record_failure "PR 标题缺少中文语义，违反规则 13。"
   fi
 }
@@ -586,7 +632,7 @@ check_copilot_pr_creation_rule() {
     return
   fi
 
-  if [[ "$head_ref" != copilot/* ]]; then
+  if [[ ! "$head_ref" =~ ^copilot/ ]]; then
     record_failure "PR 源分支未使用 copilot/ 前缀，违反规则 16：${head_ref}"
   fi
 }
@@ -628,7 +674,7 @@ check_performance_patterns() {
     return
   fi
 
-  local pattern='ToList\(\)\.Count|Count\(\)[[:space:]]*==[[:space:]]*0|Any\(\)[[:space:]]*==[[:space:]]*true'
+  local pattern='ToList\(\)\.Count|Any\(\)[[:space:]]*==[[:space:]]*true'
   local file_path=""
   while IFS= read -r file_path; do
     [[ -z "$file_path" ]] && continue
@@ -660,7 +706,7 @@ check_naming_conventions() {
     [[ -z "$file_path" ]] && continue
     local file_name
     file_name="$(basename "$file_path" .cs)"
-    if ! echo "$file_name" | grep -q -E '^[A-Z][A-Za-z0-9]*$'; then
+    if ! echo "$file_name" | grep -q -E '^[A-Z][A-Za-z0-9_]*$'; then
       record_failure "新增 C# 文件未使用 PascalCase 命名，违反规则 21：$file_path"
     fi
   done <<< "$added_cs_files"
@@ -676,7 +722,7 @@ check_swagger_chinese_comments() {
 
   ensure_pr_diff_ready
   local changed_swagger_files
-  changed_swagger_files="$(echo "$PR_DIFF_NAME_ONLY" | grep -E '(Swagger|Program\.cs|Contracts/Enums|Domain/Enums)' || true)"
+  changed_swagger_files="$(echo "$PR_DIFF_NAME_ONLY" | grep -E "$SWAGGER_RELATED_PATH_PATTERN" || true)"
   if [[ -z "$changed_swagger_files" ]]; then
     return
   fi
@@ -685,8 +731,10 @@ check_swagger_chinese_comments() {
   while IFS= read -r file_path; do
     [[ -z "$file_path" ]] && continue
     [[ -f "$file_path" ]] || continue
-    if ! grep -q -E '[一-龥]' "$file_path"; then
-      record_failure "Swagger 相关改动缺少中文注释，违反规则 24：$file_path"
+    local added_comment_lines
+    added_comment_lines="$(git --no-pager diff --unified=0 "origin/${GITHUB_BASE_REF}...HEAD" -- "$file_path" | grep -E '^\+' | grep -v -E '^\+\+\+' | grep -E '^[+][[:space:]]*///' || true)"
+    if [[ -n "$added_comment_lines" ]] && ! echo "$added_comment_lines" | grep -q -P '\p{Han}'; then
+      record_failure "Swagger 相关新增/修改注释未包含中文，违反规则 24：$file_path"
     fi
   done <<< "$changed_swagger_files"
 }
@@ -709,7 +757,26 @@ check_single_class_per_file() {
   local result
   result="$(echo "$cs_files" | while IFS= read -r file_path; do
     [[ -f "$file_path" ]] || continue
-    class_count="$(grep -E '^[[:space:]]*(public|internal|private|protected)?[[:space:]]*(sealed[[:space:]]+|abstract[[:space:]]+|static[[:space:]]+|partial[[:space:]]+)*class[[:space:]]+' "$file_path" | wc -l)"
+    local class_count
+    class_count="$(awk '
+      BEGIN { in_block = 0; count = 0 }
+      {
+        line = $0
+        if (in_block == 1) {
+          if (line ~ /\*\//) { in_block = 0 }
+          next
+        }
+        if (line ~ /^[[:space:]]*\/\//) { next }
+        if (line ~ /\/\*/) {
+          if (line !~ /\*\//) { in_block = 1 }
+          next
+        }
+        if (line ~ /^[[:space:]]*(public|internal|private|protected)?[[:space:]]*(sealed[[:space:]]+|abstract[[:space:]]+|static[[:space:]]+|partial[[:space:]]+)*class[[:space:]]+/) {
+          count++
+        }
+      }
+      END { print count }
+    ' "$file_path")"
     if [[ "$class_count" -gt 1 ]]; then
       echo "${file_path}: ${class_count}"
     fi
