@@ -207,7 +207,8 @@
 │   │   │   ├── 20260322072600_AddBarCodesFullTextIndex.Designer.cs（迁移元数据，自动生成）
 │   │   │   └── SortingHubDbContextModelSnapshot.cs（当前模型快照，自动生成）
 │   │   └── SortingHubDbContext.cs（EF Core DbContext）
-│   │   └── DbProviderNames.cs（EF Core 数据库提供器名称常量集中定义）
+│   │   ├── DbProviderNames.cs（EF Core 运行时/迁移 providerName 常量）
+│   │   └── ConfiguredProviderNames.cs（配置层 provider key 常量：Persistence:Provider / ConnectionStrings key / CLI --provider）
 │   ├── Repositories（仓储基类与结果模型目录）
 │   │   ├── MemoryCacheRepositoryBase.cs（带内存缓存失效的仓储基类，使用 NLog 日志）
 │   │   ├── ParcelRepository.cs（Parcel 仓储第一阶段实现，使用静态 NLog logger，无需 MEL ILogger 构造注入）
@@ -437,7 +438,8 @@
 
 #### `Zeye.Sorting.Hub.Infrastructure/Persistence/`：持久化核心目录（DbContext、方言、设计时工厂）
 - `SortingHubDbContext.cs`：EF Core DbContext（实体集与模型构建入口）。
-- `DbProviderNames.cs`：EF Core 数据库提供器名称常量集中定义（`MySql` / `SqlServer`），仓储与迁移统一引用此处，避免跨文件硬编码重复。
+- `DbProviderNames.cs`：EF Core 运行时/迁移 providerName 常量（`Pomelo.EntityFrameworkCore.MySql` / `Microsoft.EntityFrameworkCore.SqlServer`），用于 `DbContext.Database.ProviderName` 识别与迁移分支判断。
+- `ConfiguredProviderNames.cs`：配置层 provider key 常量（`MySql` / `SqlServer`），用于 `Persistence:Provider`、`ConnectionStrings` key 与设计时 CLI `--provider` 参数值，避免配置语义与 EF providerName 语义混用。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/DatabaseDialects/`：数据库方言抽象与实现目录
 - `DatabaseProviderExceptionHelper.cs`：数据库异常错误码提取与方言共享索引列归一化/索引名构造辅助类。
@@ -467,8 +469,8 @@
 - `ParcelVolumeThresholdAction.cs`：容量阈值动作枚举（`AlertOnly` / `SwitchToPerDay`，含 `Description`）。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/DesignTime/`：EF 设计时支持目录
-- `MySqlContextFactory.cs`：MySQL 设计时 DbContext 工厂（实现 `IDesignTimeDbContextFactory<SortingHubDbContext>`），供 `dotnet ef migrations add/remove/list` 等 CLI 命令在无宿主进程时构建 DbContext；连接字符串从 `appsettings.json` 的 `ConnectionStrings:MySql` 读取，版本采用 AutoDetect → 兜底 8.0 两级策略。
-- `SqlServerContextFactory.cs`：SQL Server 设计时 DbContext 构建器（由统一设计时工厂按 provider 分发调用），提供 SQL Server 连接字符串搜索与 `DbContextOptions` 组装能力。
+- `MySqlContextFactory.cs`：MySQL 设计时 DbContext 工厂（实现 `IDesignTimeDbContextFactory<SortingHubDbContext>`），供 `dotnet ef migrations add/remove/list` 等 CLI 命令在无宿主进程时构建 DbContext；provider 值与连接字符串 key 使用 `ConfiguredProviderNames`，连接字符串从 `appsettings.json` 的 `ConnectionStrings:MySql` 读取，版本采用 AutoDetect → 兜底 8.0 两级策略。
+- `SqlServerContextFactory.cs`：SQL Server 设计时 DbContext 构建器（由统一设计时工厂按 provider 分发调用），连接字符串 key 使用 `ConfiguredProviderNames.SqlServer`，提供 SQL Server 连接字符串搜索与 `DbContextOptions` 组装能力。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/`：EF Core 迁移文件目录
 - `20260316184030_InitialCreate.cs`：初始迁移，包含全部表（Parcels、Bags 及各值对象属性表）的 `Up`（建表）与 `Down`（回滚）逻辑。
@@ -481,7 +483,7 @@
 - `20260318024421_OptimizeParcelAggregateQueryIndexes.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
 - `20260322050329_OptimizeBagCodeAndActualChuteIdQueryIndexes.cs`：补齐两处索引覆盖缺口迁移：① 将 `BagCode` 单列索引升级为 `(BagCode, ScannedTime)` 复合索引（覆盖 GetByBagCodeAsync 的等值 + 范围 + 排序路径）；② 新增 `(ActualChuteId, ScannedTime)` 复合索引（覆盖 GetByChuteAsync 的 ScannedTime 排序路径，原有 ActualChuteId_DischargeTime 索引保留）。
 - `20260322050329_OptimizeBagCodeAndActualChuteIdQueryIndexes.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
-- `20260322072600_AddBarCodesFullTextIndex.cs`：为 Parcels.BarCodes 列添加 MySQL FULLTEXT 全文索引（`FTX_Parcels_BarCodes`），仅 MySQL Provider 生效；SQL Server 路径为空操作。配合 ParcelRepository 中的 Provider 分支查询，使 BarCodeKeyword 搜索在 MySQL 下改走 MATCH...AGAINST 替代原 LIKE '%xxx%'（技术债务彻底消除）。
+- `20260322072600_AddBarCodesFullTextIndex.cs`：为 Parcels.BarCodes 列添加 MySQL FULLTEXT 全文索引（`FTX_Parcels_BarCodes`），仅 MySQL Provider 生效；SQL Server 路径为空操作。配合 ParcelRepository 中的 Provider 分支查询，使 BarCodeKeyword 搜索在 MySQL 下优先走 MATCH...AGAINST；但 SQL Server fallback 与 MySQL 短词边界仍属已知限制。
 - `20260322072600_AddBarCodesFullTextIndex.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
 - `SortingHubDbContextModelSnapshot.cs`：当前模型快照，EF Core 用于计算下次迁移的差量（自动生成，勿手动修改）。
 
@@ -531,8 +533,11 @@
 - 已增强 Swagger 文档：在保留真实 enum 本体增强的基础上，补齐 Contracts 值对象响应模型中的枚举数值字段映射（如 `BarCodeType`、`ProtocolType`、`ActionType`、`Direction`、`ImageType`、`CaptureType`、`NodeType` 等），统一展示“数值 + 枚举名 + 中文描述”。
 - 已补充/增强测试：`SwaggerDocumentationTests` 新增值对象枚举数值字段覆盖断言，`HostingOptionsTests` 增加无效监听地址兜底断言，确保回归可验证。
 - 已补齐 Parcels 主表两处索引覆盖缺口：① 将 `IX_Parcels_BagCode` 单列索引升级为 `(BagCode, ScannedTime)` 复合索引，覆盖 `GetByBagCodeAsync` 的等值过滤 + ScannedTime 范围 + 降序排序路径；② 新增 `IX_Parcels_ActualChuteId_ScannedTime` 复合索引，覆盖 `GetByChuteAsync` 的 ActualChuteId 过滤 + ScannedTime 降序排序路径（原有 `ActualChuteId_DischargeTime` 索引保留，服务落格时间维度查询）。
-- 已彻底解决 BarCodeKeyword 技术债务：在 MySQL 下为 `Parcels.BarCodes` 列添加 FULLTEXT 全文索引（`FTX_Parcels_BarCodes`），并将 `ParcelRepository.ApplyFilter` 改为 Provider 分支查询：MySQL 走双引号包裹的 `EF.Functions.IsMatch(phrase, Boolean)`（phrase 搜索防止条码中 `-` 等字符被 BOOLEAN MODE 解析为操作符），SQL Server 保留 `Contains()`（已知限制）。查询语义由任意子串匹配变更为 MySQL FULLTEXT 词级匹配，建议调用方传入完整词元（完整条码）。
-- 集中管理 Provider 名称常量：新增 `DbProviderNames.cs`，统一定义 `MySql` / `SqlServer` 常量，仓储与所有迁移文件均改引此处，消除跨文件重复硬编码。
+- 已显著优化 BarCodeKeyword 的 MySQL 路径：为 `Parcels.BarCodes` 列添加 FULLTEXT 全文索引（`FTX_Parcels_BarCodes`），并将 `ParcelRepository.ApplyFilter` 改为 Provider 分支查询：MySQL 走双引号包裹的 `EF.Functions.IsMatch(phrase, Boolean)`（phrase 搜索防止条码中 `-` 等字符被 BOOLEAN MODE 解析为操作符），SQL Server 保留 `Contains()`（已知限制）。
+- 已明确 MySQL FULLTEXT 的短词边界：默认 InnoDB `innodb_ft_min_token_size=3`，长度 `< 3` 的短关键字默认不会被索引；若业务存在短码搜索需求，需要调整数据库参数并重建 FULLTEXT 索引，或在应用层对短关键字回退到 LIKE 路径。
+- 已收敛 Provider 常量语义：保留 `DbProviderNames` 仅承载 EF Core 运行时/迁移 providerName；新增 `ConfiguredProviderNames` 专用于配置值/CLI 参数/ConnectionStrings key，并完成 DesignTime 工厂与持久化 DI 注册改造，避免语义混淆。
+- 已补充 `GetByChuteAsync(actualChuteId, targetChuteId, ...)` 调用边界校验：当两个格口 Id 同时为 null 时抛出“至少提供一个格口 Id”异常，并补齐仓储回归测试（双 null 异常、仅 actual、仅 target 三个场景）。
+- 已同步 API 契约/注释语义：`BarCodeKeyword` 文案调整为“条码检索词”，并明确 MySQL 为 FULLTEXT phrase/词级匹配（非任意子串匹配）、SQL Server/InMemory 可能回退 Contains 的 provider 差异。
 - 补充 `ParcelRepositoryTests` 中 BarCodeKeyword 过滤路径回归测试：覆盖含 `-` 分隔符条码的子串匹配、空格修剪、无匹配三个场景（InMemory Provider 自动走 Contains 回退路径）。
 - 消除应用层重复实现与魔法数字：新增 `Application/Utilities/EnumGuard.cs` 和 `Application/Utilities/Guard.cs`，将 8 处枚举验证、7 处参数边界检查统一收口；将 `MaxAdjacentCountPerSide = 200` 常量上移至 `IParcelRepository` 接口（唯一权威来源），Infrastructure 与 Application 均引用接口常量，消除两层各自定义魔法数字的重复。
 - 落实"日志只能使用 NLog"规范（仓储层与 SharedKernel）：① 将 `SafeExecutor`（SharedKernel）从 MEL `ILogger<T>` 迁移至 NLog 静态 logger，移除构造注入依赖，`SharedKernel.csproj` 改引用 `NLog 6.1.1`；② 将 `RepositoryBase` / `MemoryCacheRepositoryBase`（Infrastructure 仓储层）从 MEL ILogger 迁移至 NLog ILogger（构造传入模式，确保日志来源类名为实际仓储类）；③ `ParcelRepository` 新增静态 NLog logger，移除 MEL `ILogger<ParcelRepository>` 构造参数，简化 DI 注册；`Infrastructure.csproj` 新增 `NLog 6.1.1` 引用；同步清理 `ParcelRepositoryTests` / `ParcelQueryServicesTests` 中的 `NullLogger` 依赖。注意：`AutoTuning/` 下的 EF Core 拦截器与 `PersistenceServiceCollectionExtensions` 等 DI 绑定组件因须接入 EF Core MEL 管道，有意保留 MEL ILogger 注入，不在本轮迁移范围内。
@@ -545,6 +550,8 @@
 - 后续可完善反向代理与子路径部署适配（例如 `PathBase`、网关前缀下 Swagger JSON/UI 地址自动拼装），并评估自动打开地址的反向代理本机回环兼容策略。
 - 后续可补充 OpenAPI 示例值与示例请求体（含典型成功/失败样例），提升调用方接入效率。
 - 后续可为 SQL Server 路径配置 Full-Text Catalog 并改写为 `EF.Functions.Contains()`，彻底消除 SQL Server 侧的 LIKE '%xxx%' 限制。
+- 后续可补充真实 MySQL 集成测试（含 FULLTEXT phrase 匹配、`innodb_ft_min_token_size=3` 短词边界、参数调整后重建索引验证），避免仅依赖 InMemory fallback 路径。
+- 后续可在应用层评估短关键字（长度 `< 3`）回退 LIKE 的可控策略（开关+审计），平衡召回率、性能与 provider 语义一致性。
 
 ## Parcel API 发布门禁 / 使用边界说明
 

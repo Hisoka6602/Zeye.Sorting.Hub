@@ -23,6 +23,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
     /// </para>
     /// <para>
     /// 连接字符串从 <c>appsettings.json</c>（<c>ConnectionStrings:MySql</c> / <c>ConnectionStrings:SqlServer</c>）读取。
+    /// 其中 provider 值与 ConnectionStrings key 均使用 <see cref="ConfiguredProviderNames"/> 常量。
     /// 工厂按以下顺序搜索 <c>appsettings.json</c>：
     /// <list type="number">
     ///   <item><description>当前工作目录（适用于从 Host 或解决方案根目录运行 <c>dotnet ef</c>）</description></item>
@@ -33,8 +34,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
     /// </para>
     /// </remarks>
     internal sealed class MySqlContextFactory : IDesignTimeDbContextFactory<SortingHubDbContext> {
-        private const string MySqlProviderName = "MySql";
-        private const string SqlServerProviderName = "SqlServer";
         private const string ProviderArgumentName = "--provider";
 
         /// <summary>
@@ -54,12 +53,12 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
             var config = LoadConfiguration();
             var provider = ResolveProvider(args, config);
 
-            if (string.Equals(provider, SqlServerProviderName, StringComparison.OrdinalIgnoreCase)) {
+            if (string.Equals(provider, ConfiguredProviderNames.SqlServer, StringComparison.OrdinalIgnoreCase)) {
                 var factory = new SqlServerContextFactory();
                 return factory.CreateDbContext(config);
             }
 
-            var connectionString = config.GetConnectionString(MySqlProviderName);
+            var connectionString = config.GetConnectionString(ConfiguredProviderNames.MySql);
             var normalizedConnectionString = string.IsNullOrWhiteSpace(connectionString)
                 ? FallbackConnectionString
                 : connectionString.Trim();
@@ -85,7 +84,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
 
                 if (arg.StartsWith($"{ProviderArgumentName}=", StringComparison.OrdinalIgnoreCase)) {
                     if (arg.Length == ProviderArgumentName.Length + 1) {
-                        throw new InvalidOperationException("参数 '--provider=' 未提供值。可选值：MySql / SqlServer。");
+                        throw new InvalidOperationException($"参数 '--provider=' 未提供值。可选值：{ConfiguredProviderNames.MySql} / {ConfiguredProviderNames.SqlServer}。");
                     }
 
                     var provided = arg[(ProviderArgumentName.Length + 1)..];
@@ -93,7 +92,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
                 }
             }
 
-            return NormalizeProvider(config["Persistence:Provider"] ?? MySqlProviderName);
+            return NormalizeProvider(config["Persistence:Provider"] ?? ConfiguredProviderNames.MySql);
         }
 
         /// <summary>
@@ -101,18 +100,18 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
         /// </summary>
         private static string NormalizeProvider(string? provider) {
             if (string.IsNullOrWhiteSpace(provider)) {
-                throw new InvalidOperationException("数据库提供器不能为空。可选值：MySql / SqlServer。");
+                throw new InvalidOperationException($"数据库提供器不能为空。可选值：{ConfiguredProviderNames.MySql} / {ConfiguredProviderNames.SqlServer}。");
             }
 
-            if (string.Equals(provider, SqlServerProviderName, StringComparison.OrdinalIgnoreCase)) {
-                return SqlServerProviderName;
+            if (string.Equals(provider, ConfiguredProviderNames.SqlServer, StringComparison.OrdinalIgnoreCase)) {
+                return ConfiguredProviderNames.SqlServer;
             }
 
-            if (string.Equals(provider, MySqlProviderName, StringComparison.OrdinalIgnoreCase)) {
-                return MySqlProviderName;
+            if (string.Equals(provider, ConfiguredProviderNames.MySql, StringComparison.OrdinalIgnoreCase)) {
+                return ConfiguredProviderNames.MySql;
             }
 
-            throw new InvalidOperationException($"不支持的数据库提供器：{provider}。可选值：MySql / SqlServer。");
+            throw new InvalidOperationException($"不支持的数据库提供器：{provider}。可选值：{ConfiguredProviderNames.MySql} / {ConfiguredProviderNames.SqlServer}。");
         }
 
         /// <summary>

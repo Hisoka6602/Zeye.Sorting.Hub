@@ -63,6 +63,13 @@ namespace Zeye.Sorting.Hub.Domain.Repositories {
         /// <summary>
         /// 按实际/目标格口与扫码时间范围分页查询包裹摘要。
         /// </summary>
+        /// <param name="actualChuteId">实际格口 Id（可选）。</param>
+        /// <param name="targetChuteId">目标格口 Id（可选）。</param>
+        /// <param name="scannedTimeStart">扫码开始时间（含边界）。</param>
+        /// <param name="scannedTimeEnd">扫码结束时间（含边界）。</param>
+        /// <param name="pageRequest">分页参数。</param>
+        /// <param name="cancellationToken">取消令牌。</param>
+        /// <exception cref="ArgumentException">当 <paramref name="actualChuteId"/> 与 <paramref name="targetChuteId"/> 同时为空时抛出（至少提供一个格口 Id）。</exception>
         Task<PageResult<ParcelSummaryReadModel>> GetByChuteAsync(
             long? actualChuteId,
             long? targetChuteId,
