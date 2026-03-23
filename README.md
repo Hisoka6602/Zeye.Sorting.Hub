@@ -238,7 +238,7 @@
 │   │   │   ├── 20260323045038_UseExternalProvidedParcelId.cs（Parcel 主表主键改为外部提供，移除主键自动生成策略）
 │   │   │   ├── 20260323045038_UseExternalProvidedParcelId.Designer.cs（迁移元数据，自动生成）
 │   │   │   ├── AddWebRequestAuditLogHotColdTables.cs（新增 WebRequestAuditLog 热主表与冷详情表及索引）
-│   │   │   ├── AddWebRequestAuditLogHotColdTables.Designer.cs（迁移元数据，自动生成）
+│   │   │   ├── AddWebRequestAuditLogHotColdTablesDesigner.cs（迁移元数据，自动生成）
 │   │   │   └── SortingHubDbContextModelSnapshot.cs（当前模型快照，自动生成）
 │   │   └── SortingHubDbContext.cs（EF Core DbContext）
 │   │   ├── DbProviderNames.cs（EF Core 运行时/迁移 providerName 常量）
@@ -554,7 +554,7 @@
 - `20260323045038_UseExternalProvidedParcelId.cs`：Parcel 主表主键生成策略迁移（移除 Parcels.Id 自动生成，改为外部传入）；MySQL 路径执行 Identity 注解变更，SQL Server 路径保持 no-op（因 SQL Server 不支持通过 ALTER COLUMN 直接切换 IDENTITY）。
 - `20260323045038_UseExternalProvidedParcelId.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
 - `AddWebRequestAuditLogHotColdTables.cs`：新增 WebRequestAuditLog 热主表与冷详情表，落地一对一关联与写优化索引。
-- `AddWebRequestAuditLogHotColdTables.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
+- `AddWebRequestAuditLogHotColdTablesDesigner.cs`：迁移元数据文件（自动生成，勿手动修改）。
 - `SortingHubDbContextModelSnapshot.cs`：当前模型快照，EF Core 用于计算下次迁移的差量（自动生成，勿手动修改）。
 
 #### `Zeye.Sorting.Hub.Infrastructure/Repositories/`：仓储基类与结果模型目录
