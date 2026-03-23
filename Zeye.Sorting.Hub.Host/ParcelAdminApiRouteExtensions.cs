@@ -42,7 +42,6 @@ public static class ParcelAdminApiRouteExtensions {
             .WithSummary("管理端更新 Parcel 状态（支持标记完结/分拣异常/更新接口状态）")
             .WithDescription("按操作码更新包裹状态。MarkCompleted 需提供 completedTime，MarkSortingException 需提供 exceptionType，UpdateRequestStatus 需提供 requestStatus；时间字段仅接受本地时间。")
             .Produces<ParcelDetailResponse>(StatusCodes.Status200OK)
-            .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status400BadRequest);
 
         group.MapDelete("/{id:long}", DeleteParcelAsync)
@@ -50,7 +49,6 @@ public static class ParcelAdminApiRouteExtensions {
             .WithSummary("管理端删除单个 Parcel")
             .WithDescription("按主键删除单个包裹记录。删除后不可恢复，调用前应确保调用方具备管理权限。")
             .Produces(StatusCodes.Status204NoContent)
-            .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status400BadRequest);
 
         // ── 危险治理接口（单独分组，明确区分于普通业务端点）─────────────────────────
