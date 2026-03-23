@@ -237,6 +237,8 @@
 │   │   │   ├── 20260322072600_AddBarCodesFullTextIndex.Designer.cs（迁移元数据，自动生成）
 │   │   │   ├── 20260323045038_UseExternalProvidedParcelId.cs（Parcel 主表主键改为外部提供，移除主键自动生成策略）
 │   │   │   ├── 20260323045038_UseExternalProvidedParcelId.Designer.cs（迁移元数据，自动生成）
+│   │   │   ├── 20260323185052_AddWebRequestAuditLogHotColdTables.cs（新增 WebRequestAuditLog 热主表与冷详情表及索引）
+│   │   │   ├── 20260323185052_AddWebRequestAuditLogHotColdTables.Designer.cs（迁移元数据，自动生成）
 │   │   │   └── SortingHubDbContextModelSnapshot.cs（当前模型快照，自动生成）
 │   │   └── SortingHubDbContext.cs（EF Core DbContext）
 │   │   ├── DbProviderNames.cs（EF Core 运行时/迁移 providerName 常量）
@@ -551,6 +553,8 @@
 - `20260322072600_AddBarCodesFullTextIndex.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
 - `20260323045038_UseExternalProvidedParcelId.cs`：Parcel 主表主键生成策略迁移（移除 Parcels.Id 自动生成，改为外部传入）；MySQL 路径执行 Identity 注解变更，SQL Server 路径保持 no-op（因 SQL Server 不支持通过 ALTER COLUMN 直接切换 IDENTITY）。
 - `20260323045038_UseExternalProvidedParcelId.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
+- `20260323185052_AddWebRequestAuditLogHotColdTables.cs`：新增 WebRequestAuditLog 热主表与冷详情表，落地一对一关联与写优化索引。
+- `20260323185052_AddWebRequestAuditLogHotColdTables.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
 - `SortingHubDbContextModelSnapshot.cs`：当前模型快照，EF Core 用于计算下次迁移的差量（自动生成，勿手动修改）。
 
 #### `Zeye.Sorting.Hub.Infrastructure/Repositories/`：仓储基类与结果模型目录
@@ -615,6 +619,7 @@
 - 删除无引用 `AssemblyReference.cs` 空壳文件，避免无效锚点类型残留。
 - 将英文命名文档改为中文文件名并更新工作流/README/文档引用路径。
 - 新增 WebRequestAuditLog 领域冷热分离模型与映射基础能力，并补齐 README 文件树与逐项职责说明（满足新增文件同步更新要求）。
+- 修复 WebRequestAuditLog 冷表映射的跨 Provider 兼容风险（移除显式 `longtext` 绑定），并补齐审计冷热表迁移与模型快照更新。
 
 ## 更新记录与待完善事项
 
