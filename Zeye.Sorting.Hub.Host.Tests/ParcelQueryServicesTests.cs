@@ -15,7 +15,7 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 /// </summary>
 public sealed class ParcelQueryServicesTests {
     /// <summary>
-    /// 测试包裹 Id 自增序列。
+    /// 测试用唯一包裹 Id 分配序列。
     /// </summary>
     private static long _testParcelIdSequence = 1000;
     /// <summary>

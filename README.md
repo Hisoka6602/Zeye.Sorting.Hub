@@ -488,7 +488,7 @@
 - `20260322050329_OptimizeBagCodeAndActualChuteIdQueryIndexes.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
 - `20260322072600_AddBarCodesFullTextIndex.cs`：为 Parcels.BarCodes 列添加 MySQL FULLTEXT 全文索引（`FTX_Parcels_BarCodes`），仅 MySQL Provider 生效；SQL Server 路径为空操作。当前该索引作为物理分表关键索引一致性审计对象之一（仅探测/记录/阻断，不自动执行危险 DDL）。
 - `20260322072600_AddBarCodesFullTextIndex.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
-- `20260323045038_UseExternalProvidedParcelId.cs`：Parcel 主表主键生成策略迁移（移除 Parcels.Id 自动生成，改为外部传入）。
+- `20260323045038_UseExternalProvidedParcelId.cs`：Parcel 主表主键生成策略迁移（移除 Parcels.Id 自动生成，改为外部传入）；MySQL 路径执行 Identity 注解变更，SQL Server 路径保持 no-op（因 SQL Server 不支持通过 ALTER COLUMN 直接切换 IDENTITY）。
 - `20260323045038_UseExternalProvidedParcelId.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
 - `SortingHubDbContextModelSnapshot.cs`：当前模型快照，EF Core 用于计算下次迁移的差量（自动生成，勿手动修改）。
 
@@ -536,6 +536,7 @@
 - 邻近查询仓储已改造为 `GetAdjacentByIdAsync(long id, int beforeCount, int afterCount, CancellationToken)`：查询前先加载锚点包裹，前后向均排除锚点自身，并在同一扫描时间下按 Id 决定稳定先后顺序。
 - `Parcel.Id` 已改为创建时由调用方传入：`ParcelCreateRequest` 新增 `Id` 字段，`Parcel.Create(...)` 新增并校验 `id > 0`，`CreateParcelCommandService` 改为传入请求 Id，`ParcelEntityTypeConfiguration` 将主键策略改为 `ValueGeneratedNever()`。
 - 已新增迁移 `20260323045038_UseExternalProvidedParcelId` 并同步 Designer 与 ModelSnapshot，反映 Parcel 主表主键不再自动生成。
+- 已按审查意见修正 `20260323045038_UseExternalProvidedParcelId` 的 SQL Server 兼容路径：为避免 SQL Server 执行 ALTER COLUMN 切换 IDENTITY 失败，该迁移在 SQL Server 分支改为 no-op；MySQL 分支保留 Identity 注解移除/恢复逻辑。
 - 重复 Id 处理策略已明确：仓储返回“包裹 Id 已存在。”，Host 管理端创建接口将该语义映射为 `409 Conflict`，不再吞并为模糊 500。
 - 重复 Id 处理策略进一步稳固：仓储结果新增稳定错误码 `Parcel.Id.Conflict`，Application 透传该标识，Host 按错误码映射 `409 Conflict`，不再依赖错误文案字符串判断。
 - 物理分表关键索引一致性审计已补齐 `TargetChuteId` 路径：新增 `ParcelIndexNames.TargetChuteIdScannedTime`，并纳入 `ResolveCriticalIndexesForProvider()` 阻断索引集合（仍保持仅探测/记录/阻断，不自动执行 DDL）。
@@ -561,6 +562,8 @@
 - 后续可补充真实 MySQL / SQL Server 集成用例，分别覆盖 `GetAdjacentByIdAsync` 的同一扫描时间稳定排序与重复主键冲突语义，验证跨 Provider 一致性。
 - 后续可在管理端创建接口补充显式的 `CreateConflictProblem` 响应工厂，进一步统一 409 问题详情输出格式。
 - 后续可在 SQL Server 场景下补充“主键非自增”历史库平滑切换 runbook（数据校验、灰度、回退步骤）。
+- 后续可补充 `20260323045038_UseExternalProvidedParcelId` 在真实 SQL Server 实例上的端到端迁移验证（`dotnet ef database update` + 回滚验证），确保历史库升级链路与注解元数据在实机环境完全一致。
+- 后续需为 SQL Server 补充专项迁移（建新表 + 数据回填 + 外键/索引重建）以真正落地 “Parcels.Id 非自增” 结构变更，当前迁移仅保证 SQL Server 路径可安全执行且不失败。
 - 后续可补充 Swagger 鉴权策略（如文档访问令牌、角色分级可见性）并统一与 API 鉴权体系联动。
 - 后续可细化非开发环境文档暴露治理（例如内网白名单、按环境开关、发布审批审计）。
 - 后续可完善反向代理与子路径部署适配（例如 `PathBase`、网关前缀下 Swagger JSON/UI 地址自动拼装），并评估自动打开地址的反向代理本机回环兼容策略。
