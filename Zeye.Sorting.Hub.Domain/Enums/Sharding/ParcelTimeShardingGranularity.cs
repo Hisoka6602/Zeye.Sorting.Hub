@@ -1,6 +1,6 @@
 using System.ComponentModel;
 
-namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding.Enums {
+namespace Zeye.Sorting.Hub.Domain.Enums.Sharding {
 
     /// <summary>
     /// Parcel 时间分表粒度。

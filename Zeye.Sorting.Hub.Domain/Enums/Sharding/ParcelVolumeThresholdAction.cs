@@ -1,6 +1,6 @@
 using System.ComponentModel;
 
-namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding.Enums {
+namespace Zeye.Sorting.Hub.Domain.Enums.Sharding {
 
     /// <summary>
     /// 容量阈值命中后的治理动作。

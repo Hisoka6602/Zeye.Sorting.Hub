@@ -1,6 +1,6 @@
 using System.ComponentModel;
 
-namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding.Enums {
+namespace Zeye.Sorting.Hub.Domain.Enums.Sharding {
 
     /// <summary>
     /// PerDay 仍过热时建议的下一层细粒度模式。

@@ -1,6 +1,6 @@
 using System.ComponentModel;
 
-namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding.Enums {
+namespace Zeye.Sorting.Hub.Domain.Enums.Sharding {
 
     /// <summary>
     /// Parcel 聚合分表规则类型枚举。

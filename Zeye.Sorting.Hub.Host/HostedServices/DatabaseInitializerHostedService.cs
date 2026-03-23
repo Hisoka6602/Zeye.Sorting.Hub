@@ -9,13 +9,13 @@ using System.Collections.Generic;
 using EFCore.Sharding;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
-using Zeye.Sorting.Hub.Host.Enums;
+using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
-using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding.Enums;
+using Zeye.Sorting.Hub.Domain.Enums.Sharding;
 
 namespace Zeye.Sorting.Hub.Host.HostedServices {
 
@@ -300,15 +300,6 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
             return string.Equals(legacyPlan, placeholder, StringComparison.Ordinal) ? placeholder : legacyPlan;
         }
-
-        /// <summary>
-        /// 日分表预建日期解析结果。
-        /// </summary>
-        /// <param name="PrebuiltDates">已预建日期集合（本地日期）。</param>
-        /// <param name="ValidationErrors">解析错误集合。</param>
-        internal readonly record struct PrebuiltPerDayShardDatesResolution(
-            IReadOnlySet<DateTime> PrebuiltDates,
-            IReadOnlyList<string> ValidationErrors);
 
         /// <summary>
         /// 解析手工预建的日分表日期清单（yyyy-MM-dd，本地时间语义）。
@@ -887,16 +878,5 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return PersistenceServiceCollectionExtensions.GetParcelPerDayShardingEntityTypes();
         }
 
-        /// <summary>
-        /// 分表治理守卫异常：用于区分启动期治理边界失败与数据库连接失败。
-        /// </summary>
-        private sealed class ShardingGovernanceGuardException : InvalidOperationException {
-            /// <summary>
-            /// 初始化分表治理守卫异常实例。
-            /// </summary>
-            /// <param name="message">异常消息。</param>
-            public ShardingGovernanceGuardException(string message) : base(message) {
-            }
-        }
     }
 }

@@ -1,9 +1,9 @@
-namespace Zeye.Sorting.Hub.Contracts.Models.Parcels;
+namespace Zeye.Sorting.Hub.Host;
 
 /// <summary>
-/// Parcel 列表查询请求合同。
+/// Parcel 列表查询参数模型。
 /// </summary>
-public sealed record ParcelListRequest {
+internal sealed record ParcelListQueryParameters {
     /// <summary>
     /// 页码（从 1 开始）。
     /// </summary>
@@ -15,7 +15,7 @@ public sealed record ParcelListRequest {
     public int PageSize { get; init; } = 20;
 
     /// <summary>
-    /// 条码检索词（MySQL 使用 FULLTEXT Boolean 模式；其他 Provider 使用 Contains 子串匹配）。
+    /// 条码检索词（MySQL 走 FULLTEXT Boolean 模式，其他 Provider 走 Contains 子串匹配）。
     /// </summary>
     public string? BarCodeKeyword { get; init; }
 
@@ -30,13 +30,12 @@ public sealed record ParcelListRequest {
     public string? WorkstationName { get; init; }
 
     /// <summary>
-    /// 包裹状态（枚举数值）。
+    /// 包裹状态。
     /// </summary>
     public int? Status { get; init; }
 
     /// <summary>
-    /// 包裹异常类型（对应 Domain 层 ParcelExceptionType 枚举数值）。
-    /// 仅在 Status=SortingException 场景下有意义；传 null 表示不按异常类型筛选。
+    /// 包裹异常类型（对应 ParcelExceptionType 枚举数值，null 表示不限异常类型）。
     /// </summary>
     public int? ExceptionType { get; init; }
 
@@ -51,12 +50,12 @@ public sealed record ParcelListRequest {
     public long? TargetChuteId { get; init; }
 
     /// <summary>
-    /// 扫码开始时间（含边界）。
+    /// 扫码开始时间。
     /// </summary>
-    public DateTime? ScannedTimeStart { get; init; }
+    public string? ScannedTimeStart { get; init; }
 
     /// <summary>
-    /// 扫码结束时间（含边界）。
+    /// 扫码结束时间。
     /// </summary>
-    public DateTime? ScannedTimeEnd { get; init; }
+    public string? ScannedTimeEnd { get; init; }
 }

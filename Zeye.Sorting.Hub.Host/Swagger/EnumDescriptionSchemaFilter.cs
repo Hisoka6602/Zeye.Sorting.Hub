@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Reflection;
-using Zeye.Sorting.Hub.Contracts.Enums.Parcels;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.Admin;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.ValueObjects;
@@ -8,8 +7,6 @@ using Zeye.Sorting.Hub.Domain.Enums;
 using Microsoft.OpenApi.Any;
 using Microsoft.OpenApi.Models;
 using Swashbuckle.AspNetCore.SwaggerGen;
-using ContractParcelExceptionType = Zeye.Sorting.Hub.Contracts.Enums.Parcels.ParcelExceptionType;
-
 namespace Zeye.Sorting.Hub.Host.Swagger;
 
 /// <summary>
@@ -28,17 +25,17 @@ public sealed class EnumDescriptionSchemaFilter : ISchemaFilter {
             },
             [typeof(ParcelUpdateRequest)] = new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase) {
                 ["operation"] = typeof(ParcelUpdateOperation),
-                ["exceptionType"] = typeof(ContractParcelExceptionType),
+                ["exceptionType"] = typeof(ParcelExceptionType),
                 ["requestStatus"] = typeof(ApiRequestStatus)
             },
             [typeof(ParcelListRequest)] = new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase) {
                 ["status"] = typeof(ParcelStatus),
-                ["exceptionType"] = typeof(ContractParcelExceptionType)
+                ["exceptionType"] = typeof(ParcelExceptionType)
             },
             [typeof(ParcelListItemResponse)] = new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase) {
                 ["type"] = typeof(ParcelType),
                 ["status"] = typeof(ParcelStatus),
-                ["exceptionType"] = typeof(ContractParcelExceptionType),
+                ["exceptionType"] = typeof(ParcelExceptionType),
                 ["noReadType"] = typeof(NoReadType),
                 ["requestStatus"] = typeof(ApiRequestStatus)
             },

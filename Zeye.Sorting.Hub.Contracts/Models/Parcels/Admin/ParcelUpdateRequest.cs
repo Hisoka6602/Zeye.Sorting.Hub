@@ -1,5 +1,3 @@
-using Zeye.Sorting.Hub.Contracts.Enums.Parcels;
-
 namespace Zeye.Sorting.Hub.Contracts.Models.Parcels.Admin;
 
 /// <summary>
@@ -8,7 +6,7 @@ namespace Zeye.Sorting.Hub.Contracts.Models.Parcels.Admin;
 /// </summary>
 public sealed record ParcelUpdateRequest {
     /// <summary>
-    /// 操作类型（决定本次状态转换的具体语义，见 <see cref="ParcelUpdateOperation"/>）。
+    /// 操作类型（决定本次状态转换的具体语义，见 ParcelUpdateOperation 枚举定义）。
     /// </summary>
     public required int Operation { get; init; }
 

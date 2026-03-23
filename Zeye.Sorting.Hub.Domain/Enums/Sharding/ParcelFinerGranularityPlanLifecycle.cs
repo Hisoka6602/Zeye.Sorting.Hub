@@ -1,6 +1,6 @@
 using System.ComponentModel;
 
-namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding.Enums {
+namespace Zeye.Sorting.Hub.Domain.Enums.Sharding {
 
     /// <summary>
     /// finer-granularity 扩展规划生命周期。

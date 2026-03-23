@@ -17,7 +17,7 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
-using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding.Enums;
+using Zeye.Sorting.Hub.Domain.Enums.Sharding;
 using Zeye.Sorting.Hub.Infrastructure.Repositories;
 
 namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {

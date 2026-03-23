@@ -1,7 +1,7 @@
 using System.Globalization;
 using EFCore.Sharding;
 using Microsoft.Extensions.Configuration;
-using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding.Enums;
+using Zeye.Sorting.Hub.Domain.Enums.Sharding;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
 

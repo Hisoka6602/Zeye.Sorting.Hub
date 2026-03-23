@@ -1,11 +1,11 @@
 using System.ComponentModel;
 
-namespace Zeye.Sorting.Hub.Host.Enums {
+namespace Zeye.Sorting.Hub.Domain.Enums {
 
     /// <summary>
     /// 数据库迁移失败策略。
     /// </summary>
-    internal enum MigrationFailureMode {
+    public enum MigrationFailureMode {
         /// <summary>
         /// 失败后降级运行。
         /// </summary>

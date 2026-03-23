@@ -1,9 +1,8 @@
 using NLog;
 using Zeye.Sorting.Hub.Application.Utilities;
-using Zeye.Sorting.Hub.Contracts.Enums.Parcels;
+using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.Admin;
-using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Repositories;
 using DomainParcelExceptionType = Zeye.Sorting.Hub.Domain.Enums.ParcelExceptionType;
 

@@ -1,6 +1,6 @@
 using System.ComponentModel;
 
-namespace Zeye.Sorting.Hub.Contracts.Enums.Parcels;
+namespace Zeye.Sorting.Hub.Domain.Enums;
 
 /// <summary>
 /// Parcel 更新操作类型。
