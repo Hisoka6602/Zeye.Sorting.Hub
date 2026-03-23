@@ -40,6 +40,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private const string ShardingRunbookConfigKey = "Persistence:Sharding:Governance:Runbook";
         private const string ShardingManualPrebuildGuardConfigKey = "Persistence:Sharding:Governance:EnableManualPrebuildGuard";
         private const string ShardingPrebuiltPerDayDatesConfigKey = "Persistence:Sharding:Governance:PrebuiltPerDayDates";
+        private const string ShardingCriticalIndexAuditEnabledConfigKey = "Persistence:Sharding:Governance:CriticalIndexAudit:Enabled";
+        private const string ShardingCriticalIndexAuditBlockOnMissingConfigKey = "Persistence:Sharding:Governance:CriticalIndexAudit:BlockOnMissing";
         /// <summary>
         /// 字段：_serviceProvider。
         /// </summary>
@@ -79,6 +81,10 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private readonly IReadOnlySet<DateTime> _prebuiltPerDayShardDates;
         /// <summary>日分表预建日期配置解析错误集合。</summary>
         private readonly IReadOnlyList<string> _prebuiltPerDayShardDateValidationErrors;
+        /// <summary>是否启用“物理分表关键索引一致性审计”。</summary>
+        private readonly bool _enableCriticalIndexAudit;
+        /// <summary>关键索引缺失时是否阻断启动。</summary>
+        private readonly bool _blockOnCriticalIndexMissing;
         /// <summary>Parcel 分表策略决策快照。</summary>
         private readonly ParcelShardingStrategyDecision _parcelShardingStrategyDecision;
         /// <summary>Parcel 分表策略配置校验错误集合。</summary>
@@ -117,6 +123,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             var prebuiltPerDayShards = ResolvePrebuiltPerDayShardDates(configuration);
             _prebuiltPerDayShardDates = prebuiltPerDayShards.PrebuiltDates;
             _prebuiltPerDayShardDateValidationErrors = prebuiltPerDayShards.ValidationErrors;
+            _enableCriticalIndexAudit = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, ShardingCriticalIndexAuditEnabledConfigKey, true);
+            _blockOnCriticalIndexMissing = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, ShardingCriticalIndexAuditBlockOnMissingConfigKey, true);
             var parcelShardingStrategyEvaluation = ParcelShardingStrategyEvaluator.Evaluate(configuration);
             _parcelShardingStrategyDecision = parcelShardingStrategyEvaluation.Decision;
             _parcelShardingStrategyValidationErrors = parcelShardingStrategyEvaluation.ValidationErrors;
@@ -549,6 +557,10 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 _parcelShardingStrategyDecision.FinerGranularityExtensionPlan.Lifecycle,
                 _parcelShardingStrategyDecision.FinerGranularityExtensionPlan.RequiresPrebuildGuard,
                 _parcelShardingStrategyDecision.FinerGranularityExtensionPlan.Reason);
+            _logger.LogInformation(
+                "分表关键索引一致性审计配置：Enabled={Enabled}, BlockOnMissing={BlockOnMissing}",
+                _enableCriticalIndexAudit,
+                _blockOnCriticalIndexMissing);
 
             if (_parcelShardingStrategyDecision.Mode is ParcelShardingStrategyMode.Volume or ParcelShardingStrategyMode.Hybrid) {
                 _logger.LogInformation(
@@ -669,6 +681,107 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 throw new ShardingGovernanceGuardException(
                     $"分表治理守卫触发：当前策略已生效为 PerDay，且 {CreateShardingTableOnStartingConfigKey}=false。检测到配置清单已声明预建，但数据库物理表不存在。缺失物理表：{string.Join(", ", missingPhysicalTables)}。");
             }
+
+            if (!_enableCriticalIndexAudit) {
+                _logger.LogInformation(
+                    "分表关键索引一致性审计已关闭：ConfigKey={ConfigKey}",
+                    ShardingCriticalIndexAuditEnabledConfigKey);
+                return;
+            }
+
+            var missingCriticalIndexes = await AuditPerDayShardCriticalIndexesAsync(db, expectedPhysicalTables, schemaName, cancellationToken);
+            if (missingCriticalIndexes.Count == 0) {
+                return;
+            }
+
+            var summarizedMissing = missingCriticalIndexes
+                .SelectMany(static pair => pair.Value.Select(indexName => $"{pair.Key}:{indexName}"))
+                .ToArray();
+            _logger.LogError(
+                "分表关键索引一致性审计发现缺失：MissingIndexEntries={MissingIndexEntries}",
+                string.Join(", ", summarizedMissing));
+            if (_blockOnCriticalIndexMissing) {
+                throw new ShardingGovernanceGuardException(
+                    $"分表治理守卫触发：物理分表关键索引一致性审计发现缺失索引。缺失项：{string.Join(", ", summarizedMissing)}。");
+            }
+
+            _logger.LogWarning(
+                "分表关键索引一致性审计发现缺失，但当前配置仅审计不阻断：ConfigKey={ConfigKey}, MissingIndexEntries={MissingIndexEntries}",
+                ShardingCriticalIndexAuditBlockOnMissingConfigKey,
+                string.Join(", ", summarizedMissing));
+        }
+
+        /// <summary>
+        /// 审计 PerDay 物理分表关键索引一致性（仅探测/记录，不执行 DDL）。
+        /// </summary>
+        /// <param name="db">数据库上下文。</param>
+        /// <param name="physicalTableNames">待审计物理表名集合。</param>
+        /// <param name="schemaName">探测 schema。</param>
+        /// <param name="cancellationToken">取消令牌。</param>
+        /// <returns>缺失索引映射（Key=物理表名，Value=缺失索引名集合）。</returns>
+        private async Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> AuditPerDayShardCriticalIndexesAsync(
+            SortingHubDbContext db,
+            IReadOnlyList<string> physicalTableNames,
+            string? schemaName,
+            CancellationToken cancellationToken) {
+            ArgumentNullException.ThrowIfNull(db);
+            ArgumentNullException.ThrowIfNull(physicalTableNames);
+            var blockingCriticalIndexes = ResolveCriticalIndexesForProvider(_dialect.ProviderName);
+            var auditOnlyIndexes = ResolveAuditOnlyIndexesForProvider(_dialect.ProviderName);
+            var missingIndexMap = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+            foreach (var physicalTableName in physicalTableNames) {
+                var missingBlockingIndexes = await _shardingPhysicalTableProbe.FindMissingIndexesAsync(
+                    db,
+                    schemaName,
+                    physicalTableName,
+                    blockingCriticalIndexes,
+                    cancellationToken);
+                var missingAuditOnlyIndexes = await _shardingPhysicalTableProbe.FindMissingIndexesAsync(
+                    db,
+                    schemaName,
+                    physicalTableName,
+                    auditOnlyIndexes,
+                    cancellationToken);
+                if (missingAuditOnlyIndexes.Count > 0) {
+                    _logger.LogWarning(
+                        "分表关键索引一致性审计（仅审计项）发现缺失：PhysicalTable={PhysicalTable}, MissingIndexes={MissingIndexes}",
+                        physicalTableName,
+                        string.Join(", ", missingAuditOnlyIndexes));
+                }
+
+                if (missingBlockingIndexes.Count == 0) {
+                    continue;
+                }
+
+                missingIndexMap[physicalTableName] = missingBlockingIndexes;
+            }
+
+            return missingIndexMap;
+        }
+
+        /// <summary>
+        /// 解析当前 Provider 下需要审计的关键索引名集合。
+        /// </summary>
+        /// <param name="providerName">数据库提供器名称。</param>
+        /// <returns>可触发阻断的关键索引名集合。</returns>
+        internal static IReadOnlyList<string> ResolveCriticalIndexesForProvider(string providerName) {
+            return new[] {
+                ParcelIndexNames.BagCodeScannedTime,
+                ParcelIndexNames.ActualChuteIdScannedTime
+            };
+        }
+
+        /// <summary>
+        /// 解析当前 Provider 下“仅审计不阻断”的索引名集合。
+        /// </summary>
+        /// <param name="providerName">数据库提供器名称。</param>
+        /// <returns>仅审计索引名集合。</returns>
+        internal static IReadOnlyList<string> ResolveAuditOnlyIndexesForProvider(string providerName) {
+            if (string.Equals(providerName, "MySQL", StringComparison.OrdinalIgnoreCase)) {
+                return new[] { ParcelIndexNames.BarCodesFullText };
+            }
+
+            return Array.Empty<string>();
         }
 
         /// <summary>

@@ -272,6 +272,7 @@ public sealed class ParcelRepositoryTests {
                 // 步骤 1：种入含 - 分隔符条码的包裹（覆盖 - 字符在非 BOOLEAN MODE 路径下不被当作排除操作符）。
                 CreateParcel("BC-001-XYZ", "BAG-KW", "WS-KW", ParcelStatus.Pending, baseTime.AddMinutes(-5), 900, 901),
                 CreateParcel("BC-001-ABC", "BAG-KW", "WS-KW", ParcelStatus.Pending, baseTime.AddMinutes(-4), 900, 901),
+                CreateParcel("SF123456", "BAG-KW", "WS-KW", ParcelStatus.Pending, baseTime.AddMinutes(-3), 900, 901),
                 CreateParcel("UNRELATED-999", "BAG-KW", "WS-KW", ParcelStatus.Pending, baseTime.AddMinutes(-3), 900, 901)
             ]);
 
@@ -300,7 +301,55 @@ public sealed class ParcelRepositoryTests {
 
             Assert.Equal(2, resultTrimmed.TotalCount);
 
-            // 步骤 4：不存在的关键词 — 应返回空结果集。
+            // 步骤 4：部分关键词搜索（后缀）— 456 应命中 SF123456。
+            var resultSuffix = await repository.GetPagedAsync(
+                new ParcelQueryFilter {
+                    BarCodeKeyword = "456",
+                    ScannedTimeStart = baseTime.AddHours(-1),
+                    ScannedTimeEnd = baseTime.AddHours(1)
+                },
+                new PageRequest { PageNumber = 1, PageSize = 10 },
+                CancellationToken.None);
+            Assert.Equal(1, resultSuffix.TotalCount);
+            Assert.Contains("SF123456", resultSuffix.Items[0].BarCodes, StringComparison.Ordinal);
+
+            // 步骤 5：部分关键词搜索（前缀）— SF 应命中 SF123456。
+            var resultPrefix = await repository.GetPagedAsync(
+                new ParcelQueryFilter {
+                    BarCodeKeyword = "SF",
+                    ScannedTimeStart = baseTime.AddHours(-1),
+                    ScannedTimeEnd = baseTime.AddHours(1)
+                },
+                new PageRequest { PageNumber = 1, PageSize = 10 },
+                CancellationToken.None);
+            Assert.Equal(1, resultPrefix.TotalCount);
+            Assert.Contains("SF123456", resultPrefix.Items[0].BarCodes, StringComparison.Ordinal);
+
+            // 步骤 6：部分关键词搜索（中间片段）— 123 应命中 SF123456。
+            var resultMiddle = await repository.GetPagedAsync(
+                new ParcelQueryFilter {
+                    BarCodeKeyword = "123",
+                    ScannedTimeStart = baseTime.AddHours(-1),
+                    ScannedTimeEnd = baseTime.AddHours(1)
+                },
+                new PageRequest { PageNumber = 1, PageSize = 10 },
+                CancellationToken.None);
+            Assert.Equal(1, resultMiddle.TotalCount);
+            Assert.Contains("SF123456", resultMiddle.Items[0].BarCodes, StringComparison.Ordinal);
+
+            // 步骤 7：全量关键词搜索 — SF123456 应命中同一条记录。
+            var resultFull = await repository.GetPagedAsync(
+                new ParcelQueryFilter {
+                    BarCodeKeyword = "SF123456",
+                    ScannedTimeStart = baseTime.AddHours(-1),
+                    ScannedTimeEnd = baseTime.AddHours(1)
+                },
+                new PageRequest { PageNumber = 1, PageSize = 10 },
+                CancellationToken.None);
+            Assert.Equal(1, resultFull.TotalCount);
+            Assert.Contains("SF123456", resultFull.Items[0].BarCodes, StringComparison.Ordinal);
+
+            // 步骤 8：不存在的关键词 — 应返回空结果集。
             var resultNone = await repository.GetPagedAsync(
                 new ParcelQueryFilter {
                     BarCodeKeyword = "NOTEXIST",

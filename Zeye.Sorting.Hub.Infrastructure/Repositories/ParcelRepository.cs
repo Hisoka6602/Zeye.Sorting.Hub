@@ -163,7 +163,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
 
         try {
             ValidateQueryFilter(filter);
-            return ExecutePagedQueryAsync((db, query) => ApplyFilter(query, filter, db.Database.ProviderName), pageRequest, cancellationToken);
+            return ExecutePagedQueryAsync((_, query) => ApplyFilter(query, filter), pageRequest, cancellationToken);
         }
         catch (ValidationException ex) {
             Logger.Warn(
@@ -504,27 +504,11 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     /// </summary>
     /// <param name="query">基础查询。</param>
     /// <param name="filter">过滤参数。</param>
-    /// <param name="providerName">数据库提供器名称，用于选择 BarCodeKeyword 的查询实现：
-    /// MySQL（Pomelo.EntityFrameworkCore.MySql）使用 FULLTEXT MATCH...AGAINST（词级匹配，需 BarCodes 列具备 FULLTEXT 索引），
-    /// 其他提供器（含 null）均回退为 LIKE '%keyword%'（子串匹配，无索引支持，属已知限制）。</param>
-    private static IQueryable<Parcel> ApplyFilter(IQueryable<Parcel> query, ParcelQueryFilter filter, string? providerName) {
+    private static IQueryable<Parcel> ApplyFilter(IQueryable<Parcel> query, ParcelQueryFilter filter) {
         if (!string.IsNullOrWhiteSpace(filter.BarCodeKeyword)) {
             var barCodeKeyword = filter.BarCodeKeyword.Trim();
-            // 步骤 1：MySQL 使用 FULLTEXT BOOLEAN MODE，让 MATCH...AGAINST 走 FTX_Parcels_BarCodes 全文索引；
-            // providerName 为 null 或非 MySql 时，均进入 else 分支，回退 LIKE '%keyword%'。
-            if (providerName == DbProviderNames.MySql) {
-                // 步骤 2：BOOLEAN MODE 对 -、+、*、" 等字符有特殊语义（如 - 表示"排除"）；
-                // 条码通常含 -（如 BC-001），直接传入会产生意外排除结果。
-                // 用双引号包裹关键词作为 phrase 搜索，使 - 等字符被当作普通字面量。
-                // 转义顺序：先处理反斜杠（防止其转义后续添加的 \"），再处理双引号。
-                var escaped = barCodeKeyword
-                    .Replace("\\", "\\\\")   // 步骤 2a：先转义 \ 为 \\，防止其干扰后续 " 转义
-                    .Replace("\"", "\\\"");  // 步骤 2b：转义 " 为 \"，防止破坏 phrase 外层引号
-                var phrase = "\"" + escaped + "\"";
-                query = query.Where(x => EF.Functions.IsMatch(x.BarCodes, phrase, MySqlMatchSearchMode.Boolean));
-            } else {
-                query = query.Where(x => x.BarCodes.Contains(barCodeKeyword));
-            }
+            // 步骤 1：统一使用子串匹配，确保“部分关键词 + 全量关键词”均可命中（跨 provider 语义一致）。
+            query = query.Where(x => x.BarCodes.Contains(barCodeKeyword));
         }
 
         if (!string.IsNullOrWhiteSpace(filter.BagCode)) {

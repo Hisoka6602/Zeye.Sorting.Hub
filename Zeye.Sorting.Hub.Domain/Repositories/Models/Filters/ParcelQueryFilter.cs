@@ -9,8 +9,7 @@ namespace Zeye.Sorting.Hub.Domain.Repositories.Models.Filters {
 [MaxTimeRange(nameof(ScannedTimeStart), nameof(ScannedTimeEnd), maxMonths: 3)]
 public sealed record ParcelQueryFilter {
     /// <summary>
-    /// 条码检索词（MySQL 下使用 FULLTEXT phrase/词级匹配，建议传完整条码词元或短语，非任意子串匹配；
-    /// SQL Server/InMemory 仍可能走 Contains 回退，不同 provider 语义存在已知差异）。
+    /// 条码检索词（统一按子串匹配；支持部分关键词与完整条码搜索，例如 456、SF、123、SF123456）。
     /// </summary>
     public string? BarCodeKeyword { get; init; }
 

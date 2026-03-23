@@ -1005,6 +1005,111 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
+    /// 验证场景：ResolveCriticalIndexesForProvider_ShouldIncludeMySqlFullTextIndexOnlyForMySql。
+    /// </summary>
+    [Fact]
+    public void ResolveCriticalIndexesForProvider_ShouldIncludeMySqlFullTextIndexOnlyForMySql() {
+        var mySqlIndexes = DatabaseInitializerHostedService.ResolveCriticalIndexesForProvider("MySQL");
+        var sqlServerIndexes = DatabaseInitializerHostedService.ResolveCriticalIndexesForProvider("SQLServer");
+        var mySqlAuditOnlyIndexes = DatabaseInitializerHostedService.ResolveAuditOnlyIndexesForProvider("MySQL");
+
+        Assert.Contains(ParcelIndexNames.BagCodeScannedTime, mySqlIndexes);
+        Assert.Contains(ParcelIndexNames.ActualChuteIdScannedTime, mySqlIndexes);
+        Assert.DoesNotContain(ParcelIndexNames.BarCodesFullText, mySqlIndexes);
+        Assert.DoesNotContain(ParcelIndexNames.BarCodesFullText, sqlServerIndexes);
+        Assert.Contains(ParcelIndexNames.BarCodesFullText, mySqlAuditOnlyIndexes);
+    }
+
+    /// <summary>
+    /// 验证场景：ShardingGovernanceGuard_PerDayWithMissingCriticalIndex_ShouldFailWhenBlockOnMissingEnabled。
+    /// </summary>
+    [Fact]
+    public async Task ShardingGovernanceGuard_PerDayWithMissingCriticalIndex_ShouldFailWhenBlockOnMissingEnabled() {
+        var date = DateTime.Now.Date;
+        var requiredDates = DatabaseInitializerHostedService
+            .BuildRequiredPerDayShardDates(DateTime.Now, 24)
+            .Select(static requiredDate => requiredDate.ToString("yyyy-MM-dd"))
+            .ToArray();
+        var configuration = BuildPerDayGovernanceConfiguration(
+            createShardingTableOnStarting: false,
+            enableManualPrebuildGuard: true,
+            timeGranularity: "PerDay",
+            prebuildWindowHours: 24,
+            prebuiltDates: requiredDates,
+            criticalIndexAuditEnabled: true,
+            blockOnCriticalIndexMissing: true);
+        var missingTable = DatabaseInitializerHostedService.BuildPerDayPhysicalTableName("Parcels", date);
+        var probe = new MissingIndexShardingPhysicalTableProbe(new Dictionary<string, IReadOnlyList<string>> {
+            [missingTable] = new[] { ParcelIndexNames.BagCodeScannedTime }
+        });
+        var service = CreateDatabaseInitializerHostedService(configuration, probe);
+
+        var exception = await Assert.ThrowsAnyAsync<InvalidOperationException>(() => InvokeShardingGovernanceGuardAsync(service));
+        Assert.Contains("关键索引", exception.Message, StringComparison.Ordinal);
+        Assert.Contains(ParcelIndexNames.BagCodeScannedTime, exception.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// 验证场景：ShardingGovernanceGuard_PerDayWithMissingCriticalIndex_ShouldAuditOnlyWhenBlockingDisabled。
+    /// </summary>
+    [Fact]
+    public async Task ShardingGovernanceGuard_PerDayWithMissingCriticalIndex_ShouldAuditOnlyWhenBlockingDisabled() {
+        var date = DateTime.Now.Date;
+        var requiredDates = DatabaseInitializerHostedService
+            .BuildRequiredPerDayShardDates(DateTime.Now, 24)
+            .Select(static requiredDate => requiredDate.ToString("yyyy-MM-dd"))
+            .ToArray();
+        var configuration = BuildPerDayGovernanceConfiguration(
+            createShardingTableOnStarting: false,
+            enableManualPrebuildGuard: true,
+            timeGranularity: "PerDay",
+            prebuildWindowHours: 24,
+            prebuiltDates: requiredDates,
+            criticalIndexAuditEnabled: true,
+            blockOnCriticalIndexMissing: false);
+        var missingTable = DatabaseInitializerHostedService.BuildPerDayPhysicalTableName("Parcels", date);
+        var probe = new MissingIndexShardingPhysicalTableProbe(new Dictionary<string, IReadOnlyList<string>> {
+            [missingTable] = new[] { ParcelIndexNames.ActualChuteIdScannedTime }
+        });
+        var logger = new TestLogger<DatabaseInitializerHostedService>();
+        var service = CreateDatabaseInitializerHostedService(configuration, probe, logger);
+
+        var exception = await Record.ExceptionAsync(() => InvokeShardingGovernanceGuardAsync(service));
+        Assert.Null(exception);
+        Assert.Contains(logger.Messages, message => message.Contains("仅审计不阻断", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// 验证场景：ShardingGovernanceGuard_MySqlAuditOnlyMissingFullTextIndex_ShouldNotBlockButShouldLogWarning。
+    /// </summary>
+    [Fact]
+    public async Task ShardingGovernanceGuard_MySqlAuditOnlyMissingFullTextIndex_ShouldNotBlockButShouldLogWarning() {
+        var date = DateTime.Now.Date;
+        var requiredDates = DatabaseInitializerHostedService
+            .BuildRequiredPerDayShardDates(DateTime.Now, 24)
+            .Select(static requiredDate => requiredDate.ToString("yyyy-MM-dd"))
+            .ToArray();
+        var configuration = BuildPerDayGovernanceConfiguration(
+            createShardingTableOnStarting: false,
+            enableManualPrebuildGuard: true,
+            timeGranularity: "PerDay",
+            prebuildWindowHours: 24,
+            prebuiltDates: requiredDates,
+            criticalIndexAuditEnabled: true,
+            blockOnCriticalIndexMissing: true);
+        var missingTable = DatabaseInitializerHostedService.BuildPerDayPhysicalTableName("Parcels", date);
+        var probe = new MissingIndexShardingPhysicalTableProbe(new Dictionary<string, IReadOnlyList<string>> {
+            [missingTable] = new[] { ParcelIndexNames.BarCodesFullText }
+        });
+        var logger = new TestLogger<DatabaseInitializerHostedService>();
+        var service = CreateDatabaseInitializerHostedService(configuration, probe, logger, dialect: new TestMySqlDialect());
+
+        var exception = await Record.ExceptionAsync(() => InvokeShardingGovernanceGuardAsync(service));
+        Assert.Null(exception);
+        Assert.Contains(logger.Messages, message => message.Contains("仅审计项", StringComparison.Ordinal));
+    }
+
+    /// <summary>
     /// 验证场景：ShardingGovernanceGuard_PerDayWithMissingConfiguredDates_ShouldFailBeforePhysicalProbe。
     /// </summary>
     [Fact]
@@ -2497,19 +2602,19 @@ public sealed class AutoTuningProductionControlTests {
     private sealed class TestDialect : IDatabaseDialect {
         public string ProviderName => "Test";
         /// <summary>
-        /// 验证场景：GetOptionalBootstrapSql。
+        /// 返回空集合，确保测试只关注 ProviderName 对治理分支的影响，不引入方言初始化 SQL 干扰。
         /// </summary>
         public IReadOnlyList<string> GetOptionalBootstrapSql() => Array.Empty<string>();
         /// <summary>
-        /// 验证场景：BuildAutomaticTuningSql。
+        /// 返回空集合，避免自动调优 SQL 参与测试断言，保持用例聚焦于守卫与审计路径。
         /// </summary>
         public IReadOnlyList<string> BuildAutomaticTuningSql(string? schemaName, string tableName, IReadOnlyList<string> whereColumns) => Array.Empty<string>();
         /// <summary>
-        /// 验证场景：ShouldIgnoreAutoTuningException。
+        /// 固定返回 false，避免异常分支吞掉测试期异常，确保断言可观察真实错误。
         /// </summary>
         public bool ShouldIgnoreAutoTuningException(Exception exception) => false;
         /// <summary>
-        /// 验证场景：BuildAutonomousMaintenanceSql。
+        /// 返回空集合，避免自治维护 SQL 干扰当前测试目标（仅验证治理守卫与 Provider 分支）。
         /// </summary>
         public IReadOnlyList<string> BuildAutonomousMaintenanceSql(string? schemaName, string tableName, bool inPeakWindow, bool highRisk) => Array.Empty<string>();
     }
@@ -2520,19 +2625,42 @@ public sealed class AutoTuningProductionControlTests {
     private sealed class TestSqlServerDialect : IDatabaseDialect {
         public string ProviderName => "SQLServer";
         /// <summary>
-        /// 验证场景：GetOptionalBootstrapSql。
+        /// 返回空集合，确保 SQL Server 方言桩仅用于 ProviderName 识别与 schema 透传测试。
         /// </summary>
         public IReadOnlyList<string> GetOptionalBootstrapSql() => Array.Empty<string>();
         /// <summary>
-        /// 验证场景：BuildAutomaticTuningSql。
+        /// 返回空集合，避免额外 SQL 影响守卫测试路径。
         /// </summary>
         public IReadOnlyList<string> BuildAutomaticTuningSql(string? schemaName, string tableName, IReadOnlyList<string> whereColumns) => Array.Empty<string>();
         /// <summary>
-        /// 验证场景：ShouldIgnoreAutoTuningException。
+        /// 固定返回 false，保持异常行为可观测。
         /// </summary>
         public bool ShouldIgnoreAutoTuningException(Exception exception) => false;
         /// <summary>
-        /// 验证场景：BuildAutonomousMaintenanceSql。
+        /// 返回空集合，避免自治维护逻辑干扰 ProviderName 相关断言。
+        /// </summary>
+        public IReadOnlyList<string> BuildAutonomousMaintenanceSql(string? schemaName, string tableName, bool inPeakWindow, bool highRisk) => Array.Empty<string>();
+    }
+
+    /// <summary>
+    /// 模拟 MySQL ProviderName 的方言测试桩。
+    /// </summary>
+    private sealed class TestMySqlDialect : IDatabaseDialect {
+        public string ProviderName => "MySQL";
+        /// <summary>
+        /// 返回空集合，确保 MySQL 方言桩仅用于“仅审计项”索引分支识别。
+        /// </summary>
+        public IReadOnlyList<string> GetOptionalBootstrapSql() => Array.Empty<string>();
+        /// <summary>
+        /// 返回空集合，避免自动调优分支影响当前测试。
+        /// </summary>
+        public IReadOnlyList<string> BuildAutomaticTuningSql(string? schemaName, string tableName, IReadOnlyList<string> whereColumns) => Array.Empty<string>();
+        /// <summary>
+        /// 固定返回 false，保持异常可观测。
+        /// </summary>
+        public bool ShouldIgnoreAutoTuningException(Exception exception) => false;
+        /// <summary>
+        /// 返回空集合，避免自治维护 SQL 干扰“仅审计项”行为断言。
         /// </summary>
         public IReadOnlyList<string> BuildAutonomousMaintenanceSql(string? schemaName, string tableName, bool inPeakWindow, bool highRisk) => Array.Empty<string>();
     }
@@ -2547,6 +2675,18 @@ public sealed class AutoTuningProductionControlTests {
         public Task<bool> ExistsAsync(DbContext dbContext, string? schemaName, string physicalTableName, CancellationToken cancellationToken) {
             CallCount++;
             return Task.FromResult(true);
+        }
+
+        /// <summary>
+        /// 验证场景：FindMissingIndexesAsync。
+        /// </summary>
+        public Task<IReadOnlyList<string>> FindMissingIndexesAsync(
+            DbContext dbContext,
+            string? schemaName,
+            string physicalTableName,
+            IReadOnlyList<string> indexNames,
+            CancellationToken cancellationToken) {
+            return Task.FromResult<IReadOnlyList<string>>(Array.Empty<string>());
         }
     }
 
@@ -2570,6 +2710,18 @@ public sealed class AutoTuningProductionControlTests {
         public Task<bool> ExistsAsync(DbContext dbContext, string? schemaName, string physicalTableName, CancellationToken cancellationToken) {
             CallCount++;
             return Task.FromResult(!_missingPhysicalTables.Contains(physicalTableName));
+        }
+
+        /// <summary>
+        /// 验证场景：FindMissingIndexesAsync。
+        /// </summary>
+        public Task<IReadOnlyList<string>> FindMissingIndexesAsync(
+            DbContext dbContext,
+            string? schemaName,
+            string physicalTableName,
+            IReadOnlyList<string> indexNames,
+            CancellationToken cancellationToken) {
+            return Task.FromResult<IReadOnlyList<string>>(Array.Empty<string>());
         }
     }
 
@@ -2597,6 +2749,18 @@ public sealed class AutoTuningProductionControlTests {
         }
 
         /// <summary>
+        /// 验证场景：FindMissingIndexesAsync。
+        /// </summary>
+        public Task<IReadOnlyList<string>> FindMissingIndexesAsync(
+            DbContext dbContext,
+            string? schemaName,
+            string physicalTableName,
+            IReadOnlyList<string> indexNames,
+            CancellationToken cancellationToken) {
+            return Task.FromResult<IReadOnlyList<string>>(Array.Empty<string>());
+        }
+
+        /// <summary>
         /// 验证场景：FindMissingTablesAsync。
         /// </summary>
         public Task<IReadOnlyList<string>> FindMissingTablesAsync(
@@ -2611,6 +2775,46 @@ public sealed class AutoTuningProductionControlTests {
                 .Distinct(StringComparer.Ordinal)
                 .ToArray();
             return Task.FromResult<IReadOnlyList<string>>(missing);
+        }
+    }
+
+    private sealed class MissingIndexShardingPhysicalTableProbe : IShardingPhysicalTableProbe {
+        /// <summary>按物理表配置的缺失索引集合。</summary>
+        private readonly IReadOnlyDictionary<string, IReadOnlyList<string>> _missingIndexesByTable;
+
+        /// <summary>
+        /// 初始化缺失索引探测桩。
+        /// </summary>
+        /// <param name="missingIndexesByTable">缺失索引映射（Key=物理表名，Value=缺失索引名）。</param>
+        public MissingIndexShardingPhysicalTableProbe(IReadOnlyDictionary<string, IReadOnlyList<string>> missingIndexesByTable) {
+            _missingIndexesByTable = missingIndexesByTable;
+        }
+
+        /// <summary>
+        /// 验证场景：ExistsAsync。
+        /// </summary>
+        public Task<bool> ExistsAsync(DbContext dbContext, string? schemaName, string physicalTableName, CancellationToken cancellationToken) {
+            return Task.FromResult(true);
+        }
+
+        /// <summary>
+        /// 验证场景：FindMissingIndexesAsync。
+        /// </summary>
+        public Task<IReadOnlyList<string>> FindMissingIndexesAsync(
+            DbContext dbContext,
+            string? schemaName,
+            string physicalTableName,
+            IReadOnlyList<string> indexNames,
+            CancellationToken cancellationToken) {
+            if (!_missingIndexesByTable.TryGetValue(physicalTableName, out var missingIndexes)) {
+                return Task.FromResult<IReadOnlyList<string>>(Array.Empty<string>());
+            }
+
+            var missingSet = missingIndexes.ToHashSet(StringComparer.Ordinal);
+            var result = indexNames
+                .Where(indexName => missingSet.Contains(indexName))
+                .ToArray();
+            return Task.FromResult<IReadOnlyList<string>>(result);
         }
     }
 
@@ -2811,13 +3015,17 @@ public sealed class AutoTuningProductionControlTests {
         bool enableManualPrebuildGuard,
         string timeGranularity,
         int prebuildWindowHours,
-        IReadOnlyList<string> prebuiltDates) {
+        IReadOnlyList<string> prebuiltDates,
+        bool criticalIndexAuditEnabled = true,
+        bool blockOnCriticalIndexMissing = true) {
         var configData = new Dictionary<string, string?> {
             ["Persistence:Migration:FailureStrategy:NonProduction"] = "Degraded",
             ["Persistence:Sharding:CreateShardingTableOnStarting"] = createShardingTableOnStarting.ToString(),
             ["Persistence:Sharding:Governance:EnableManualPrebuildGuard"] = enableManualPrebuildGuard.ToString(),
             ["Persistence:Sharding:Governance:Runbook"] = "docs/internal/sharding-governance-runbook",
             ["Persistence:Sharding:Governance:PrebuildWindowHours"] = prebuildWindowHours.ToString(),
+            ["Persistence:Sharding:Governance:CriticalIndexAudit:Enabled"] = criticalIndexAuditEnabled.ToString(),
+            ["Persistence:Sharding:Governance:CriticalIndexAudit:BlockOnMissing"] = blockOnCriticalIndexMissing.ToString(),
             ["Persistence:Sharding:HashSharding:ExpansionPlan:CurrentMod"] = "16",
             ["Persistence:Sharding:HashSharding:ExpansionPlan:TargetMod"] = "32",
             ["Persistence:Sharding:Strategy:Mode"] = "Time",

@@ -103,6 +103,57 @@ SELECT CASE WHEN EXISTS (
         }
 
         /// <summary>
+        /// 基于 MySQL INFORMATION_SCHEMA.STATISTICS 探测物理分表缺失索引（仅探测，不执行 DDL）。
+        /// </summary>
+        /// <param name="dbContext">数据库上下文。</param>
+        /// <param name="schemaName">schema 名称；为空时回退当前数据库。</param>
+        /// <param name="physicalTableName">物理表名。</param>
+        /// <param name="indexNames">期望存在的索引名集合。</param>
+        /// <param name="cancellationToken">取消令牌。</param>
+        /// <returns>缺失索引名集合。</returns>
+        public async Task<IReadOnlyList<string>> FindMissingIndexesAsync(
+            DbContext dbContext,
+            string? schemaName,
+            string physicalTableName,
+            IReadOnlyList<string> indexNames,
+            CancellationToken cancellationToken) {
+            ArgumentNullException.ThrowIfNull(dbContext);
+            ArgumentNullException.ThrowIfNull(indexNames);
+            if (string.IsNullOrWhiteSpace(physicalTableName)) {
+                throw new ArgumentException("物理表名不能为空。", nameof(physicalTableName));
+            }
+
+            var normalizedExpectedIndexNames = indexNames
+                .Where(static indexName => !string.IsNullOrWhiteSpace(indexName))
+                .Select(static indexName => indexName.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (normalizedExpectedIndexNames.Length == 0) {
+                return Array.Empty<string>();
+            }
+
+            var normalizedSchemaName = string.IsNullOrWhiteSpace(schemaName) ? string.Empty : schemaName.Trim();
+            var normalizedPhysicalTableName = physicalTableName.Trim();
+
+            const string sql = """
+SELECT DISTINCT INDEX_NAME
+FROM INFORMATION_SCHEMA.STATISTICS
+WHERE TABLE_SCHEMA = COALESCE(NULLIF(@p0, ''), DATABASE())
+  AND TABLE_NAME = @p1
+""";
+            var existingIndexNames = await dbContext.Database
+                .SqlQueryRaw<string>(sql, normalizedSchemaName, normalizedPhysicalTableName)
+                .ToListAsync(cancellationToken);
+            var existingIndexSet = existingIndexNames
+                .Where(static indexName => !string.IsNullOrWhiteSpace(indexName))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            return normalizedExpectedIndexNames
+                .Where(indexName => !existingIndexSet.Contains(indexName))
+                .ToArray();
+        }
+
+        /// <summary>
         /// 批量探测 MySQL 物理分表缺失项（单次查询目标 schema 全量表名后做内存对比；为空回退当前数据库）。
         /// </summary>
         /// <param name="dbContext">数据库上下文。</param>
