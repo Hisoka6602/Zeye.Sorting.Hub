@@ -79,11 +79,11 @@ internal static class LocalDateTimeParsing {
     }
 
     /// <summary>
-    /// 创建统一的“包裹不存在”问题详情响应（供所有 API 路由扩展共用）。
+    /// 创建统一的“包裹不存在”400 问题详情响应（供所有 API 路由扩展共用）。
     /// </summary>
     /// <param name="id">未找到的包裹主键。</param>
     /// <returns>统一 400 响应。</returns>
-    internal static IResult CreateNotFoundProblem(long id) {
+    internal static IResult CreateParcelMissingProblem(long id) {
         return Results.Problem(
             title: "包裹不存在",
             detail: $"未找到 Id 为 {id} 的包裹。",

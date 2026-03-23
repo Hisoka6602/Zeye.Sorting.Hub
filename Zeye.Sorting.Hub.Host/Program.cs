@@ -258,7 +258,7 @@ public static class ParcelReadOnlyApiRouteExtensions {
         try {
             var response = await queryService.ExecuteAsync(id, cancellationToken);
             return response is null
-                ? LocalDateTimeParsing.CreateNotFoundProblem(id)
+                ? LocalDateTimeParsing.CreateParcelMissingProblem(id)
                 : Results.Ok(response);
         }
         catch (ArgumentException exception) {
@@ -293,7 +293,7 @@ public static class ParcelReadOnlyApiRouteExtensions {
         }
         catch (KeyNotFoundException exception) {
             Logger.Warn(exception, "Parcel 邻近查询锚点不存在，Id={ParcelId}", query.Id);
-            return LocalDateTimeParsing.CreateNotFoundProblem(query.Id.Value);
+            return LocalDateTimeParsing.CreateParcelMissingProblem(query.Id.Value);
         }
         catch (ArgumentException exception) {
             Logger.Warn(

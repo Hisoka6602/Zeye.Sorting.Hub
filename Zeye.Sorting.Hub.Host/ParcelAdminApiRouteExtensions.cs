@@ -42,14 +42,16 @@ public static class ParcelAdminApiRouteExtensions {
             .WithSummary("管理端更新 Parcel 状态（支持标记完结/分拣异常/更新接口状态）")
             .WithDescription("按操作码更新包裹状态。MarkCompleted 需提供 completedTime，MarkSortingException 需提供 exceptionType，UpdateRequestStatus 需提供 requestStatus；时间字段仅接受本地时间。")
             .Produces<ParcelDetailResponse>(StatusCodes.Status200OK)
-            .ProducesProblem(StatusCodes.Status400BadRequest);
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status500InternalServerError);
 
         group.MapDelete("/{id:long}", DeleteParcelAsync)
             .WithName("AdminDeleteParcel")
             .WithSummary("管理端删除单个 Parcel")
             .WithDescription("按主键删除单个包裹记录。删除后不可恢复，调用前应确保调用方具备管理权限。")
             .Produces(StatusCodes.Status204NoContent)
-            .ProducesProblem(StatusCodes.Status400BadRequest);
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status500InternalServerError);
 
         // ── 危险治理接口（单独分组，明确区分于普通业务端点）─────────────────────────
         group.MapPost("/cleanup-expired", CleanupExpiredParcelsAsync)
@@ -154,7 +156,7 @@ public static class ParcelAdminApiRouteExtensions {
             // 步骤 2：调用 Application 服务，传入已解析的本地完结时间（服务无需感知 HTTP 时间格式）。
             var response = await commandService.ExecuteAsync(id, request, completedTime, cancellationToken);
             return response is null
-                ? LocalDateTimeParsing.CreateNotFoundProblem(id)
+                ? LocalDateTimeParsing.CreateParcelMissingProblem(id)
                 : Results.Ok(response);
         }
         catch (ArgumentException ex) {
@@ -185,7 +187,7 @@ public static class ParcelAdminApiRouteExtensions {
             var deleted = await commandService.ExecuteAsync(id, cancellationToken);
             return deleted
                 ? Results.NoContent()
-                : LocalDateTimeParsing.CreateNotFoundProblem(id);
+                : LocalDateTimeParsing.CreateParcelMissingProblem(id);
         }
         catch (ArgumentException ex) {
             Logger.Warn(ex, "删除 Parcel 参数校验失败，Id={ParcelId}", id);

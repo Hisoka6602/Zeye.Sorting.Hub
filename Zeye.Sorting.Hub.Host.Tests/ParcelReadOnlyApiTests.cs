@@ -65,7 +65,7 @@ public sealed class ParcelReadOnlyApiTests {
     /// 验证场景：详情不存在返回 400。
     /// </summary>
     [Fact]
-    public async Task GetParcelById_WhenNotFound_ShouldReturnNotFound() {
+    public async Task GetParcelById_WhenNotFound_ShouldReturnBadRequest() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
         var response = await client.GetAsync("/api/parcels/404");
@@ -119,7 +119,7 @@ public sealed class ParcelReadOnlyApiTests {
     /// 验证场景：邻近查询锚点不存在返回 400。
     /// </summary>
     [Fact]
-    public async Task GetAdjacentParcels_WhenAnchorNotFound_ShouldReturnNotFound() {
+    public async Task GetAdjacentParcels_WhenAnchorNotFound_ShouldReturnBadRequest() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
         var response = await client.GetAsync("/api/parcels/adjacent?id=999&beforeCount=2&afterCount=2");
