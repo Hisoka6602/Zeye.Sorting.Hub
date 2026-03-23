@@ -17,6 +17,10 @@ public sealed class CreateParcelCommandService {
     /// 新增失败冲突错误码（供 Host 层稳定映射 409）。
     /// </summary>
     public const string ParcelIdConflictErrorCode = RepositoryErrorCodes.ParcelIdConflict;
+    /// <summary>
+    /// 异常 Data 中冲突错误码键名。
+    /// </summary>
+    public const string ErrorCodeDataKey = "ErrorCode";
 
     /// <summary>
     /// NLog 日志器。
@@ -87,7 +91,9 @@ public sealed class CreateParcelCommandService {
             if (!result.IsSuccess) {
                 Logger.Error("新增包裹失败，BarCodes={BarCodes}, ErrorMessage={ErrorMessage}", request.BarCodes, result.ErrorMessage);
                 if (string.Equals(result.ErrorCode, ParcelIdConflictErrorCode, StringComparison.Ordinal)) {
-                    throw new InvalidOperationException(ParcelIdConflictErrorCode, new Exception(result.ErrorMessage ?? "新增包裹失败。"));
+                    var exception = new InvalidOperationException(result.ErrorMessage ?? "新增包裹失败。");
+                    exception.Data[ErrorCodeDataKey] = ParcelIdConflictErrorCode;
+                    throw exception;
                 }
 
                 throw new InvalidOperationException(result.ErrorMessage ?? "新增包裹失败。");
