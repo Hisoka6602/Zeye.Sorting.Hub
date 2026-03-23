@@ -530,33 +530,6 @@
 - 更新记录（CHANGELOG）详见：[CHANGELOG.md](CHANGELOG.md)
 - 待完善事项（BACKLOG）详见：[BACKLOG.md](BACKLOG.md)
 
-### 本次更新内容
-
-- `/api/parcels/adjacent` 已从按 `scannedTime` 入参改为按 `id` 入参查询，邻近锚点改为“包裹主键 + `(ScannedTime, Id)` 稳定排序”；锚点不存在返回 404，参数缺失或非法返回 400。
-- 邻近查询仓储已改造为 `GetAdjacentByIdAsync(long id, int beforeCount, int afterCount, CancellationToken)`：查询前先加载锚点包裹，前后向均排除锚点自身，并在同一扫描时间下按 Id 决定稳定先后顺序。
-- `Parcel.Id` 已改为创建时由调用方传入：`ParcelCreateRequest` 新增 `Id` 字段，`Parcel.Create(...)` 新增并校验 `id > 0`，`CreateParcelCommandService` 改为传入请求 Id，`ParcelEntityTypeConfiguration` 将主键策略改为 `ValueGeneratedNever()`。
-- 已新增迁移 `20260323045038_UseExternalProvidedParcelId` 并同步 Designer 与 ModelSnapshot，反映 Parcel 主表主键不再自动生成。
-- 已按审查意见修正 `20260323045038_UseExternalProvidedParcelId` 的 SQL Server 兼容路径：为避免 SQL Server 执行 ALTER COLUMN 切换 IDENTITY 失败，该迁移在 SQL Server 分支改为 no-op；MySQL 分支保留 Identity 注解移除/恢复逻辑。
-- 重复 Id 处理策略已明确：仓储返回“包裹 Id 已存在。”，Host 管理端创建接口将该语义映射为 `409 Conflict`，不再吞并为模糊 500。
-- 重复 Id 处理策略进一步稳固：仓储结果新增稳定错误码 `Parcel.Id.Conflict`，Application 透传该标识，Host 按错误码映射 `409 Conflict`，不再依赖错误文案字符串判断。
-- 物理分表关键索引一致性审计已补齐 `TargetChuteId` 路径：新增 `ParcelIndexNames.TargetChuteIdScannedTime`，并纳入 `ResolveCriticalIndexesForProvider()` 阻断索引集合（仍保持仅探测/记录/阻断，不自动执行 DDL）。
-- 已修复 README 中“已统一 BarCodeKeyword 检索语义”的不一致描述，按当前真实实现更正为：MySQL 使用 FULLTEXT Boolean（`EF.Functions.IsMatch`），其他 Provider 使用 `Contains()`。
-- 已将 Host 监听地址与 Swagger 暴露参数切换为 `appsettings.json` 的 `Hosting` 配置主驱动：`Hosting:Urls`、`Hosting:EnableHttpsRedirection`、`Hosting:Swagger:*`、`Hosting:BrowserAutoOpen:*`。
-- 已收口 Development 浏览器启动时机：`DevelopmentBrowserLauncherHostedService` 改为在 `ApplicationStarted` 后执行打开浏览器，保留 `SafeExecutor` 副作用隔离，并继续限制为 Development + 配置开启 + 交互式/本机/非容器/非 CI 场景。
-- 已将 `launchSettings.json` 的 `launchBrowser` 调整为 `false`，防止与运行时自动打开逻辑重复触发。
-- 已增强 Swagger 文档：在保留真实 enum 本体增强的基础上，补齐 Contracts 值对象响应模型中的枚举数值字段映射（如 `BarCodeType`、`ProtocolType`、`ActionType`、`Direction`、`ImageType`、`CaptureType`、`NodeType` 等），统一展示“数值 + 枚举名 + 中文描述”。
-- 已补充/增强测试：`SwaggerDocumentationTests` 新增值对象枚举数值字段覆盖断言，`HostingOptionsTests` 增加无效监听地址兜底断言，确保回归可验证。
-- 已补齐 Parcels 主表两处索引覆盖缺口：① 将 `IX_Parcels_BagCode` 单列索引升级为 `(BagCode, ScannedTime)` 复合索引，覆盖 `GetByBagCodeAsync` 的等值过滤 + ScannedTime 范围路径，并对 ScannedTime 主排序提供索引支撑；② 新增 `IX_Parcels_ActualChuteId_ScannedTime` 复合索引，覆盖 `GetByChuteAsync` 的过滤 + ScannedTime 主排序路径（原有 `ActualChuteId_DischargeTime` 索引保留，服务落格时间维度查询）。当前分页真实排序为 `ScannedTime DESC, Id DESC`，索引第二排序键 `Id` 暂未纳入复合索引。
-- 已新增“物理分表关键索引一致性审计”能力（仅探测/记录/阻断，不自动执行危险 DDL）：在分表治理守卫中对预建窗口内物理分表逐表审计关键索引，阻断项为 `IX_Parcels_BagCode_ScannedTime`、`IX_Parcels_ActualChuteId_ScannedTime`；MySQL 的 `FTX_Parcels_BarCodes` 调整为仅审计项（缺失仅告警不阻断）；支持配置开关与“仅审计不阻断”模式。
-- 已按当前实现修正文档：`BarCodeKeyword` 检索语义并非“全 Provider 统一 Contains”；而是 **MySQL 使用 `EF.Functions.IsMatch(..., Boolean)`（FULLTEXT Boolean）**，其他 Provider 使用 `Contains()` 子串匹配，Contracts 与 Host API 文案已同步保持一致。
-- 已收敛 Provider 常量语义：保留 `DbProviderNames` 仅承载 EF Core 运行时/迁移 providerName；新增 `ConfiguredProviderNames` 专用于配置值/CLI 参数/ConnectionStrings key，并完成 DesignTime 工厂与持久化 DI 注册改造，避免语义混淆。
-- 已补充 `GetByChuteAsync(actualChuteId, targetChuteId, ...)` 调用边界校验：当两个格口 Id 同时为 null 时抛出“至少提供一个格口 Id”异常，并补齐仓储回归测试（双 null 异常、仅 actual、仅 target 三个场景）。
-- 已同步 API 契约/注释语义：`BarCodeKeyword` 文案更新为“MySQL FULLTEXT Boolean + 其他 Provider Contains”。
-- 已保留 `ParcelRepositoryTests` 的非 MySQL 回退路径回归测试（InMemory `Contains` 分支）；MySQL FULLTEXT 分支维持由真实 MySQL 集成环境覆盖。
-- 消除应用层重复实现与魔法数字：新增 `Application/Utilities/EnumGuard.cs` 和 `Application/Utilities/Guard.cs`，将 8 处枚举验证、7 处参数边界检查统一收口；将 `MaxAdjacentCountPerSide = 200` 常量上移至 `IParcelRepository` 接口（唯一权威来源），Infrastructure 与 Application 均引用接口常量，消除两层各自定义魔法数字的重复。
-- 落实"日志只能使用 NLog"规范（仓储层与 SharedKernel）：① 将 `SafeExecutor`（SharedKernel）从 MEL `ILogger<T>` 迁移至 NLog 静态 logger，移除构造注入依赖，`SharedKernel.csproj` 改引用 `NLog 6.1.1`；② 将 `RepositoryBase` / `MemoryCacheRepositoryBase`（Infrastructure 仓储层）从 MEL ILogger 迁移至 NLog ILogger（构造传入模式，确保日志来源类名为实际仓储类）；③ `ParcelRepository` 新增静态 NLog logger，移除 MEL `ILogger<ParcelRepository>` 构造参数，简化 DI 注册；`Infrastructure.csproj` 新增 `NLog 6.1.1` 引用；同步清理 `ParcelRepositoryTests` / `ParcelQueryServicesTests` 中的 `NullLogger` 依赖。注意：`AutoTuning/` 下的 EF Core 拦截器与 `PersistenceServiceCollectionExtensions` 等 DI 绑定组件因须接入 EF Core MEL 管道，有意保留 MEL ILogger 注入，不在本轮迁移范围内。
-- 统一“包裹不存在”响应语义为 404：`LocalDateTimeParsing.CreateParcelMissingProblem(long id)` 返回 404，且已同步只读 API（`GetParcelByIdAsync`、`GetAdjacentParcelsAsync`）与管理端 API（`UpdateParcelStatusAsync`、`DeleteParcelAsync`）行为、Swagger 与测试断言。
-
 ### 可继续完善内容
 
 - 后续可补充真实 MySQL / SQL Server 集成用例，分别覆盖 `GetAdjacentByIdAsync` 的同一扫描时间稳定排序与重复主键冲突语义，验证跨 Provider 一致性。

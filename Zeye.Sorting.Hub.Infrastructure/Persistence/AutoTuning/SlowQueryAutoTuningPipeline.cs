@@ -9,7 +9,13 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
 
     /// <summary>慢查询采集、分析与自动动作编排管道</summary>
     public sealed class SlowQueryAutoTuningPipeline {
+        /// <summary>
+        /// 自动调优标记前缀，用于识别由自动调优链路生成的对象。
+        /// </summary>
         private const string AutoTuningMarker = "AUTO_TUNING";
+        /// <summary>
+        /// 单条候选索引参与 WHERE 条件的最大列数上限。
+        /// </summary>
         private const int MaxWhereColumns = 3;
         /// <summary>
         /// 告警状态跟踪上限，防止状态字典无限增长。

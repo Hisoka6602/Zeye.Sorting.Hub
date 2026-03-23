@@ -14,7 +14,13 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
     /// <summary>数据库自动调谐后台服务：慢查询分析 + 闭环自治执行/验证/回退 + 审计日志</summary>
     public sealed class DatabaseAutoTuningHostedService : BackgroundService {
+        /// <summary>
+        /// 性能调优配置节前缀。
+        /// </summary>
         private const string PerformanceConfigPrefix = "Persistence:PerformanceTuning";
+        /// <summary>
+        /// 可跟踪慢查询指纹数量上限，防止状态集合无限增长。
+        /// </summary>
         private const int MaxTrackedFingerprintCount = 1000;
         /// <summary>
         /// 可跟踪热点表上限，避免内存无限增长。

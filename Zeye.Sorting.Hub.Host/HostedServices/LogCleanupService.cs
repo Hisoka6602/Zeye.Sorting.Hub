@@ -37,16 +37,16 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 _settings.RetentionDays, _settings.CheckIntervalHours);
 
             // 首次启动时立即执行一次清理
-            await _safeExecutor.ExecuteAsync(
-                () => CleanupOldLogsAsync(),
+            _safeExecutor.Execute(
+                CleanupOldLogs,
                 "首次日志清理");
 
             while (!stoppingToken.IsCancellationRequested) {
                 try {
                     await Task.Delay(TimeSpan.FromHours(_settings.CheckIntervalHours), stoppingToken);
 
-                    await _safeExecutor.ExecuteAsync(
-                        () => CleanupOldLogsAsync(),
+                    _safeExecutor.Execute(
+                        CleanupOldLogs,
                         "定期日志清理");
                 }
                 catch (OperationCanceledException) {
@@ -58,9 +58,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         /// <summary>
-        /// 执行逻辑：CleanupOldLogsAsync。
+        /// 执行逻辑：CleanupOldLogs。
         /// </summary>
-        private async Task CleanupOldLogsAsync() {
+        private void CleanupOldLogs() {
             var logDirectory = _settings.LogDirectory;
 
             // 如果是相对路径，转换为绝对路径

@@ -34,6 +34,14 @@ internal static class LocalTimeTestConstraintHelper {
     /// 用于快速验证某个时间值未被错误地标记为 UTC（Unknown/Local 均允许）。
     /// </summary>
     /// <param name="value">待断言的时间值。</param>
-    public static void AssertNotUtc(DateTime value)
-        => Assert.NotEqual("Utc", value.Kind.ToString());
+    public static void AssertNotUtc(DateTime value) {
+        switch (value.Kind) {
+            case DateTimeKind.Local:
+            case DateTimeKind.Unspecified:
+                return;
+            default:
+                Assert.Fail("时间值 Kind 不允许为 UTC 语义。");
+                return;
+        }
+    }
 }
