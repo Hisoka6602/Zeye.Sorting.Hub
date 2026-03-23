@@ -227,7 +227,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
         CancellationToken cancellationToken) {
         if (!actualChuteId.HasValue && !targetChuteId.HasValue) {
             Logger.Warn("按格口查询参数非法：actualChuteId 与 targetChuteId 同时为空。");
-            throw new ArgumentException("至少提供一个格口 Id。", nameof(actualChuteId));
+            throw new ArgumentException("actualChuteId 与 targetChuteId 至少提供一个格口 Id。");
         }
 
         var filter = BuildRequiredTimeRangeFilter(scannedTimeStart, scannedTimeEnd) with {
