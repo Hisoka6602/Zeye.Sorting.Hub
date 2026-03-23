@@ -37,9 +37,9 @@ namespace Zeye.Sorting.Hub.Domain.Enums {
         Manual = 3,
 
         /// <summary>
-        /// TCP
+        /// TCP 协议来源
         /// </summary>
-        [Description("Tcp")]
+        [Description("TCP协议")]
         Tcp = 4
     }
 }

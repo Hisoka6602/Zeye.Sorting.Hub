@@ -138,7 +138,7 @@
 │   │   └── DevelopmentBrowserLauncherHostedService.cs（Development 启动浏览器隔离器：仅 Development + 配置开启 + 交互式/本机/非容器/非CI 场景生效；在 ApplicationStarted 后再打开 Swagger，异常由 SafeExecutor 隔离）
 │   ├── Program.cs（应用入口与 Host 构建流程；运行地址/Swagger 路径由 appsettings 的 Hosting 配置驱动；接入 XML 注释与枚举中文说明增强）
 │   ├── HostingOptions.cs（Hosting 配置模型与 Swagger/浏览器自动打开地址拼装逻辑）
-│   ├── LocalDateTimeParsing.cs（本地时间解析与 API 响应工厂共享工具：TryParseLocalDateTime/TryParseOptionalLocalDateTime/CreateBadRequestProblem/CreateNotFoundProblem，供所有路由扩展复用）
+│   ├── LocalDateTimeParsing.cs（本地时间解析与 API 响应工厂共享工具：TryParseLocalDateTime/TryParseOptionalLocalDateTime/CreateBadRequestProblem/CreateParcelMissingProblem，供所有路由扩展复用）
 │   ├── ParcelAdminApiRouteExtensions.cs（Parcel 管理端 API 路由扩展：POST/PUT/DELETE 普通写接口 + cleanup-expired 治理接口）
 │   ├── Swagger（Swagger 扩展目录）
 │   │   └── EnumDescriptionSchemaFilter.cs（枚举 Schema 中文增强：真实 enum 与 Contracts 中枚举数值 int 字段均显示“数值=枚举名（中文描述）”）
@@ -405,7 +405,7 @@
 ### `Zeye.Sorting.Hub.Host/`：宿主层（程序入口、后台服务、启动配置）
 - `Program.cs`：应用入口与 Host 构建流程；注册 Parcel 只读 API 与管理端写 API；监听地址与 Swagger 路径均由 `Hosting` 配置驱动；`GET /api/parcels/adjacent` 已改为按 `id` 查询并在锚点不存在时返回 404；Swagger 接入 Host/Contracts/Application/Domain 多程序集 XML 注释与枚举中文说明增强；使用 NLog 替换默认日志提供器，任何启动期异常均记录后再退出。
 - `HostingOptions.cs`：`Hosting` 配置模型（`Urls`、`EnableHttpsRedirection`、`Swagger`、`BrowserAutoOpen`）及 Swagger JSON 路由与开发期浏览器默认地址拼装逻辑。
-- `LocalDateTimeParsing.cs`：本地时间解析与 API 响应工厂共享工具（`TryParseLocalDateTime`、`TryParseOptionalLocalDateTime`、`IsUtcKind`、`CreateBadRequestProblem`、`CreateNotFoundProblem`），统一供各路由扩展类复用，避免重复实现。
+- `LocalDateTimeParsing.cs`：本地时间解析与 API 响应工厂共享工具（`TryParseLocalDateTime`、`TryParseOptionalLocalDateTime`、`IsUtcKind`、`CreateBadRequestProblem`、`CreateParcelMissingProblem`），统一供各路由扩展类复用，避免重复实现。
 - `ParcelAdminApiRouteExtensions.cs`：Parcel 管理端 API 路由扩展（`MapParcelAdminApis`），注册 `POST /api/admin/parcels`、`PUT /api/admin/parcels/{id}`、`DELETE /api/admin/parcels/{id}` 普通写接口及 `POST /api/admin/parcels/cleanup-expired` 危险治理接口，并补齐中文 Summary/Description；新增创建接口 `id` 参数校验与重复 Id 冲突映射（409）。
 - `Worker.cs`：后台轮询任务示例服务。
 - `Zeye.Sorting.Hub.Host.csproj`：Host 项目定义。
@@ -555,7 +555,7 @@
 - 已保留 `ParcelRepositoryTests` 的非 MySQL 回退路径回归测试（InMemory `Contains` 分支）；MySQL FULLTEXT 分支维持由真实 MySQL 集成环境覆盖。
 - 消除应用层重复实现与魔法数字：新增 `Application/Utilities/EnumGuard.cs` 和 `Application/Utilities/Guard.cs`，将 8 处枚举验证、7 处参数边界检查统一收口；将 `MaxAdjacentCountPerSide = 200` 常量上移至 `IParcelRepository` 接口（唯一权威来源），Infrastructure 与 Application 均引用接口常量，消除两层各自定义魔法数字的重复。
 - 落实"日志只能使用 NLog"规范（仓储层与 SharedKernel）：① 将 `SafeExecutor`（SharedKernel）从 MEL `ILogger<T>` 迁移至 NLog 静态 logger，移除构造注入依赖，`SharedKernel.csproj` 改引用 `NLog 6.1.1`；② 将 `RepositoryBase` / `MemoryCacheRepositoryBase`（Infrastructure 仓储层）从 MEL ILogger 迁移至 NLog ILogger（构造传入模式，确保日志来源类名为实际仓储类）；③ `ParcelRepository` 新增静态 NLog logger，移除 MEL `ILogger<ParcelRepository>` 构造参数，简化 DI 注册；`Infrastructure.csproj` 新增 `NLog 6.1.1` 引用；同步清理 `ParcelRepositoryTests` / `ParcelQueryServicesTests` 中的 `NullLogger` 依赖。注意：`AutoTuning/` 下的 EF Core 拦截器与 `PersistenceServiceCollectionExtensions` 等 DI 绑定组件因须接入 EF Core MEL 管道，有意保留 MEL ILogger 注入，不在本轮迁移范围内。
-- 提取 404 Not Found 响应工厂方法：`LocalDateTimeParsing` 新增 `CreateNotFoundProblem(long id)` 方法（detail 使用通用描述"未找到 Id 为 {id} 的资源。"），消除只读 API（`GetParcelByIdAsync`）与管理端 API（`UpdateParcelStatusAsync`、`DeleteParcelAsync`）3 处重复的 `Results.Problem(title: "资源不存在", ...)` 构造。
+- 提取统一“包裹不存在”400 响应工厂方法：`LocalDateTimeParsing` 提供 `CreateParcelMissingProblem(long id)` 方法（detail 使用"未找到 Id 为 {id} 的包裹。"），消除只读 API（`GetParcelByIdAsync`）与管理端 API（`UpdateParcelStatusAsync`、`DeleteParcelAsync`）3 处重复的问题响应构造。
 
 ### 可继续完善内容
 

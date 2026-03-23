@@ -43,7 +43,7 @@ public static class ParcelAdminApiRouteExtensions {
             .WithDescription("按操作码更新包裹状态。MarkCompleted 需提供 completedTime，MarkSortingException 需提供 exceptionType，UpdateRequestStatus 需提供 requestStatus；时间字段仅接受本地时间。")
             .Produces<ParcelDetailResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest)
-            .ProducesProblem(StatusCodes.Status404NotFound);
+            .ProducesProblem(StatusCodes.Status500InternalServerError);
 
         group.MapDelete("/{id:long}", DeleteParcelAsync)
             .WithName("AdminDeleteParcel")
@@ -51,7 +51,7 @@ public static class ParcelAdminApiRouteExtensions {
             .WithDescription("按主键删除单个包裹记录。删除后不可恢复，调用前应确保调用方具备管理权限。")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status400BadRequest)
-            .ProducesProblem(StatusCodes.Status404NotFound);
+            .ProducesProblem(StatusCodes.Status500InternalServerError);
 
         // ── 危险治理接口（单独分组，明确区分于普通业务端点）─────────────────────────
         group.MapPost("/cleanup-expired", CleanupExpiredParcelsAsync)
@@ -129,7 +129,7 @@ public static class ParcelAdminApiRouteExtensions {
     /// <param name="request">更新状态请求合同（JSON body）。</param>
     /// <param name="commandService">更新包裹状态应用服务。</param>
     /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>200 OK + 更新后的详情，或 404 Not Found，或 400 Bad Request。</returns>
+    /// <returns>200 OK + 更新后的详情，或 400 Bad Request。</returns>
     private static async Task<IResult> UpdateParcelStatusAsync(
         long id,
         [Microsoft.AspNetCore.Mvc.FromBody] ParcelUpdateRequest request,
@@ -156,7 +156,7 @@ public static class ParcelAdminApiRouteExtensions {
             // 步骤 2：调用 Application 服务，传入已解析的本地完结时间（服务无需感知 HTTP 时间格式）。
             var response = await commandService.ExecuteAsync(id, request, completedTime, cancellationToken);
             return response is null
-                ? LocalDateTimeParsing.CreateNotFoundProblem(id)
+                ? LocalDateTimeParsing.CreateParcelMissingProblem(id)
                 : Results.Ok(response);
         }
         catch (ArgumentException ex) {
@@ -178,7 +178,7 @@ public static class ParcelAdminApiRouteExtensions {
     /// <param name="id">目标包裹 Id（路由参数）。</param>
     /// <param name="commandService">删除包裹应用服务。</param>
     /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>204 No Content，或 404 Not Found，或 400 Bad Request。</returns>
+    /// <returns>204 No Content，或 400 Bad Request。</returns>
     private static async Task<IResult> DeleteParcelAsync(
         long id,
         DeleteParcelCommandService commandService,
@@ -187,7 +187,7 @@ public static class ParcelAdminApiRouteExtensions {
             var deleted = await commandService.ExecuteAsync(id, cancellationToken);
             return deleted
                 ? Results.NoContent()
-                : LocalDateTimeParsing.CreateNotFoundProblem(id);
+                : LocalDateTimeParsing.CreateParcelMissingProblem(id);
         }
         catch (ArgumentException ex) {
             Logger.Warn(ex, "删除 Parcel 参数校验失败，Id={ParcelId}", id);
