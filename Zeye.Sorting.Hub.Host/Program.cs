@@ -184,7 +184,7 @@ public static class ParcelReadOnlyApiRouteExtensions {
         group.MapGet(string.Empty, GetParcelListAsync)
             .WithName("GetParcelList")
             .WithSummary("分页查询 Parcel 列表")
-            .WithDescription("按页码、分页大小与可选过滤条件（条码检索词、集包号、状态、异常类型、格口、扫码时间范围）查询包裹摘要列表。BarCodeKeyword 在 MySQL 下使用 FULLTEXT phrase/词级匹配（建议传完整条码词元/短语，非任意子串匹配）；SQL Server/InMemory 仍可能回退 Contains 子串匹配，不同 provider 语义存在已知差异。时间参数必须为本地时间字符串，不允许 UTC 或时区偏移。")
+            .WithDescription("按页码、分页大小与可选过滤条件（条码检索词、集包号、状态、异常类型、格口、扫码时间范围）查询包裹摘要列表。BarCodeKeyword 统一按子串匹配，支持部分关键词与完整条码搜索（如 456、SF、123、SF123456）。时间参数必须为本地时间字符串，不允许 UTC 或时区偏移。")
             .Produces<ParcelListResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest);
 
