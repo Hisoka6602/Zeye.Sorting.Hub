@@ -7,6 +7,7 @@ using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Repositories;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.Filters;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.Paging;
+using Zeye.Sorting.Hub.Domain.Repositories.Models.Results;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Repositories;
 
@@ -16,6 +17,10 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 /// ParcelRepository 第一阶段能力回归测试。
 /// </summary>
 public sealed class ParcelRepositoryTests {
+    /// <summary>
+    /// 测试包裹 Id 自增序列。
+    /// </summary>
+    private static long _testParcelIdSequence = 2000;
     /// <summary>
     /// 验证场景：IParcelRepository_ShouldResolveFromDependencyInjection。
     /// </summary>
@@ -100,7 +105,9 @@ public sealed class ParcelRepositoryTests {
             Assert.NotNull(detail);
             Assert.Equal("BC-102", detail.BarCodes);
 
-            var adjacent = await repository.GetAdjacentByScannedTimeAsync(baseTime.AddMinutes(2), 1, 1, CancellationToken.None);
+            var adjacentResult = await repository.GetAdjacentByIdAsync(parcel2.Id, 1, 1, CancellationToken.None);
+            Assert.True(adjacentResult.IsSuccess, adjacentResult.ErrorMessage);
+            var adjacent = adjacentResult.Value!;
             Assert.Equal(2, adjacent.Count);
             Assert.Equal("BC-101", adjacent[0].BarCodes);
             Assert.Equal("BC-103", adjacent[1].BarCodes);
@@ -447,6 +454,73 @@ public sealed class ParcelRepositoryTests {
     }
 
     /// <summary>
+    /// 验证场景：GetAdjacentByIdAsync 在同一 ScannedTime 下按 Id 保持稳定排序。
+    /// </summary>
+    [Fact]
+    public async Task GetAdjacentByIdAsync_WithSameScannedTime_ShouldKeepStableOrder() {
+        var databaseName = $"parcel-repo-test-{Guid.NewGuid():N}";
+        var sameTime = DateTime.Now.AddHours(-2);
+        try {
+            var repository = CreateRepository(databaseName);
+            var parcel10 = CreateParcel("BC-SAME-10", "BAG-SAME", "WS-SAME", ParcelStatus.Pending, sameTime, 901, 902);
+            var parcel11 = CreateParcel("BC-SAME-11", "BAG-SAME", "WS-SAME", ParcelStatus.Pending, sameTime, 901, 902);
+            var parcel12 = CreateParcel("BC-SAME-12", "BAG-SAME", "WS-SAME", ParcelStatus.Pending, sameTime, 901, 902);
+            var parcel13 = CreateParcel("BC-SAME-13", "BAG-SAME", "WS-SAME", ParcelStatus.Pending, sameTime.AddMinutes(1), 901, 902);
+            await SeedParcelsAsync(databaseName, [parcel10, parcel11, parcel12, parcel13]);
+
+            var result = await repository.GetAdjacentByIdAsync(parcel11.Id, 1, 2, CancellationToken.None);
+            Assert.True(result.IsSuccess, result.ErrorMessage);
+            var ids = result.Value!.Select(item => item.Id).ToArray();
+            Assert.Equal([parcel10.Id, parcel12.Id, parcel13.Id], ids);
+        }
+        finally {
+            await CleanupDatabaseAsync(databaseName);
+        }
+    }
+
+    /// <summary>
+    /// 验证场景：GetAdjacentByIdAsync 锚点不存在返回失败结果。
+    /// </summary>
+    [Fact]
+    public async Task GetAdjacentByIdAsync_WhenAnchorNotFound_ShouldReturnFailResult() {
+        var databaseName = $"parcel-repo-test-{Guid.NewGuid():N}";
+        try {
+            var repository = CreateRepository(databaseName);
+            var result = await repository.GetAdjacentByIdAsync(999999, 1, 1, CancellationToken.None);
+            Assert.False(result.IsSuccess);
+            Assert.Contains("未找到 Id", result.ErrorMessage, StringComparison.Ordinal);
+        }
+        finally {
+            await CleanupDatabaseAsync(databaseName);
+        }
+    }
+
+    /// <summary>
+    /// 验证场景：新增重复 Id 返回明确冲突错误。
+    /// </summary>
+    [Fact]
+    public async Task AddAsync_WithDuplicateId_ShouldReturnDuplicateError() {
+        var databaseName = $"parcel-repo-test-{Guid.NewGuid():N}";
+        var scannedTime = DateTime.Now.AddHours(-3);
+        try {
+            var repository = CreateRepository(databaseName);
+            var first = CreateParcel("BC-DUP-1", "BAG-DUP", "WS-DUP", ParcelStatus.Pending, scannedTime, 1001, 1002);
+            var second = CreateParcel("BC-DUP-2", "BAG-DUP", "WS-DUP", ParcelStatus.Pending, scannedTime.AddMinutes(1), 1001, 1002, idOverride: first.Id);
+
+            var firstResult = await ((IParcelRepository)repository).AddAsync(first, CancellationToken.None);
+            Assert.True(firstResult.IsSuccess, firstResult.ErrorMessage);
+
+            var secondResult = await ((IParcelRepository)repository).AddAsync(second, CancellationToken.None);
+            Assert.False(secondResult.IsSuccess);
+            Assert.Equal(ParcelRepository.DuplicateParcelIdErrorMessage, secondResult.ErrorMessage);
+            Assert.Equal(RepositoryErrorCodes.ParcelIdConflict, secondResult.ErrorCode);
+        }
+        finally {
+            await CleanupDatabaseAsync(databaseName);
+        }
+    }
+
+    /// <summary>
     /// 创建 ParcelRepository 测试实例。
     /// </summary>
     private static ParcelRepository CreateRepository(string databaseName, IConfiguration? configuration = null) {
@@ -508,8 +582,10 @@ public sealed class ParcelRepositoryTests {
         ParcelStatus status,
         DateTime scannedTime,
         long targetChuteId,
-        long actualChuteId) {
+        long actualChuteId,
+        long? idOverride = null) {
         var parcel = Parcel.Create(
+            id: idOverride ?? Interlocked.Increment(ref _testParcelIdSequence),
             parcelTimestamp: Math.Abs(scannedTime.Ticks),
             type: ParcelType.Normal,
             barCodes: barCodes,

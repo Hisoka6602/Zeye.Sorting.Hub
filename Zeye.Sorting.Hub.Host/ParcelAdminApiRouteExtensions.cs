@@ -32,9 +32,10 @@ public static class ParcelAdminApiRouteExtensions {
         group.MapPost(string.Empty, CreateParcelAsync)
             .WithName("AdminCreateParcel")
             .WithSummary("管理端新增 Parcel")
-            .WithDescription("新增单个包裹记录。请求体中的 scannedTime、dischargeTime 必须是本地时间字符串，不允许 UTC 或时区偏移。")
+            .WithDescription("新增单个包裹记录。请求体必须传入 id（大于 0 且全局唯一）；scannedTime、dischargeTime 必须是本地时间字符串，不允许 UTC 或时区偏移。")
             .Produces<ParcelDetailResponse>(StatusCodes.Status201Created)
-            .ProducesProblem(StatusCodes.Status400BadRequest);
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         group.MapPut("/{id:long}", UpdateParcelStatusAsync)
             .WithName("AdminUpdateParcelStatus")
@@ -78,6 +79,9 @@ public static class ParcelAdminApiRouteExtensions {
         if (request is null) {
             return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", "请求体不能为空。");
         }
+        if (request.Id <= 0) {
+            return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", "id 必须大于 0。");
+        }
 
         // 步骤 1：在 Host 层解析时间字符串并强制拒绝 UTC/offset 表达（字符串方式可彻底拒绝 +offset 表达）。
         if (!LocalDateTimeParsing.TryParseLocalDateTime(request.ScannedTime, out var scannedTime)) {
@@ -103,6 +107,14 @@ public static class ParcelAdminApiRouteExtensions {
         }
         catch (InvalidOperationException ex) {
             Logger.Error(ex, "新增 Parcel 业务逻辑异常。");
+            var errorCode = ex.Data[CreateParcelCommandService.ErrorCodeDataKey] as string;
+            if (string.Equals(errorCode, CreateParcelCommandService.ParcelIdConflictErrorCode, StringComparison.Ordinal)) {
+                return Results.Problem(
+                    title: "资源冲突",
+                    detail: ex.Message,
+                    statusCode: StatusCodes.Status409Conflict);
+            }
+
             return Results.Problem(
                 title: "新增失败",
                 detail: ex.Message,

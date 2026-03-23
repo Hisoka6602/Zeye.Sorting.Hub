@@ -2,6 +2,8 @@ using System.ComponentModel.DataAnnotations;
 using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Data.SqlClient;
+using MySqlConnector;
 using NLog;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Domain.Enums;
@@ -64,6 +66,10 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     /// 单次调用过期删除最大条数保护阈值。
     /// </summary>
     private const int MaxExpiredDeleteCountPerCall = 10000;
+    /// <summary>
+    /// 包裹主键冲突错误消息。
+    /// </summary>
+    internal const string DuplicateParcelIdErrorMessage = "包裹 Id 已存在。";
 
     /// <summary>
     /// 是否启用过期清理危险动作守卫。
@@ -111,6 +117,48 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
             effectiveConfiguration,
             RemoveExpiredDryRunConfigKey,
             true);
+    }
+
+    /// <summary>
+    /// 新增包裹聚合。
+    /// </summary>
+    public override async Task<RepositoryResult> AddAsync(Parcel parcel, CancellationToken cancellationToken) {
+        if (parcel is null) {
+            return RepositoryResult.Fail("实体不能为空");
+        }
+
+        try {
+            await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
+            await db.Set<Parcel>().AddAsync(parcel, cancellationToken);
+            await db.SaveChangesAsync(cancellationToken);
+            return RepositoryResult.Success();
+        }
+        catch (OperationCanceledException ex) {
+            Logger.Warn(ex, "新增包裹操作被取消，Id={ParcelId}", parcel.Id);
+            return RepositoryResult.Fail("操作已取消");
+        }
+        catch (DbUpdateException ex) when (IsDuplicatePrimaryKeyException(ex)) {
+            Logger.Warn(ex, "新增包裹主键冲突，Id={ParcelId}", parcel.Id);
+            return RepositoryResult.Fail(DuplicateParcelIdErrorMessage, RepositoryErrorCodes.ParcelIdConflict);
+        }
+        catch (DbUpdateException ex) when (ContainsDuplicateKeyMessage(ex.Message) || ContainsDuplicateKeyMessage(ex.InnerException?.Message)) {
+            Logger.Warn(ex, "新增包裹主键冲突（DbUpdateException 回退分支），Id={ParcelId}", parcel.Id);
+            return RepositoryResult.Fail(DuplicateParcelIdErrorMessage, RepositoryErrorCodes.ParcelIdConflict);
+        }
+        // InMemory Provider(当前测试基线 .NET8 + EFCore.InMemory 9.x) 在主键冲突场景下通常抛出 InvalidOperationException，
+        // 且无稳定错误码，仅有消息文本。该分支仅为测试基础设施兼容兜底；真实数据库优先走上方错误码分支。
+        catch (InvalidOperationException ex) when (ContainsDuplicateKeyMessage(ex.Message)) {
+            Logger.Warn(ex, "新增包裹主键冲突（提供器回退分支），Id={ParcelId}", parcel.Id);
+            return RepositoryResult.Fail(DuplicateParcelIdErrorMessage, RepositoryErrorCodes.ParcelIdConflict);
+        }
+        catch (Exception ex) when (ContainsDuplicateKeyMessage(ex.Message) || ContainsDuplicateKeyMessage(ex.InnerException?.Message)) {
+            Logger.Warn(ex, "新增包裹主键冲突（通用回退分支），Id={ParcelId}", parcel.Id);
+            return RepositoryResult.Fail(DuplicateParcelIdErrorMessage, RepositoryErrorCodes.ParcelIdConflict);
+        }
+        catch (Exception ex) {
+            Logger.Error(ex, "新增包裹失败，Id={ParcelId}", parcel.Id);
+            return RepositoryResult.Fail("新增包裹失败");
+        }
     }
 
     /// <summary>
@@ -163,7 +211,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
 
         try {
             ValidateQueryFilter(filter);
-            return ExecutePagedQueryAsync((_, query) => ApplyFilter(query, filter), pageRequest, cancellationToken);
+            return ExecutePagedQueryAsync((db, query) => ApplyFilter(query, filter, db.Database.ProviderName), pageRequest, cancellationToken);
         }
         catch (ValidationException ex) {
             Logger.Warn(
@@ -239,22 +287,35 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     }
 
     /// <summary>
-    /// 按扫描时间查询前后邻近记录（时间顺序）。
+    /// 按包裹 Id 查询前后邻近记录（稳定顺序：ScannedTime, Id）。
     /// </summary>
-    public async Task<IReadOnlyList<ParcelSummaryReadModel>> GetAdjacentByScannedTimeAsync(
-        DateTime scannedTime,
+    public async Task<RepositoryResult<IReadOnlyList<ParcelSummaryReadModel>>> GetAdjacentByIdAsync(
+        long id,
         int beforeCount,
         int afterCount,
         CancellationToken cancellationToken) {
+        if (id <= 0) {
+            return RepositoryResult<IReadOnlyList<ParcelSummaryReadModel>>.Fail("包裹 Id 必须大于 0。");
+        }
+
         var normalizedBeforeCount = NormalizeAdjacentCount(beforeCount);
         var normalizedAfterCount = NormalizeAdjacentCount(afterCount);
 
         try {
             await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
             var query = Query(db);
+            var anchor = await query
+                .Where(x => x.Id == id)
+                .Select(x => new { x.Id, x.ScannedTime })
+                .FirstOrDefaultAsync(cancellationToken);
+            if (anchor is null) {
+                return RepositoryResult<IReadOnlyList<ParcelSummaryReadModel>>.Fail($"未找到 Id 为 {id} 的资源。");
+            }
 
             var beforeItems = await query
-                .Where(x => x.ScannedTime < scannedTime)
+                .Where(x => x.Id != anchor.Id
+                            && (x.ScannedTime < anchor.ScannedTime
+                                || (x.ScannedTime == anchor.ScannedTime && x.Id < anchor.Id)))
                 .OrderByDescending(x => x.ScannedTime)
                 .ThenByDescending(x => x.Id)
                 .Take(normalizedBeforeCount)
@@ -264,19 +325,21 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
             beforeItems.Reverse();
 
             var afterItems = await query
-                .Where(x => x.ScannedTime > scannedTime)
+                .Where(x => x.Id != anchor.Id
+                            && (x.ScannedTime > anchor.ScannedTime
+                                || (x.ScannedTime == anchor.ScannedTime && x.Id > anchor.Id)))
                 .OrderBy(x => x.ScannedTime)
                 .ThenBy(x => x.Id)
                 .Take(normalizedAfterCount)
                 .Select(SelectSummaryExpression)
                 .ToListAsync(cancellationToken);
 
-            return [.. beforeItems, .. afterItems];
+            return RepositoryResult<IReadOnlyList<ParcelSummaryReadModel>>.Success([.. beforeItems, .. afterItems]);
         }
         catch (Exception ex) {
             Logger.Error(ex,
-                "按扫描时间查询邻近记录失败，ScannedTime={ScannedTime}, BeforeCount={BeforeCount}, AfterCount={AfterCount}",
-                scannedTime,
+                "按包裹 Id 查询邻近记录失败，Id={ParcelId}, BeforeCount={BeforeCount}, AfterCount={AfterCount}",
+                id,
                 beforeCount,
                 afterCount);
             throw;
@@ -504,11 +567,14 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     /// </summary>
     /// <param name="query">基础查询。</param>
     /// <param name="filter">过滤参数。</param>
-    private static IQueryable<Parcel> ApplyFilter(IQueryable<Parcel> query, ParcelQueryFilter filter) {
+    /// <param name="providerName">当前数据库提供器名称。</param>
+    private static IQueryable<Parcel> ApplyFilter(IQueryable<Parcel> query, ParcelQueryFilter filter, string? providerName) {
         if (!string.IsNullOrWhiteSpace(filter.BarCodeKeyword)) {
             var barCodeKeyword = filter.BarCodeKeyword.Trim();
-            // 步骤 1：统一使用子串匹配，确保“部分关键词 + 全量关键词”均可命中（跨 provider 语义一致）。
-            query = query.Where(x => x.BarCodes.Contains(barCodeKeyword));
+            // 步骤 1：MySQL 优先使用 MATCH...AGAINST(Boolean Mode)；其他 Provider 回退到 Contains 子串匹配。
+            query = string.Equals(providerName, DbProviderNames.MySql, StringComparison.Ordinal)
+                ? query.Where(x => EF.Functions.IsMatch(x.BarCodes, barCodeKeyword, MySqlMatchSearchMode.Boolean))
+                : query.Where(x => x.BarCodes.Contains(barCodeKeyword));
         }
 
         if (!string.IsNullOrWhiteSpace(filter.BagCode)) {
@@ -572,6 +638,38 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
         }
 
         return Math.Min(count, IParcelRepository.MaxAdjacentCountPerSide);
+    }
+
+    /// <summary>
+    /// 判断是否为主键唯一约束冲突异常。
+    /// </summary>
+    /// <param name="exception">数据库更新异常。</param>
+    /// <returns>是否为主键冲突。</returns>
+    private static bool IsDuplicatePrimaryKeyException(DbUpdateException exception) {
+        if (exception.InnerException is MySqlException mySqlException) {
+            return mySqlException.Number == 1062;
+        }
+
+        if (exception.InnerException is SqlException sqlException) {
+            return sqlException.Number == 2627 || sqlException.Number == 2601;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// 判断异常消息是否包含“重复键”语义。
+    /// </summary>
+    /// <param name="message">异常消息。</param>
+    /// <returns>是否包含重复键语义。</returns>
+    private static bool ContainsDuplicateKeyMessage(string? message) {
+        if (string.IsNullOrWhiteSpace(message)) {
+            return false;
+        }
+
+        return message.Contains("same key", StringComparison.OrdinalIgnoreCase)
+               || message.Contains("duplicate", StringComparison.OrdinalIgnoreCase)
+               || message.Contains("已存在", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

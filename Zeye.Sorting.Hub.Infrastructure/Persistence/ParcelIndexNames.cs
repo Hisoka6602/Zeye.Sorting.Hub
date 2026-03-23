@@ -15,6 +15,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence {
         public const string ActualChuteIdScannedTime = "IX_Parcels_ActualChuteId_ScannedTime";
 
         /// <summary>
+        /// Parcel 按目标格口 + 扫描时间复合索引名。
+        /// </summary>
+        public const string TargetChuteIdScannedTime = "IX_Parcels_TargetChuteId_ScannedTime";
+
+        /// <summary>
         /// Parcel 条码全文索引名（MySQL）。
         /// </summary>
         public const string BarCodesFullText = "FTX_Parcels_BarCodes";

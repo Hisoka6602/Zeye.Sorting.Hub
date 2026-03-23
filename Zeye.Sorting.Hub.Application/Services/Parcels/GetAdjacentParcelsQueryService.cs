@@ -38,6 +38,7 @@ public sealed class GetAdjacentParcelsQueryService {
             throw new ArgumentNullException(nameof(request));
         }
 
+        Guard.ThrowIfZeroOrNegative(request.Id, nameof(request.Id), "包裹 Id 必须大于 0。", "查询 Parcel 邻近记录");
         Guard.ThrowIfNegative(request.BeforeCount, nameof(request.BeforeCount), "前向查询条数不能小于 0。", "查询 Parcel 邻近记录");
         Guard.ThrowIfNegative(request.AfterCount, nameof(request.AfterCount), "后向查询条数不能小于 0。", "查询 Parcel 邻近记录");
 
@@ -46,11 +47,16 @@ public sealed class GetAdjacentParcelsQueryService {
         var afterCount = Math.Min(request.AfterCount, IParcelRepository.MaxAdjacentCountPerSide);
         try {
             // 步骤 1：使用归一化数量调用仓储邻近查询，保证单次查询开销可控。
-            var adjacent = await _parcelRepository.GetAdjacentByScannedTimeAsync(
-                request.ScannedTime,
+            var adjacentResult = await _parcelRepository.GetAdjacentByIdAsync(
+                request.Id,
                 beforeCount,
                 afterCount,
                 cancellationToken);
+            if (!adjacentResult.IsSuccess) {
+                throw new KeyNotFoundException(adjacentResult.ErrorMessage);
+            }
+
+            var adjacent = adjacentResult.Value ?? Array.Empty<Domain.Repositories.Models.ReadModels.ParcelSummaryReadModel>();
             // 步骤 2：统一映射为 Contracts 响应，避免 Host 层重复映射。
             var items = adjacent.Select(ParcelContractMapper.ToListItem).ToArray();
             return new ParcelAdjacentResponse {
@@ -62,8 +68,8 @@ public sealed class GetAdjacentParcelsQueryService {
         catch (Exception ex) {
             Logger.Error(
                 ex,
-                "查询 Parcel 邻近记录失败，ScannedTime={0}, BeforeCount={1}, AfterCount={2}",
-                request.ScannedTime,
+                "查询 Parcel 邻近记录失败，Id={0}, BeforeCount={1}, AfterCount={2}",
+                request.Id,
                 request.BeforeCount,
                 request.AfterCount);
             throw;

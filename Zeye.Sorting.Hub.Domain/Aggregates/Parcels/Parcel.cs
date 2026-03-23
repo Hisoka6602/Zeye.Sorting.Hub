@@ -263,7 +263,8 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         /// <summary>
         /// 创建包裹（领域工厂方法）
         /// </summary>
-        public static Parcel Create(
+    public static Parcel Create(
+            long id,
             long parcelTimestamp,
             ParcelType type,
             string barCodes,
@@ -287,6 +288,10 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
             int? sorterCarrierId = null,
             string? segmentCodes = null,
             long? lifecycleMilliseconds = null) {
+            if (id <= 0) {
+                throw new ArgumentOutOfRangeException(nameof(id), "包裹 Id 必须大于 0");
+            }
+
             if (parcelTimestamp <= 0) {
                 throw new ArgumentOutOfRangeException(nameof(parcelTimestamp), "包裹时间戳必须大于 0");
             }
@@ -308,6 +313,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
             }
 
             var entity = new Parcel {
+                Id = id,
                 ParcelTimestamp = parcelTimestamp,
                 Type = type,
                 NoReadType = noReadType,

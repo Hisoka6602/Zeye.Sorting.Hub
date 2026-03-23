@@ -5,6 +5,7 @@ using Zeye.Sorting.Hub.Contracts.Models.Parcels.Admin;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Repositories;
+using Zeye.Sorting.Hub.Domain.Repositories.Models.Results;
 
 namespace Zeye.Sorting.Hub.Application.Services.Parcels;
 
@@ -12,6 +13,15 @@ namespace Zeye.Sorting.Hub.Application.Services.Parcels;
 /// 管理端新增包裹应用服务。
 /// </summary>
 public sealed class CreateParcelCommandService {
+    /// <summary>
+    /// 新增失败冲突错误码（供 Host 层稳定映射 409）。
+    /// </summary>
+    public const string ParcelIdConflictErrorCode = RepositoryErrorCodes.ParcelIdConflict;
+    /// <summary>
+    /// 异常 Data 中冲突错误码键名。
+    /// </summary>
+    public const string ErrorCodeDataKey = "ErrorCode";
+
     /// <summary>
     /// NLog 日志器。
     /// </summary>
@@ -51,6 +61,7 @@ public sealed class CreateParcelCommandService {
         try {
             // 步骤 2：通过领域工厂方法构建聚合根，由领域层统一做字段合法性校验。
             var parcel = Parcel.Create(
+                id: request.Id,
                 parcelTimestamp: request.ParcelTimestamp,
                 type: (ParcelType)request.Type,
                 barCodes: request.BarCodes,
@@ -75,10 +86,16 @@ public sealed class CreateParcelCommandService {
                 segmentCodes: request.SegmentCodes,
                 lifecycleMilliseconds: request.LifecycleMilliseconds);
 
-            // 步骤 3：调用仓储持久化，EF Core 会在保存后将数据库分配的 Id 回写到实体。
+            // 步骤 3：调用仓储持久化（包裹 Id 由调用方传入并由领域工厂赋值）。
             var result = await _parcelRepository.AddAsync(parcel, cancellationToken);
             if (!result.IsSuccess) {
                 Logger.Error("新增包裹失败，BarCodes={BarCodes}, ErrorMessage={ErrorMessage}", request.BarCodes, result.ErrorMessage);
+                if (string.Equals(result.ErrorCode, ParcelIdConflictErrorCode, StringComparison.Ordinal)) {
+                    var exception = new InvalidOperationException(result.ErrorMessage ?? "新增包裹失败。");
+                    exception.Data[ErrorCodeDataKey] = ParcelIdConflictErrorCode;
+                    throw exception;
+                }
+
                 throw new InvalidOperationException(result.ErrorMessage ?? "新增包裹失败。");
             }
 

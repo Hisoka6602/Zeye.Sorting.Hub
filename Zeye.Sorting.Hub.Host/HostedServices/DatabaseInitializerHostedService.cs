@@ -767,7 +767,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         internal static IReadOnlyList<string> ResolveCriticalIndexesForProvider(string providerName) {
             return new[] {
                 ParcelIndexNames.BagCodeScannedTime,
-                ParcelIndexNames.ActualChuteIdScannedTime
+                ParcelIndexNames.ActualChuteIdScannedTime,
+                ParcelIndexNames.TargetChuteIdScannedTime
             };
         }
 

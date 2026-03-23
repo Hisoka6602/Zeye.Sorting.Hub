@@ -15,6 +15,10 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 /// </summary>
 public sealed class ParcelQueryServicesTests {
     /// <summary>
+    /// 测试包裹 Id 自增序列。
+    /// </summary>
+    private static long _testParcelIdSequence = 1000;
+    /// <summary>
     /// 验证场景：GetParcelPagedQueryService_ShouldMapAndValidate。
     /// </summary>
     [Fact]
@@ -92,17 +96,16 @@ public sealed class ParcelQueryServicesTests {
         var databaseName = $"parcel-query-service-test-{Guid.NewGuid():N}";
         var baseTime = new DateTime(2026, 3, 20, 9, 0, 0, DateTimeKind.Local);
         try {
-            await SeedParcelsAsync(databaseName, [
-                CreateParcel("BC-ADJ-1", "BAG-ADJ", "WS-ADJ", ParcelStatus.Pending, baseTime.AddMinutes(1), 940, 941),
-                CreateParcel("BC-ADJ-2", "BAG-ADJ", "WS-ADJ", ParcelStatus.Pending, baseTime.AddMinutes(2), 940, 942),
-                CreateParcel("BC-ADJ-3", "BAG-ADJ", "WS-ADJ", ParcelStatus.Pending, baseTime.AddMinutes(3), 940, 943)
-            ]);
+            var parcel1 = CreateParcel("BC-ADJ-1", "BAG-ADJ", "WS-ADJ", ParcelStatus.Pending, baseTime.AddMinutes(1), 940, 941);
+            var parcel2 = CreateParcel("BC-ADJ-2", "BAG-ADJ", "WS-ADJ", ParcelStatus.Pending, baseTime.AddMinutes(2), 940, 942);
+            var parcel3 = CreateParcel("BC-ADJ-3", "BAG-ADJ", "WS-ADJ", ParcelStatus.Pending, baseTime.AddMinutes(3), 940, 943);
+            await SeedParcelsAsync(databaseName, [parcel1, parcel2, parcel3]);
             var repository = CreateRepository(databaseName);
             var service = new GetAdjacentParcelsQueryService(repository);
 
             var response = await service.ExecuteAsync(
                 new ParcelAdjacentRequest {
-                    ScannedTime = baseTime.AddMinutes(2),
+                    Id = parcel2.Id,
                     BeforeCount = 200,
                     AfterCount = 200
                 },
@@ -115,8 +118,30 @@ public sealed class ParcelQueryServicesTests {
 
             await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => service.ExecuteAsync(
                 new ParcelAdjacentRequest {
-                    ScannedTime = baseTime,
+                    Id = parcel2.Id,
                     BeforeCount = -1,
+                    AfterCount = 1
+                },
+                CancellationToken.None));
+        }
+        finally {
+            await CleanupDatabaseAsync(databaseName);
+        }
+    }
+
+    /// <summary>
+    /// 验证场景：邻近查询锚点不存在时抛出 KeyNotFoundException。
+    /// </summary>
+    [Fact]
+    public async Task GetAdjacentParcelsQueryService_WhenAnchorNotFound_ShouldThrowKeyNotFoundException() {
+        var databaseName = $"parcel-query-service-test-{Guid.NewGuid():N}";
+        try {
+            var repository = CreateRepository(databaseName);
+            var service = new GetAdjacentParcelsQueryService(repository);
+            await Assert.ThrowsAsync<KeyNotFoundException>(() => service.ExecuteAsync(
+                new ParcelAdjacentRequest {
+                    Id = 999999,
+                    BeforeCount = 1,
                     AfterCount = 1
                 },
                 CancellationToken.None));
@@ -331,6 +356,7 @@ public sealed class ParcelQueryServicesTests {
         long targetChuteId,
         long actualChuteId) {
         var parcel = Parcel.Create(
+            id: Interlocked.Increment(ref _testParcelIdSequence),
             parcelTimestamp: Math.Abs(scannedTime.Ticks),
             type: ParcelType.Normal,
             barCodes: barCode,

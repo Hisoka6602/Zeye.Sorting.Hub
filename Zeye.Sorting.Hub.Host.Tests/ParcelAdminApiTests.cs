@@ -31,6 +31,7 @@ public sealed class ParcelAdminApiTests {
         using var client = app.GetTestClient();
 
         var body = BuildCreateRequestJson(
+            id: 501,
             scannedTime: "2026-03-20T10:00:00",
             dischargeTime: "2026-03-20T10:00:03");
 
@@ -39,7 +40,8 @@ public sealed class ParcelAdminApiTests {
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         using var payload = await response.Content.ReadFromJsonAsync<JsonDocument>();
         Assert.NotNull(payload);
-        // 新增后 Id 由 FakeParcelRepository 分配（>=100），条码应与请求一致
+        // 新增后 Id 应与请求一致，条码应与请求一致
+        Assert.Equal(501, payload.RootElement.GetProperty("id").GetInt64());
         Assert.Equal("BC-ADMIN-TEST", payload.RootElement.GetProperty("barCodes").GetString());
     }
 
@@ -52,6 +54,7 @@ public sealed class ParcelAdminApiTests {
         using var client = app.GetTestClient();
 
         var body = BuildCreateRequestJson(
+            id: 502,
             scannedTime: "2026-03-20T10:00:00Z",
             dischargeTime: "2026-03-20T10:00:03");
 
@@ -71,6 +74,7 @@ public sealed class ParcelAdminApiTests {
         using var client = app.GetTestClient();
 
         var body = BuildCreateRequestJson(
+            id: 503,
             scannedTime: "2026-03-20T10:00:00+08:00",
             dischargeTime: "2026-03-20T10:00:03");
 
@@ -110,6 +114,7 @@ public sealed class ParcelAdminApiTests {
         using var client = app.GetTestClient();
 
         var body = BuildCreateRequestJson(
+            id: 504,
             scannedTime: "2026-03-20T10:00:00",
             dischargeTime: "2026-03-20T10:00:03",
             barCodes: "");
@@ -117,6 +122,48 @@ public sealed class ParcelAdminApiTests {
         using var response = await client.PostAsync("/api/admin/parcels", body);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    /// <summary>
+    /// 验证场景：新增时 id 小于等于 0，返回 400 Bad Request。
+    /// </summary>
+    [Fact]
+    public async Task CreateParcel_WithNonPositiveId_ShouldReturn400() {
+        await using var app = await BuildTestAppAsync();
+        using var client = app.GetTestClient();
+
+        var body = BuildCreateRequestJson(
+            id: 0,
+            scannedTime: "2026-03-20T10:00:00",
+            dischargeTime: "2026-03-20T10:00:03");
+
+        using var response = await client.PostAsync("/api/admin/parcels", body);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    /// <summary>
+    /// 验证场景：新增时重复 id，返回 409 Conflict。
+    /// </summary>
+    [Fact]
+    public async Task CreateParcel_WithDuplicateId_ShouldReturn409() {
+        await using var app = await BuildTestAppAsync();
+        using var client = app.GetTestClient();
+
+        var first = BuildCreateRequestJson(
+            id: 777,
+            scannedTime: "2026-03-20T10:00:00",
+            dischargeTime: "2026-03-20T10:00:03");
+        var second = BuildCreateRequestJson(
+            id: 777,
+            scannedTime: "2026-03-20T10:10:00",
+            dischargeTime: "2026-03-20T10:10:03");
+
+        using var firstResponse = await client.PostAsync("/api/admin/parcels", first);
+        Assert.Equal(HttpStatusCode.Created, firstResponse.StatusCode);
+
+        using var secondResponse = await client.PostAsync("/api/admin/parcels", second);
+        Assert.Equal(HttpStatusCode.Conflict, secondResponse.StatusCode);
     }
 
     /// <summary>
@@ -129,6 +176,7 @@ public sealed class ParcelAdminApiTests {
         using var client = app.GetTestClient();
 
         var body = BuildCreateRequestJson(
+            id: 505,
             scannedTime: "2026-03-20T10:00:00",
             dischargeTime: "2026-03-20T10:00:03");
 
@@ -445,11 +493,13 @@ public sealed class ParcelAdminApiTests {
     /// <param name="barCodes">条码（默认 BC-ADMIN-TEST）。</param>
     /// <returns>HTTP JSON StringContent。</returns>
     private static StringContent BuildCreateRequestJson(
+        long id,
         string scannedTime,
         string dischargeTime,
         string barCodes = "BC-ADMIN-TEST") {
         var json = $$"""
             {
+                "id": {{id}},
                 "parcelTimestamp": 638789040000000000,
                 "type": 0,
                 "barCodes": "{{barCodes}}",

@@ -184,7 +184,7 @@ public static class ParcelReadOnlyApiRouteExtensions {
         group.MapGet(string.Empty, GetParcelListAsync)
             .WithName("GetParcelList")
             .WithSummary("分页查询 Parcel 列表")
-            .WithDescription("按页码、分页大小与可选过滤条件（条码检索词、集包号、状态、异常类型、格口、扫码时间范围）查询包裹摘要列表。BarCodeKeyword 统一按子串匹配，支持部分关键词与完整条码搜索（如 456、SF、123、SF123456）。时间参数必须为本地时间字符串，不允许 UTC 或时区偏移。")
+            .WithDescription("按页码、分页大小与可选过滤条件（条码检索词、集包号、状态、异常类型、格口、扫码时间范围）查询包裹摘要列表。时间参数必须为本地时间字符串，不允许 UTC 或时区偏移。\n\nBarCodeKeyword Provider 语义：MySQL 使用 FULLTEXT Boolean 模式，其他 Provider 使用 Contains 子串匹配。")
             .Produces<ParcelListResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest);
 
@@ -198,10 +198,11 @@ public static class ParcelReadOnlyApiRouteExtensions {
 
         group.MapGet("/adjacent", GetAdjacentParcelsAsync)
             .WithName("GetAdjacentParcels")
-            .WithSummary("按扫描时间查询 Parcel 邻近记录")
-            .WithDescription("以指定扫描时间为基准，查询前后邻近记录数量。scannedTime 必须是本地时间字符串，不允许 UTC 或时区偏移。")
+            .WithSummary("按包裹 Id 查询 Parcel 邻近记录")
+            .WithDescription("以指定包裹 Id 为锚点，基于稳定排序键 (ScannedTime, Id) 查询前后邻近记录数量。锚点不存在返回 404。")
             .Produces<ParcelAdjacentResponse>(StatusCodes.Status200OK)
-            .ProducesProblem(StatusCodes.Status400BadRequest);
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         return routeBuilder;
     }
@@ -279,24 +280,28 @@ public static class ParcelReadOnlyApiRouteExtensions {
         [AsParameters] ParcelAdjacentQueryParameters query,
         GetAdjacentParcelsQueryService queryService,
         CancellationToken cancellationToken) {
-        if (!LocalDateTimeParsing.TryParseLocalDateTime(query.ScannedTime, out var scannedTime)) {
-            return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", "scannedTime 必须是本地时间格式，且不允许包含 UTC 或时区偏移。");
+        if (!query.Id.HasValue) {
+            return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", "id 为必填参数。");
         }
 
         try {
             var request = new ParcelAdjacentRequest {
-                ScannedTime = scannedTime,
+                Id = query.Id.Value,
                 BeforeCount = query.BeforeCount,
                 AfterCount = query.AfterCount
             };
             var response = await queryService.ExecuteAsync(request, cancellationToken);
             return Results.Ok(response);
         }
+        catch (KeyNotFoundException exception) {
+            Logger.Warn(exception, "Parcel 邻近查询锚点不存在，Id={ParcelId}", query.Id);
+            return LocalDateTimeParsing.CreateNotFoundProblem(query.Id.Value);
+        }
         catch (ArgumentException exception) {
             Logger.Warn(
                 exception,
-                "Parcel 邻近查询参数校验失败，ScannedTime={ScannedTime}, BeforeCount={BeforeCount}, AfterCount={AfterCount}",
-                query.ScannedTime,
+                "Parcel 邻近查询参数校验失败，Id={ParcelId}, BeforeCount={BeforeCount}, AfterCount={AfterCount}",
+                query.Id,
                 query.BeforeCount,
                 query.AfterCount);
             return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", exception.Message);
@@ -318,7 +323,7 @@ public static class ParcelReadOnlyApiRouteExtensions {
         public int PageSize { get; init; } = 20;
 
         /// <summary>
-        /// 条码检索词（MySQL 下建议传完整条码词元/短语）。
+        /// 条码检索词（MySQL 走 FULLTEXT Boolean 模式，其他 Provider 走 Contains 子串匹配）。
         /// </summary>
         public string? BarCodeKeyword { get; init; }
 
@@ -368,17 +373,17 @@ public static class ParcelReadOnlyApiRouteExtensions {
     /// </summary>
     private sealed record ParcelAdjacentQueryParameters {
         /// <summary>
-        /// 基准扫码时间（本地时间字符串）。
+        /// 锚点包裹 Id。
         /// </summary>
-        public string? ScannedTime { get; init; }
+        public long? Id { get; init; }
 
         /// <summary>
-        /// 基准时间前查询条数。
+        /// 锚点记录前查询条数。
         /// </summary>
         public int BeforeCount { get; init; } = 5;
 
         /// <summary>
-        /// 基准时间后查询条数。
+        /// 锚点记录后查询条数。
         /// </summary>
         public int AfterCount { get; init; } = 5;
     }

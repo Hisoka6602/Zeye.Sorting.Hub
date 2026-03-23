@@ -5,6 +5,11 @@ namespace Zeye.Sorting.Hub.Contracts.Models.Parcels.Admin;
 /// </summary>
 public sealed record ParcelCreateRequest {
     /// <summary>
+    /// 包裹 Id，由调用方传入，必须大于 0，且全局唯一。
+    /// </summary>
+    public required long Id { get; init; }
+
+    /// <summary>
     /// 包裹时间戳（Unix Ticks）。
     /// </summary>
     public required long ParcelTimestamp { get; init; }

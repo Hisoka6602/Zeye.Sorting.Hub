@@ -46,6 +46,7 @@ public sealed class AutoTuningProductionControlTests {
     [Fact]
     public void Parcel_CreateAndMarkSortingException_ShouldKeepExceptionTypeConsistent() {
         var parcel = Parcel.Create(
+            id: 9001,
             parcelTimestamp: 1,
             type: ParcelType.Normal,
             barCodes: "BC001",
@@ -1005,16 +1006,20 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ResolveCriticalIndexesForProvider_ShouldIncludeMySqlFullTextIndexOnlyForMySql。
+    /// 验证场景：ResolveCriticalIndexesForProvider_ShouldIncludeChuteAndBagIndexes。
     /// </summary>
     [Fact]
-    public void ResolveCriticalIndexesForProvider_ShouldIncludeMySqlFullTextIndexOnlyForMySql() {
+    public void ResolveCriticalIndexesForProvider_ShouldIncludeChuteAndBagIndexes() {
         var mySqlIndexes = DatabaseInitializerHostedService.ResolveCriticalIndexesForProvider("MySQL");
         var sqlServerIndexes = DatabaseInitializerHostedService.ResolveCriticalIndexesForProvider("SQLServer");
         var mySqlAuditOnlyIndexes = DatabaseInitializerHostedService.ResolveAuditOnlyIndexesForProvider("MySQL");
 
         Assert.Contains(ParcelIndexNames.BagCodeScannedTime, mySqlIndexes);
         Assert.Contains(ParcelIndexNames.ActualChuteIdScannedTime, mySqlIndexes);
+        Assert.Contains(ParcelIndexNames.TargetChuteIdScannedTime, mySqlIndexes);
+        Assert.Contains(ParcelIndexNames.BagCodeScannedTime, sqlServerIndexes);
+        Assert.Contains(ParcelIndexNames.ActualChuteIdScannedTime, sqlServerIndexes);
+        Assert.Contains(ParcelIndexNames.TargetChuteIdScannedTime, sqlServerIndexes);
         Assert.DoesNotContain(ParcelIndexNames.BarCodesFullText, mySqlIndexes);
         Assert.DoesNotContain(ParcelIndexNames.BarCodesFullText, sqlServerIndexes);
         Assert.Contains(ParcelIndexNames.BarCodesFullText, mySqlAuditOnlyIndexes);

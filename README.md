@@ -205,13 +205,15 @@
 │   │   │   ├── 20260322050329_OptimizeBagCodeAndActualChuteIdQueryIndexes.Designer.cs（迁移元数据，自动生成）
 │   │   │   ├── 20260322072600_AddBarCodesFullTextIndex.cs（BarCodes 列 FULLTEXT 全文索引迁移，仅 MySQL）
 │   │   │   ├── 20260322072600_AddBarCodesFullTextIndex.Designer.cs（迁移元数据，自动生成）
+│   │   │   ├── 20260323045038_UseExternalProvidedParcelId.cs（Parcel 主表主键改为外部提供，移除主键自动生成策略）
+│   │   │   ├── 20260323045038_UseExternalProvidedParcelId.Designer.cs（迁移元数据，自动生成）
 │   │   │   └── SortingHubDbContextModelSnapshot.cs（当前模型快照，自动生成）
 │   │   └── SortingHubDbContext.cs（EF Core DbContext）
 │   │   ├── DbProviderNames.cs（EF Core 运行时/迁移 providerName 常量）
 │   │   └── ConfiguredProviderNames.cs（配置层 provider key 常量：Persistence:Provider / ConnectionStrings key / CLI --provider）
 │   ├── Repositories（仓储基类与结果模型目录）
 │   │   ├── MemoryCacheRepositoryBase.cs（带内存缓存失效的仓储基类，使用 NLog 日志）
-│   │   ├── ParcelRepository.cs（Parcel 仓储第一阶段实现，使用静态 NLog logger，无需 MEL ILogger 构造注入；条码检索统一子串匹配）
+│   │   ├── ParcelRepository.cs（Parcel 仓储第一阶段实现，使用静态 NLog logger，无需 MEL ILogger 构造注入；BarCodeKeyword 检索按 Provider 分支：MySQL 走 FULLTEXT Boolean，其他 Provider 回退 Contains）
 │   │   └── RepositoryBase.cs（通用仓储基类，接受 NLog.ILogger 构造参数，由派生类传入确保日志来源类名正确）
 │   └── Zeye.Sorting.Hub.Infrastructure.csproj（Infrastructure 项目定义）
 ├── Zeye.Sorting.Hub.Realtime（实时通信子域，占位工程）
@@ -280,7 +282,7 @@
 #### `Zeye.Sorting.Hub.Application/Services/Parcels/`：Parcel 应用服务目录（查询 + 管理端写命令）
 - `GetParcelByIdQueryService.cs`：按 Id 查询 Parcel 详情应用服务（仓储调用 + 合同映射 + 最小参数校验）。
 - `GetParcelPagedQueryService.cs`：分页查询 Parcel 列表应用服务（请求校验、过滤映射、分页结果映射）。
-- `GetAdjacentParcelsQueryService.cs`：按基准扫码时间查询邻近 Parcel 应用服务（数量归一化至 `IParcelRepository.MaxAdjacentCountPerSide`、响应映射）。
+- `GetAdjacentParcelsQueryService.cs`：按包裹 Id 查询邻近 Parcel 应用服务（数量归一化至 `IParcelRepository.MaxAdjacentCountPerSide`、响应映射；锚点不存在抛 KeyNotFoundException 供 Host 映射 404）。
 - `ParcelContractMapper.cs`：Parcel 领域模型/读模型到 Contracts 模型的统一映射器，避免 Host 层重复映射。
 - `CreateParcelCommandService.cs`：管理端新增包裹应用服务（枚举验证、领域工厂 Parcel.Create、仓储 AddAsync、合同映射）。
 - `UpdateParcelStatusCommandService.cs`：管理端更新包裹状态应用服务（仅支持 MarkCompleted/MarkSortingException/UpdateRequestStatus 三种领域方法，不允许任意字段修改）。
@@ -320,7 +322,7 @@
 - `WeightInfoResponse.cs`：称重明细响应合同。
 
 #### `Zeye.Sorting.Hub.Contracts/Models/Parcels/Admin/`：管理端写接口合同目录
-- `ParcelCreateRequest.cs`：管理端新增包裹请求合同（含所有 Parcel.Create 必需字段，时间字段为 DateTime 类型，UTC 在 API 层拒绝）。
+- `ParcelCreateRequest.cs`：管理端新增包裹请求合同（含调用方传入的包裹 Id，要求大于 0 且全局唯一；时间字段为本地时间字符串，由 API 层统一解析并拒绝 UTC/offset）。
 - `ParcelUpdateRequest.cs`：管理端更新包裹状态请求合同（Operation 枚举决定操作类型，对应 CompletedTime/ExceptionType/RequestStatus）。
 - `ParcelCleanupExpiredRequest.cs`：过期清理治理接口请求合同（CreatedBefore 本地时间字符串，API 层强制解析校验）。
 - `ParcelCleanupExpiredResponse.cs`：过期清理治理接口响应合同（ActionName/Decision/PlannedCount/ExecutedCount/IsDryRun/IsBlockedByGuard/CompensationBoundary）。
@@ -380,7 +382,7 @@
 - `AuditableEntity.cs`：可审计实体基类（创建/修改信息等）。
 
 #### `Zeye.Sorting.Hub.Domain/Repositories/`：领域仓储契约目录
-- `IParcelRepository.cs`：包裹仓储接口（第一阶段可落地契约：基础读写、分页查询、邻近查询、过期清理危险动作治理结果返回；同时定义 `MaxAdjacentCountPerSide = 200` 常量，为 Application 层与 Infrastructure 层提供唯一权威数字来源，禁止各自硬编码）。
+- `IParcelRepository.cs`：包裹仓储接口（第一阶段可落地契约：基础读写、分页查询、按 Id 邻近查询、过期清理危险动作治理结果返回；同时定义 `MaxAdjacentCountPerSide = 200` 常量，为 Application 层与 Infrastructure 层提供唯一权威数字来源，禁止各自硬编码）。
 
 ##### `Zeye.Sorting.Hub.Domain/Repositories/Models/`：Parcel 仓储查询模型目录
 
@@ -401,10 +403,10 @@
 - `MaxTimeRangeAttribute.cs`：时间范围校验特性（限制起止时间跨度，默认不超过 3 个月）。
 
 ### `Zeye.Sorting.Hub.Host/`：宿主层（程序入口、后台服务、启动配置）
-- `Program.cs`：应用入口与 Host 构建流程；注册 Parcel 只读 API 与管理端写 API；监听地址与 Swagger 路径均由 `Hosting` 配置驱动；Swagger 接入 Host/Contracts/Application/Domain 多程序集 XML 注释与枚举中文说明增强；使用 NLog 替换默认日志提供器，任何启动期异常均记录后再退出。
+- `Program.cs`：应用入口与 Host 构建流程；注册 Parcel 只读 API 与管理端写 API；监听地址与 Swagger 路径均由 `Hosting` 配置驱动；`GET /api/parcels/adjacent` 已改为按 `id` 查询并在锚点不存在时返回 404；Swagger 接入 Host/Contracts/Application/Domain 多程序集 XML 注释与枚举中文说明增强；使用 NLog 替换默认日志提供器，任何启动期异常均记录后再退出。
 - `HostingOptions.cs`：`Hosting` 配置模型（`Urls`、`EnableHttpsRedirection`、`Swagger`、`BrowserAutoOpen`）及 Swagger JSON 路由与开发期浏览器默认地址拼装逻辑。
 - `LocalDateTimeParsing.cs`：本地时间解析与 API 响应工厂共享工具（`TryParseLocalDateTime`、`TryParseOptionalLocalDateTime`、`IsUtcKind`、`CreateBadRequestProblem`、`CreateNotFoundProblem`），统一供各路由扩展类复用，避免重复实现。
-- `ParcelAdminApiRouteExtensions.cs`：Parcel 管理端 API 路由扩展（`MapParcelAdminApis`），注册 `POST /api/admin/parcels`、`PUT /api/admin/parcels/{id}`、`DELETE /api/admin/parcels/{id}` 普通写接口及 `POST /api/admin/parcels/cleanup-expired` 危险治理接口，并补齐中文 Summary/Description。
+- `ParcelAdminApiRouteExtensions.cs`：Parcel 管理端 API 路由扩展（`MapParcelAdminApis`），注册 `POST /api/admin/parcels`、`PUT /api/admin/parcels/{id}`、`DELETE /api/admin/parcels/{id}` 普通写接口及 `POST /api/admin/parcels/cleanup-expired` 危险治理接口，并补齐中文 Summary/Description；新增创建接口 `id` 参数校验与重复 Id 冲突映射（409）。
 - `Worker.cs`：后台轮询任务示例服务。
 - `Zeye.Sorting.Hub.Host.csproj`：Host 项目定义。
 - `nlog.config`：NLog 日志配置，双路落盘（`logs/app-*.log` 全量 + `logs/database-*.log` 数据库专属），低开销设计（异步队列 + keepFileOpen + optimizeBufferReuse），保留 30 天。
@@ -420,7 +422,7 @@
 #### `Zeye.Sorting.Hub.Host/HostedServices/`：启动/常驻托管服务目录
 - `AutoTuningLoggerObservability.cs`：自动调优观测默认日志实现（统一日志 + 指标抽象默认落地）。
 - `DatabaseAutoTuningHostedService.cs`：数据库自动调谐托管服务（显式闭环阶段迁移、执行隔离、标准化自动验证结果、回滚触发与审计日志；分表观测指标基于全量慢 SQL 解析并覆盖子查询/集合运算场景；自动索引建议在执行前统一执行覆盖、语义重复、低价值过滤）。
-- `DatabaseInitializerHostedService.cs`：数据库初始化与迁移托管服务（支持生产/非生产迁移失败策略分流：FailFast/Degraded；启动期执行分表治理程序化守卫，新增 Time/Volume/Hybrid 策略配置校验与审计输出；PerDay 手工预建守卫升级为“配置日期清单完整性 + 物理分表存在性”双重校验，且仅做探测/阻断/审计，不自动建表）。
+- `DatabaseInitializerHostedService.cs`：数据库初始化与迁移托管服务（支持生产/非生产迁移失败策略分流：FailFast/Degraded；启动期执行分表治理程序化守卫，新增 Time/Volume/Hybrid 策略配置校验与审计输出；PerDay 手工预建守卫升级为“配置日期清单完整性 + 物理分表存在性 + 关键索引一致性审计”三重校验，且仅做探测/阻断/审计，不自动建表）。
 - `DevelopmentBrowserLauncherHostedService.cs`：Development 浏览器启动隔离器，仅在 Development + `Hosting:BrowserAutoOpen:Enabled=true` + 交互式/本机/非容器/非 CI 场景触发；通过 `IHostApplicationLifetime.ApplicationStarted` 确保服务可访问后再尝试打开，并持续使用 `SafeExecutor` 隔离异常，避免影响宿主启动。
 
 #### `Zeye.Sorting.Hub.Host/Properties/`：项目运行调试属性目录
@@ -434,13 +436,13 @@
 
 #### `Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/`：EF Core 实体映射配置目录
 - `BagInfoEntityTypeConfiguration.cs`：BagInfo 映射配置。
-- `ParcelEntityTypeConfiguration.cs`：Parcel 聚合映射配置。
+- `ParcelEntityTypeConfiguration.cs`：Parcel 聚合映射配置（Parcel 主键 Id 改为 `ValueGeneratedNever`，由应用层显式赋值；owned/value-object 子表影子主键继续保持自动生成）。
 
 #### `Zeye.Sorting.Hub.Infrastructure/Persistence/`：持久化核心目录（DbContext、方言、设计时工厂）
 - `SortingHubDbContext.cs`：EF Core DbContext（实体集与模型构建入口）。
 - `DbProviderNames.cs`：EF Core 运行时/迁移 providerName 常量（`Pomelo.EntityFrameworkCore.MySql` / `Microsoft.EntityFrameworkCore.SqlServer`），用于 `DbContext.Database.ProviderName` 识别与迁移分支判断。
 - `ConfiguredProviderNames.cs`：配置层 provider key 常量（`MySql` / `SqlServer`），用于 `Persistence:Provider`、`ConnectionStrings` key 与设计时 CLI `--provider` 参数值，避免配置语义与 EF providerName 语义混用。
-- `ParcelIndexNames.cs`：Parcel 关键索引名称常量（供分表治理审计与测试复用，避免多处硬编码漂移）。
+- `ParcelIndexNames.cs`：Parcel 关键索引名称常量（供分表治理审计与测试复用，避免多处硬编码漂移；包含 BagCode/ActualChuteId/TargetChuteId 三条 ScannedTime 复合索引及 MySQL FULLTEXT 索引名）。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/DatabaseDialects/`：数据库方言抽象与实现目录
 - `DatabaseProviderExceptionHelper.cs`：数据库异常错误码提取与方言共享索引列归一化/索引名构造辅助类。
@@ -486,12 +488,14 @@
 - `20260322050329_OptimizeBagCodeAndActualChuteIdQueryIndexes.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
 - `20260322072600_AddBarCodesFullTextIndex.cs`：为 Parcels.BarCodes 列添加 MySQL FULLTEXT 全文索引（`FTX_Parcels_BarCodes`），仅 MySQL Provider 生效；SQL Server 路径为空操作。当前该索引作为物理分表关键索引一致性审计对象之一（仅探测/记录/阻断，不自动执行危险 DDL）。
 - `20260322072600_AddBarCodesFullTextIndex.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
+- `20260323045038_UseExternalProvidedParcelId.cs`：Parcel 主表主键生成策略迁移（移除 Parcels.Id 自动生成，改为外部传入）。
+- `20260323045038_UseExternalProvidedParcelId.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
 - `SortingHubDbContextModelSnapshot.cs`：当前模型快照，EF Core 用于计算下次迁移的差量（自动生成，勿手动修改）。
 
 #### `Zeye.Sorting.Hub.Infrastructure/Repositories/`：仓储基类与结果模型目录
 - `RepositoryBase.cs`：通用仓储基类（增删改查 + 自动持久化实现）；接受 `NLog.ILogger` 构造参数，由派生类传入，确保日志来源类名为实际仓储类而非基类名。
 - `MemoryCacheRepositoryBase.cs`：带内存缓存失效逻辑的仓储基类，继承 `RepositoryBase`，同样使用 NLog 日志。
-- `ParcelRepository.cs`：Parcel 仓储第一阶段实现（复用 `RepositoryBase`、`IDbContextFactory`，使用静态 `NLog.ILogger`，已移除 MEL `ILogger<ParcelRepository>` 构造依赖；提供基础读写、分页查询、邻近查询与过期清理；条码检索统一按子串匹配，支持部分与全量关键词；过期清理纳入隔离器开关 + dry-run + 审计 + 补偿边界声明）。
+- `ParcelRepository.cs`：Parcel 仓储第一阶段实现（复用 `RepositoryBase`、`IDbContextFactory`，使用静态 `NLog.ILogger`，已移除 MEL `ILogger<ParcelRepository>` 构造依赖；提供基础读写、分页查询、按 Id 邻近查询与过期清理；条码检索按 Provider 分支（MySQL FULLTEXT Boolean、其他 Provider Contains）；过期清理纳入隔离器开关 + dry-run + 审计 + 补偿边界声明）。
 
 ### `Zeye.Sorting.Hub.Realtime/`：实时通信子域（当前为占位工程）
 - `Zeye.Sorting.Hub.Realtime.csproj`：Realtime 项目定义。
@@ -513,10 +517,10 @@
 - `AutoTuningProductionControlTests.cs`：覆盖 dry-run、危险动作隔离、告警防抖与恢复、普通/严重回归、unavailable 指标处理、执行计划探针 available/unavailable 双路径、闭环链路与分表覆盖守卫校验、迁移失败策略分环境解析、结构化扩容计划解析、Time/Volume/Hybrid 分表策略评估、PerDay 预建守卫（配置+物理探测）与分表观测口径/自动索引过滤规则回归；含配置键拼装参数化（Theory）覆盖。
 - `DomainEventArgsTests.cs`：领域事件载荷单元测试，验证 `ParcelScannedEventArgs`/`ParcelChuteAssignedEventArgs` 业务字段赋值、值语义相等与不等、本地时间约束。
 - `LocalTimeTestConstraintHelper.cs`：测试层本地时间语义约束工具类，提供 `CreateLocalTime`/`AssertIsLocalTime`/`AssertNotUtc` 方法，防止测试代码引入 UTC 语义。
-- `ParcelReadOnlyApiTests.cs`：Parcel 只读 API 端点测试，覆盖列表查询、详情查询、详情不存在返回 404、邻近查询参数异常返回 400；包含可复用的 `FakeParcelRepository`（支持读写操作与可配置 cleanup-expired 三态行为）。
-- `ParcelAdminApiTests.cs`：Parcel 管理端写接口测试，覆盖新增成功路径 + UTC 时间拒绝、更新状态成功路径 + 不存在 404 + 非法操作码 400、删除成功路径 + 不存在 404、cleanup-expired blocked/dry-run/execute 三态 + UTC 时间与非法参数拒绝，共 15 个测试用例。
-- `ParcelQueryServicesTests.cs`：Parcel 应用层查询服务测试（列表/详情/邻近查询映射与最小参数校验）；多重过滤条件联合成功路径（bagCode + workstationName + actualChuteId + status）；ExceptionType 筛选成功路径与非法值校验。
-- `ParcelRepositoryTests.cs`：Parcel 仓储第一阶段能力测试，覆盖分页过滤、详情与邻近查询、新增/更新/删除、过期清理与批量新增，并回归验证危险清理动作的 blocked/dry-run/executed 三态。
+- `ParcelReadOnlyApiTests.cs`：Parcel 只读 API 端点测试，覆盖列表查询、详情查询、详情不存在返回 404、`/api/parcels/adjacent` 按 `id` 查询的 400/404/稳定排序回归；包含可复用的 `FakeParcelRepository`（支持读写操作与可配置 cleanup-expired 三态行为）。
+- `ParcelAdminApiTests.cs`：Parcel 管理端写接口测试，覆盖新增成功路径、创建请求 `id<=0` 返回 400、重复 Id 返回 409、UTC 时间拒绝、更新状态成功路径 + 不存在 404 + 非法操作码 400、删除成功路径 + 不存在 404、cleanup-expired blocked/dry-run/execute 三态 + UTC 时间与非法参数拒绝。
+- `ParcelQueryServicesTests.cs`：Parcel 应用层查询服务测试（列表/详情/邻近查询映射与最小参数校验）；新增邻近查询锚点不存在异常场景；多重过滤条件联合成功路径（bagCode + workstationName + actualChuteId + status）；ExceptionType 筛选成功路径与非法值校验。
+- `ParcelRepositoryTests.cs`：Parcel 仓储第一阶段能力测试，覆盖分页过滤、详情与按 Id 邻近查询、新增/更新/删除、过期清理与批量新增；新增同一扫描时间稳定排序、锚点不存在、重复主键冲突语义回归，并验证危险清理动作的 blocked/dry-run/executed 三态。
 - `HostingOptionsTests.cs`：Hosting 配置单元测试，覆盖监听地址分号拆分去重、`0.0.0.0` 归一化为 `localhost` 的 Swagger 地址拼装、`BrowserAutoOpen:Url` 显式配置优先级与无效监听地址返回 null 的兜底行为。
 - `SwaggerDocumentationTests.cs`：Swagger 文档增强回归测试，覆盖管理端更新请求与值对象响应中的枚举型 int 字段，验证均输出“数值 + 枚举名 + 中文描述”。
 
@@ -528,6 +532,14 @@
 
 ### 本次更新内容
 
+- `/api/parcels/adjacent` 已从按 `scannedTime` 入参改为按 `id` 入参查询，邻近锚点改为“包裹主键 + `(ScannedTime, Id)` 稳定排序”；锚点不存在返回 404，参数缺失或非法返回 400。
+- 邻近查询仓储已改造为 `GetAdjacentByIdAsync(long id, int beforeCount, int afterCount, CancellationToken)`：查询前先加载锚点包裹，前后向均排除锚点自身，并在同一扫描时间下按 Id 决定稳定先后顺序。
+- `Parcel.Id` 已改为创建时由调用方传入：`ParcelCreateRequest` 新增 `Id` 字段，`Parcel.Create(...)` 新增并校验 `id > 0`，`CreateParcelCommandService` 改为传入请求 Id，`ParcelEntityTypeConfiguration` 将主键策略改为 `ValueGeneratedNever()`。
+- 已新增迁移 `20260323045038_UseExternalProvidedParcelId` 并同步 Designer 与 ModelSnapshot，反映 Parcel 主表主键不再自动生成。
+- 重复 Id 处理策略已明确：仓储返回“包裹 Id 已存在。”，Host 管理端创建接口将该语义映射为 `409 Conflict`，不再吞并为模糊 500。
+- 重复 Id 处理策略进一步稳固：仓储结果新增稳定错误码 `Parcel.Id.Conflict`，Application 透传该标识，Host 按错误码映射 `409 Conflict`，不再依赖错误文案字符串判断。
+- 物理分表关键索引一致性审计已补齐 `TargetChuteId` 路径：新增 `ParcelIndexNames.TargetChuteIdScannedTime`，并纳入 `ResolveCriticalIndexesForProvider()` 阻断索引集合（仍保持仅探测/记录/阻断，不自动执行 DDL）。
+- 已修复 README 中“已统一 BarCodeKeyword 检索语义”的不一致描述，按当前真实实现更正为：MySQL 使用 FULLTEXT Boolean（`EF.Functions.IsMatch`），其他 Provider 使用 `Contains()`。
 - 已将 Host 监听地址与 Swagger 暴露参数切换为 `appsettings.json` 的 `Hosting` 配置主驱动：`Hosting:Urls`、`Hosting:EnableHttpsRedirection`、`Hosting:Swagger:*`、`Hosting:BrowserAutoOpen:*`。
 - 已收口 Development 浏览器启动时机：`DevelopmentBrowserLauncherHostedService` 改为在 `ApplicationStarted` 后执行打开浏览器，保留 `SafeExecutor` 副作用隔离，并继续限制为 Development + 配置开启 + 交互式/本机/非容器/非 CI 场景。
 - 已将 `launchSettings.json` 的 `launchBrowser` 调整为 `false`，防止与运行时自动打开逻辑重复触发。
@@ -535,24 +547,27 @@
 - 已补充/增强测试：`SwaggerDocumentationTests` 新增值对象枚举数值字段覆盖断言，`HostingOptionsTests` 增加无效监听地址兜底断言，确保回归可验证。
 - 已补齐 Parcels 主表两处索引覆盖缺口：① 将 `IX_Parcels_BagCode` 单列索引升级为 `(BagCode, ScannedTime)` 复合索引，覆盖 `GetByBagCodeAsync` 的等值过滤 + ScannedTime 范围路径，并对 ScannedTime 主排序提供索引支撑；② 新增 `IX_Parcels_ActualChuteId_ScannedTime` 复合索引，覆盖 `GetByChuteAsync` 的过滤 + ScannedTime 主排序路径（原有 `ActualChuteId_DischargeTime` 索引保留，服务落格时间维度查询）。当前分页真实排序为 `ScannedTime DESC, Id DESC`，索引第二排序键 `Id` 暂未纳入复合索引。
 - 已新增“物理分表关键索引一致性审计”能力（仅探测/记录/阻断，不自动执行危险 DDL）：在分表治理守卫中对预建窗口内物理分表逐表审计关键索引，阻断项为 `IX_Parcels_BagCode_ScannedTime`、`IX_Parcels_ActualChuteId_ScannedTime`；MySQL 的 `FTX_Parcels_BarCodes` 调整为仅审计项（缺失仅告警不阻断）；支持配置开关与“仅审计不阻断”模式。
-- 已统一 BarCodeKeyword 检索语义：无论 MySQL / SQL Server / InMemory，均按 `Contains` 子串匹配执行，支持部分关键词与全量关键词搜索（如 `456`、`SF`、`123`、`SF123456`），避免 provider 间语义差异。
+- 已按当前实现修正文档：`BarCodeKeyword` 检索语义并非“全 Provider 统一 Contains”；而是 **MySQL 使用 `EF.Functions.IsMatch(..., Boolean)`（FULLTEXT Boolean）**，其他 Provider 使用 `Contains()` 子串匹配，Contracts 与 Host API 文案已同步保持一致。
 - 已收敛 Provider 常量语义：保留 `DbProviderNames` 仅承载 EF Core 运行时/迁移 providerName；新增 `ConfiguredProviderNames` 专用于配置值/CLI 参数/ConnectionStrings key，并完成 DesignTime 工厂与持久化 DI 注册改造，避免语义混淆。
 - 已补充 `GetByChuteAsync(actualChuteId, targetChuteId, ...)` 调用边界校验：当两个格口 Id 同时为 null 时抛出“至少提供一个格口 Id”异常，并补齐仓储回归测试（双 null 异常、仅 actual、仅 target 三个场景）。
-- 已同步 API 契约/注释语义：`BarCodeKeyword` 文案调整为统一子串匹配语义，明确支持部分关键词与全量关键词搜索。
-- 已补充 `ParcelRepositoryTests` 中 BarCodeKeyword 过滤路径回归测试：覆盖含 `-` 分隔符条码的子串匹配、空格修剪、部分关键词（前缀/中缀/后缀）搜索、全量关键词搜索与无匹配场景。
+- 已同步 API 契约/注释语义：`BarCodeKeyword` 文案更新为“MySQL FULLTEXT Boolean + 其他 Provider Contains”。
+- 已保留 `ParcelRepositoryTests` 的非 MySQL 回退路径回归测试（InMemory `Contains` 分支）；MySQL FULLTEXT 分支维持由真实 MySQL 集成环境覆盖。
 - 消除应用层重复实现与魔法数字：新增 `Application/Utilities/EnumGuard.cs` 和 `Application/Utilities/Guard.cs`，将 8 处枚举验证、7 处参数边界检查统一收口；将 `MaxAdjacentCountPerSide = 200` 常量上移至 `IParcelRepository` 接口（唯一权威来源），Infrastructure 与 Application 均引用接口常量，消除两层各自定义魔法数字的重复。
 - 落实"日志只能使用 NLog"规范（仓储层与 SharedKernel）：① 将 `SafeExecutor`（SharedKernel）从 MEL `ILogger<T>` 迁移至 NLog 静态 logger，移除构造注入依赖，`SharedKernel.csproj` 改引用 `NLog 6.1.1`；② 将 `RepositoryBase` / `MemoryCacheRepositoryBase`（Infrastructure 仓储层）从 MEL ILogger 迁移至 NLog ILogger（构造传入模式，确保日志来源类名为实际仓储类）；③ `ParcelRepository` 新增静态 NLog logger，移除 MEL `ILogger<ParcelRepository>` 构造参数，简化 DI 注册；`Infrastructure.csproj` 新增 `NLog 6.1.1` 引用；同步清理 `ParcelRepositoryTests` / `ParcelQueryServicesTests` 中的 `NullLogger` 依赖。注意：`AutoTuning/` 下的 EF Core 拦截器与 `PersistenceServiceCollectionExtensions` 等 DI 绑定组件因须接入 EF Core MEL 管道，有意保留 MEL ILogger 注入，不在本轮迁移范围内。
 - 提取 404 Not Found 响应工厂方法：`LocalDateTimeParsing` 新增 `CreateNotFoundProblem(long id)` 方法（detail 使用通用描述"未找到 Id 为 {id} 的资源。"），消除只读 API（`GetParcelByIdAsync`）与管理端 API（`UpdateParcelStatusAsync`、`DeleteParcelAsync`）3 处重复的 `Results.Problem(title: "资源不存在", ...)` 构造。
 
 ### 可继续完善内容
 
+- 后续可补充真实 MySQL / SQL Server 集成用例，分别覆盖 `GetAdjacentByIdAsync` 的同一扫描时间稳定排序与重复主键冲突语义，验证跨 Provider 一致性。
+- 后续可在管理端创建接口补充显式的 `CreateConflictProblem` 响应工厂，进一步统一 409 问题详情输出格式。
+- 后续可在 SQL Server 场景下补充“主键非自增”历史库平滑切换 runbook（数据校验、灰度、回退步骤）。
 - 后续可补充 Swagger 鉴权策略（如文档访问令牌、角色分级可见性）并统一与 API 鉴权体系联动。
 - 后续可细化非开发环境文档暴露治理（例如内网白名单、按环境开关、发布审批审计）。
 - 后续可完善反向代理与子路径部署适配（例如 `PathBase`、网关前缀下 Swagger JSON/UI 地址自动拼装），并评估自动打开地址的反向代理本机回环兼容策略。
 - 后续可补充 OpenAPI 示例值与示例请求体（含典型成功/失败样例），提升调用方接入效率。
 - 后续可为 SQL Server 路径配置 Full-Text Catalog 并改写为 `EF.Functions.Contains()`，彻底消除 SQL Server 侧的 LIKE '%xxx%' 限制。
-- 后续可补充真实 MySQL / SQL Server 集成测试，验证在大数据量下统一子串匹配策略的性能与执行计划稳定性。
-- 后续可在“条码子串匹配”场景评估按关键字长度/模式的可观测分级策略（开关 + 审计），在召回率与性能之间建立可运营平衡。
+- 后续可补充真实 MySQL / SQL Server 集成测试，验证在大数据量下“Provider 差异语义（MySQL FULLTEXT Boolean / 其他 Contains）”的性能与执行计划稳定性。
+- 后续可在“条码检索语义差异”场景评估按关键字长度/模式的可观测分级策略（开关 + 审计），在召回率与性能之间建立可运营平衡。
 
 ## Parcel API 发布门禁 / 使用边界说明
 

@@ -21,6 +21,10 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 /// Parcel 只读 API 端点回归测试。
 /// </summary>
 public sealed class ParcelReadOnlyApiTests {
+    /// <summary>
+    /// 邻近查询稳定排序测试锚点 Id。
+    /// </summary>
+    private const long StableOrderAnchorId = 11;
 
     /// <summary>
     /// 验证场景：正常获取列表。
@@ -69,17 +73,17 @@ public sealed class ParcelReadOnlyApiTests {
     }
 
     /// <summary>
-    /// 验证场景：邻近查询参数异常返回合理错误。
+    /// 验证场景：邻近查询 id 缺失返回 400。
     /// </summary>
     [Fact]
-    public async Task GetAdjacentParcels_WithInvalidBeforeCount_ShouldReturnBadRequest() {
+    public async Task GetAdjacentParcels_WithMissingId_ShouldReturnBadRequest() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
-        var response = await client.GetAsync("/api/parcels/adjacent?scannedTime=2026-03-20T10:00:00&beforeCount=-1&afterCount=1");
+        var response = await client.GetAsync("/api/parcels/adjacent?beforeCount=1&afterCount=1");
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
 
         var body = await response.Content.ReadAsStringAsync();
-        Assert.Contains("前向查询条数不能小于 0", body, StringComparison.Ordinal);
+        Assert.Contains("id 为必填参数", body, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -98,67 +102,68 @@ public sealed class ParcelReadOnlyApiTests {
     }
 
     /// <summary>
-    /// 验证场景：邻近查询拒绝 UTC 时间参数。
+    /// 验证场景：邻近查询 id 非法返回 400。
     /// </summary>
     [Fact]
-    public async Task GetAdjacentParcels_WithUtcTime_ShouldReturnBadRequest() {
+    public async Task GetAdjacentParcels_WithInvalidId_ShouldReturnBadRequest() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
-        var response = await client.GetAsync("/api/parcels/adjacent?scannedTime=2026-03-20T10:00:00Z&beforeCount=1&afterCount=1");
+        var response = await client.GetAsync("/api/parcels/adjacent?id=0&beforeCount=1&afterCount=1");
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
 
         var body = await response.Content.ReadAsStringAsync();
-        Assert.Contains("scannedTime 必须是本地时间格式，且不允许包含 UTC 或时区偏移", body, StringComparison.Ordinal);
+        Assert.Contains("包裹 Id 必须大于 0", body, StringComparison.Ordinal);
     }
 
     /// <summary>
-    /// 验证场景：邻近查询传入合法本地时间参数，正常返回 200 + 邻近结果列表。
+    /// 验证场景：邻近查询锚点不存在返回 404。
     /// </summary>
     [Fact]
-    public async Task GetAdjacentParcels_WithValidParams_ShouldReturnAdjacentItems() {
+    public async Task GetAdjacentParcels_WhenAnchorNotFound_ShouldReturnNotFound() {
+        await using var app = await BuildTestAppAsync();
+        using var client = app.GetTestClient();
+        var response = await client.GetAsync("/api/parcels/adjacent?id=999&beforeCount=2&afterCount=2");
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    /// <summary>
+    /// 验证场景：邻近查询按 id 正常返回前后记录。
+    /// </summary>
+    [Fact]
+    public async Task GetAdjacentParcels_WithValidId_ShouldReturnAdjacentItems() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
 
-        var response = await client.GetAsync("/api/parcels/adjacent?scannedTime=2026-03-20T10:00:00&beforeCount=2&afterCount=2");
+        var response = await client.GetAsync("/api/parcels/adjacent?id=2&beforeCount=1&afterCount=1");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var payload = await response.Content.ReadFromJsonAsync<JsonDocument>();
         Assert.NotNull(payload);
-        // beforeCount / afterCount 应与请求参数一致（FakeRepo 固定返回 2 条）
-        Assert.Equal(2, payload.RootElement.GetProperty("beforeCount").GetInt32());
-        Assert.Equal(2, payload.RootElement.GetProperty("afterCount").GetInt32());
-        Assert.NotEmpty(payload.RootElement.GetProperty("items").EnumerateArray().ToList());
+        Assert.Equal(1, payload.RootElement.GetProperty("beforeCount").GetInt32());
+        Assert.Equal(1, payload.RootElement.GetProperty("afterCount").GetInt32());
+        var items = payload.RootElement.GetProperty("items").EnumerateArray().ToList();
+        Assert.Equal(2, items.Count);
+        Assert.Equal(1, items[0].GetProperty("id").GetInt64());
+        Assert.Equal(3, items[1].GetProperty("id").GetInt64());
     }
 
     /// <summary>
-    /// 验证场景：邻近查询未传入 scannedTime 参数时返回 400 Bad Request。
+    /// 验证场景：同一 ScannedTime 下按 Id 保持稳定排序。
     /// </summary>
     [Fact]
-    public async Task GetAdjacentParcels_WithMissingScannedTime_ShouldReturnBadRequest() {
+    public async Task GetAdjacentParcels_WithSameScannedTime_ShouldKeepStableOrder() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
-
-        // 不传 scannedTime，beforeCount/afterCount 使用默认值
-        var response = await client.GetAsync("/api/parcels/adjacent?beforeCount=1&afterCount=1");
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        var body = await response.Content.ReadAsStringAsync();
-        Assert.Contains("scannedTime 必须是本地时间格式，且不允许包含 UTC 或时区偏移", body, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// 验证场景：邻近查询 afterCount 为负数时返回 400 Bad Request（beforeCount 负数已有用例，此处补充 afterCount）。
-    /// </summary>
-    [Fact]
-    public async Task GetAdjacentParcels_WithNegativeAfterCount_ShouldReturnBadRequest() {
-        await using var app = await BuildTestAppAsync();
-        using var client = app.GetTestClient();
-
-        var response = await client.GetAsync("/api/parcels/adjacent?scannedTime=2026-03-20T10:00:00&beforeCount=1&afterCount=-1");
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        var body = await response.Content.ReadAsStringAsync();
-        Assert.Contains("后向查询条数不能小于 0", body, StringComparison.Ordinal);
+        var response = await client.GetAsync($"/api/parcels/adjacent?id={StableOrderAnchorId}&beforeCount=1&afterCount=2");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var payload = await response.Content.ReadFromJsonAsync<JsonDocument>();
+        Assert.NotNull(payload);
+        var ids = payload.RootElement
+            .GetProperty("items")
+            .EnumerateArray()
+            .Select(item => item.GetProperty("id").GetInt64())
+            .ToArray();
+        Assert.Equal([10L, 12L, 13L], ids);
     }
 
     /// <summary>
@@ -186,14 +191,18 @@ public sealed class ParcelReadOnlyApiTests {
 /// </summary>
 internal sealed class FakeParcelRepository : IParcelRepository {
     /// <summary>
+    /// 邻近查询稳定排序测试锚点 Id。
+    /// </summary>
+    private const long StableOrderAnchorId = 11;
+
+    /// <summary>
+    /// 详情查询预置样本 Id（未写入 _store，仅用于只读详情与更新路径兼容）。
+    /// </summary>
+    private const long DetailQuerySampleId = 1;
+    /// <summary>
     /// 内存存储（用于写操作测试）。
     /// </summary>
     private readonly Dictionary<long, Parcel> _store = new();
-
-    /// <summary>
-    /// 下一个分配的 Id（模拟数据库自增主键）。
-    /// </summary>
-    private long _nextId = 100;
 
     /// <summary>
     /// 清理治理接口决策（控制 RemoveExpiredAsync 返回的三态决策，默认 Execute）。
@@ -239,12 +248,13 @@ internal sealed class FakeParcelRepository : IParcelRepository {
         }
 
         // 若内存存储未命中，仅对 id==1 返回固定样本包裹，其余返回 null
-        if (id != 1) {
+        if (id != DetailQuerySampleId) {
             return Task.FromResult<Parcel?>(null);
         }
 
         var scannedTime = new DateTime(2026, 3, 20, 10, 0, 0, DateTimeKind.Local);
         var parcel = Parcel.Create(
+            id: DetailQuerySampleId,
             parcelTimestamp: scannedTime.Ticks,
             type: ParcelType.Normal,
             barCodes: "BC-DETAIL-1",
@@ -264,19 +274,32 @@ internal sealed class FakeParcelRepository : IParcelRepository {
             hasImages: true,
             hasVideos: false,
             coordinate: "x:1,y:2");
-        parcel.Id = 1;
         return Task.FromResult<Parcel?>(parcel);
     }
 
     /// <summary>
-    /// 邻近查询返回固定记录。
+    /// 邻近查询按 id 返回固定记录。
     /// </summary>
-    public Task<IReadOnlyList<ParcelSummaryReadModel>> GetAdjacentByScannedTimeAsync(DateTime scannedTime, int beforeCount, int afterCount, CancellationToken cancellationToken) {
-        var items = new List<ParcelSummaryReadModel> {
-            CreateSummary(2, "BC-ADJ-1", "BAG-ADJ", scannedTime.AddSeconds(-2)),
-            CreateSummary(3, "BC-ADJ-2", "BAG-ADJ", scannedTime.AddSeconds(2))
-        };
-        return Task.FromResult<IReadOnlyList<ParcelSummaryReadModel>>(items);
+    public Task<RepositoryResult<IReadOnlyList<ParcelSummaryReadModel>>> GetAdjacentByIdAsync(long id, int beforeCount, int afterCount, CancellationToken cancellationToken) {
+        var baseTime = new DateTime(2026, 3, 20, 10, 0, 0, DateTimeKind.Local);
+        if (id == 999) {
+            return Task.FromResult(RepositoryResult<IReadOnlyList<ParcelSummaryReadModel>>.Fail("未找到 Id 为 999 的资源。"));
+        }
+
+        if (id == StableOrderAnchorId) {
+            IReadOnlyList<ParcelSummaryReadModel> stableItems = [
+                CreateSummary(10, "BC-SAME-10", "BAG-ADJ", baseTime),
+                CreateSummary(12, "BC-SAME-12", "BAG-ADJ", baseTime),
+                CreateSummary(13, "BC-SAME-13", "BAG-ADJ", baseTime.AddMinutes(1))
+            ];
+            return Task.FromResult(RepositoryResult<IReadOnlyList<ParcelSummaryReadModel>>.Success(stableItems));
+        }
+
+        IReadOnlyList<ParcelSummaryReadModel> items = [
+            CreateSummary(1, "BC-ADJ-1", "BAG-ADJ", baseTime.AddSeconds(-2)),
+            CreateSummary(3, "BC-ADJ-2", "BAG-ADJ", baseTime.AddSeconds(2))
+        ];
+        return Task.FromResult(RepositoryResult<IReadOnlyList<ParcelSummaryReadModel>>.Success(items));
     }
 
     /// <summary>
@@ -308,14 +331,17 @@ internal sealed class FakeParcelRepository : IParcelRepository {
     }
 
     /// <summary>
-    /// 新增包裹（分配自增 Id，存入内存存储；若 ShouldFailOnAdd=true 则返回失败结果）。
+    /// 新增包裹（使用外部传入 Id；若重复则返回冲突错误；若 ShouldFailOnAdd=true 则返回失败结果）。
     /// </summary>
     public Task<RepositoryResult> AddAsync(Parcel parcel, CancellationToken cancellationToken) {
         if (ShouldFailOnAdd) {
             return Task.FromResult(RepositoryResult.Fail("模拟仓储写入失败：数据库不可用。"));
         }
 
-        parcel.Id = _nextId++;
+        if (_store.ContainsKey(parcel.Id)) {
+            return Task.FromResult(RepositoryResult.Fail("包裹 Id 已存在。", RepositoryErrorCodes.ParcelIdConflict));
+        }
+
         _store[parcel.Id] = parcel;
         return Task.FromResult(RepositoryResult.Success());
     }
@@ -324,6 +350,11 @@ internal sealed class FakeParcelRepository : IParcelRepository {
     /// 更新包裹（覆盖内存存储中对应记录）。
     /// </summary>
     public Task<RepositoryResult> UpdateAsync(Parcel parcel, CancellationToken cancellationToken) {
+        // 说明：DetailQuerySampleId 为详情查询预置样本（未放入 _store），允许更新以覆盖管理端更新接口测试路径。
+        if (!_store.ContainsKey(parcel.Id) && parcel.Id != DetailQuerySampleId) {
+            return Task.FromResult(RepositoryResult.Fail("目标包裹不存在。"));
+        }
+
         _store[parcel.Id] = parcel;
         return Task.FromResult(RepositoryResult.Success());
     }
@@ -354,11 +385,14 @@ internal sealed class FakeParcelRepository : IParcelRepository {
     }
 
     /// <summary>
-    /// 批量新增（分配自增 Id，存入内存存储）。
+    /// 批量新增（使用外部传入 Id，重复时返回冲突错误）。
     /// </summary>
     public Task<RepositoryResult> AddRangeAsync(IReadOnlyCollection<Parcel> parcels, CancellationToken cancellationToken) {
         foreach (var parcel in parcels) {
-            parcel.Id = _nextId++;
+            if (_store.ContainsKey(parcel.Id)) {
+                return Task.FromResult(RepositoryResult.Fail("包裹 Id 已存在。", RepositoryErrorCodes.ParcelIdConflict));
+            }
+
             _store[parcel.Id] = parcel;
         }
 
