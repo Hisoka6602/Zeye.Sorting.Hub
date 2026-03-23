@@ -8,6 +8,11 @@ FAILURES=0
 # Copilot 限制规则快照哈希；当规则文本变更时必须同步更新本脚本。
 COPILOT_RULES_SHA256="c12fca7a1d694d2d7dad88c5d15a70ffd6be77885f44339ffaa0feb7c6cc906e"
 
+# PR diff 缓存，避免重复计算。
+PR_DIFF_READY=0
+PR_DIFF_NAME_ONLY=""
+PR_DIFF_NAME_STATUS=""
+
 # 记录当前执行阶段信息，便于 CI 日志定位。
 log_step() {
   local message="$1"
@@ -31,6 +36,72 @@ normalize_text() {
 compute_rules_hash() {
   local rules_text="$1"
   printf '%s' "$rules_text" | sha256sum | awk '{ print $1 }'
+}
+
+# 判断是否处于 pull_request 事件上下文。
+is_pull_request_context() {
+  [[ "${GITHUB_EVENT_NAME:-}" == "pull_request" && -n "${GITHUB_BASE_REF:-}" ]]
+}
+
+# 准备 PR diff 缓存。
+ensure_pr_diff_ready() {
+  if [[ "$PR_DIFF_READY" -eq 1 ]]; then
+    return
+  fi
+
+  if ! is_pull_request_context; then
+    PR_DIFF_READY=1
+    PR_DIFF_NAME_ONLY=""
+    PR_DIFF_NAME_STATUS=""
+    return
+  fi
+
+  if ! git fetch --no-tags --prune origin "${GITHUB_BASE_REF}:${GITHUB_BASE_REF}" >/dev/null 2>&1; then
+    record_failure "无法拉取基线分支 origin/${GITHUB_BASE_REF}，无法执行基于 PR diff 的规则校验。"
+    PR_DIFF_READY=1
+    PR_DIFF_NAME_ONLY=""
+    PR_DIFF_NAME_STATUS=""
+    return
+  fi
+
+  PR_DIFF_NAME_ONLY="$(git --no-pager diff --name-only "origin/${GITHUB_BASE_REF}...HEAD")"
+  PR_DIFF_NAME_STATUS="$(git --no-pager diff --name-status "origin/${GITHUB_BASE_REF}...HEAD")"
+  PR_DIFF_READY=1
+}
+
+# 获取 PR 变更文件（按后缀过滤）。
+get_pr_changed_files_by_suffix() {
+  local suffix="$1"
+  ensure_pr_diff_ready
+  if ! is_pull_request_context || [[ -z "$PR_DIFF_NAME_ONLY" ]]; then
+    return
+  fi
+  echo "$PR_DIFF_NAME_ONLY" | grep -E "\.${suffix}$" || true
+}
+
+# 获取 PR 新增文件（按后缀过滤）。
+get_pr_added_files_by_suffix() {
+  local suffix="$1"
+  ensure_pr_diff_ready
+  if ! is_pull_request_context || [[ -z "$PR_DIFF_NAME_STATUS" ]]; then
+    return
+  fi
+  echo "$PR_DIFF_NAME_STATUS" | awk '$1 == "A" { print $2 }' | grep -E "\.${suffix}$" || true
+}
+
+# 获取 PR 新增或删除文件明细。
+get_pr_added_or_deleted_files() {
+  ensure_pr_diff_ready
+  if ! is_pull_request_context || [[ -z "$PR_DIFF_NAME_STATUS" ]]; then
+    return
+  fi
+  echo "$PR_DIFF_NAME_STATUS" | awk '$1 == "A" || $1 == "D" { print $0 }'
+}
+
+# 判断文件是否包含中文字符。
+contains_chinese_char() {
+  local input="$1"
+  echo "$input" | grep -q -E '[一-龥]'
 }
 
 # 使用 grep 在受限环境中执行正则扫描。
@@ -89,25 +160,136 @@ check_no_utc_or_offset_datetime_examples_in_config() {
   fi
 }
 
+# 检查 doc/pdf 解析产物的可追溯出处说明。
+check_doc_pdf_to_md_traceability() {
+  log_step "执行规则校验：doc/pdf 解析到 md 需可追溯出处"
+  if ! is_pull_request_context; then
+    log_step "当前不是 pull_request 上下文，跳过规则 4 的增量校验"
+    return
+  fi
+
+  local changed_md_files
+  changed_md_files="$(get_pr_changed_files_by_suffix "md")"
+  if [[ -z "$changed_md_files" ]]; then
+    return
+  fi
+
+  local file_path=""
+  while IFS= read -r file_path; do
+    [[ -z "$file_path" ]] && continue
+    if [[ "$file_path" == "README.md" || "$file_path" == ".github/copilot-instructions.md" ]]; then
+      continue
+    fi
+
+    local has_traceability=0
+    if grep -q -E '出处|来源|Source|source|原文|原文档' "$file_path"; then
+      has_traceability=1
+    fi
+
+    if [[ "$has_traceability" -eq 0 ]]; then
+      record_failure "Markdown 文件缺少出处/来源标记，违反规则 4：$file_path"
+    fi
+  done <<< "$changed_md_files"
+}
+
+# 检查新增/修改方法是否具备注释。
+check_method_comments() {
+  log_step "执行规则校验：方法注释覆盖"
+  if ! is_pull_request_context; then
+    log_step "当前不是 pull_request 上下文，跳过规则 5 的增量校验"
+    return
+  fi
+
+  local changed_cs_files
+  changed_cs_files="$(get_pr_changed_files_by_suffix "cs")"
+  if [[ -z "$changed_cs_files" ]]; then
+    return
+  fi
+
+  local method_pattern='^[[:space:]]*(public|internal|private|protected)[[:space:]]+(static[[:space:]]+)?(async[[:space:]]+)?([A-Za-z_][A-Za-z0-9_<>,\?\[\]\.]*)[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\([^;]*\)[[:space:]]*(\{|=>)'
+  local file_path=""
+  while IFS= read -r file_path; do
+    [[ -z "$file_path" ]] && continue
+    [[ -f "$file_path" ]] || continue
+
+    local line_number=""
+    while IFS=: read -r line_number _; do
+      [[ -z "$line_number" ]] && continue
+      local upper_start=$((line_number - 3))
+      if [[ "$upper_start" -lt 1 ]]; then
+        upper_start=1
+      fi
+      local upper_block
+      upper_block="$(sed -n "${upper_start},$((line_number - 1))p" "$file_path")"
+      if ! echo "$upper_block" | grep -q -E '^[[:space:]]*///'; then
+        record_failure "方法缺少 XML 注释，违反规则 5：${file_path}:${line_number}"
+      fi
+    done < <(grep -n -E "$method_pattern" "$file_path" || true)
+  done <<< "$changed_cs_files"
+}
+
+# 检查重复代码风险（简单硬门禁：同文件重复方法签名）。
+check_no_duplicate_method_signature() {
+  log_step "执行规则校验：重复方法签名检查"
+
+  local cs_files=""
+  if is_pull_request_context; then
+    cs_files="$(get_pr_changed_files_by_suffix "cs")"
+  else
+    cs_files="$(find . -type f -name '*.cs' ! -path './.git/*' ! -path '*/bin/*' ! -path '*/obj/*')"
+  fi
+
+  if [[ -z "$cs_files" ]]; then
+    return
+  fi
+
+  local duplicated
+  duplicated="$(while IFS= read -r f; do
+    (grep -E '^[[:space:]]*(public|internal|private|protected)[[:space:]]+(static[[:space:]]+)?(async[[:space:]]+)?[A-Za-z_][A-Za-z0-9_<>,\?\[\]\.]*[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(' "$f" || true) \
+      | sed -E 's/[[:space:]]+/ /g' \
+      | sort \
+      | uniq -d \
+      | sed "s#^#${f}: #"
+  done <<< "$cs_files" | sed '/^[[:space:]]*$/d' || true)"
+
+  if [[ -n "$duplicated" ]]; then
+    record_failure "检测到同文件重复方法签名，违反规则 6：\n$duplicated"
+  fi
+}
+
+# 检查工具类命名及实现约束。
+check_tool_class_quality() {
+  log_step "执行规则校验：工具类命名与复用约束"
+
+  if ! is_pull_request_context; then
+    log_step "当前不是 pull_request 上下文，跳过规则 7 的增量校验"
+    return
+  fi
+
+  local added_cs_files
+  added_cs_files="$(get_pr_added_files_by_suffix "cs")"
+  if [[ -z "$added_cs_files" ]]; then
+    return
+  fi
+
+  local forbidden_tool_names
+  forbidden_tool_names="$(echo "$added_cs_files" | grep -E '(Helper|Wrapper|Adapter|Facade|Manager)\.cs$' || true)"
+  if [[ -n "$forbidden_tool_names" ]]; then
+    record_failure "检测到禁用工具类命名，违反规则 7：\n$forbidden_tool_names"
+  fi
+}
+
 # 检查 PR 中新增/删除文件时是否同步修改 README。
 check_readme_changed_when_files_added_or_deleted() {
   log_step "执行规则校验：新增/删除文件后需同步更新 README"
 
-  if [[ "${GITHUB_EVENT_NAME:-}" != "pull_request" || -z "${GITHUB_BASE_REF:-}" ]]; then
+  if ! is_pull_request_context; then
     log_step "当前不是 pull_request 上下文，跳过规则 3 的 diff 校验"
     return
   fi
 
-  if ! git fetch --no-tags --prune origin "${GITHUB_BASE_REF}:${GITHUB_BASE_REF}" >/dev/null 2>&1; then
-    record_failure "无法拉取基线分支 origin/${GITHUB_BASE_REF}，无法执行规则 3 的 PR diff 校验。"
-    return
-  fi
-
-  local diff_output
-  diff_output="$(git --no-pager diff --name-status "origin/${GITHUB_BASE_REF}...HEAD")"
-
   local added_or_deleted
-  added_or_deleted="$(echo "$diff_output" | awk '$1 == "A" || $1 == "D" { print $0 }')"
+  added_or_deleted="$(get_pr_added_or_deleted_files)"
 
   if [[ -z "$added_or_deleted" ]]; then
     log_step "未检测到新增/删除文件，规则 3 通过"
@@ -115,7 +297,7 @@ check_readme_changed_when_files_added_or_deleted() {
   fi
 
   local readme_touched
-  readme_touched="$(echo "$diff_output" | awk '$2 == "README.md" { print $0 }')"
+  readme_touched="$(echo "$PR_DIFF_NAME_STATUS" | awk '$2 == "README.md" { print $0 }')"
   if [[ -z "$readme_touched" ]]; then
     record_failure "检测到新增/删除文件，但 README.md 未同步修改，违反规则 3。"
   fi
@@ -200,45 +382,377 @@ check_no_obsolete_attribute() {
   fi
 }
 
-# 对非自动化规则做显式登记，避免漏检时静默通过。
-acknowledge_manual_rule() {
-  local rule_number="$1"
-  log_step "规则 ${rule_number} 属于人工审查范围，当前 CI 仅做登记。"
+# 检查异常处理是否输出日志（增量：新增 catch 必须含 Log 调用）。
+check_exception_logging() {
+  log_step "执行规则校验：异常必须输出日志"
+  if ! is_pull_request_context; then
+    log_step "当前不是 pull_request 上下文，跳过规则 12 的增量校验"
+    return
+  fi
+
+  local changed_cs_files
+  changed_cs_files="$(get_pr_changed_files_by_suffix "cs")"
+  if [[ -z "$changed_cs_files" ]]; then
+    return
+  fi
+
+  local file_path=""
+  while IFS= read -r file_path; do
+    [[ -z "$file_path" ]] && continue
+    [[ -f "$file_path" ]] || continue
+
+    local catch_lines
+    catch_lines="$(grep -n -E '^[[:space:]]*catch[[:space:]]*(\(|\{)' "$file_path" || true)"
+    if [[ -z "$catch_lines" ]]; then
+      continue
+    fi
+
+    local line_no=""
+    while IFS=: read -r line_no _; do
+      [[ -z "$line_no" ]] && continue
+      local end_line=$((line_no + 30))
+      local block
+      block="$(sed -n "${line_no},${end_line}p" "$file_path")"
+      if ! echo "$block" | grep -q -E 'Log(Error|Warn|Info|Debug|Fatal)|logger\.'; then
+        record_failure "catch 块缺少日志输出，违反规则 12：${file_path}:${line_no}"
+      fi
+    done <<< "$catch_lines"
+  done <<< "$changed_cs_files"
 }
 
-# 判断规则是否属于人工审查范围。
-is_manual_rule() {
-  local normalized_text="$1"
-  local manual_keywords=(
-    "doc/pdf文档解析到md"
-    "方法都需要有注释"
-    "全局禁止代码重复"
-    "小工具类尽量代码简洁"
-    "所有的异常都必须输出日志"
-    "Copilot的回答/描述/交流都需要使用中文"
-    "所有的类的字段都必须有注释"
-    "日志只能使用Nlog"
-    "Copilot任务默认由Copilot创建拉取请求"
-    "每次修改代码后都需要检查是否影分身代码"
-    "严格划分结构层级边界"
-    "性能更高的特性标记"
-    "注释中禁止出现第二人称"
-    "命名有严格要求"
-    "历史更新记录不要写在README.md"
-    "工具代码需要提取集中"
-    "swagger的所有参数、方法、枚举项都必须要有中文注释"
-    "每个类都需要独立的文件"
-    "md文件除README.md外"
-  )
+# 检查类字段是否具备注释（增量）。
+check_field_comments() {
+  log_step "执行规则校验：类字段注释覆盖"
+  if ! is_pull_request_context; then
+    log_step "当前不是 pull_request 上下文，跳过规则 14 的增量校验"
+    return
+  fi
 
-  local keyword=""
-  for keyword in "${manual_keywords[@]}"; do
-    if [[ "$normalized_text" == *"$keyword"* ]]; then
-      return 0
+  local changed_cs_files
+  changed_cs_files="$(get_pr_changed_files_by_suffix "cs")"
+  if [[ -z "$changed_cs_files" ]]; then
+    return
+  fi
+
+  local field_pattern='^[[:space:]]*(private|protected|internal|public)[[:space:]]+(static[[:space:]]+)?(readonly[[:space:]]+)?[A-Za-z_][A-Za-z0-9_<>,\?\[\]\.]*[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*(=|;)'
+  local file_path=""
+  while IFS= read -r file_path; do
+    [[ -z "$file_path" ]] && continue
+    [[ -f "$file_path" ]] || continue
+
+    local line_number=""
+    while IFS=: read -r line_number _; do
+      [[ -z "$line_number" ]] && continue
+      local upper_start=$((line_number - 2))
+      if [[ "$upper_start" -lt 1 ]]; then
+        upper_start=1
+      fi
+      local upper_block
+      upper_block="$(sed -n "${upper_start},$((line_number - 1))p" "$file_path")"
+      if ! echo "$upper_block" | grep -q -E '^[[:space:]]*///'; then
+        record_failure "字段缺少 XML 注释，违反规则 14：${file_path}:${line_number}"
+      fi
+    done < <(grep -n -E "$field_pattern" "$file_path" || true)
+  done <<< "$changed_cs_files"
+}
+
+# 检查日志框架仅使用 NLog（增量）。
+check_nlog_only() {
+  log_step "执行规则校验：日志仅使用 NLog"
+  if ! is_pull_request_context; then
+    log_step "当前不是 pull_request 上下文，跳过规则 15 的增量校验"
+    return
+  fi
+
+  local changed_cs_files
+  changed_cs_files="$(get_pr_changed_files_by_suffix "cs")"
+  if [[ -z "$changed_cs_files" ]]; then
+    return
+  fi
+
+  local file_path=""
+  while IFS= read -r file_path; do
+    [[ -z "$file_path" ]] && continue
+    [[ -f "$file_path" ]] || continue
+    if grep -q -E 'using[[:space:]]+Microsoft\.Extensions\.Logging|ILogger<' "$file_path"; then
+      record_failure "检测到非 NLog 日志用法，违反规则 15：$file_path"
     fi
-  done
+  done <<< "$changed_cs_files"
+}
 
-  return 1
+# 检查注释中是否包含第二人称（增量）。
+check_no_second_person_in_comments() {
+  log_step "执行规则校验：注释禁止第二人称"
+  if ! is_pull_request_context; then
+    log_step "当前不是 pull_request 上下文，跳过规则 20 的增量校验"
+    return
+  fi
+
+  local changed_cs_files
+  changed_cs_files="$(get_pr_changed_files_by_suffix "cs")"
+  if [[ -z "$changed_cs_files" ]]; then
+    return
+  fi
+
+  local second_person_pattern='你|您|你们|您们|your|yours|you'
+  local file_path=""
+  while IFS= read -r file_path; do
+    [[ -z "$file_path" ]] && continue
+    [[ -f "$file_path" ]] || continue
+    local result
+    result="$(grep -n -E '^[[:space:]]*(///|//|/\*)' "$file_path" | grep -E "$second_person_pattern" || true)"
+    if [[ -n "$result" ]]; then
+      record_failure "注释存在第二人称，违反规则 20：\n${file_path}:\n${result}"
+    fi
+  done <<< "$changed_cs_files"
+}
+
+# 检查 README 不应承载历史更新记录。
+check_no_history_in_readme() {
+  log_step "执行规则校验：README 禁止历史更新记录"
+  if ! is_pull_request_context; then
+    log_step "当前不是 pull_request 上下文，跳过规则 22 的增量校验"
+    return
+  fi
+
+  ensure_pr_diff_ready
+  if ! echo "$PR_DIFF_NAME_ONLY" | grep -q -E '^README\.md$'; then
+    return
+  fi
+
+  local added_lines
+  added_lines="$(git --no-pager diff --unified=0 "origin/${GITHUB_BASE_REF}...HEAD" -- README.md | grep -E '^\+' | grep -v -E '^\+\+\+' || true)"
+  if echo "$added_lines" | grep -q -E '更新记录（CHANGELOG）|历史更新记录'; then
+    record_failure "README.md 新增了历史更新记录相关内容，违反规则 22。"
+  fi
+}
+
+# 检查工具代码集中复用（硬门禁：禁止新增重复 Guard/Helper 语义文件）。
+check_tool_code_centralization() {
+  log_step "执行规则校验：同义工具代码集中复用"
+  if ! is_pull_request_context; then
+    log_step "当前不是 pull_request 上下文，跳过规则 23 的增量校验"
+    return
+  fi
+
+  local added_cs_files
+  added_cs_files="$(get_pr_added_files_by_suffix "cs")"
+  if [[ -z "$added_cs_files" ]]; then
+    return
+  fi
+
+  local file_path=""
+  while IFS= read -r file_path; do
+    [[ -z "$file_path" ]] && continue
+    if echo "$file_path" | grep -q -E '(Guard|Helper|Util|Utility)\.cs$'; then
+      record_failure "新增潜在同义工具类文件，请确认是否应复用现有工具，违反规则 23：$file_path"
+    fi
+  done <<< "$added_cs_files"
+}
+
+# 检查 Copilot 交流语言约束（基于 PR 文本增量检查）。
+check_copilot_language_rule() {
+  log_step "执行规则校验：Copilot 交流中文约束"
+  if ! is_pull_request_context; then
+    log_step "当前不是 pull_request 上下文，跳过规则 13 的上下文校验"
+    return
+  fi
+
+  local event_path="${GITHUB_EVENT_PATH:-}"
+  if [[ -z "$event_path" || ! -f "$event_path" ]]; then
+    log_step "未提供 GITHUB_EVENT_PATH，跳过规则 13 的事件文本检查"
+    return
+  fi
+
+  local pr_title
+  pr_title="$(grep -o -E '"title":[[:space:]]*"[^"]*"' "$event_path" | head -n 1 || true)"
+  local actor
+  actor="${GITHUB_ACTOR:-}"
+  if [[ "$actor" == *"copilot"* && -n "$pr_title" ]] && ! contains_chinese_char "$pr_title"; then
+    record_failure "PR 标题缺少中文语义，违反规则 13。"
+  fi
+}
+
+# 检查 Copilot 默认创建 PR 约束（分支命名约定）。
+check_copilot_pr_creation_rule() {
+  log_step "执行规则校验：Copilot 任务默认由 Copilot 创建 PR"
+  if ! is_pull_request_context; then
+    log_step "当前不是 pull_request 上下文，跳过规则 16 的分支约束检查"
+    return
+  fi
+
+  local head_ref="${GITHUB_HEAD_REF:-}"
+  if [[ -z "$head_ref" ]]; then
+    return
+  fi
+
+  if [[ "$head_ref" != copilot/* ]]; then
+    record_failure "PR 源分支未使用 copilot/ 前缀，违反规则 16：${head_ref}"
+  fi
+}
+
+# 检查影分身代码修复要求（复用重复签名检查）。
+check_shadow_duplicate_code_rule() {
+  log_step "执行规则校验：影分身代码检查"
+  check_no_duplicate_method_signature
+}
+
+# 检查层级边界约束（项目引用方向）。
+check_layer_boundary_rule() {
+  log_step "执行规则校验：结构层级边界"
+
+  local domain_ref
+  domain_ref="$(grep -n -E 'ProjectReference.+(Host|Infrastructure)\.csproj' Zeye.Sorting.Hub.Domain/Zeye.Sorting.Hub.Domain.csproj || true)"
+  if [[ -n "$domain_ref" ]]; then
+    record_failure "Domain 项目存在越层引用，违反规则 18：\n$domain_ref"
+  fi
+
+  local app_ref
+  app_ref="$(grep -n -E 'ProjectReference.+Zeye\.Sorting\.Hub\.Host\.csproj' Zeye.Sorting.Hub.Application/Zeye.Sorting.Hub.Application.csproj || true)"
+  if [[ -n "$app_ref" ]]; then
+    record_failure "Application 项目引用 Host，违反规则 18：\n$app_ref"
+  fi
+}
+
+# 检查性能敏感反模式（增量）。
+check_performance_patterns() {
+  log_step "执行规则校验：性能敏感反模式"
+  if ! is_pull_request_context; then
+    log_step "当前不是 pull_request 上下文，跳过规则 19 的增量校验"
+    return
+  fi
+
+  local changed_cs_files
+  changed_cs_files="$(get_pr_changed_files_by_suffix "cs")"
+  if [[ -z "$changed_cs_files" ]]; then
+    return
+  fi
+
+  local pattern='ToList\(\)\.Count|Count\(\)[[:space:]]*==[[:space:]]*0|Any\(\)[[:space:]]*==[[:space:]]*true'
+  local file_path=""
+  while IFS= read -r file_path; do
+    [[ -z "$file_path" ]] && continue
+    [[ -f "$file_path" ]] || continue
+    local hit
+    hit="$(grep -n -E "$pattern" "$file_path" || true)"
+    if [[ -n "$hit" ]]; then
+      record_failure "检测到性能反模式，违反规则 19：\n${file_path}:\n${hit}"
+    fi
+  done <<< "$changed_cs_files"
+}
+
+# 检查命名规范（新增 C# 文件必须 PascalCase）。
+check_naming_conventions() {
+  log_step "执行规则校验：命名规范"
+  if ! is_pull_request_context; then
+    log_step "当前不是 pull_request 上下文，跳过规则 21 的增量校验"
+    return
+  fi
+
+  local added_cs_files
+  added_cs_files="$(get_pr_added_files_by_suffix "cs")"
+  if [[ -z "$added_cs_files" ]]; then
+    return
+  fi
+
+  local file_path=""
+  while IFS= read -r file_path; do
+    [[ -z "$file_path" ]] && continue
+    local file_name
+    file_name="$(basename "$file_path" .cs)"
+    if ! echo "$file_name" | grep -q -E '^[A-Z][A-Za-z0-9]*$'; then
+      record_failure "新增 C# 文件未使用 PascalCase 命名，违反规则 21：$file_path"
+    fi
+  done <<< "$added_cs_files"
+}
+
+# 检查 Swagger 相关中文注释（增量）。
+check_swagger_chinese_comments() {
+  log_step "执行规则校验：Swagger 参数/方法/枚举中文注释"
+  if ! is_pull_request_context; then
+    log_step "当前不是 pull_request 上下文，跳过规则 24 的增量校验"
+    return
+  fi
+
+  ensure_pr_diff_ready
+  local changed_swagger_files
+  changed_swagger_files="$(echo "$PR_DIFF_NAME_ONLY" | grep -E '(Swagger|Program\.cs|Contracts/Enums|Domain/Enums)' || true)"
+  if [[ -z "$changed_swagger_files" ]]; then
+    return
+  fi
+
+  local file_path=""
+  while IFS= read -r file_path; do
+    [[ -z "$file_path" ]] && continue
+    [[ -f "$file_path" ]] || continue
+    if ! grep -q -E '[一-龥]' "$file_path"; then
+      record_failure "Swagger 相关改动缺少中文注释，违反规则 24：$file_path"
+    fi
+  done <<< "$changed_swagger_files"
+}
+
+# 检查每个类独立文件（全量）。
+check_single_class_per_file() {
+  log_step "执行规则校验：每个类独立文件"
+
+  local cs_files=""
+  if is_pull_request_context; then
+    cs_files="$(get_pr_changed_files_by_suffix "cs")"
+  else
+    cs_files="$(find . -type f -name '*.cs' ! -path './.git/*' ! -path '*/bin/*' ! -path '*/obj/*')"
+  fi
+
+  if [[ -z "$cs_files" ]]; then
+    return
+  fi
+
+  local result
+  result="$(echo "$cs_files" | while IFS= read -r file_path; do
+    [[ -f "$file_path" ]] || continue
+    class_count="$(grep -E '^[[:space:]]*(public|internal|private|protected)?[[:space:]]*(sealed[[:space:]]+|abstract[[:space:]]+|static[[:space:]]+|partial[[:space:]]+)*class[[:space:]]+' "$file_path" | wc -l)"
+    if [[ "$class_count" -gt 1 ]]; then
+      echo "${file_path}: ${class_count}"
+    fi
+  done)"
+  if [[ -n "$result" ]]; then
+    record_failure "检测到单文件多个类，违反规则 25：\n$result"
+  fi
+}
+
+# 检查 Markdown 文件命名规范。
+check_md_chinese_naming() {
+  log_step "执行规则校验：README 外 md 文件中文命名"
+
+  if ! is_pull_request_context; then
+    log_step "当前不是 pull_request 上下文，跳过规则 26 的增量校验"
+    return
+  fi
+
+  local changed_md_files
+  changed_md_files="$(get_pr_changed_files_by_suffix "md")"
+  if [[ -z "$changed_md_files" ]]; then
+    return
+  fi
+
+  local md_files
+  md_files="$(echo "$changed_md_files")"
+  local invalid=""
+  local file_path=""
+  while IFS= read -r file_path; do
+    [[ -z "$file_path" ]] && continue
+    local file_name
+    file_name="$(basename "$file_path")"
+    if [[ "$file_name" == "README.md" || "$file_path" == ".github/copilot-instructions.md" ]]; then
+      continue
+    fi
+    if ! contains_chinese_char "$file_name"; then
+      invalid+="$file_path"$'\n'
+    fi
+  done <<< "$md_files"
+
+  if [[ -n "$invalid" ]]; then
+    record_failure "检测到非中文命名的 md 文件，违反规则 26：\n$invalid"
+  fi
 }
 
 # 根据规则文本分派自动化校验或人工登记。
@@ -263,6 +777,26 @@ run_rule_by_text() {
     return
   fi
 
+  if [[ "$normalized_text" == *"doc/pdf文档解析到md"* ]]; then
+    check_doc_pdf_to_md_traceability
+    return
+  fi
+
+  if [[ "$normalized_text" == *"方法都需要有注释"* ]]; then
+    check_method_comments
+    return
+  fi
+
+  if [[ "$normalized_text" == *"全局禁止代码重复"* ]]; then
+    check_no_duplicate_method_signature
+    return
+  fi
+
+  if [[ "$normalized_text" == *"小工具类尽量代码简洁"* ]]; then
+    check_tool_class_quality
+    return
+  fi
+
   if [[ "$normalized_text" == *"枚举都需要定义在"* && "$normalized_text" == *"Zeye.Sorting.Hub.Domain.Enums"* ]]; then
     check_enum_location
     return
@@ -283,13 +817,83 @@ run_rule_by_text() {
     return
   fi
 
-  if [[ "$normalized_text" == *"禁止使用过时标记"* ]]; then
-    check_no_obsolete_attribute
+  if [[ "$normalized_text" == *"所有的异常都必须输出日志"* ]]; then
+    check_exception_logging
     return
   fi
 
-  if is_manual_rule "$normalized_text"; then
-    acknowledge_manual_rule "$rule_number"
+  if [[ "$normalized_text" == *"Copilot的回答/描述/交流都需要使用中文"* ]]; then
+    check_copilot_language_rule
+    return
+  fi
+
+  if [[ "$normalized_text" == *"所有的类的字段都必须有注释"* ]]; then
+    check_field_comments
+    return
+  fi
+
+  if [[ "$normalized_text" == *"日志只能使用Nlog"* ]]; then
+    check_nlog_only
+    return
+  fi
+
+  if [[ "$normalized_text" == *"Copilot任务默认由Copilot创建拉取请求"* ]]; then
+    check_copilot_pr_creation_rule
+    return
+  fi
+
+  if [[ "$normalized_text" == *"每次修改代码后都需要检查是否影分身代码"* ]]; then
+    check_shadow_duplicate_code_rule
+    return
+  fi
+
+  if [[ "$normalized_text" == *"严格划分结构层级边界"* ]]; then
+    check_layer_boundary_rule
+    return
+  fi
+
+  if [[ "$normalized_text" == *"性能更高的特性标记"* ]]; then
+    check_performance_patterns
+    return
+  fi
+
+  if [[ "$normalized_text" == *"注释中禁止出现第二人称"* ]]; then
+    check_no_second_person_in_comments
+    return
+  fi
+
+  if [[ "$normalized_text" == *"命名有严格要求"* ]]; then
+    check_naming_conventions
+    return
+  fi
+
+  if [[ "$normalized_text" == *"历史更新记录不要写在README.md"* ]]; then
+    check_no_history_in_readme
+    return
+  fi
+
+  if [[ "$normalized_text" == *"工具代码需要提取集中"* ]]; then
+    check_tool_code_centralization
+    return
+  fi
+
+  if [[ "$normalized_text" == *"swagger的所有参数、方法、枚举项都必须要有中文注释"* ]]; then
+    check_swagger_chinese_comments
+    return
+  fi
+
+  if [[ "$normalized_text" == *"每个类都需要独立的文件"* ]]; then
+    check_single_class_per_file
+    return
+  fi
+
+  if [[ "$normalized_text" == *"md文件除README.md外"* ]]; then
+    check_md_chinese_naming
+    return
+  fi
+
+  if [[ "$normalized_text" == *"禁止使用过时标记"* ]]; then
+    check_no_obsolete_attribute
     return
   fi
 
