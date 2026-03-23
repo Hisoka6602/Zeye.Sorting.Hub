@@ -232,10 +232,10 @@ public sealed class ParcelAdminApiTests {
     }
 
     /// <summary>
-    /// 验证场景：目标包裹不存在，返回 404 Not Found。
+    /// 验证场景：目标包裹不存在，返回 400 Bad Request。
     /// </summary>
     [Fact]
-    public async Task UpdateParcelStatus_WhenNotFound_ShouldReturn404() {
+    public async Task UpdateParcelStatus_WhenNotFound_ShouldReturn400() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
 
@@ -246,7 +246,7 @@ public sealed class ParcelAdminApiTests {
 
         using var response = await client.PutAsync("/api/admin/parcels/999", body);
 
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     /// <summary>
@@ -307,16 +307,16 @@ public sealed class ParcelAdminApiTests {
     }
 
     /// <summary>
-    /// 验证场景：删除不存在的包裹，返回 404 Not Found。
+    /// 验证场景：删除不存在的包裹，返回 400 Bad Request。
     /// </summary>
     [Fact]
-    public async Task DeleteParcel_WhenNotFound_ShouldReturn404() {
+    public async Task DeleteParcel_WhenNotFound_ShouldReturn400() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
 
         using var response = await client.DeleteAsync("/api/admin/parcels/999");
 
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     // ═══════════════════════════════════════════════════════════════════════

@@ -9,13 +9,13 @@ namespace Zeye.Sorting.Hub.Host.Enums {
         /// <summary>
         /// 失败后降级运行。
         /// </summary>
-        [Description("Degraded")]
+        [Description("降级运行")]
         Degraded = 0,
 
         /// <summary>
         /// 失败后立即终止启动。
         /// </summary>
-        [Description("FailFast")]
+        [Description("快速失败")]
         FailFast = 1
     }
 }
