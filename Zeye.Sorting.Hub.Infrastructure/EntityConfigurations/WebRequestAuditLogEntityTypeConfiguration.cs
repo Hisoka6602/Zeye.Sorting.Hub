@@ -27,13 +27,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
             builder.Property(x => x.RequestPath).HasMaxLength(512);
             builder.Property(x => x.RequestRouteTemplate).HasMaxLength(512);
             builder.Property(x => x.UserName).HasMaxLength(128);
-            builder.Property(x => x.ExceptionType).HasMaxLength(512);
-            builder.Property(x => x.ErrorCode).HasMaxLength(128);
             builder.Property(x => x.ResourceId).HasMaxLength(128);
-            builder.Property(x => x.ResourceCode).HasMaxLength(128);
-            builder.Property(x => x.ResourceName).HasMaxLength(256);
-
-            builder.Property(x => x.Tags).HasColumnType("longtext");
 
             // 写优化索引：围绕时间序列、追踪链路与高频筛选组合建立索引。
             builder.HasIndex(x => x.StartedAt).HasDatabaseName(WebRequestAuditLogIndexNames.StartedAt);

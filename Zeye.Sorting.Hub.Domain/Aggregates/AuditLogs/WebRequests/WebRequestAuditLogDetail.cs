@@ -1,3 +1,5 @@
+using Zeye.Sorting.Hub.Domain.Enums.AuditLogs;
+
 namespace Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests {
 
     /// <summary>
@@ -91,6 +93,16 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests {
         public string ErrorMessage { get; set; } = string.Empty;
 
         /// <summary>
+        /// 异常类型。
+        /// </summary>
+        public string ExceptionType { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 错误码。
+        /// </summary>
+        public string ErrorCode { get; set; } = string.Empty;
+
+        /// <summary>
         /// 异常堆栈。
         /// </summary>
         public string ExceptionStackTrace { get; set; } = string.Empty;
@@ -101,14 +113,84 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests {
         public string FileMetadataJson { get; set; } = string.Empty;
 
         /// <summary>
+        /// 是否有文件访问。
+        /// </summary>
+        public bool HasFileAccess { get; set; } = false;
+
+        /// <summary>
+        /// 文件操作类型。
+        /// </summary>
+        public FileOperationType FileOperationType { get; set; } = FileOperationType.None;
+
+        /// <summary>
+        /// 文件数量。
+        /// </summary>
+        public int FileCount { get; set; } = 0;
+
+        /// <summary>
+        /// 文件总字节数。
+        /// </summary>
+        public long FileTotalBytes { get; set; } = 0;
+
+        /// <summary>
         /// 图片元数据 JSON。
         /// </summary>
         public string ImageMetadataJson { get; set; } = string.Empty;
 
         /// <summary>
+        /// 是否有图片访问。
+        /// </summary>
+        public bool HasImageAccess { get; set; } = false;
+
+        /// <summary>
+        /// 图片数量。
+        /// </summary>
+        public int ImageCount { get; set; } = 0;
+
+        /// <summary>
         /// 数据库操作摘要。
         /// </summary>
         public string DatabaseOperationSummary { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 是否有数据库访问。
+        /// </summary>
+        public bool HasDatabaseAccess { get; set; } = false;
+
+        /// <summary>
+        /// 数据库访问次数。
+        /// </summary>
+        public int DatabaseAccessCount { get; set; } = 0;
+
+        /// <summary>
+        /// 数据库耗时毫秒。
+        /// </summary>
+        public long DatabaseDurationMs { get; set; } = 0;
+
+        /// <summary>
+        /// 资源编码。
+        /// </summary>
+        public string ResourceCode { get; set; } = string.Empty;
+
+        /// <summary>
+        /// 资源名称。
+        /// </summary>
+        public string ResourceName { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Action 执行耗时毫秒。
+        /// </summary>
+        public long ActionDurationMs { get; set; } = 0;
+
+        /// <summary>
+        /// 中间件耗时毫秒。
+        /// </summary>
+        public long MiddlewareDurationMs { get; set; } = 0;
+
+        /// <summary>
+        /// 审计标签。
+        /// </summary>
+        public string Tags { get; set; } = string.Empty;
 
         /// <summary>
         /// 扩展属性 JSON。

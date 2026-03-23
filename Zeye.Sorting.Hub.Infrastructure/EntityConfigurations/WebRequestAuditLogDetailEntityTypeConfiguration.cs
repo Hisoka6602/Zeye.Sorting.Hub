@@ -32,10 +32,16 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
             builder.Property(x => x.ResponseBody).HasColumnType("longtext");
             builder.Property(x => x.CurlCommand).HasColumnType("longtext");
             builder.Property(x => x.ErrorMessage).HasColumnType("longtext");
+            // 异常与资源标识字段采用固定上限，便于跨数据库统一索引/存储策略并避免无界增长。
+            builder.Property(x => x.ExceptionType).HasMaxLength(512);
+            builder.Property(x => x.ErrorCode).HasMaxLength(128);
             builder.Property(x => x.ExceptionStackTrace).HasColumnType("longtext");
             builder.Property(x => x.FileMetadataJson).HasColumnType("longtext");
             builder.Property(x => x.ImageMetadataJson).HasColumnType("longtext");
             builder.Property(x => x.DatabaseOperationSummary).HasColumnType("longtext");
+            builder.Property(x => x.ResourceCode).HasMaxLength(128);
+            builder.Property(x => x.ResourceName).HasMaxLength(256);
+            builder.Property(x => x.Tags).HasColumnType("longtext");
             builder.Property(x => x.ExtraPropertiesJson).HasColumnType("longtext");
             builder.Property(x => x.Remark).HasColumnType("longtext");
 

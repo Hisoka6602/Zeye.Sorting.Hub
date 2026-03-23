@@ -139,16 +139,6 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests {
         public bool HasException { get; set; }
 
         /// <summary>
-        /// 异常类型。
-        /// </summary>
-        public string ExceptionType { get; set; } = string.Empty;
-
-        /// <summary>
-        /// 错误码。
-        /// </summary>
-        public string ErrorCode { get; set; } = string.Empty;
-
-        /// <summary>
         /// 审计资源类型。
         /// </summary>
         public AuditResourceType AuditResourceType { get; set; }
@@ -157,61 +147,6 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests {
         /// 资源 Id。
         /// </summary>
         public string ResourceId { get; set; } = string.Empty;
-
-        /// <summary>
-        /// 资源编码。
-        /// </summary>
-        public string ResourceCode { get; set; } = string.Empty;
-
-        /// <summary>
-        /// 资源名称。
-        /// </summary>
-        public string ResourceName { get; set; } = string.Empty;
-
-        /// <summary>
-        /// 是否有文件访问。
-        /// </summary>
-        public bool HasFileAccess { get; set; }
-
-        /// <summary>
-        /// 文件操作类型。
-        /// </summary>
-        public FileOperationType FileOperationType { get; set; }
-
-        /// <summary>
-        /// 文件数量。
-        /// </summary>
-        public int FileCount { get; set; }
-
-        /// <summary>
-        /// 文件总字节数。
-        /// </summary>
-        public long FileTotalBytes { get; set; }
-
-        /// <summary>
-        /// 是否有图片访问。
-        /// </summary>
-        public bool HasImageAccess { get; set; }
-
-        /// <summary>
-        /// 图片数量。
-        /// </summary>
-        public int ImageCount { get; set; }
-
-        /// <summary>
-        /// 是否有数据库访问。
-        /// </summary>
-        public bool HasDatabaseAccess { get; set; }
-
-        /// <summary>
-        /// 数据库访问次数。
-        /// </summary>
-        public int DatabaseAccessCount { get; set; }
-
-        /// <summary>
-        /// 数据库耗时毫秒。
-        /// </summary>
-        public long DatabaseDurationMs { get; set; }
 
         /// <summary>
         /// 请求开始时间（本地时间语义）。
@@ -227,21 +162,6 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests {
         /// 总耗时毫秒。
         /// </summary>
         public long DurationMs { get; set; }
-
-        /// <summary>
-        /// Action 执行耗时毫秒。
-        /// </summary>
-        public long ActionDurationMs { get; set; }
-
-        /// <summary>
-        /// 中间件耗时毫秒。
-        /// </summary>
-        public long MiddlewareDurationMs { get; set; }
-
-        /// <summary>
-        /// 审计标签。
-        /// </summary>
-        public string Tags { get; set; } = string.Empty;
 
         /// <summary>
         /// 创建时间（本地时间语义）。
