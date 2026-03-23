@@ -23,7 +23,8 @@ internal sealed class TestObservability : IAutoTuningObservability {
     public readonly List<ObservabilityEntry> MetricEntries = [];
 
     /// <summary>
-    /// 收集 EmitEvent 的完整入参快照（名称/标签），用于精确断言事件内容。
+    /// 收集 EmitEvent 的名称与标签快照（不含 level/message），用于断言事件标签与事件名映射。
+    /// 事件消息文本由 <see cref="Events"/> 集合单独收集并用于消息断言。
     /// </summary>
     public readonly List<ObservabilityEntry> EventEntries = [];
 

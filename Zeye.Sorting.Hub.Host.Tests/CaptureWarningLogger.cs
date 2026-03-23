@@ -14,7 +14,7 @@ internal sealed class CaptureWarningLogger : ILogger {
     /// <summary>
     /// 返回空作用域单例，避免作用域对象重复分配。
     /// </summary>
-    public IDisposable BeginScope<TState>(TState state) where TState : notnull => CaptureNullScope.Instance;
+    public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
 
     /// <summary>
     /// 对测试场景始终返回 true，确保各级别日志都能进入 Log 方法供断言。

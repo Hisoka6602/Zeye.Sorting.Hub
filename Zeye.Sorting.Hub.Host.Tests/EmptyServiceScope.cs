@@ -7,12 +7,16 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 /// </summary>
 internal sealed class EmptyServiceScope : IServiceScope {
     /// <summary>
-    /// 提供最小 ServiceProvider 实例，满足需要 IServiceScope.ServiceProvider 的测试路径。
+    /// 提供最小 ServiceProvider 实例，满足需要 <see cref="IServiceScope.ServiceProvider"/> 的测试路径。
     /// </summary>
     public IServiceProvider ServiceProvider { get; } = new ServiceCollection().BuildServiceProvider();
 
     /// <summary>
-    /// 验证场景：Dispose。
+    /// 释放内部 <see cref="ServiceProvider"/>，避免测试作用域释放后残留可释放资源。
     /// </summary>
-    public void Dispose() { }
+    public void Dispose() {
+        if (ServiceProvider is IDisposable disposable) {
+            disposable.Dispose();
+        }
+    }
 }
