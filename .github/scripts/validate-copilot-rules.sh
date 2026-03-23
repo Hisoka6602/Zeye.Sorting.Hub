@@ -344,7 +344,7 @@ check_readme_changed_when_files_added_or_deleted() {
   ensure_pr_diff_ready
 
   local added_or_deleted
-  added_or_deleted="$(echo "$PR_DIFF_NAME_STATUS" | awk '$1 == "A" || $1 == "D" { print $0 }')"
+  added_or_deleted="$(get_pr_added_or_deleted_files)"
 
   if [[ -z "$added_or_deleted" ]]; then
     log_step "未检测到新增/删除文件，规则 3 通过"
