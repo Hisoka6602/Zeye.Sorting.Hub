@@ -368,4 +368,4 @@ dotnet ef migrations add <迁移名称> \
 
 ### Q：如何接入第三种数据库（如 SQLite、PostgreSQL）？
 
-请参阅 [`NewDatabaseProvider-Guide.md`](./NewDatabaseProvider-Guide.md)，文档以 SQLite 为例，逐步说明接入新提供器时需要修改的所有文件，并附接入核查清单。
+请参阅 [`新数据库提供程序接入指南.md`](./新数据库提供程序接入指南.md)，文档以 SQLite 为例，逐步说明接入新提供器时需要修改的所有文件，并附接入核查清单。

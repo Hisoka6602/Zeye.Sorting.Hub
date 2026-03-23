@@ -8,7 +8,7 @@ on:
       - "Zeye.Sorting.Hub.Domain/**"
       - "Zeye.Sorting.Hub.Infrastructure/**"
       - "Zeye.Sorting.Hub.Host/**"
-      - "EFCore-Migration.md"
+      - "EFCore数据库迁移指南.md"
 
 permissions:
   contents: read

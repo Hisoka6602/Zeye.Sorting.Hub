@@ -87,4 +87,4 @@ if (db.Database.HasPendingModelChanges()) {
 - [x] 迁移快照 `ProductVersion` 更新至 `9.0.14`  
 - [x] `dotnet test` 全部通过  
 - [x] `DatabaseInitializerHostedService.AssertMigrationConsistencyAsync()` 集成 `HasPendingModelChanges()`  
-- [x] `EFCore9-UpgradePlan.md` 状态更新为"已完成"
+- [x] `EFCore9升级计划.md` 状态更新为"已完成"

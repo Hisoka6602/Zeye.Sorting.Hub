@@ -90,13 +90,7 @@ public sealed class CreateParcelCommandService {
             var result = await _parcelRepository.AddAsync(parcel, cancellationToken);
             if (!result.IsSuccess) {
                 Logger.Error("新增包裹失败，BarCodes={BarCodes}, ErrorMessage={ErrorMessage}", request.BarCodes, result.ErrorMessage);
-                if (string.Equals(result.ErrorCode, ParcelIdConflictErrorCode, StringComparison.Ordinal)) {
-                    var exception = new InvalidOperationException(result.ErrorMessage ?? "新增包裹失败。");
-                    exception.Data[ErrorCodeDataKey] = ParcelIdConflictErrorCode;
-                    throw exception;
-                }
-
-                throw new InvalidOperationException(result.ErrorMessage ?? "新增包裹失败。");
+                ThrowCreateFailedException(result);
             }
 
             // 步骤 4：映射领域对象到合同响应并返回。
@@ -106,5 +100,18 @@ public sealed class CreateParcelCommandService {
             Logger.Error(ex, "新增包裹发生意外异常，BarCodes={BarCodes}", request.BarCodes);
             throw;
         }
+    }
+
+    /// <summary>
+    /// 抛出新增包裹失败异常，并在冲突场景附带稳定错误码。
+    /// </summary>
+    /// <param name="result">仓储执行结果。</param>
+    private static void ThrowCreateFailedException(RepositoryResult result) {
+        var exception = new InvalidOperationException(result.ErrorMessage ?? "新增包裹失败。");
+        if (string.Equals(result.ErrorCode, ParcelIdConflictErrorCode, StringComparison.Ordinal)) {
+            exception.Data[ErrorCodeDataKey] = ParcelIdConflictErrorCode;
+        }
+
+        throw exception;
     }
 }
