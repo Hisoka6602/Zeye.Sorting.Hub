@@ -83,6 +83,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
 
         /// <summary>
         /// 注册持久化层核心能力（EF Core、分表规则、自动调优拦截器与观测组件），并按 <c>Persistence:Provider</c> 选择数据库方言实现。
+        /// 配置值与 ConnectionStrings key 语义由 <see cref="ConfiguredProviderNames"/> 统一定义；
+        /// EF Core 运行时 providerName 语义由 <see cref="DbProviderNames"/> 统一定义。
         /// </summary>
         public static IServiceCollection AddSortingHubPersistence(this IServiceCollection services, IConfiguration configuration) {
             var provider = configuration["Persistence:Provider"];
@@ -105,13 +107,13 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             services.TryAddSingleton<IExecutionPlanRegressionProbe, LoggingOnlyExecutionPlanRegressionProbe>();
 
             if (string.IsNullOrWhiteSpace(provider)) {
-                throw new InvalidOperationException("缺少配置：Persistence:Provider，可选值：MySql / SqlServer");
+                throw new InvalidOperationException($"缺少配置：Persistence:Provider，可选值：{ConfiguredProviderNames.MySql} / {ConfiguredProviderNames.SqlServer}");
             }
 
-            if (string.Equals(provider, "MySql", StringComparison.OrdinalIgnoreCase)) {
-                var connectionString = configuration.GetConnectionString("MySql");
+            if (string.Equals(provider, ConfiguredProviderNames.MySql, StringComparison.OrdinalIgnoreCase)) {
+                var connectionString = configuration.GetConnectionString(ConfiguredProviderNames.MySql);
                 if (string.IsNullOrWhiteSpace(connectionString)) {
-                    throw new InvalidOperationException("缺少连接字符串：ConnectionStrings:MySql");
+                    throw new InvalidOperationException($"缺少连接字符串：ConnectionStrings:{ConfiguredProviderNames.MySql}");
                 }
 
                 // DbContextPool：更低分配、更稳吞吐
@@ -135,10 +137,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 services.AddSingleton<IShardingPhysicalTableProbe>(sp =>
                     (IShardingPhysicalTableProbe)sp.GetRequiredService<IDatabaseDialect>());
             }
-            else if (string.Equals(provider, "SqlServer", StringComparison.OrdinalIgnoreCase)) {
-                var connectionString = configuration.GetConnectionString("SqlServer");
+            else if (string.Equals(provider, ConfiguredProviderNames.SqlServer, StringComparison.OrdinalIgnoreCase)) {
+                var connectionString = configuration.GetConnectionString(ConfiguredProviderNames.SqlServer);
                 if (string.IsNullOrWhiteSpace(connectionString)) {
-                    throw new InvalidOperationException("缺少连接字符串：ConnectionStrings:SqlServer");
+                    throw new InvalidOperationException($"缺少连接字符串：ConnectionStrings:{ConfiguredProviderNames.SqlServer}");
                 }
 
                 // AddDbContextPool：兼容现有直接注入 SortingHubDbContext 的路径（如 HostedService）。
@@ -162,7 +164,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                     (IShardingPhysicalTableProbe)sp.GetRequiredService<IDatabaseDialect>());
             }
             else {
-                throw new InvalidOperationException($"不支持的数据库类型：{provider}，可选值：MySql / SqlServer");
+                throw new InvalidOperationException($"不支持的数据库类型：{provider}，可选值：{ConfiguredProviderNames.MySql} / {ConfiguredProviderNames.SqlServer}");
             }
 
             services.AddScoped<IParcelRepository, ParcelRepository>();
@@ -178,7 +180,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             var interceptor = sp.GetRequiredService<SlowQueryCommandInterceptor>();
             var mySqlSessionInterceptor = sp.GetRequiredService<MySqlSessionBootstrapConnectionInterceptor>();
             var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger(MySqlServerVersionLoggerCategory);
-            var cs = cfg.GetConnectionString("MySql")!;
+            var cs = cfg.GetConnectionString(ConfiguredProviderNames.MySql)!;
             var commandTimeoutSeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
             var maxRetryCount = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryCount", 5);
             var maxRetryDelaySeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryDelaySeconds", 10);
@@ -256,7 +258,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         private static void ConfigureSqlServerDbContextOptions(IServiceProvider sp, DbContextOptionsBuilder options) {
             var cfg = sp.GetRequiredService<IConfiguration>();
             var interceptor = sp.GetRequiredService<SlowQueryCommandInterceptor>();
-            var cs = cfg.GetConnectionString("SqlServer")!;
+            var cs = cfg.GetConnectionString(ConfiguredProviderNames.SqlServer)!;
             var commandTimeoutSeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
             var maxRetryCount = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryCount", 5);
             var maxRetryDelaySeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryDelaySeconds", 10);

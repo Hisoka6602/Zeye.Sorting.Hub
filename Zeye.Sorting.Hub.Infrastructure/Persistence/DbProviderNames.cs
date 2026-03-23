@@ -1,8 +1,9 @@
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence {
 
     /// <summary>
-    /// EF Core 数据库提供器名称常量集中定义。
-    /// 仓储与迁移均引用此处，避免跨文件重复硬编码，更名/替换时只需修改一处。
+    /// EF Core 运行时/迁移 provider name 常量集中定义。
+    /// 仅用于 <c>DbContext.Database.ProviderName</c> 或迁移/方言识别，不用于配置值、CLI 参数与连接字符串键名。
+    /// 配置层 provider key 请使用 <see cref="ConfiguredProviderNames"/>。
     /// </summary>
     internal static class DbProviderNames {
 

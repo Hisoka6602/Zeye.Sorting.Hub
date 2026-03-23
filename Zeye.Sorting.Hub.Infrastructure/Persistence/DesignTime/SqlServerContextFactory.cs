@@ -21,6 +21,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
     /// </list>
     /// <para>
     /// 连接字符串从 <c>appsettings.json</c>（<c>ConnectionStrings:SqlServer</c>）读取。
+    /// provider key 与 ConnectionStrings key 语义统一由 <see cref="ConfiguredProviderNames"/> 定义。
     /// 工厂按以下顺序搜索 <c>appsettings.json</c>：
     /// <list type="number">
     ///   <item><description>当前工作目录（适用于从 Host 或解决方案根目录运行 <c>dotnet ef</c>）</description></item>
@@ -56,7 +57,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
         /// 根据配置创建 SQL Server 设计时 DbContext。
         /// </summary>
         internal SortingHubDbContext CreateDbContext(IConfiguration config) {
-            var connectionString = config.GetConnectionString("SqlServer") ?? FallbackConnectionString;
+            var connectionString = config.GetConnectionString(ConfiguredProviderNames.SqlServer) ?? FallbackConnectionString;
 
             var options = new DbContextOptionsBuilder<SortingHubDbContext>()
                 .UseSqlServer(connectionString)

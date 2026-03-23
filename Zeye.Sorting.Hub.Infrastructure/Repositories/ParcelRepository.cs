@@ -225,6 +225,11 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
         DateTime scannedTimeEnd,
         PageRequest pageRequest,
         CancellationToken cancellationToken) {
+        if (!actualChuteId.HasValue && !targetChuteId.HasValue) {
+            Logger.Warn("按格口查询参数非法：actualChuteId 与 targetChuteId 同时为空。");
+            throw new ArgumentException("至少提供一个格口 Id。", nameof(actualChuteId));
+        }
+
         var filter = BuildRequiredTimeRangeFilter(scannedTimeStart, scannedTimeEnd) with {
             ActualChuteId = actualChuteId,
             TargetChuteId = targetChuteId

@@ -145,6 +145,93 @@ public sealed class ParcelRepositoryTests {
     }
 
     /// <summary>
+    /// 验证场景：GetByChuteAsync_WhenActualAndTargetBothNull_ShouldThrowArgumentException。
+    /// </summary>
+    [Fact]
+    public async Task GetByChuteAsync_WhenActualAndTargetBothNull_ShouldThrowArgumentException() {
+        var databaseName = $"parcel-repo-test-{Guid.NewGuid():N}";
+        var baseTime = DateTime.Now;
+        try {
+            var repository = CreateRepository(databaseName);
+
+            var exception = await Assert.ThrowsAsync<ArgumentException>(() => repository.GetByChuteAsync(
+                null,
+                null,
+                baseTime.AddHours(-1),
+                baseTime.AddHours(1),
+                new PageRequest(),
+                CancellationToken.None));
+
+            Assert.Contains("至少提供一个格口 Id", exception.Message);
+        }
+        finally {
+            await CleanupDatabaseAsync(databaseName);
+        }
+    }
+
+    /// <summary>
+    /// 验证场景：GetByChuteAsync_WhenOnlyActualChuteIdProvided_ShouldFilterByActualChuteId。
+    /// </summary>
+    [Fact]
+    public async Task GetByChuteAsync_WhenOnlyActualChuteIdProvided_ShouldFilterByActualChuteId() {
+        var databaseName = $"parcel-repo-test-{Guid.NewGuid():N}";
+        var baseTime = DateTime.Now;
+        try {
+            var repository = CreateRepository(databaseName);
+            await SeedParcelsAsync(databaseName, [
+                CreateParcel("BC-AC-1", "BAG-AC", "WS-AC", ParcelStatus.Pending, baseTime.AddMinutes(-20), 700, 800),
+                CreateParcel("BC-AC-2", "BAG-AC", "WS-AC", ParcelStatus.Pending, baseTime.AddMinutes(-10), 701, 801)
+            ]);
+
+            var result = await repository.GetByChuteAsync(
+                actualChuteId: 800,
+                targetChuteId: null,
+                scannedTimeStart: baseTime.AddHours(-1),
+                scannedTimeEnd: baseTime.AddHours(1),
+                pageRequest: new PageRequest { PageNumber = 1, PageSize = 10 },
+                cancellationToken: CancellationToken.None);
+
+            Assert.Equal(1, result.TotalCount);
+            Assert.Single(result.Items);
+            Assert.Equal(800, result.Items[0].ActualChuteId);
+        }
+        finally {
+            await CleanupDatabaseAsync(databaseName);
+        }
+    }
+
+    /// <summary>
+    /// 验证场景：GetByChuteAsync_WhenOnlyTargetChuteIdProvided_ShouldFilterByTargetChuteId。
+    /// </summary>
+    [Fact]
+    public async Task GetByChuteAsync_WhenOnlyTargetChuteIdProvided_ShouldFilterByTargetChuteId() {
+        var databaseName = $"parcel-repo-test-{Guid.NewGuid():N}";
+        var baseTime = DateTime.Now;
+        try {
+            var repository = CreateRepository(databaseName);
+            await SeedParcelsAsync(databaseName, [
+                CreateParcel("BC-TC-1", "BAG-TC", "WS-TC", ParcelStatus.Pending, baseTime.AddMinutes(-20), 700, 810),
+                CreateParcel("BC-TC-2", "BAG-TC", "WS-TC", ParcelStatus.Pending, baseTime.AddMinutes(-10), 701, 811)
+            ]);
+
+            var result = await repository.GetByChuteAsync(
+                actualChuteId: null,
+                targetChuteId: 700,
+                scannedTimeStart: baseTime.AddHours(-1),
+                scannedTimeEnd: baseTime.AddHours(1),
+                pageRequest: new PageRequest { PageNumber = 1, PageSize = 10 },
+                cancellationToken: CancellationToken.None);
+
+            Assert.Equal(1, result.TotalCount);
+            Assert.Single(result.Items);
+            Assert.Equal(700, result.Items[0].TargetChuteId);
+        }
+        finally {
+            await CleanupDatabaseAsync(databaseName);
+        }
+    }
+
+    /// <summary>
     /// 验证场景：GetPagedAsync_ShouldRejectTimeRangeExceedingThreeMonths。
     /// </summary>
     [Fact]
