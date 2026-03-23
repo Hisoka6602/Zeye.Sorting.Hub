@@ -8,7 +8,10 @@
 .
 ├── .github（Copilot 仓库级指令目录）
 │   ├── copilot-instructions.md（Copilot 自定义指令：禁止 UTC、统一本地时间）
+│   ├── scripts（CI 校验脚本目录）
+│   │   └── validate-copilot-rules.sh（Copilot 限制规则校验脚本：从 copilot-instructions.md 解析规则并执行自动校验）
 │   └── workflows（CI 工作流目录）
+│       ├── copilot-instructions-validation.yml（Copilot 限制规则 PR 校验流水线：每次 PR 运行规则校验脚本）
 │       └── ef-migration-validation.yml（EF 迁移验收流水线：MySQL+SQL Server 双 Provider 执行 dotnet ef list/update/script）
 ├── .gitattributes（Git 属性配置）
 ├── .gitignore（Git 忽略规则）
@@ -275,8 +278,10 @@
 
 ### `.github/`：Copilot 仓库级指令目录
 - `copilot-instructions.md`：Copilot 自定义指令，硬性要求禁止 UTC 时间 API，统一使用本地时间语义。
+- `scripts/validate-copilot-rules.sh`：Copilot 限制规则校验脚本；从 `copilot-instructions.md` 解析“Copilot 限制规则”逐条执行，已映射规则做自动校验，未映射规则直接失败，确保规则文档更新后 CI 校验逻辑同步更新。
 
 ### `.github/workflows/`：CI 工作流目录
+- `copilot-instructions-validation.yml`：Copilot 限制规则校验流水线；每次 PR 触发并执行 `validate-copilot-rules.sh`，对规则自动门禁。
 - `ef-migration-validation.yml`：EF 迁移验收流水线（MySQL + SQL Server 容器环境），真实执行 `dotnet ef migrations list`、`dotnet ef database update`、`dotnet ef migrations script` 三项门禁命令。
 
 ### `Zeye.Sorting.Hub.Analytics/`：分析与报表子域（当前为占位工程）
@@ -570,6 +575,8 @@
 
 ## 本次更新内容
 
+- 新增 Copilot 规则 CI：`copilot-instructions-validation.yml`，每次 PR 自动执行 `.github/scripts/validate-copilot-rules.sh`。
+- 新增规则校验脚本：从 `.github/copilot-instructions.md` 动态解析“Copilot 限制规则”，对可自动化规则执行校验，对未映射规则直接失败，确保规则文件更新后 CI 必须同步更新。
 - 收敛测试结构尾项：`AutoTuningProductionControlTests.cs` 与 `ParcelReadOnlyApiTests.cs` 中的测试替身/辅助类型全部拆分到同名独立文件，保持测试行为不变。
 - 同步完成测试侧同类问题收口：拆分 `ParcelQueryServicesTests.cs` 与 `ParcelRepositoryTests.cs` 中内嵌 `TestDbContextFactory`，消除“一个文件多个类型”。
 - 为新拆分测试替身字段/属性/单例补齐高信息量 XML 注释（含观测集合、日志消息集合、空作用域单例等测试用途说明）。
@@ -586,6 +593,7 @@
 
 ### 可继续完善内容
 
+- 后续可将当前“人工审查范围”规则逐步转为自动化校验项（例如注释覆盖率、命名规范、重复代码检测），进一步提升 CI 门禁覆盖度。
 - 后续可考虑为测试替身目录增加更细分命名分组（如 `Fakes/Probes/Logging` 子目录），在保持单类型单文件前提下进一步提升可导航性。
 - 后续可补充真实 MySQL / SQL Server 集成用例，分别覆盖 `GetAdjacentByIdAsync` 的同一扫描时间稳定排序与重复主键冲突语义，验证跨 Provider 一致性。
 - 后续可在管理端创建接口补充显式的 `CreateConflictProblem` 响应工厂，进一步统一 409 问题详情输出格式。
