@@ -126,7 +126,7 @@ SELECT CASE WHEN EXISTS (
             var normalizedExpectedIndexNames = indexNames
                 .Where(static indexName => !string.IsNullOrWhiteSpace(indexName))
                 .Select(static indexName => indexName.Trim())
-                .Distinct(StringComparer.Ordinal)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
             if (normalizedExpectedIndexNames.Length == 0) {
                 return Array.Empty<string>();
@@ -146,7 +146,7 @@ WHERE TABLE_SCHEMA = COALESCE(NULLIF(@p0, ''), DATABASE())
                 .ToListAsync(cancellationToken);
             var existingIndexSet = existingIndexNames
                 .Where(static indexName => !string.IsNullOrWhiteSpace(indexName))
-                .ToHashSet(StringComparer.Ordinal);
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             return normalizedExpectedIndexNames
                 .Where(indexName => !existingIndexSet.Contains(indexName))

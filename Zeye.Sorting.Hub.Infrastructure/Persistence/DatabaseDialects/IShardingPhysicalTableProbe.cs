@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
 
     /// <summary>
-    /// 分表物理表存在性探测抽象：仅负责判断目标物理表是否存在。
+    /// 分表物理对象探测抽象：负责物理表存在性与关键索引缺失探测（仅探测，不执行 DDL）。
     /// </summary>
     public interface IShardingPhysicalTableProbe {
         /// <summary>

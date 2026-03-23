@@ -1011,11 +1011,13 @@ public sealed class AutoTuningProductionControlTests {
     public void ResolveCriticalIndexesForProvider_ShouldIncludeMySqlFullTextIndexOnlyForMySql() {
         var mySqlIndexes = DatabaseInitializerHostedService.ResolveCriticalIndexesForProvider("MySQL");
         var sqlServerIndexes = DatabaseInitializerHostedService.ResolveCriticalIndexesForProvider("SQLServer");
+        var mySqlAuditOnlyIndexes = DatabaseInitializerHostedService.ResolveAuditOnlyIndexesForProvider("MySQL");
 
-        Assert.Contains("IX_Parcels_BagCode_ScannedTime", mySqlIndexes);
-        Assert.Contains("IX_Parcels_ActualChuteId_ScannedTime", mySqlIndexes);
-        Assert.Contains("FTX_Parcels_BarCodes", mySqlIndexes);
-        Assert.DoesNotContain("FTX_Parcels_BarCodes", sqlServerIndexes);
+        Assert.Contains(ParcelIndexNames.BagCodeScannedTime, mySqlIndexes);
+        Assert.Contains(ParcelIndexNames.ActualChuteIdScannedTime, mySqlIndexes);
+        Assert.DoesNotContain(ParcelIndexNames.BarCodesFullText, mySqlIndexes);
+        Assert.DoesNotContain(ParcelIndexNames.BarCodesFullText, sqlServerIndexes);
+        Assert.Contains(ParcelIndexNames.BarCodesFullText, mySqlAuditOnlyIndexes);
     }
 
     /// <summary>
@@ -1024,24 +1026,27 @@ public sealed class AutoTuningProductionControlTests {
     [Fact]
     public async Task ShardingGovernanceGuard_PerDayWithMissingCriticalIndex_ShouldFailWhenBlockOnMissingEnabled() {
         var date = DateTime.Now.Date;
-        var requiredDates = new[] { date.ToString("yyyy-MM-dd") };
+        var requiredDates = DatabaseInitializerHostedService
+            .BuildRequiredPerDayShardDates(DateTime.Now, 24)
+            .Select(static requiredDate => requiredDate.ToString("yyyy-MM-dd"))
+            .ToArray();
         var configuration = BuildPerDayGovernanceConfiguration(
             createShardingTableOnStarting: false,
             enableManualPrebuildGuard: true,
             timeGranularity: "PerDay",
-            prebuildWindowHours: 0,
+            prebuildWindowHours: 24,
             prebuiltDates: requiredDates,
             criticalIndexAuditEnabled: true,
             blockOnCriticalIndexMissing: true);
         var missingTable = DatabaseInitializerHostedService.BuildPerDayPhysicalTableName("Parcels", date);
         var probe = new MissingIndexShardingPhysicalTableProbe(new Dictionary<string, IReadOnlyList<string>> {
-            [missingTable] = new[] { "IX_Parcels_BagCode_ScannedTime" }
+            [missingTable] = new[] { ParcelIndexNames.BagCodeScannedTime }
         });
         var service = CreateDatabaseInitializerHostedService(configuration, probe);
 
         var exception = await Assert.ThrowsAnyAsync<InvalidOperationException>(() => InvokeShardingGovernanceGuardAsync(service));
         Assert.Contains("关键索引", exception.Message, StringComparison.Ordinal);
-        Assert.Contains("IX_Parcels_BagCode_ScannedTime", exception.Message, StringComparison.Ordinal);
+        Assert.Contains(ParcelIndexNames.BagCodeScannedTime, exception.Message, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -1050,18 +1055,21 @@ public sealed class AutoTuningProductionControlTests {
     [Fact]
     public async Task ShardingGovernanceGuard_PerDayWithMissingCriticalIndex_ShouldAuditOnlyWhenBlockingDisabled() {
         var date = DateTime.Now.Date;
-        var requiredDates = new[] { date.ToString("yyyy-MM-dd") };
+        var requiredDates = DatabaseInitializerHostedService
+            .BuildRequiredPerDayShardDates(DateTime.Now, 24)
+            .Select(static requiredDate => requiredDate.ToString("yyyy-MM-dd"))
+            .ToArray();
         var configuration = BuildPerDayGovernanceConfiguration(
             createShardingTableOnStarting: false,
             enableManualPrebuildGuard: true,
             timeGranularity: "PerDay",
-            prebuildWindowHours: 0,
+            prebuildWindowHours: 24,
             prebuiltDates: requiredDates,
             criticalIndexAuditEnabled: true,
             blockOnCriticalIndexMissing: false);
         var missingTable = DatabaseInitializerHostedService.BuildPerDayPhysicalTableName("Parcels", date);
         var probe = new MissingIndexShardingPhysicalTableProbe(new Dictionary<string, IReadOnlyList<string>> {
-            [missingTable] = new[] { "IX_Parcels_ActualChuteId_ScannedTime" }
+            [missingTable] = new[] { ParcelIndexNames.ActualChuteIdScannedTime }
         });
         var logger = new TestLogger<DatabaseInitializerHostedService>();
         var service = CreateDatabaseInitializerHostedService(configuration, probe, logger);
@@ -1069,6 +1077,36 @@ public sealed class AutoTuningProductionControlTests {
         var exception = await Record.ExceptionAsync(() => InvokeShardingGovernanceGuardAsync(service));
         Assert.Null(exception);
         Assert.Contains(logger.Messages, message => message.Contains("仅审计不阻断", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// 验证场景：ShardingGovernanceGuard_MySqlAuditOnlyMissingFullTextIndex_ShouldNotBlockButShouldLogWarning。
+    /// </summary>
+    [Fact]
+    public async Task ShardingGovernanceGuard_MySqlAuditOnlyMissingFullTextIndex_ShouldNotBlockButShouldLogWarning() {
+        var date = DateTime.Now.Date;
+        var requiredDates = DatabaseInitializerHostedService
+            .BuildRequiredPerDayShardDates(DateTime.Now, 24)
+            .Select(static requiredDate => requiredDate.ToString("yyyy-MM-dd"))
+            .ToArray();
+        var configuration = BuildPerDayGovernanceConfiguration(
+            createShardingTableOnStarting: false,
+            enableManualPrebuildGuard: true,
+            timeGranularity: "PerDay",
+            prebuildWindowHours: 24,
+            prebuiltDates: requiredDates,
+            criticalIndexAuditEnabled: true,
+            blockOnCriticalIndexMissing: true);
+        var missingTable = DatabaseInitializerHostedService.BuildPerDayPhysicalTableName("Parcels", date);
+        var probe = new MissingIndexShardingPhysicalTableProbe(new Dictionary<string, IReadOnlyList<string>> {
+            [missingTable] = new[] { ParcelIndexNames.BarCodesFullText }
+        });
+        var logger = new TestLogger<DatabaseInitializerHostedService>();
+        var service = CreateDatabaseInitializerHostedService(configuration, probe, logger, dialect: new TestMySqlDialect());
+
+        var exception = await Record.ExceptionAsync(() => InvokeShardingGovernanceGuardAsync(service));
+        Assert.Null(exception);
+        Assert.Contains(logger.Messages, message => message.Contains("仅审计项", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -2586,6 +2624,29 @@ public sealed class AutoTuningProductionControlTests {
     /// </summary>
     private sealed class TestSqlServerDialect : IDatabaseDialect {
         public string ProviderName => "SQLServer";
+        /// <summary>
+        /// 验证场景：GetOptionalBootstrapSql。
+        /// </summary>
+        public IReadOnlyList<string> GetOptionalBootstrapSql() => Array.Empty<string>();
+        /// <summary>
+        /// 验证场景：BuildAutomaticTuningSql。
+        /// </summary>
+        public IReadOnlyList<string> BuildAutomaticTuningSql(string? schemaName, string tableName, IReadOnlyList<string> whereColumns) => Array.Empty<string>();
+        /// <summary>
+        /// 验证场景：ShouldIgnoreAutoTuningException。
+        /// </summary>
+        public bool ShouldIgnoreAutoTuningException(Exception exception) => false;
+        /// <summary>
+        /// 验证场景：BuildAutonomousMaintenanceSql。
+        /// </summary>
+        public IReadOnlyList<string> BuildAutonomousMaintenanceSql(string? schemaName, string tableName, bool inPeakWindow, bool highRisk) => Array.Empty<string>();
+    }
+
+    /// <summary>
+    /// 模拟 MySQL ProviderName 的方言测试桩。
+    /// </summary>
+    private sealed class TestMySqlDialect : IDatabaseDialect {
+        public string ProviderName => "MySQL";
         /// <summary>
         /// 验证场景：GetOptionalBootstrapSql。
         /// </summary>

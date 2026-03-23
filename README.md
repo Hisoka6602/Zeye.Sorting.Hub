@@ -134,7 +134,7 @@
 │   ├── HostedServices（托管服务目录）
 │   │   ├── AutoTuningLoggerObservability.cs（自动调优观测默认日志实现）
 │   │   ├── DatabaseAutoTuningHostedService.cs（数据库自动调谐托管服务（闭环阶段流转、执行隔离、自动验证标准化输出与回滚审计；分表命中/跨表占比/热点倾斜改为全量慢 SQL 口径，并在自动索引建议前做覆盖/重复/低价值过滤））
-│   │   ├── DatabaseInitializerHostedService.cs（数据库初始化与迁移托管服务（含分表治理基线、Runbook 审计、PerDay 手工预建窗口守卫；新增“配置清单 + 物理分表存在性 + 关键索引一致性审计（可阻断）”三重校验））
+│   │   ├── DatabaseInitializerHostedService.cs（数据库初始化与迁移托管服务（含分表治理基线、Runbook 审计、PerDay 手工预建窗口守卫；新增“配置清单 + 物理分表存在性 + 关键索引一致性审计（阻断项与仅审计项分离）”三重校验））
 │   │   └── DevelopmentBrowserLauncherHostedService.cs（Development 启动浏览器隔离器：仅 Development + 配置开启 + 交互式/本机/非容器/非CI 场景生效；在 ApplicationStarted 后再打开 Swagger，异常由 SafeExecutor 隔离）
 │   ├── Program.cs（应用入口与 Host 构建流程；运行地址/Swagger 路径由 appsettings 的 Hosting 配置驱动；接入 XML 注释与枚举中文说明增强）
 │   ├── HostingOptions.cs（Hosting 配置模型与 Swagger/浏览器自动打开地址拼装逻辑）
@@ -440,6 +440,7 @@
 - `SortingHubDbContext.cs`：EF Core DbContext（实体集与模型构建入口）。
 - `DbProviderNames.cs`：EF Core 运行时/迁移 providerName 常量（`Pomelo.EntityFrameworkCore.MySql` / `Microsoft.EntityFrameworkCore.SqlServer`），用于 `DbContext.Database.ProviderName` 识别与迁移分支判断。
 - `ConfiguredProviderNames.cs`：配置层 provider key 常量（`MySql` / `SqlServer`），用于 `Persistence:Provider`、`ConnectionStrings` key 与设计时 CLI `--provider` 参数值，避免配置语义与 EF providerName 语义混用。
+- `ParcelIndexNames.cs`：Parcel 关键索引名称常量（供分表治理审计与测试复用，避免多处硬编码漂移）。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/DatabaseDialects/`：数据库方言抽象与实现目录
 - `DatabaseProviderExceptionHelper.cs`：数据库异常错误码提取与方言共享索引列归一化/索引名构造辅助类。
@@ -533,7 +534,7 @@
 - 已增强 Swagger 文档：在保留真实 enum 本体增强的基础上，补齐 Contracts 值对象响应模型中的枚举数值字段映射（如 `BarCodeType`、`ProtocolType`、`ActionType`、`Direction`、`ImageType`、`CaptureType`、`NodeType` 等），统一展示“数值 + 枚举名 + 中文描述”。
 - 已补充/增强测试：`SwaggerDocumentationTests` 新增值对象枚举数值字段覆盖断言，`HostingOptionsTests` 增加无效监听地址兜底断言，确保回归可验证。
 - 已补齐 Parcels 主表两处索引覆盖缺口：① 将 `IX_Parcels_BagCode` 单列索引升级为 `(BagCode, ScannedTime)` 复合索引，覆盖 `GetByBagCodeAsync` 的等值过滤 + ScannedTime 范围路径，并对 ScannedTime 主排序提供索引支撑；② 新增 `IX_Parcels_ActualChuteId_ScannedTime` 复合索引，覆盖 `GetByChuteAsync` 的过滤 + ScannedTime 主排序路径（原有 `ActualChuteId_DischargeTime` 索引保留，服务落格时间维度查询）。当前分页真实排序为 `ScannedTime DESC, Id DESC`，索引第二排序键 `Id` 暂未纳入复合索引。
-- 已新增“物理分表关键索引一致性审计”能力（仅探测/记录/阻断，不自动执行危险 DDL）：在分表治理守卫中对预建窗口内物理分表逐表审计关键索引，必检 `IX_Parcels_BagCode_ScannedTime`、`IX_Parcels_ActualChuteId_ScannedTime`，并在 MySQL 下额外审计 `FTX_Parcels_BarCodes`；支持配置开关与“仅审计不阻断”模式。
+- 已新增“物理分表关键索引一致性审计”能力（仅探测/记录/阻断，不自动执行危险 DDL）：在分表治理守卫中对预建窗口内物理分表逐表审计关键索引，阻断项为 `IX_Parcels_BagCode_ScannedTime`、`IX_Parcels_ActualChuteId_ScannedTime`；MySQL 的 `FTX_Parcels_BarCodes` 调整为仅审计项（缺失仅告警不阻断）；支持配置开关与“仅审计不阻断”模式。
 - 已统一 BarCodeKeyword 检索语义：无论 MySQL / SQL Server / InMemory，均按 `Contains` 子串匹配执行，支持部分关键词与全量关键词搜索（如 `456`、`SF`、`123`、`SF123456`），避免 provider 间语义差异。
 - 已收敛 Provider 常量语义：保留 `DbProviderNames` 仅承载 EF Core 运行时/迁移 providerName；新增 `ConfiguredProviderNames` 专用于配置值/CLI 参数/ConnectionStrings key，并完成 DesignTime 工厂与持久化 DI 注册改造，避免语义混淆。
 - 已补充 `GetByChuteAsync(actualChuteId, targetChuteId, ...)` 调用边界校验：当两个格口 Id 同时为 null 时抛出“至少提供一个格口 Id”异常，并补齐仓储回归测试（双 null 异常、仅 actual、仅 target 三个场景）。

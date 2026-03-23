@@ -726,20 +726,34 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             CancellationToken cancellationToken) {
             ArgumentNullException.ThrowIfNull(db);
             ArgumentNullException.ThrowIfNull(physicalTableNames);
+            var blockingCriticalIndexes = ResolveCriticalIndexesForProvider(_dialect.ProviderName);
+            var auditOnlyIndexes = ResolveAuditOnlyIndexesForProvider(_dialect.ProviderName);
             var missingIndexMap = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
             foreach (var physicalTableName in physicalTableNames) {
-                var expectedIndexes = ResolveCriticalIndexesForProvider(_dialect.ProviderName);
-                var missingIndexes = await _shardingPhysicalTableProbe.FindMissingIndexesAsync(
+                var missingBlockingIndexes = await _shardingPhysicalTableProbe.FindMissingIndexesAsync(
                     db,
                     schemaName,
                     physicalTableName,
-                    expectedIndexes,
+                    blockingCriticalIndexes,
                     cancellationToken);
-                if (missingIndexes.Count == 0) {
+                var missingAuditOnlyIndexes = await _shardingPhysicalTableProbe.FindMissingIndexesAsync(
+                    db,
+                    schemaName,
+                    physicalTableName,
+                    auditOnlyIndexes,
+                    cancellationToken);
+                if (missingAuditOnlyIndexes.Count > 0) {
+                    _logger.LogWarning(
+                        "分表关键索引一致性审计（仅审计项）发现缺失：PhysicalTable={PhysicalTable}, MissingIndexes={MissingIndexes}",
+                        physicalTableName,
+                        string.Join(", ", missingAuditOnlyIndexes));
+                }
+
+                if (missingBlockingIndexes.Count == 0) {
                     continue;
                 }
 
-                missingIndexMap[physicalTableName] = missingIndexes;
+                missingIndexMap[physicalTableName] = missingBlockingIndexes;
             }
 
             return missingIndexMap;
@@ -749,17 +763,26 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// 解析当前 Provider 下需要审计的关键索引名集合。
         /// </summary>
         /// <param name="providerName">数据库提供器名称。</param>
-        /// <returns>关键索引名集合。</returns>
+        /// <returns>可触发阻断的关键索引名集合。</returns>
         internal static IReadOnlyList<string> ResolveCriticalIndexesForProvider(string providerName) {
-            var indexes = new List<string> {
-                "IX_Parcels_BagCode_ScannedTime",
-                "IX_Parcels_ActualChuteId_ScannedTime"
+            _ = providerName;
+            return new[] {
+                ParcelIndexNames.BagCodeScannedTime,
+                ParcelIndexNames.ActualChuteIdScannedTime
             };
+        }
+
+        /// <summary>
+        /// 解析当前 Provider 下“仅审计不阻断”的索引名集合。
+        /// </summary>
+        /// <param name="providerName">数据库提供器名称。</param>
+        /// <returns>仅审计索引名集合。</returns>
+        internal static IReadOnlyList<string> ResolveAuditOnlyIndexesForProvider(string providerName) {
             if (string.Equals(providerName, "MySQL", StringComparison.OrdinalIgnoreCase)) {
-                indexes.Add("FTX_Parcels_BarCodes");
+                return new[] { ParcelIndexNames.BarCodesFullText };
             }
 
-            return indexes;
+            return Array.Empty<string>();
         }
 
         /// <summary>
