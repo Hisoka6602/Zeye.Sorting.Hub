@@ -58,8 +58,8 @@ search_matches_in_files() {
   echo "$result"
 }
 
-# 列出满足后缀的文件。
-list_files_by_extensions() {
+# 列出 C# 与构建元数据文件。
+list_csharp_and_build_files() {
   find . -type f \( -name '*.cs' -o -name '*.csx' -o -name '*.props' -o -name '*.targets' -o -name '*.csproj' \) | sort
 }
 
@@ -70,7 +70,7 @@ check_no_utc_api_usage() {
   local utc_pattern='DateTime\\.UtcNow|DateTimeOffset\\.UtcNow|DateTimeKind\\.Utc|ToUniversalTime\\(|UtcDateTime|DateTimeStyles\\.AssumeUniversal|DateTimeStyles\\.AdjustToUniversal'
   local result
   local files
-  mapfile -t files < <(list_files_by_extensions)
+  mapfile -t files < <(list_csharp_and_build_files)
   result="$(search_matches_in_files "$utc_pattern" "${files[@]}")"
   if [[ -n "$result" ]]; then
     record_failure "检测到 UTC 相关 API，违反规则 1：\n$result"
@@ -81,7 +81,7 @@ check_no_utc_api_usage() {
 check_no_utc_or_offset_datetime_examples_in_config() {
   log_step "执行规则校验：配置时间示例不得使用 Z 或 offset"
 
-  local datetime_with_zone_pattern='"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+(Z|[+-][0-9]{2}:[0-9]{2})"'
+  local datetime_with_zone_pattern='"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:\.]+(Z|[+-][0-9]{2}:[0-9]{2})"'
   local result
   result="$(find . -type f -name 'appsettings*.json' -print0 | xargs -0 grep -n -E -- "$datetime_with_zone_pattern" 2>/dev/null || true)"
   if [[ -n "$result" ]]; then
@@ -98,7 +98,10 @@ check_readme_changed_when_files_added_or_deleted() {
     return
   fi
 
-  git fetch --no-tags --prune origin "${GITHUB_BASE_REF}:${GITHUB_BASE_REF}" >/dev/null 2>&1 || true
+  if ! git fetch --no-tags --prune origin "${GITHUB_BASE_REF}:${GITHUB_BASE_REF}" >/dev/null 2>&1; then
+    record_failure "无法拉取基线分支 origin/${GITHUB_BASE_REF}，无法执行规则 3 的 PR diff 校验。"
+    return
+  fi
 
   local diff_output
   diff_output="$(git --no-pager diff --name-status "origin/${GITHUB_BASE_REF}...HEAD")"
@@ -123,7 +126,7 @@ check_enum_location() {
   log_step "执行规则校验：枚举目录约束"
 
   local result
-  result="$(find . -type f -name '*.cs' ! -path './.git/*' ! -path './Zeye.Sorting.Hub.Domain/Enums/*' -print0 | xargs -0 grep -n -E -- '^[[:space:]]*(public|internal)?[[:space:]]*enum[[:space:]]+' 2>/dev/null || true)"
+  result="$(find . -type f -name '*.cs' ! -path './.git/*' ! -path './Zeye.Sorting.Hub.Domain/Enums/*' -print0 | xargs -0 grep -n -E -- '^[[:space:]]*((public|internal|private|protected)[[:space:]]+)?(file[[:space:]]+)?enum[[:space:]]+' 2>/dev/null || true)"
   if [[ -n "$result" ]]; then
     record_failure "检测到不在 Zeye.Sorting.Hub.Domain/Enums 下的枚举定义，违反规则 8：\n$result"
   fi
@@ -142,7 +145,7 @@ check_enum_has_description_and_comments() {
   local file_path=""
   for file_path in "${enum_files[@]}"; do
     [[ -z "$file_path" ]] && continue
-    if ! grep -q -E '^[[:space:]]*(public|internal)?[[:space:]]*enum[[:space:]]+' "$file_path"; then
+    if ! grep -q -E '^[[:space:]]*((public|internal|private|protected)[[:space:]]+)?(file[[:space:]]+)?enum[[:space:]]+' "$file_path"; then
       continue
     fi
 
@@ -203,6 +206,41 @@ acknowledge_manual_rule() {
   log_step "规则 ${rule_number} 属于人工审查范围，当前 CI 仅做登记。"
 }
 
+# 判断规则是否属于人工审查范围。
+is_manual_rule() {
+  local normalized_text="$1"
+  local manual_keywords=(
+    "doc/pdf文档解析到md"
+    "方法都需要有注释"
+    "全局禁止代码重复"
+    "小工具类尽量代码简洁"
+    "所有的异常都必须输出日志"
+    "Copilot的回答/描述/交流都需要使用中文"
+    "所有的类的字段都必须有注释"
+    "日志只能使用Nlog"
+    "Copilot任务默认由Copilot创建拉取请求"
+    "每次修改代码后都需要检查是否影分身代码"
+    "严格划分结构层级边界"
+    "性能更高的特性标记"
+    "注释中禁止出现第二人称"
+    "命名有严格要求"
+    "历史更新记录不要写在README.md"
+    "工具代码需要提取集中"
+    "swagger的所有参数、方法、枚举项都必须要有中文注释"
+    "每个类都需要独立的文件"
+    "md文件除README.md外"
+  )
+
+  local keyword=""
+  for keyword in "${manual_keywords[@]}"; do
+    if [[ "$normalized_text" == *"$keyword"* ]]; then
+      return 0
+    fi
+  done
+
+  return 1
+}
+
 # 根据规则文本分派自动化校验或人工登记。
 run_rule_by_text() {
   local rule_number="$1"
@@ -250,7 +288,7 @@ run_rule_by_text() {
     return
   fi
 
-  if [[ "$normalized_text" == *"doc/pdf文档解析到md"* || "$normalized_text" == *"方法都需要有注释"* || "$normalized_text" == *"全局禁止代码重复"* || "$normalized_text" == *"小工具类尽量代码简洁"* || "$normalized_text" == *"所有的异常都必须输出日志"* || "$normalized_text" == *"Copilot的回答/描述/交流都需要使用中文"* || "$normalized_text" == *"所有的类的字段都必须有注释"* || "$normalized_text" == *"日志只能使用Nlog"* || "$normalized_text" == *"Copilot任务默认由Copilot创建拉取请求"* || "$normalized_text" == *"每次修改代码后都需要检查是否影分身代码"* || "$normalized_text" == *"严格划分结构层级边界"* || "$normalized_text" == *"性能更高的特性标记"* || "$normalized_text" == *"注释中禁止出现第二人称"* || "$normalized_text" == *"命名有严格要求"* || "$normalized_text" == *"历史更新记录不要写在README.md"* || "$normalized_text" == *"工具代码需要提取集中"* || "$normalized_text" == *"swagger的所有参数、方法、枚举项都必须要有中文注释"* || "$normalized_text" == *"每个类都需要独立的文件"* || "$normalized_text" == *"md文件除README.md外"* ]]; then
+  if is_manual_rule "$normalized_text"; then
     acknowledge_manual_rule "$rule_number"
     return
   fi
@@ -270,8 +308,10 @@ run_all_rules() {
 
   local rules
   rules="$(awk '
-    /^# Copilot Repository Instructions/ { exit }
-    /^[0-9]+\./ {
+    /^# Copilot 限制规则/ { in_rules=1; next }
+    /^#/ && in_rules { in_rules=0; exit }
+    /^# Copilot Repository Instructions/ { in_rules=0; exit }
+    in_rules && /^[0-9]+\./ {
       line = $0
       sub(/^[0-9]+\.[[:space:]]*/, "", line)
       number = $0
