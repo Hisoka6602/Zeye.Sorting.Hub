@@ -73,6 +73,10 @@
 │   ├── Abstractions（领域抽象接口目录）
 │   │   └── IEntity.cs（实体通用接口）
 │   ├── Aggregates（领域聚合目录）
+│   │   ├── AuditLogs（审计日志聚合目录）
+│   │   │   └── WebRequests（Web 请求审计聚合目录）
+│   │   │       ├── WebRequestAuditLog.cs（Web 请求审计热数据聚合根）
+│   │   │       └── WebRequestAuditLogDetail.cs（Web 请求审计冷数据详情实体）
 │   │   └── Parcels（包裹聚合目录）
 │   │       ├── Parcel.cs（包裹聚合根）
 │   │       └── ValueObjects（包裹聚合值对象目录）
@@ -110,11 +114,17 @@
 │   │   ├── ParcelStatus.cs（包裹状态枚举）
 │   │   ├── ParcelType.cs（包裹类别枚举）
 │   │   ├── VideoNodeType.cs（视频节点类型枚举）
-│   │   └── VolumeSourceType.cs（体积来源类型枚举）
+│   │   ├── VolumeSourceType.cs（体积来源类型枚举）
+│   │   └── AuditLogs（审计日志枚举目录）
+│   │       ├── AuditResourceType.cs（审计资源类型枚举）
+│   │       ├── FileOperationType.cs（文件操作类型枚举）
+│   │       ├── WebRequestPayloadType.cs（请求载荷类型枚举）
+│   │       └── WebResponsePayloadType.cs（响应载荷类型枚举）
 │   ├── Primitives（领域基础类型目录）
 │   │   └── AuditableEntity.cs（可审计实体基类）
 │   ├── Repositories（领域仓储契约目录）
 │   │   ├── IParcelRepository.cs（包裹仓储接口，含过期清理危险动作治理结果契约）
+│   │   ├── IWebRequestAuditLogRepository.cs（Web 请求审计日志仓储写入契约）
 │   │   └── Models（Parcel 仓储查询与分页模型目录）
 │   │       ├── Filters（查询过滤模型目录）
 │   │       │   └── ParcelQueryFilter.cs（Parcel 查询过滤模型）
@@ -183,7 +193,9 @@
 │   │   └── PersistenceServiceCollectionExtensions.cs（持久化服务注册扩展（数据库提供器选择、连接字符串校验、DbContext 注册、分表规则与覆盖守卫；Parcel 主表始终按 CreatedTime 路由，时间/容量/混合策略决策由统一评估器驱动））
 │   ├── EntityConfigurations（EF Core 映射配置目录）
 │   │   ├── BagInfoEntityTypeConfiguration.cs（BagInfo 映射配置）
-│   │   └── ParcelEntityTypeConfiguration.cs（Parcel 映射配置）
+│   │   ├── ParcelEntityTypeConfiguration.cs（Parcel 映射配置）
+│   │   ├── WebRequestAuditLogEntityTypeConfiguration.cs（Web 请求审计热表映射配置）
+│   │   └── WebRequestAuditLogDetailEntityTypeConfiguration.cs（Web 请求审计冷表映射配置）
 │   ├── Persistence（持久化核心目录）
 │   │   ├── AutoTuning（自动调谐核心目录）
 │   │   │   ├── AutoTuningConfigurationHelper.cs（配置读取与本地时间语义归一化/配置键拼装公共辅助类，统一 AutoTuning 键名与时间语义）
@@ -228,7 +240,8 @@
 │   │   │   └── SortingHubDbContextModelSnapshot.cs（当前模型快照，自动生成）
 │   │   └── SortingHubDbContext.cs（EF Core DbContext）
 │   │   ├── DbProviderNames.cs（EF Core 运行时/迁移 providerName 常量）
-│   │   └── ConfiguredProviderNames.cs（配置层 provider key 常量：Persistence:Provider / ConnectionStrings key / CLI --provider）
+│   │   ├── ConfiguredProviderNames.cs（配置层 provider key 常量：Persistence:Provider / ConnectionStrings key / CLI --provider）
+│   │   └── WebRequestAuditLogIndexNames.cs（Web 请求审计日志关键索引名称常量）
 │   ├── Repositories（仓储基类与结果模型目录）
 │   │   ├── MemoryCacheRepositoryBase.cs（带内存缓存失效的仓储基类，使用 NLog 日志）
 │   │   ├── ParcelRepository.cs（Parcel 仓储第一阶段实现，使用静态 NLog logger，无需 MEL ILogger 构造注入；BarCodeKeyword 检索按 Provider 分支：MySQL 走 FULLTEXT Boolean，其他 Provider 回退 Contains）
@@ -346,6 +359,12 @@
 
 #### `Zeye.Sorting.Hub.Domain/Aggregates/`：领域聚合目录
 
+##### `Zeye.Sorting.Hub.Domain/Aggregates/AuditLogs/`：审计日志聚合目录
+
+###### `Zeye.Sorting.Hub.Domain/Aggregates/AuditLogs/WebRequests/`：Web 请求审计聚合目录
+- `WebRequestAuditLog.cs`：Web 请求审计日志热数据聚合根（高频写入与高频筛选字段）。
+- `WebRequestAuditLogDetail.cs`：Web 请求审计日志冷数据详情实体（一对一承载大文本与低频字段）。
+
 ##### `Zeye.Sorting.Hub.Domain/Aggregates/Parcels/`：包裹聚合目录
 - `Parcel.cs`：包裹聚合根，承载包裹生命周期状态与行为。
 
@@ -399,11 +418,18 @@
 - `ParcelFinerGranularityPlanLifecycle.cs`：细粒度扩展生命周期枚举。
 - `ParcelAggregateShardingRuleKind.cs`：聚合分表规则类别枚举。
 
+#### `Zeye.Sorting.Hub.Domain/Enums/AuditLogs/`：审计日志枚举子目录
+- `AuditResourceType.cs`：审计资源类型枚举。
+- `FileOperationType.cs`：文件操作类型枚举。
+- `WebRequestPayloadType.cs`：Web 请求载荷类型枚举。
+- `WebResponsePayloadType.cs`：Web 响应载荷类型枚举。
+
 #### `Zeye.Sorting.Hub.Domain/Primitives/`：领域基础类型目录
 - `AuditableEntity.cs`：可审计实体基类（创建/修改信息等）。
 
 #### `Zeye.Sorting.Hub.Domain/Repositories/`：领域仓储契约目录
 - `IParcelRepository.cs`：包裹仓储接口（第一阶段可落地契约：基础读写、分页查询、按 Id 邻近查询、过期清理危险动作治理结果返回；同时定义 `MaxAdjacentCountPerSide = 200` 常量，为 Application 层与 Infrastructure 层提供唯一权威数字来源，禁止各自硬编码）。
+- `IWebRequestAuditLogRepository.cs`：Web 请求审计日志仓储最小写入契约（`AddAsync`）。
 
 ##### `Zeye.Sorting.Hub.Domain/Repositories/Models/`：Parcel 仓储查询模型目录
 
@@ -466,12 +492,15 @@
 #### `Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/`：EF Core 实体映射配置目录
 - `BagInfoEntityTypeConfiguration.cs`：BagInfo 映射配置。
 - `ParcelEntityTypeConfiguration.cs`：Parcel 聚合映射配置（Parcel 主键 Id 改为 `ValueGeneratedNever`，由应用层显式赋值；owned/value-object 子表影子主键继续保持自动生成）。
+- `WebRequestAuditLogEntityTypeConfiguration.cs`：Web 请求审计热数据主表映射配置（写优化索引与一对一关系）。
+- `WebRequestAuditLogDetailEntityTypeConfiguration.cs`：Web 请求审计冷数据详情表映射配置（大字段落冷表）。
 
 #### `Zeye.Sorting.Hub.Infrastructure/Persistence/`：持久化核心目录（DbContext、方言、设计时工厂）
 - `SortingHubDbContext.cs`：EF Core DbContext（实体集与模型构建入口）。
 - `DbProviderNames.cs`：EF Core 运行时/迁移 providerName 常量（`Pomelo.EntityFrameworkCore.MySql` / `Microsoft.EntityFrameworkCore.SqlServer`），用于 `DbContext.Database.ProviderName` 识别与迁移分支判断。
 - `ConfiguredProviderNames.cs`：配置层 provider key 常量（`MySql` / `SqlServer`），用于 `Persistence:Provider`、`ConnectionStrings` key 与设计时 CLI `--provider` 参数值，避免配置语义与 EF providerName 语义混用。
 - `ParcelIndexNames.cs`：Parcel 关键索引名称常量（供分表治理审计与测试复用，避免多处硬编码漂移；包含 BagCode/ActualChuteId/TargetChuteId 三条 ScannedTime 复合索引及 MySQL FULLTEXT 索引名）。
+- `WebRequestAuditLogIndexNames.cs`：Web 请求审计日志关键索引名称常量（供关键索引审计与映射复用）。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/DatabaseDialects/`：数据库方言抽象与实现目录
 - `DatabaseProviderExceptionHelper.cs`：数据库异常错误码提取与方言共享索引列归一化/索引名构造辅助类。
@@ -585,6 +614,7 @@
 - 生产代码完成“每个类型独立文件”收口：拆分 Host/Domain/Application/Infrastructure 中多类型同文件问题。
 - 删除无引用 `AssemblyReference.cs` 空壳文件，避免无效锚点类型残留。
 - 将英文命名文档改为中文文件名并更新工作流/README/文档引用路径。
+- 新增 WebRequestAuditLog 领域冷热分离模型与映射基础能力，并补齐 README 文件树与逐项职责说明（满足新增文件同步更新要求）。
 
 ## 更新记录与待完善事项
 
@@ -607,6 +637,7 @@
 - 后续可为 SQL Server 路径配置 Full-Text Catalog 并改写为 `EF.Functions.Contains()`，彻底消除 SQL Server 侧的 LIKE '%xxx%' 限制。
 - 后续可补充真实 MySQL / SQL Server 集成测试，验证在大数据量下“Provider 差异语义（MySQL FULLTEXT Boolean / 其他 Contains）”的性能与执行计划稳定性。
 - 后续可在“条码检索语义差异”场景评估按关键字长度/模式的可观测分级策略（开关 + 审计），在召回率与性能之间建立可运营平衡。
+- 后续可补齐 WebRequestAuditLog 的分表治理接线（StartedAt 时间分表、历史物理表保留隔离器、关键索引审计接入）与对应迁移验证。
 
 ## Parcel API 发布门禁 / 使用边界说明
 
