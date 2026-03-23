@@ -5,17 +5,17 @@ namespace Zeye.Sorting.Hub.Contracts.Models.Parcels;
 /// </summary>
 public sealed record ParcelAdjacentRequest {
     /// <summary>
-    /// 基准扫码时间。
+    /// 锚点包裹 Id（必须大于 0）。
     /// </summary>
-    public required DateTime ScannedTime { get; init; }
+    public required long Id { get; init; }
 
     /// <summary>
-    /// 基准时间前查询条数。
+    /// 锚点记录前查询条数。
     /// </summary>
     public int BeforeCount { get; init; } = 5;
 
     /// <summary>
-    /// 基准时间后查询条数。
+    /// 锚点记录后查询条数。
     /// </summary>
     public int AfterCount { get; init; } = 5;
 }

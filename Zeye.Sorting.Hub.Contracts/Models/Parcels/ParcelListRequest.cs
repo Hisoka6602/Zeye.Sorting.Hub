@@ -15,7 +15,7 @@ public sealed record ParcelListRequest {
     public int PageSize { get; init; } = 20;
 
     /// <summary>
-    /// 条码检索词（统一按子串匹配；支持部分关键词与完整条码搜索，例如 456、SF、123、SF123456）。
+    /// 条码检索词（MySQL 使用 FULLTEXT Boolean 模式；其他 Provider 使用 Contains 子串匹配）。
     /// </summary>
     public string? BarCodeKeyword { get; init; }
 

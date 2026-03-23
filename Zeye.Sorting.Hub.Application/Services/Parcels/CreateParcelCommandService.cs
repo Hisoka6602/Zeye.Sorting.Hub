@@ -51,6 +51,7 @@ public sealed class CreateParcelCommandService {
         try {
             // 步骤 2：通过领域工厂方法构建聚合根，由领域层统一做字段合法性校验。
             var parcel = Parcel.Create(
+                id: request.Id,
                 parcelTimestamp: request.ParcelTimestamp,
                 type: (ParcelType)request.Type,
                 barCodes: request.BarCodes,
@@ -75,7 +76,7 @@ public sealed class CreateParcelCommandService {
                 segmentCodes: request.SegmentCodes,
                 lifecycleMilliseconds: request.LifecycleMilliseconds);
 
-            // 步骤 3：调用仓储持久化，EF Core 会在保存后将数据库分配的 Id 回写到实体。
+            // 步骤 3：调用仓储持久化（包裹 Id 由调用方传入并由领域工厂赋值）。
             var result = await _parcelRepository.AddAsync(parcel, cancellationToken);
             if (!result.IsSuccess) {
                 Logger.Error("新增包裹失败，BarCodes={BarCodes}, ErrorMessage={ErrorMessage}", request.BarCodes, result.ErrorMessage);

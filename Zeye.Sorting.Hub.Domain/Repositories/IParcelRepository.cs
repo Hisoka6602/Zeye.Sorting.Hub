@@ -79,10 +79,16 @@ namespace Zeye.Sorting.Hub.Domain.Repositories {
             CancellationToken cancellationToken);
 
         /// <summary>
-        /// 按扫描时间查询前后邻近记录（时间顺序）。
+        /// 按包裹 Id 查询前后邻近记录（稳定顺序：ScannedTime, Id）。
         /// </summary>
-        Task<IReadOnlyList<ParcelSummaryReadModel>> GetAdjacentByScannedTimeAsync(
-            DateTime scannedTime,
+        /// <param name="id">锚点包裹 Id。</param>
+        /// <param name="beforeCount">锚点前查询条数。</param>
+        /// <param name="afterCount">锚点后查询条数。</param>
+        /// <param name="cancellationToken">取消令牌。</param>
+        /// <returns>邻近包裹摘要。</returns>
+        /// <remarks>当锚点不存在时返回失败结果（ErrorMessage 可用于上层映射 404）。</remarks>
+        Task<RepositoryResult<IReadOnlyList<ParcelSummaryReadModel>>> GetAdjacentByIdAsync(
+            long id,
             int beforeCount,
             int afterCount,
             CancellationToken cancellationToken);

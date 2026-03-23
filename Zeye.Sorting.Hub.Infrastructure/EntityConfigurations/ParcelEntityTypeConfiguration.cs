@@ -20,7 +20,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
             builder.ToTable("Parcels");
 
             builder.HasKey(x => x.Id);
-            builder.Property(x => x.Id).ValueGeneratedOnAdd();
+            builder.Property(x => x.Id).ValueGeneratedNever();
             builder.HasIndex(x => x.ParcelTimestamp);
             builder.HasIndex(x => x.ScannedTime);
             builder.HasIndex(x => x.CreatedTime);
