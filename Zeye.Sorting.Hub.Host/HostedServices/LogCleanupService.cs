@@ -80,14 +80,14 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             var failedCount = 0;
 
             // 清理日志目录中的旧文件
-            var (deleted1, failed1) = await CleanupDirectoryAsync(logDirectory, cutoffDate);
+            var (deleted1, failed1) = CleanupDirectory(logDirectory, cutoffDate);
             deletedCount += deleted1;
             failedCount += failed1;
 
             // 清理归档目录中的旧文件
             var archiveDirectory = Path.Combine(logDirectory, "archives");
             if (Directory.Exists(archiveDirectory)) {
-                var (deleted2, failed2) = await CleanupDirectoryAsync(archiveDirectory, cutoffDate);
+                var (deleted2, failed2) = CleanupDirectory(archiveDirectory, cutoffDate);
                 deletedCount += deleted2;
                 failedCount += failed2;
             }
@@ -96,7 +96,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 deletedCount, failedCount);
         }
 
-        private Task<(int DeletedCount, int FailedCount)> CleanupDirectoryAsync(string directory, DateTime cutoffDate) {
+        private (int DeletedCount, int FailedCount) CleanupDirectory(string directory, DateTime cutoffDate) {
             var deletedCount = 0;
             var failedCount = 0;
 
@@ -122,7 +122,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 _logger.LogError(ex, "扫描日志目录失败: {Directory}", directory);
             }
 
-            return Task.FromResult((deletedCount, failedCount));
+            return (deletedCount, failedCount);
         }
     }
 }

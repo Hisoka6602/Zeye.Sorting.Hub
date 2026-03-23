@@ -35,5 +35,5 @@ internal static class LocalTimeTestConstraintHelper {
     /// </summary>
     /// <param name="value">待断言的时间值。</param>
     public static void AssertNotUtc(DateTime value)
-        => Assert.NotEqual(-1, (int)value.Kind);
+        => Assert.NotEqual("Utc", value.Kind.ToString());
 }
