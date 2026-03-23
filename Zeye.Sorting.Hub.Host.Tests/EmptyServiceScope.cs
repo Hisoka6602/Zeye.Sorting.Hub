@@ -15,8 +15,6 @@ internal sealed class EmptyServiceScope : IServiceScope {
     /// 释放内部 <see cref="ServiceProvider"/>，避免测试作用域释放后残留可释放资源。
     /// </summary>
     public void Dispose() {
-        if (ServiceProvider is IDisposable disposable) {
-            disposable.Dispose();
-        }
+        ((IDisposable)ServiceProvider).Dispose();
     }
 }
