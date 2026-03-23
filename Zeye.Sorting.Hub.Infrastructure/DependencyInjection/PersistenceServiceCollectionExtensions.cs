@@ -17,7 +17,7 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
-using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding.Enums;
+using Zeye.Sorting.Hub.Domain.Enums.Sharding;
 using Zeye.Sorting.Hub.Infrastructure.Repositories;
 
 namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
@@ -464,14 +464,5 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             return sanitized.Length <= maxLength ? sanitized : $"{sanitized[..maxLength]}...";
         }
 
-        /// <summary>
-        /// Parcel 聚合分表规则描述（统一声明式定义）。
-        /// </summary>
-        /// <param name="EntityType">规则对应实体类型。</param>
-        /// <param name="Register">规则注册动作。</param>
-        private readonly record struct ParcelAggregateShardingRule(
-            Type EntityType,
-            ParcelAggregateShardingRuleKind RuleKind,
-            Action<IShardingBuilder, DateTime, int, ExpandByDateMode> Register);
     }
 }

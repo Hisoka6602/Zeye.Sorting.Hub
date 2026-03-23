@@ -12,14 +12,12 @@
 │       └── ef-migration-validation.yml（EF 迁移验收流水线：MySQL+SQL Server 双 Provider 执行 dotnet ef list/update/script）
 ├── .gitattributes（Git 属性配置）
 ├── .gitignore（Git 忽略规则）
-├── BACKLOG.md（待完善事项列表，仅记录代码中尚未实现的可完善点）
-├── CHANGELOG.md（更新记录，按时间倒序记录每次 PR 更新内容）
+├── 待完善事项.md（待完善事项列表，仅记录代码中尚未实现的可完善点）
+├── 更新记录.md（更新记录，按时间倒序记录每次 PR 更新内容）
 ├── README.md（仓库总览、结构清单与维护规范）
 ├── Zeye.Sorting.Hub.Analytics（分析与报表子域，占位工程）
-│   ├── AssemblyReference.cs（程序集锚点类型）
 │   └── Zeye.Sorting.Hub.Analytics.csproj（Analytics 项目定义）
 ├── Zeye.Sorting.Hub.Application（应用层）
-│   ├── AssemblyReference.cs（程序集锚点类型）
 │   ├── Services（应用服务目录）
 │   │   └── Parcels（Parcel 查询应用服务目录）
 │   │       ├── CleanupExpiredParcelsCommandService.cs（过期包裹清理应用服务（治理型，调用仓储隔离器，不可绕过））
@@ -35,7 +33,6 @@
 │   │   └── Guard.cs（基础参数边界守卫工具：ThrowIfZeroOrNegative / ThrowIfNegative，消除各服务重复检查代码）
 │   └── Zeye.Sorting.Hub.Application.csproj（Application 项目定义）
 ├── Zeye.Sorting.Hub.Contracts（契约层）
-│   ├── AssemblyReference.cs（程序集锚点类型）
 │   ├── Enums（契约层枚举目录）
 │   │   └── Parcels（Parcel 枚举目录）
 │   │       ├── ParcelExceptionType.cs（包裹异常类型对外合同枚举：与 Domain.ParcelExceptionType 数值一一对应，供 API 客户端按语义筛选）
@@ -167,7 +164,6 @@
 │   │   └── ParcelEntityTypeConfiguration.cs（Parcel 映射配置）
 │   ├── Persistence（持久化核心目录）
 │   │   ├── AutoTuning（自动调谐核心目录）
-│   │   │   ├── AutoTuningAbstractions.cs（自动调优观测抽象、标准化验证结果、隔离/回滚策略与可观测执行计划探针）
 │   │   │   ├── AutoTuningConfigurationHelper.cs（配置读取与本地时间语义归一化/配置键拼装公共辅助类，统一 AutoTuning 键名与时间语义）
 │   │   │   ├── MySqlSessionBootstrapConnectionInterceptor.cs（MySQL 连接会话初始化拦截器，直连类型判断，无额外转发）
 │   │   │   ├── SlowQueryAutoTuningPipeline.cs（慢查询采集、TopN 聚合、阈值告警（含基础防抖）与闭环自治结构化建议编排管道；新增主表提取公共方法供 AutoTuning 主链路复用）
@@ -217,20 +213,17 @@
 │   │   └── RepositoryBase.cs（通用仓储基类，接受 NLog.ILogger 构造参数，由派生类传入确保日志来源类名正确）
 │   └── Zeye.Sorting.Hub.Infrastructure.csproj（Infrastructure 项目定义）
 ├── Zeye.Sorting.Hub.Realtime（实时通信子域，占位工程）
-│   ├── AssemblyReference.cs（程序集锚点类型）
 │   └── Zeye.Sorting.Hub.Realtime.csproj（Realtime 项目定义）
 ├── Zeye.Sorting.Hub.RuleEngine（规则引擎子域，占位工程）
-│   ├── AssemblyReference.cs（程序集锚点类型）
 │   └── Zeye.Sorting.Hub.RuleEngine.csproj（RuleEngine 项目定义）
 ├── Zeye.Sorting.Hub.SharedKernel（共享内核）
-│   ├── AssemblyReference.cs（程序集锚点类型）
 │   ├── Utilities（共享工具目录）
 │   │   └── SafeExecutor.cs（安全执行器：使用 NLog 静态 logger，不再依赖 MEL ILogger 构造注入；隔离任何异常，Execute/ExecuteAsync 确保副作用不会导致宿主崩溃）
 │   └── Zeye.Sorting.Hub.SharedKernel.csproj（SharedKernel 项目定义）
 ├── Zeye.Sorting.Hub.sln（.NET 解决方案入口）
-├── EFCore-Migration.md（EF Core CodeFirst 迁移使用说明文档）
-├── EFCore9-UpgradePlan.md（EF Core 8 → 9 升级记录：已完成，EFCore 9.0.14 / Pomelo 9.0.0 / HasPendingModelChanges 守卫已集成）
-├── NewDatabaseProvider-Guide.md（接入新数据库提供器（如 SQLite / PostgreSQL）的逐步操作指南）
+├── EFCore数据库迁移指南.md（EF Core CodeFirst 迁移使用说明文档）
+├── EFCore9升级计划.md（EF Core 8 → 9 升级记录：已完成，EFCore 9.0.14 / Pomelo 9.0.0 / HasPendingModelChanges 守卫已集成）
+├── 新数据库提供程序接入指南.md（接入新数据库提供器（如 SQLite / PostgreSQL）的逐步操作指南）
 ├── 数据库读写压力测试计划.md（MySQL + EFCore.Sharding 分表架构的读写压测方案与验收模板）
 ├── Parcel属性新增操作指南.md（Parcel 聚合新增属性时的文件修改操作指南）
 └── 项目完成度与推进计划.md（项目阶段评估与路线图文档）
@@ -251,14 +244,14 @@
 - `.gitattributes`：Git 属性配置（如行尾规范）。
 - `.gitignore`：Git 忽略规则（如 `bin/`、`obj/`、IDE 临时文件）。
 - `README.md`：仓库总览、结构清单与维护规范文档。
-- `CHANGELOG.md`：更新记录，按时间倒序记录每次 PR 更新内容（从 README 独立拆分）。
-- `BACKLOG.md`：待完善事项列表，仅记录代码中尚未实现的可完善点（从 README 独立拆分，已实现项不记录）。
+- `更新记录.md`：更新记录，按时间倒序记录每次 PR 更新内容（从 README 独立拆分）。
+- `待完善事项.md`：待完善事项列表，仅记录代码中尚未实现的可完善点（从 README 独立拆分，已实现项不记录）。
 - `Zeye.Sorting.Hub.sln`：.NET 解决方案入口，聚合全部项目。
 - `Parcel属性新增操作指南.md`：当 Parcel 聚合需要新增属性时，需要修改哪些文件、如何修改的操作指南（含三种情形：主表标量属性、现有值对象属性、新增值对象）。
 - `项目完成度与推进计划.md`：项目阶段评估与路线图文档。
-- `EFCore-Migration.md`：EF Core CodeFirst 迁移使用说明（迁移架构总览、运行时自动迁移、CLI 命令、设计时工厂、分表与迁移关系、常见问题）。
-- `EFCore9-UpgradePlan.md`：EF Core 8 → 9 升级记录（**已完成**：EF Core 9.0.14、Pomelo 9.0.0、EFCore.Sharding 9.0.10），包含已升级包清单、版本对照表、`HasPendingModelChanges()` 集成说明及核查清单。
-- `NewDatabaseProvider-Guide.md`：新数据库提供器接入指南（MySQL / SQL Server 切换、设计时工厂、方言扩展点）。
+- `EFCore数据库迁移指南.md`：EF Core CodeFirst 迁移使用说明（迁移架构总览、运行时自动迁移、CLI 命令、设计时工厂、分表与迁移关系、常见问题）。
+- `EFCore9升级计划.md`：EF Core 8 → 9 升级记录（**已完成**：EF Core 9.0.14、Pomelo 9.0.0、EFCore.Sharding 9.0.10），包含已升级包清单、版本对照表、`HasPendingModelChanges()` 集成说明及核查清单。
+- `新数据库提供程序接入指南.md`：新数据库提供器接入指南（MySQL / SQL Server 切换、设计时工厂、方言扩展点）。
 - `数据库读写压力测试计划.md`：针对 MySQL + EFCore.Sharding 分表架构的数据库读写压力测试计划，覆盖纯写入、纯读取、混合读写、长时稳定性 4 大场景，含梯度加压方案、通过/失败验收矩阵、监控采集命令与结果记录模板。
 
 ### `.github/`：Copilot 仓库级指令目录
@@ -273,7 +266,6 @@
 
 ### `Zeye.Sorting.Hub.Application/`：应用层（Use Case 编排层）
 - `Zeye.Sorting.Hub.Application.csproj`：Application 项目定义（引用 Domain + Contracts，承载应用服务实现）。
-- `AssemblyReference.cs`：程序集锚点类型。
 
 #### `Zeye.Sorting.Hub.Application/Utilities/`：应用层内部共享工具目录
 - `EnumGuard.cs`：枚举值合法性校验工具；统一封装 `Enum.IsDefined` 判断、Warn 日志记录与 `ArgumentOutOfRangeException` 抛出，消除各应用服务中重复的枚举验证模板代码；提供 `int` 和 `int?` 两个重载。
@@ -291,11 +283,6 @@
 
 ### `Zeye.Sorting.Hub.Contracts/`：契约层（对外 DTO / 接口模型）
 - `Zeye.Sorting.Hub.Contracts.csproj`：Contracts 项目定义。
-- `AssemblyReference.cs`：程序集锚点类型。
-
-#### `Zeye.Sorting.Hub.Contracts/Enums/Parcels/`：Parcel 枚举目录
-- `ParcelExceptionType.cs`：包裹异常类型对外合同枚举（与 Domain.ParcelExceptionType 数值一一对应，供 API 客户端按语义筛选异常类型，避免魔法数字，含 Description）。
-- `ParcelUpdateOperation.cs`：Parcel 更新操作类型枚举（MarkCompleted=1/MarkSortingException=2/UpdateRequestStatus=3，含 Description）。
 
 #### `Zeye.Sorting.Hub.Contracts/Models/Parcels/`：Parcel 对外查询合同目录
 - `ParcelListRequest.cs`：Parcel 列表查询请求合同（分页 + 过滤参数）。
@@ -377,6 +364,16 @@
 - `ParcelType.cs`：包裹类别枚举定义。
 - `VideoNodeType.cs`：视频节点类型枚举定义。
 - `VolumeSourceType.cs`：体积来源类型枚举定义。
+- `MigrationFailureMode.cs`：数据库迁移失败策略枚举。
+- `ParcelUpdateOperation.cs`：包裹状态更新操作枚举。
+
+#### `Zeye.Sorting.Hub.Domain/Enums/Sharding/`：分表治理枚举子目录
+- `ParcelShardingStrategyMode.cs`：分表策略模式枚举。
+- `ParcelTimeShardingGranularity.cs`：时间分表粒度枚举。
+- `ParcelVolumeThresholdAction.cs`：容量阈值动作枚举。
+- `ParcelFinerGranularityMode.cs`：细粒度扩展模式枚举。
+- `ParcelFinerGranularityPlanLifecycle.cs`：细粒度扩展生命周期枚举。
+- `ParcelAggregateShardingRuleKind.cs`：聚合分表规则类别枚举。
 
 #### `Zeye.Sorting.Hub.Domain/Primitives/`：领域基础类型目录
 - `AuditableEntity.cs`：可审计实体基类（创建/修改信息等）。
@@ -397,14 +394,22 @@
 - `ParcelSummaryReadModel.cs`：Parcel 列表摘要读模型（包含 Parcel 全部扁平化字段，用于分页列表）。
 
 ###### `Zeye.Sorting.Hub.Domain/Repositories/Models/Results/`：仓储结果模型目录
-- `RepositoryResult.cs`：仓储统一结果模型（`RepositoryResult` / `RepositoryResult<T>`）与 `DangerousBatchActionResult`（危险批量动作治理状态），供 Domain 契约与 Infrastructure 实现共用，避免重复类型。
+- `RepositoryResult.cs`：非泛型仓储结果模型。
+- `RepositoryResultOfT.cs`：泛型仓储结果模型。
+- `RepositoryErrorCodes.cs`：仓储层稳定错误码。
+- `DangerousBatchActionResult.cs`：危险批量动作治理结果模型。
 
 ###### `Zeye.Sorting.Hub.Domain/Repositories/Models/Validation/`：查询校验模型目录
 - `MaxTimeRangeAttribute.cs`：时间范围校验特性（限制起止时间跨度，默认不超过 3 个月）。
 
 ### `Zeye.Sorting.Hub.Host/`：宿主层（程序入口、后台服务、启动配置）
-- `Program.cs`：应用入口与 Host 构建流程；注册 Parcel 只读 API 与管理端写 API；监听地址与 Swagger 路径均由 `Hosting` 配置驱动；`GET /api/parcels/adjacent` 已改为按 `id` 查询并在锚点不存在时返回 404；Swagger 接入 Host/Contracts/Application/Domain 多程序集 XML 注释与枚举中文说明增强；使用 NLog 替换默认日志提供器，任何启动期异常均记录后再退出。
-- `HostingOptions.cs`：`Hosting` 配置模型（`Urls`、`EnableHttpsRedirection`、`Swagger`、`BrowserAutoOpen`）及 Swagger JSON 路由与开发期浏览器默认地址拼装逻辑。
+- `Program.cs`：应用入口与 Host 构建流程。
+- `ParcelReadOnlyApiRouteExtensions.cs`：Parcel 只读路由注册与处理逻辑。
+- `ParcelListQueryParameters.cs`：只读列表查询参数模型。
+- `ParcelAdjacentQueryParameters.cs`：只读邻近查询参数模型。
+- `HostingOptions.cs`：`Hosting` 主配置模型及地址/Swagger 拼装逻辑。
+- `SwaggerOptions.cs`：Swagger 子配置模型。
+- `BrowserAutoOpenOptions.cs`：开发期浏览器自动打开配置模型。
 - `LocalDateTimeParsing.cs`：本地时间解析与 API 响应工厂共享工具（`TryParseLocalDateTime`、`TryParseOptionalLocalDateTime`、`IsUtcKind`、`CreateBadRequestProblem`、`CreateParcelMissingProblem`），统一供各路由扩展类复用，避免重复实现（其中“包裹不存在”统一返回 404）。
 - `ParcelAdminApiRouteExtensions.cs`：Parcel 管理端 API 路由扩展（`MapParcelAdminApis`），注册 `POST /api/admin/parcels`、`PUT /api/admin/parcels/{id}`、`DELETE /api/admin/parcels/{id}` 普通写接口及 `POST /api/admin/parcels/cleanup-expired` 危险治理接口，并补齐中文 Summary/Description；新增创建接口 `id` 参数校验与重复 Id 冲突映射（409）。
 - `Worker.cs`：后台轮询任务示例服务。
@@ -416,13 +421,13 @@
 #### `Zeye.Sorting.Hub.Host/Swagger/`：Swagger 扩展目录
 - `EnumDescriptionSchemaFilter.cs`：枚举 Schema 中文增强过滤器，保留真实 enum 增强逻辑，并扩展 Contracts 中“枚举数值 int 字段”的全量映射，向 Swagger 输出“数值 = 枚举名（Description 中文）”可选值说明。
 
-#### `Zeye.Sorting.Hub.Host/Enums/`：宿主层枚举目录
-- `MigrationFailureMode.cs`：数据库迁移失败策略枚举（`FailFast` / `Degraded`，带 `Description` 标记），供初始化服务与测试复用，避免枚举内嵌导致扩展困难。
-
 #### `Zeye.Sorting.Hub.Host/HostedServices/`：启动/常驻托管服务目录
 - `AutoTuningLoggerObservability.cs`：自动调优观测默认日志实现（统一日志 + 指标抽象默认落地）。
-- `DatabaseAutoTuningHostedService.cs`：数据库自动调谐托管服务（显式闭环阶段迁移、执行隔离、标准化自动验证结果、回滚触发与审计日志；分表观测指标基于全量慢 SQL 解析并覆盖子查询/集合运算场景；自动索引建议在执行前统一执行覆盖、语义重复、低价值过滤）。
-- `DatabaseInitializerHostedService.cs`：数据库初始化与迁移托管服务（支持生产/非生产迁移失败策略分流：FailFast/Degraded；启动期执行分表治理程序化守卫，新增 Time/Volume/Hybrid 策略配置校验与审计输出；PerDay 手工预建守卫升级为“配置日期清单完整性 + 物理分表存在性 + 关键索引一致性审计”三重校验，且仅做探测/阻断/审计，不自动建表）。
+- `DatabaseAutoTuningHostedService.cs`：数据库自动调谐托管服务主流程。
+- `PendingRollbackAction.cs` / `TableCapacitySnapshot.cs` / `EvidenceContext.cs` / `PolicyDecision.cs`：自动调谐内部模型与决策类型。
+- `DatabaseInitializerHostedService.cs`：数据库初始化与迁移托管服务主流程。
+- `PrebuiltPerDayShardDatesResolution.cs`：日分表预建日期解析结果模型。
+- `ShardingGovernanceGuardException.cs`：分表治理守卫异常类型。
 - `DevelopmentBrowserLauncherHostedService.cs`：Development 浏览器启动隔离器，仅在 Development + `Hosting:BrowserAutoOpen:Enabled=true` + 交互式/本机/非容器/非 CI 场景触发；通过 `IHostApplicationLifetime.ApplicationStarted` 确保服务可访问后再尝试打开，并持续使用 `SafeExecutor` 隔离异常，避免影响宿主启动。
 
 #### `Zeye.Sorting.Hub.Host/Properties/`：项目运行调试属性目录
@@ -453,7 +458,15 @@
 - `SqlServerDialect.cs`：SQL Server 方言实现（自动调优 SQL + sys.tables/sys.schemas 物理分表探测 + sys.indexes 关键索引缺失探测）。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/`：自动调谐核心目录
-- `AutoTuningAbstractions.cs`：自动调优观测抽象、闭环阶段模型、危险动作隔离策略、自动回滚决策、标准化验证结果构造器与可观测执行计划探针（含 provider-aware 真实 probe 扩展约定，默认实现仍 logging-only）。
+- `IAutoTuningObservability.cs`：自动调优观测输出抽象接口。
+- `NullAutoTuningObservability.cs`：观测空实现，未注入观测器时保持兼容。
+- `ActionIsolationPolicy.cs`：危险动作隔离策略引擎。
+- `AutoRollbackDecisionEngine.cs`：自动回滚判定引擎。
+- `AutoTuningClosedLoopTracker.cs`：闭环阶段跟踪器。
+- `AutoTuningVerificationResultBuilder.cs`：自动验证标准化结果构造器。
+- `IExecutionPlanRegressionProbe.cs` / `IProviderAwareExecutionPlanRegressionProbe.cs`：执行计划探针抽象。
+- `ExecutionPlanProbeRequest.cs` / `PlanRegressionSnapshot.cs`：执行计划探针请求与结果模型。
+- `LoggingOnlyExecutionPlanRegressionProbe.cs`：默认 logging-only 计划探针实现。
 - `AutoTuningConfigurationHelper.cs`：配置读取公共辅助类，集中提供 `GetPositiveIntOrDefault`、`GetNonNegativeIntOrDefault`、`GetNonNegativeDecimalOrDefault`、`GetDecimalInRangeOrDefault`、`GetDecimalClampedOrDefault`、`GetBoolOrDefault`、`GetPositiveSecondsAsTimeSpanOrDefault`、`GetTimeOfDayOrDefault`，并统一 `BuildAutoTuningKey`、`BuildAutonomousKey` 与 `NormalizeToLocalTime`，消除重复键拼装与时间归一化实现。
 - `MySqlSessionBootstrapConnectionInterceptor.cs`：MySQL 连接会话初始化拦截器（类型判断逻辑内联，移除无意义 helper）。
 - `SlowQueryAutoTuningPipeline.cs`：慢查询采集、TopN 聚合、阈值告警（含基础防抖）与闭环自治结构化建议编排管道（配置键拼装复用 `AutoTuningConfigurationHelper`，并提供主表提取公共方法供 HostedService 与建议编排共用）。
@@ -463,20 +476,15 @@
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding/`：分表策略与治理决策目录
 - `ParcelShardingStrategyEvaluator.cs`：Parcel 分表策略评估器（分表模式/时间粒度/容量阈值/阈值动作配置解析，结构化校验，容量观测输入统一收敛为 Observation 对象，输出含 finer-granularity 扩展规划的统一决策结果，复用于注册入口与启动审计守卫）。
 
-###### `Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding/Enums/`：分表策略枚举目录
-- `ParcelFinerGranularityMode.cs`：PerDay 仍过热时下一层细粒度模式枚举（`None` / `PerHour` / `BucketedPerDay`，含 `Description`）。
-- `ParcelFinerGranularityPlanLifecycle.cs`：finer-granularity 扩展规划生命周期枚举（`PlanOnly` / `AlertOnly` / `FutureExecutable`，含 `Description`）。
-- `ParcelAggregateShardingRuleKind.cs`：Parcel 聚合分表规则类别枚举（`Date` / `Hash`，含 `Description`），用于区分日期分表规则与哈希分表规则。
-- `ParcelShardingStrategyMode.cs`：分表模式枚举（`Time` / `Volume` / `Hybrid`，含 `Description`）。
-- `ParcelTimeShardingGranularity.cs`：时间分表粒度枚举（`PerMonth` / `PerDay`，含 `Description`）。
-- `ParcelVolumeThresholdAction.cs`：容量阈值动作枚举（`AlertOnly` / `SwitchToPerDay`，含 `Description`）。
-
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/DesignTime/`：EF 设计时支持目录
-- `MySqlContextFactory.cs`：MySQL 设计时 DbContext 工厂（实现 `IDesignTimeDbContextFactory<SortingHubDbContext>`），供 `dotnet ef migrations add/remove/list` 等 CLI 命令在无宿主进程时构建 DbContext；provider 值与连接字符串 key 使用 `ConfiguredProviderNames`，连接字符串从 `appsettings.json` 的 `ConnectionStrings:MySql` 读取，版本采用 AutoDetect → 兜底 8.0 两级策略。
+- `MySqlContextFactory.cs`：MySQL 设计时 DbContext 工厂。
+- `DesignTimeConsoleLogger.cs`：设计时日志输出器。
+- `NoopScope.cs`：设计时日志空作用域。
 - `SqlServerContextFactory.cs`：SQL Server 设计时 DbContext 构建器（由统一设计时工厂按 provider 分发调用），连接字符串 key 使用 `ConfiguredProviderNames.SqlServer`，提供 SQL Server 连接字符串搜索与 `DbContextOptions` 组装能力。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/`：EF Core 迁移文件目录
-- `20260316184030_InitialCreate.cs`：初始迁移，包含全部表（Parcels、Bags 及各值对象属性表）的 `Up`（建表）与 `Down`（回滚）逻辑。
+- `20260316184030_InitialCreate.cs`：初始迁移主体。
+- `MigrationSchemaResolver.cs`：迁移共享 schema 解析器。
 - `20260316184030_InitialCreate.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
 - `20260317024345_UseAttributeBasedIndexesAndPrecision.cs`：索引/精度特征标记对齐迁移（空 `Up/Down`，用于同步模型快照）。
 - `20260317024345_UseAttributeBasedIndexesAndPrecision.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
@@ -499,15 +507,12 @@
 
 ### `Zeye.Sorting.Hub.Realtime/`：实时通信子域（当前为占位工程）
 - `Zeye.Sorting.Hub.Realtime.csproj`：Realtime 项目定义。
-- `AssemblyReference.cs`：程序集锚点类型，供跨程序集定位与反射锚定使用。
 
 ### `Zeye.Sorting.Hub.RuleEngine/`：规则引擎子域（当前为占位工程）
 - `Zeye.Sorting.Hub.RuleEngine.csproj`：RuleEngine 项目定义。
-- `AssemblyReference.cs`：程序集锚点类型，供跨程序集定位与反射锚定使用。
 
 ### `Zeye.Sorting.Hub.SharedKernel/`：跨模块共享内核
 - `Zeye.Sorting.Hub.SharedKernel.csproj`：SharedKernel 项目定义（已将 `Microsoft.Extensions.Logging.Abstractions` 替换为 `NLog`，与全局日志规范一致）。
-- `AssemblyReference.cs`：程序集锚点类型，供跨程序集定位与反射锚定使用。
 
 #### `Zeye.Sorting.Hub.SharedKernel/Utilities/`：共享工具目录
 - `SafeExecutor.cs`：安全执行器；使用 NLog 静态 logger（`LogManager.GetCurrentClassLogger()`），移除了 MEL `ILogger<SafeExecutor>` 构造依赖；提供 `Execute`、`ExecuteAsync`（void）、`ExecuteAsync<T>`（带返回值）三个重载，确保任何异常都不会导致宿主崩溃。
@@ -525,10 +530,18 @@
 - `SwaggerDocumentationTests.cs`：Swagger 文档增强回归测试，覆盖管理端更新请求与值对象响应中的枚举型 int 字段，验证均输出“数值 + 枚举名 + 中文描述”。
 
 
+## 本次更新内容
+
+- 完成 PR2 结构整改：补齐 `DatabaseAutoTuningHostedService` 剩余正则字段 XML 注释。
+- 枚举集中到 `Zeye.Sorting.Hub.Domain/Enums`（含 `Sharding` 子目录），并清理 Contracts/Host/Infrastructure 旧枚举定义。
+- 生产代码完成“每个类型独立文件”收口：拆分 Host/Domain/Application/Infrastructure 中多类型同文件问题。
+- 删除无引用 `AssemblyReference.cs` 空壳文件，避免无效锚点类型残留。
+- 将英文命名文档改为中文文件名并更新工作流/README/文档引用路径。
+
 ## 更新记录与待完善事项
 
-- 更新记录（CHANGELOG）详见：[CHANGELOG.md](CHANGELOG.md)
-- 待完善事项（BACKLOG）详见：[BACKLOG.md](BACKLOG.md)
+- 更新记录（CHANGELOG）详见：[更新记录.md](更新记录.md)
+- 待完善事项（BACKLOG）详见：[待完善事项.md](待完善事项.md)
 
 ### 可继续完善内容
 

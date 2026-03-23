@@ -75,30 +75,57 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// 待回滚动作保留时长，超时后清理。
         /// </summary>
         private static readonly TimeSpan PendingRollbackRetention = TimeSpan.FromHours(24);
+        /// <summary>
+        /// 匹配 SQL Server 形态的 CREATE INDEX 语句，提取索引名与目标表名，用于自动调优动作审计与回滚语句关联。
+        /// </summary>
         private static readonly Regex SqlServerCreateIndexRegex = new(
             @"\bcreate\s+(?:unique\s+)?index\s+\[(?<index>[^\]]+)\]\s+on\s+(?<table>\[[^\]]+\](?:\.\[[^\]]+\])?)",
             RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
+        /// <summary>
+        /// 匹配 MySQL 形态的 CREATE INDEX 语句，提取索引名与目标表名，用于方言分支下的索引动作识别与审计归档。
+        /// </summary>
         private static readonly Regex MySqlCreateIndexRegex = new(
             @"\bcreate\s+(?:unique\s+)?index\s+`(?<index>[^`]+)`\s+on\s+(?<table>(?:`[^`]+`\.)?`[^`]+`)",
             RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
+        /// <summary>
+        /// 匹配 SQL 文本前导注释（行注释/块注释），用于在风险分析前剥离注释噪声，避免误判 DDL 或查询结构。
+        /// </summary>
         private static readonly Regex LeadingCommentRegex = new(
             @"^\s*(?:(--[^\r\n]*[\r\n]+)|(/\*.*?\*/\s*))",
             RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
+        /// <summary>
+        /// 匹配高风险 DDL 关键字（create/alter/drop），用于自动动作隔离器判定动作危险等级与执行门禁。
+        /// </summary>
         private static readonly Regex DangerousDdlRegex = new(
             @"\b(create|alter|drop)\b",
             RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        /// <summary>
+        /// 匹配 JOIN 关键字及其修饰词，用于识别多表关联查询场景并参与慢 SQL 复杂度判定。
+        /// </summary>
         private static readonly Regex JoinKeywordRegex = new(
             @"\b(?:left|right|inner|full|cross)?\s*join\b",
             RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        /// <summary>
+        /// 匹配集合运算关键字（union/intersect/except），用于识别跨结果集合并查询并触发更保守的索引建议策略。
+        /// </summary>
         private static readonly Regex SetOperatorRegex = new(
             @"\b(union|intersect|except)\b",
             RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        /// <summary>
+        /// 匹配同一 SQL 中多次出现 FROM 的模式，用于检测子查询/嵌套查询结构，避免简单规则误提取主表。
+        /// </summary>
         private static readonly Regex MultiFromRegex = new(
             @"\bfrom\b[\s\S]*\bfrom\b",
             RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        /// <summary>
+        /// 匹配 FROM 子句主体片段（到 where/group/order/limit/having/set operator 为止），用于提取主表候选并做命中统计。
+        /// </summary>
         private static readonly Regex FromClauseRegex = new(
             @"\bfrom\b(?<from>.+?)(?:\bwhere\b|\bgroup\s+by\b|\border\s+by\b|\blimit\b|\bhaving\b|\bunion\b|\bintersect\b|\bexcept\b|;|$)",
             RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
+        /// <summary>
+        /// 匹配 CREATE INDEX 动作关键短语，用于在自动执行前识别索引创建动作并应用动作级治理策略。
+        /// </summary>
         private static readonly Regex CreateIndexActionRegex = new(
             @"\bcreate\s+(?:unique\s+)?index\b",
             RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -1770,40 +1797,5 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
         }
 
-        private sealed record PendingRollbackAction(
-            string ActionId,
-            string Fingerprint,
-            string RollbackSql,
-            string TableKey,
-            DateTime CreatedTime,
-            int CreatedCycle,
-            double BaselineP95Milliseconds,
-            double BaselineP99Milliseconds,
-            decimal BaselineErrorRatePercent,
-            decimal BaselineTimeoutRatePercent,
-            int BaselineDeadlockCount,
-            int? BaselineLockWaitCount);
-
-        /// <summary>表级容量快照（CapturedLocalTime 必须使用本地时间语义）。</summary>
-        private sealed record TableCapacitySnapshot(
-            DateTime CapturedLocalTime,
-            long AffectedRows,
-            int CallCount);
-
-        private readonly record struct EvidenceContext(string EvidenceId, string CorrelationId);
-
-        private sealed record PolicyDecision(
-            bool ShouldExecute,
-            decimal RiskScore,
-            string Reason) {
-            /// <summary>
-            /// 执行逻辑：Execute。
-            /// </summary>
-            public static PolicyDecision Execute(decimal riskScore, string reason) => new(true, riskScore, reason);
-            /// <summary>
-            /// 执行逻辑：Skip。
-            /// </summary>
-            public static PolicyDecision Skip(decimal riskScore, string reason) => new(false, riskScore, reason);
-        }
     }
 }
