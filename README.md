@@ -148,14 +148,34 @@
 │   └── appsettings.json（默认运行配置（含分表策略结构化 Observation、PerDay 预建日期清单与仓储危险动作隔离默认策略））
 ├── Zeye.Sorting.Hub.Host.Tests（自动调优行为测试工程）
 │   ├── AutoTuningProductionControlTests.cs（自动调优生产可控能力测试：dry-run/隔离器/告警恢复/普通与严重回归/探针双路径/闭环链路；含分表策略评估与 PerDay 预建守卫联动测试；配置键拼装参数化覆盖（Theory））
+│   ├── AlwaysExistsShardingPhysicalTableProbe.cs（物理表探测测试桩：始终存在场景，支撑分表守卫探测调用断言）
+│   ├── BatchSelectiveMissingShardingPhysicalTableProbe.cs（批量物理表探测测试桩：选择性缺失与 schema 透传断言）
+│   ├── CaptureNullScope.cs（Warning 日志捕获器专用空作用域单例）
+│   ├── CaptureWarningLogger.cs（Warning 日志捕获测试桩：收集告警消息供断言）
+│   ├── CountingPlanProbe.cs（执行计划探针测试桩：记录调用次数）
 │   ├── DomainEventArgsTests.cs（领域事件载荷单元测试：验证 ParcelScannedEventArgs/ParcelChuteAssignedEventArgs 业务字段赋值与值语义）
+│   ├── EmptyServiceScope.cs（最小服务作用域测试桩）
+│   ├── EmptyServiceScopeFactory.cs（最小服务作用域工厂测试桩）
+│   ├── FakeParcelRepository.cs（Parcel 只读/管理端 API 复用仓储测试替身）
+│   ├── FixedPlanProbe.cs（执行计划探针测试桩：固定返回可用快照）
 │   ├── LocalTimeTestConstraintHelper.cs（测试层本地时间语义约束工具类：提供 CreateLocalTime/AssertIsLocalTime/AssertNotUtc，防止测试引入 UTC 语义）
+│   ├── MissingIndexShardingPhysicalTableProbe.cs（索引缺失探测测试桩：按表返回缺失索引）
+│   ├── NullScope.cs（通用测试日志空作用域单例）
+│   ├── ObservabilityEntry.cs（自动调优观测记录模型）
 │   ├── HostingOptionsTests.cs（Hosting 配置拼装测试：监听地址拆分、Swagger 地址拼装、显式地址优先级与无效监听地址兜底）
 │   ├── ParcelAdminApiTests.cs（Parcel 管理端写接口测试：新增/更新状态/删除成功路径 + cleanup-expired 三态 + 参数非法校验）
-│   ├── ParcelReadOnlyApiTests.cs（Parcel 只读 API 端点测试：列表/详情/404/邻近参数异常；包含 FakeParcelRepository 测试替身（支持读写操作））
+│   ├── ParcelReadOnlyApiTests.cs（Parcel 只读 API 端点测试：列表/详情/404/邻近参数异常）
+│   ├── SortingHubTestDbContextFactory.cs（Host.Tests 通用 InMemory DbContextFactory，供查询服务/仓储测试复用）
 │   ├── ParcelQueryServicesTests.cs（Parcel 应用层查询服务测试：列表/详情/邻近查询映射与最小校验；多重过滤条件联合成功路径；ExceptionType 筛选覆盖）
 │   ├── ParcelRepositoryTests.cs（Parcel 仓储第一阶段能力测试：分页过滤、详情与邻近查询、写操作与过期清理；含阻断/dry-run/显式放开的危险动作治理回归）
+│   ├── SelectiveMissingShardingPhysicalTableProbe.cs（物理表探测测试桩：选择性缺失场景）
 │   └── Zeye.Sorting.Hub.Host.Tests.csproj（xUnit 测试项目定义）
+│   ├── TestDialect.cs（通用数据库方言测试桩）
+│   ├── TestHostEnvironment.cs（IHostEnvironment 测试桩）
+│   ├── TestLogger.cs（通用泛型日志测试桩）
+│   ├── TestMySqlDialect.cs（MySQL ProviderName 方言测试桩）
+│   ├── TestObservability.cs（自动调优观测测试桩：收集指标与事件）
+│   └── TestSqlServerDialect.cs（SQL Server ProviderName 方言测试桩）
 ├── Zeye.Sorting.Hub.Infrastructure（基础设施层）
 │   ├── DependencyInjection（依赖注入扩展目录）
 │   │   └── PersistenceServiceCollectionExtensions.cs（持久化服务注册扩展（数据库提供器选择、连接字符串校验、DbContext 注册、分表规则与覆盖守卫；Parcel 主表始终按 CreatedTime 路由，时间/容量/混合策略决策由统一评估器驱动））
@@ -520,18 +540,41 @@
 ### `Zeye.Sorting.Hub.Host.Tests/`：API 与应用层测试层
 - `Zeye.Sorting.Hub.Host.Tests.csproj`：xUnit 测试项目定义。
 - `AutoTuningProductionControlTests.cs`：覆盖 dry-run、危险动作隔离、告警防抖与恢复、普通/严重回归、unavailable 指标处理、执行计划探针 available/unavailable 双路径、闭环链路与分表覆盖守卫校验、迁移失败策略分环境解析、结构化扩容计划解析、Time/Volume/Hybrid 分表策略评估、PerDay 预建守卫（配置+物理探测）与分表观测口径/自动索引过滤规则回归；含配置键拼装参数化（Theory）覆盖。
+- `AlwaysExistsShardingPhysicalTableProbe.cs`：物理表探测测试桩，始终返回存在并记录调用次数。
+- `BatchSelectiveMissingShardingPhysicalTableProbe.cs`：批量物理表探测测试桩，支持选择性缺失结果与 schema 透传断言。
+- `CaptureNullScope.cs`：Warning 捕获日志桩使用的空作用域单例。
+- `CaptureWarningLogger.cs`：Warning 日志捕获测试桩，收集告警消息用于断言版本解析与回退路径。
+- `CountingPlanProbe.cs`：执行计划探针测试桩，记录探针调用次数并返回固定快照。
 - `DomainEventArgsTests.cs`：领域事件载荷单元测试，验证 `ParcelScannedEventArgs`/`ParcelChuteAssignedEventArgs` 业务字段赋值、值语义相等与不等、本地时间约束。
+- `EmptyServiceScope.cs`：最小服务作用域测试桩，提供基础 `ServiceProvider`。
+- `EmptyServiceScopeFactory.cs`：最小服务作用域工厂测试桩。
+- `FakeParcelRepository.cs`：Parcel 仓储测试替身，提供只读/写入/过期清理三态结果用于 API 回归测试。
+- `FixedPlanProbe.cs`：执行计划探针测试桩，固定返回“探针可用且无回归”。
 - `LocalTimeTestConstraintHelper.cs`：测试层本地时间语义约束工具类，提供 `CreateLocalTime`/`AssertIsLocalTime`/`AssertNotUtc` 方法，防止测试代码引入 UTC 语义。
-- `ParcelReadOnlyApiTests.cs`：Parcel 只读 API 端点测试，覆盖列表查询、详情查询、详情不存在返回 404、`/api/parcels/adjacent` 按 `id` 查询的 400/404/稳定排序回归；包含可复用的 `FakeParcelRepository`（支持读写操作与可配置 cleanup-expired 三态行为）。
+- `MissingIndexShardingPhysicalTableProbe.cs`：关键索引缺失探测测试桩，按物理表返回缺失索引。
+- `NullScope.cs`：通用测试日志空作用域单例。
+- `ObservabilityEntry.cs`：自动调优观测记录模型，承载名称/值/标签快照。
 - `ParcelAdminApiTests.cs`：Parcel 管理端写接口测试，覆盖新增成功路径、创建请求 `id<=0` 返回 400、重复 Id 返回 409、UTC 时间拒绝、更新状态成功路径 + 不存在 404 + 非法操作码 400、删除成功路径 + 不存在 404、cleanup-expired blocked/dry-run/execute 三态 + UTC 时间与非法参数拒绝。
+- `ParcelReadOnlyApiTests.cs`：Parcel 只读 API 端点测试，覆盖列表查询、详情查询、详情不存在返回 404、`/api/parcels/adjacent` 按 `id` 查询的 400/404/稳定排序回归。
+- `SortingHubTestDbContextFactory.cs`：Host.Tests 通用 InMemory `DbContextFactory`，供查询服务测试与仓储测试复用。
 - `ParcelQueryServicesTests.cs`：Parcel 应用层查询服务测试（列表/详情/邻近查询映射与最小参数校验）；新增邻近查询锚点不存在异常场景；多重过滤条件联合成功路径（bagCode + workstationName + actualChuteId + status）；ExceptionType 筛选成功路径与非法值校验。
 - `ParcelRepositoryTests.cs`：Parcel 仓储第一阶段能力测试，覆盖分页过滤、详情与按 Id 邻近查询、新增/更新/删除、过期清理与批量新增；新增同一扫描时间稳定排序、锚点不存在、重复主键冲突语义回归，并验证危险清理动作的 blocked/dry-run/executed 三态。
+- `SelectiveMissingShardingPhysicalTableProbe.cs`：物理表探测测试桩，模拟指定分表缺失场景。
 - `HostingOptionsTests.cs`：Hosting 配置单元测试，覆盖监听地址分号拆分去重、`0.0.0.0` 归一化为 `localhost` 的 Swagger 地址拼装、`BrowserAutoOpen:Url` 显式配置优先级与无效监听地址返回 null 的兜底行为。
 - `SwaggerDocumentationTests.cs`：Swagger 文档增强回归测试，覆盖管理端更新请求与值对象响应中的枚举型 int 字段，验证均输出“数值 + 枚举名 + 中文描述”。
+- `TestDialect.cs`：通用数据库方言测试桩，提供默认 ProviderName 测试分支。
+- `TestHostEnvironment.cs`：`IHostEnvironment` 测试桩，注入环境名与最小内容根配置。
+- `TestLogger.cs`：通用泛型日志测试桩，收集日志消息供断言。
+- `TestMySqlDialect.cs`：MySQL ProviderName 方言测试桩。
+- `TestObservability.cs`：自动调优观测测试桩，收集指标与事件输出。
+- `TestSqlServerDialect.cs`：SQL Server ProviderName 方言测试桩。
 
 
 ## 本次更新内容
 
+- 收敛测试结构尾项：`AutoTuningProductionControlTests.cs` 与 `ParcelReadOnlyApiTests.cs` 中的测试替身/辅助类型全部拆分到同名独立文件，保持测试行为不变。
+- 同步完成测试侧同类问题收口：拆分 `ParcelQueryServicesTests.cs` 与 `ParcelRepositoryTests.cs` 中内嵌 `TestDbContextFactory`，消除“一个文件多个类型”。
+- 为新拆分测试替身字段/属性/单例补齐高信息量 XML 注释（含观测集合、日志消息集合、空作用域单例等测试用途说明）。
 - 完成 PR2 结构整改：补齐 `DatabaseAutoTuningHostedService` 剩余正则字段 XML 注释。
 - 枚举集中到 `Zeye.Sorting.Hub.Domain/Enums`（含 `Sharding` 子目录），并清理 Contracts/Host/Infrastructure 旧枚举定义。
 - 生产代码完成“每个类型独立文件”收口：拆分 Host/Domain/Application/Infrastructure 中多类型同文件问题。
@@ -545,6 +588,7 @@
 
 ### 可继续完善内容
 
+- 后续可考虑为测试替身目录增加更细分命名分组（如 `Fakes/Probes/Logging` 子目录），在保持单类型单文件前提下进一步提升可导航性。
 - 后续可补充真实 MySQL / SQL Server 集成用例，分别覆盖 `GetAdjacentByIdAsync` 的同一扫描时间稳定排序与重复主键冲突语义，验证跨 Provider 一致性。
 - 后续可在管理端创建接口补充显式的 `CreateConflictProblem` 响应工厂，进一步统一 409 问题详情输出格式。
 - 后续可在 SQL Server 场景下补充“主键非自增”历史库平滑切换 runbook（数据校验、灰度、回退步骤）。
