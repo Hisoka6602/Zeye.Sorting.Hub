@@ -139,21 +139,21 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
         }
         catch (DbUpdateException ex) when (IsDuplicatePrimaryKeyException(ex)) {
             Logger.Warn(ex, "新增包裹主键冲突，Id={ParcelId}", parcel.Id);
-            return RepositoryResult.Fail(DuplicateParcelIdErrorMessage);
+            return RepositoryResult.Fail(DuplicateParcelIdErrorMessage, RepositoryErrorCodes.ParcelIdConflict);
         }
         catch (DbUpdateException ex) when (ContainsDuplicateKeyMessage(ex.Message) || ContainsDuplicateKeyMessage(ex.InnerException?.Message)) {
             Logger.Warn(ex, "新增包裹主键冲突（DbUpdateException 回退分支），Id={ParcelId}", parcel.Id);
-            return RepositoryResult.Fail(DuplicateParcelIdErrorMessage);
+            return RepositoryResult.Fail(DuplicateParcelIdErrorMessage, RepositoryErrorCodes.ParcelIdConflict);
         }
         // InMemory Provider(当前测试基线 .NET8 + EFCore.InMemory 9.x) 在主键冲突场景下通常抛出 InvalidOperationException，
         // 且无稳定错误码，仅有消息文本。该分支仅为测试基础设施兼容兜底；真实数据库优先走上方错误码分支。
         catch (InvalidOperationException ex) when (ContainsDuplicateKeyMessage(ex.Message)) {
             Logger.Warn(ex, "新增包裹主键冲突（提供器回退分支），Id={ParcelId}", parcel.Id);
-            return RepositoryResult.Fail(DuplicateParcelIdErrorMessage);
+            return RepositoryResult.Fail(DuplicateParcelIdErrorMessage, RepositoryErrorCodes.ParcelIdConflict);
         }
         catch (Exception ex) when (ContainsDuplicateKeyMessage(ex.Message) || ContainsDuplicateKeyMessage(ex.InnerException?.Message)) {
             Logger.Warn(ex, "新增包裹主键冲突（通用回退分支），Id={ParcelId}", parcel.Id);
-            return RepositoryResult.Fail(DuplicateParcelIdErrorMessage);
+            return RepositoryResult.Fail(DuplicateParcelIdErrorMessage, RepositoryErrorCodes.ParcelIdConflict);
         }
         catch (Exception ex) {
             Logger.Error(ex, "新增包裹失败，Id={ParcelId}", parcel.Id);

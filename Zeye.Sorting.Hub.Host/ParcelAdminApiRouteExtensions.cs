@@ -107,10 +107,10 @@ public static class ParcelAdminApiRouteExtensions {
         }
         catch (InvalidOperationException ex) {
             Logger.Error(ex, "新增 Parcel 业务逻辑异常。");
-            if (string.Equals(ex.Message, "包裹 Id 已存在。", StringComparison.Ordinal)) {
+            if (string.Equals(ex.Message, CreateParcelCommandService.ParcelIdConflictErrorCode, StringComparison.Ordinal)) {
                 return Results.Problem(
                     title: "资源冲突",
-                    detail: ex.Message,
+                    detail: ex.InnerException?.Message ?? "包裹 Id 已存在。",
                     statusCode: StatusCodes.Status409Conflict);
             }
 

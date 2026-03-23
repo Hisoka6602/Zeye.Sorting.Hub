@@ -7,6 +7,7 @@ using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Repositories;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.Filters;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.Paging;
+using Zeye.Sorting.Hub.Domain.Repositories.Models.Results;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Repositories;
 
@@ -512,6 +513,7 @@ public sealed class ParcelRepositoryTests {
             var secondResult = await ((IParcelRepository)repository).AddAsync(second, CancellationToken.None);
             Assert.False(secondResult.IsSuccess);
             Assert.Equal(ParcelRepository.DuplicateParcelIdErrorMessage, secondResult.ErrorMessage);
+            Assert.Equal(RepositoryErrorCodes.ParcelIdConflict, secondResult.ErrorCode);
         }
         finally {
             await CleanupDatabaseAsync(databaseName);

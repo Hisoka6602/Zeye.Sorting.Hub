@@ -5,6 +5,7 @@ using Zeye.Sorting.Hub.Contracts.Models.Parcels.Admin;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Repositories;
+using Zeye.Sorting.Hub.Domain.Repositories.Models.Results;
 
 namespace Zeye.Sorting.Hub.Application.Services.Parcels;
 
@@ -12,6 +13,11 @@ namespace Zeye.Sorting.Hub.Application.Services.Parcels;
 /// 管理端新增包裹应用服务。
 /// </summary>
 public sealed class CreateParcelCommandService {
+    /// <summary>
+    /// 新增失败冲突错误码（供 Host 层稳定映射 409）。
+    /// </summary>
+    public const string ParcelIdConflictErrorCode = RepositoryErrorCodes.ParcelIdConflict;
+
     /// <summary>
     /// NLog 日志器。
     /// </summary>
@@ -80,6 +86,10 @@ public sealed class CreateParcelCommandService {
             var result = await _parcelRepository.AddAsync(parcel, cancellationToken);
             if (!result.IsSuccess) {
                 Logger.Error("新增包裹失败，BarCodes={BarCodes}, ErrorMessage={ErrorMessage}", request.BarCodes, result.ErrorMessage);
+                if (string.Equals(result.ErrorCode, ParcelIdConflictErrorCode, StringComparison.Ordinal)) {
+                    throw new InvalidOperationException(ParcelIdConflictErrorCode, new Exception(result.ErrorMessage ?? "新增包裹失败。"));
+                }
+
                 throw new InvalidOperationException(result.ErrorMessage ?? "新增包裹失败。");
             }
 

@@ -339,7 +339,7 @@ internal sealed class FakeParcelRepository : IParcelRepository {
         }
 
         if (_store.ContainsKey(parcel.Id)) {
-            return Task.FromResult(RepositoryResult.Fail("包裹 Id 已存在。"));
+            return Task.FromResult(RepositoryResult.Fail("包裹 Id 已存在。", RepositoryErrorCodes.ParcelIdConflict));
         }
 
         _store[parcel.Id] = parcel;
@@ -390,7 +390,7 @@ internal sealed class FakeParcelRepository : IParcelRepository {
     public Task<RepositoryResult> AddRangeAsync(IReadOnlyCollection<Parcel> parcels, CancellationToken cancellationToken) {
         foreach (var parcel in parcels) {
             if (_store.ContainsKey(parcel.Id)) {
-                return Task.FromResult(RepositoryResult.Fail("包裹 Id 已存在。"));
+                return Task.FromResult(RepositoryResult.Fail("包裹 Id 已存在。", RepositoryErrorCodes.ParcelIdConflict));
             }
 
             _store[parcel.Id] = parcel;

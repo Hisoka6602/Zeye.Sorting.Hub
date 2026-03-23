@@ -537,6 +537,7 @@
 - `Parcel.Id` 已改为创建时由调用方传入：`ParcelCreateRequest` 新增 `Id` 字段，`Parcel.Create(...)` 新增并校验 `id > 0`，`CreateParcelCommandService` 改为传入请求 Id，`ParcelEntityTypeConfiguration` 将主键策略改为 `ValueGeneratedNever()`。
 - 已新增迁移 `20260323045038_UseExternalProvidedParcelId` 并同步 Designer 与 ModelSnapshot，反映 Parcel 主表主键不再自动生成。
 - 重复 Id 处理策略已明确：仓储返回“包裹 Id 已存在。”，Host 管理端创建接口将该语义映射为 `409 Conflict`，不再吞并为模糊 500。
+- 重复 Id 处理策略进一步稳固：仓储结果新增稳定错误码 `Parcel.Id.Conflict`，Application 透传该标识，Host 按错误码映射 `409 Conflict`，不再依赖错误文案字符串判断。
 - 物理分表关键索引一致性审计已补齐 `TargetChuteId` 路径：新增 `ParcelIndexNames.TargetChuteIdScannedTime`，并纳入 `ResolveCriticalIndexesForProvider()` 阻断索引集合（仍保持仅探测/记录/阻断，不自动执行 DDL）。
 - 已修复 README 中“已统一 BarCodeKeyword 检索语义”的不一致描述，按当前真实实现更正为：MySQL 使用 FULLTEXT Boolean（`EF.Functions.IsMatch`），其他 Provider 使用 `Contains()`。
 - 已将 Host 监听地址与 Swagger 暴露参数切换为 `appsettings.json` 的 `Hosting` 配置主驱动：`Hosting:Urls`、`Hosting:EnableHttpsRedirection`、`Hosting:Swagger:*`、`Hosting:BrowserAutoOpen:*`。
