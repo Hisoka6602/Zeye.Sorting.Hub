@@ -145,7 +145,7 @@ public sealed class ParcelRepositoryTests {
     }
 
     /// <summary>
-    /// 验证场景：GetByChuteAsync_WhenActualAndTargetBothNull_ShouldThrowArgumentException。
+    /// 验证当 actualChuteId 与 targetChuteId 同时为 null 时，仓储边界应拒绝调用并抛出包含“至少提供一个格口 Id”的参数异常。
     /// </summary>
     [Fact]
     public async Task GetByChuteAsync_WhenActualAndTargetBothNull_ShouldThrowArgumentException() {
@@ -170,7 +170,7 @@ public sealed class ParcelRepositoryTests {
     }
 
     /// <summary>
-    /// 验证场景：GetByChuteAsync_WhenOnlyActualChuteIdProvided_ShouldFilterByActualChuteId。
+    /// 验证当仅提供 actualChuteId 时，查询仍可执行且只返回实际格口匹配的数据。
     /// </summary>
     [Fact]
     public async Task GetByChuteAsync_WhenOnlyActualChuteIdProvided_ShouldFilterByActualChuteId() {
@@ -201,7 +201,7 @@ public sealed class ParcelRepositoryTests {
     }
 
     /// <summary>
-    /// 验证场景：GetByChuteAsync_WhenOnlyTargetChuteIdProvided_ShouldFilterByTargetChuteId。
+    /// 验证当仅提供 targetChuteId 时，查询仍可执行且只返回目标格口匹配的数据。
     /// </summary>
     [Fact]
     public async Task GetByChuteAsync_WhenOnlyTargetChuteIdProvided_ShouldFilterByTargetChuteId() {
