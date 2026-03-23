@@ -18,6 +18,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                 nullable: false,
                 oldClrType: typeof(long),
                 oldType: "bigint")
+                .OldAnnotation("SqlServer:Identity", "1, 1")
                 .OldAnnotation("MySql:ValueGenerationStrategy", MySqlValueGenerationStrategy.IdentityColumn);
         }
 
@@ -31,6 +32,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                 nullable: false,
                 oldClrType: typeof(long),
                 oldType: "bigint")
+                .Annotation("SqlServer:Identity", "1, 1")
                 .Annotation("MySql:ValueGenerationStrategy", MySqlValueGenerationStrategy.IdentityColumn);
         }
     }
