@@ -765,7 +765,6 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <param name="providerName">数据库提供器名称。</param>
         /// <returns>可触发阻断的关键索引名集合。</returns>
         internal static IReadOnlyList<string> ResolveCriticalIndexesForProvider(string providerName) {
-            _ = providerName;
             return new[] {
                 ParcelIndexNames.BagCodeScannedTime,
                 ParcelIndexNames.ActualChuteIdScannedTime
