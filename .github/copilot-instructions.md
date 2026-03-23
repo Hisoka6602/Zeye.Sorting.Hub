@@ -15,6 +15,7 @@
 13. Copilot的回答/描述/交流都需要使用中文
 14. 所有的类的字段都必须有注释
 15. 日志只能使用Nlog,日志不能影响程序性能(无论日志输出多频繁)
+16. 修复任务默认由 Copilot 创建拉取请求（PR）
 
 # Copilot Repository Instructions
 
