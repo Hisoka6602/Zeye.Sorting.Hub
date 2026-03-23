@@ -361,7 +361,12 @@ check_enum_location() {
   log_step "执行规则校验：枚举目录约束"
 
   local result
-  result="$(find . -type f -name '*.cs' ! -path './.git/*' ! -path './Zeye.Sorting.Hub.Domain/Enums/*' -print0 | xargs -0 grep -n -E -- '^[[:space:]]*((public|internal|private|protected)[[:space:]]+)?(file[[:space:]]+)?enum[[:space:]]+' 2>/dev/null || true)"
+  result="$(
+    find . -type f -name '*.cs' ! -path './.git/*' -print0 \
+      | xargs -0 grep -n -E -- '^[[:space:]]*((public|internal|private|protected)[[:space:]]+)?(file[[:space:]]+)?enum[[:space:]]+' 2>/dev/null \
+      | awk -F: '$1 !~ /^\.\/Zeye\.Sorting\.Hub\.Domain\/Enums\//' \
+      || true
+  )"
   if [[ -n "$result" ]]; then
     record_failure "检测到不在 Zeye.Sorting.Hub.Domain/Enums 下的枚举定义，违反规则 8：\n$result"
   fi
@@ -546,7 +551,47 @@ check_no_second_person_in_comments() {
     [[ -z "$file_path" ]] && continue
     [[ -f "$file_path" ]] || continue
     local result
-    result="$(grep -n -E '^[[:space:]]*(///|//|/\*)' "$file_path" | grep -E -i "$second_person_cn_pattern|$second_person_en_pattern" || true)"
+    result="$(
+      awk -v pattern_cn="$second_person_cn_pattern" -v pattern_en="$second_person_en_pattern" '
+        BEGIN { in_block = 0 }
+        {
+          line = $0
+          comment = ""
+
+          if (in_block) {
+            comment = line
+            end_pos = index(line, "*/")
+            if (end_pos > 0) {
+              in_block = 0
+              comment = substr(line, 1, end_pos + 1)
+            }
+          }
+
+          if (!in_block) {
+            line_comment_pos = index(line, "//")
+            block_comment_pos = index(line, "/*")
+            if (line_comment_pos > 0 && (block_comment_pos == 0 || line_comment_pos < block_comment_pos)) {
+              comment = substr(line, line_comment_pos)
+            } else if (block_comment_pos > 0) {
+              in_block = 1
+              comment = substr(line, block_comment_pos)
+              end_pos = index(comment, "*/")
+              if (end_pos > 0) {
+                in_block = 0
+                comment = substr(comment, 1, end_pos + 1)
+              }
+            }
+          }
+
+          if (comment != "") {
+            lower_comment = tolower(comment)
+            if (lower_comment ~ pattern_en || comment ~ pattern_cn) {
+              printf("%d:%s\n", NR, comment)
+            }
+          }
+        }
+      ' "$file_path"
+    )"
     if [[ -n "$result" ]]; then
       record_failure "注释存在第二人称，违反规则 20：\n${file_path}:\n${result}"
     fi
@@ -629,6 +674,12 @@ check_copilot_pr_creation_rule() {
 
   local head_ref="${GITHUB_HEAD_REF:-}"
   if [[ -z "$head_ref" ]]; then
+    return
+  fi
+
+  local actor="${GITHUB_ACTOR:-}"
+  if [[ "$actor" != "github-copilot[bot]" && "$actor" != "copilot-autofix[bot]" ]]; then
+    log_step "当前 PR 非 Copilot bot 创建，跳过规则 16 的分支前缀检查"
     return
   fi
 
