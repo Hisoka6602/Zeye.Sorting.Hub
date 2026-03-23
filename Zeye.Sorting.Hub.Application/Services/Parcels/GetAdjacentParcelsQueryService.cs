@@ -1,4 +1,5 @@
 using NLog;
+using Zeye.Sorting.Hub.Application.Utilities;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels;
 using Zeye.Sorting.Hub.Domain.Repositories;
 
@@ -8,11 +9,6 @@ namespace Zeye.Sorting.Hub.Application.Services.Parcels;
 /// 查询 Parcel 邻近记录应用服务。
 /// </summary>
 public sealed class GetAdjacentParcelsQueryService {
-    /// <summary>
-    /// 邻近单侧最大条数。
-    /// </summary>
-    private const int MaxAdjacentCountPerSide = 200;
-
     /// <summary>
     /// NLog 日志器。
     /// </summary>
@@ -42,18 +38,12 @@ public sealed class GetAdjacentParcelsQueryService {
             throw new ArgumentNullException(nameof(request));
         }
 
-        if (request.BeforeCount < 0) {
-            Logger.Warn("查询 Parcel 邻近记录参数非法，BeforeCount={0}", request.BeforeCount);
-            throw new ArgumentOutOfRangeException(nameof(request.BeforeCount), "前向查询条数不能小于 0。");
-        }
+        Guard.ThrowIfNegative(request.BeforeCount, nameof(request.BeforeCount), "前向查询条数不能小于 0。", "查询 Parcel 邻近记录");
+        Guard.ThrowIfNegative(request.AfterCount, nameof(request.AfterCount), "后向查询条数不能小于 0。", "查询 Parcel 邻近记录");
 
-        if (request.AfterCount < 0) {
-            Logger.Warn("查询 Parcel 邻近记录参数非法，AfterCount={0}", request.AfterCount);
-            throw new ArgumentOutOfRangeException(nameof(request.AfterCount), "后向查询条数不能小于 0。");
-        }
-
-        var beforeCount = NormalizeAdjacentCount(request.BeforeCount);
-        var afterCount = NormalizeAdjacentCount(request.AfterCount);
+        // 归一化：将条数上限收敛至 IParcelRepository.MaxAdjacentCountPerSide，避免过大查询开销。
+        var beforeCount = Math.Min(request.BeforeCount, IParcelRepository.MaxAdjacentCountPerSide);
+        var afterCount = Math.Min(request.AfterCount, IParcelRepository.MaxAdjacentCountPerSide);
         try {
             // 步骤 1：使用归一化数量调用仓储邻近查询，保证单次查询开销可控。
             var adjacent = await _parcelRepository.GetAdjacentByScannedTimeAsync(
@@ -78,14 +68,5 @@ public sealed class GetAdjacentParcelsQueryService {
                 request.AfterCount);
             throw;
         }
-    }
-
-    /// <summary>
-    /// 归一化邻近查询数量，避免过大查询开销。
-    /// </summary>
-    /// <param name="count">请求数量。</param>
-    /// <returns>归一化后的数量。</returns>
-    private static int NormalizeAdjacentCount(int count) {
-        return count > MaxAdjacentCountPerSide ? MaxAdjacentCountPerSide : count;
     }
 }

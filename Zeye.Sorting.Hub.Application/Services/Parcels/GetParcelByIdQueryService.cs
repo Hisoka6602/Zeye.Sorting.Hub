@@ -1,4 +1,5 @@
 using NLog;
+using Zeye.Sorting.Hub.Application.Utilities;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels;
 using Zeye.Sorting.Hub.Domain.Repositories;
 
@@ -33,10 +34,7 @@ public sealed class GetParcelByIdQueryService {
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>详情响应；不存在时返回 null。</returns>
     public async Task<ParcelDetailResponse?> ExecuteAsync(long parcelId, CancellationToken cancellationToken) {
-        if (parcelId <= 0) {
-            Logger.Warn("按 Id 查询 Parcel 详情参数非法，ParcelId={0}", parcelId);
-            throw new ArgumentOutOfRangeException(nameof(parcelId), "包裹 Id 必须大于 0。");
-        }
+        Guard.ThrowIfZeroOrNegative(parcelId, nameof(parcelId), "包裹 Id 必须大于 0。", "按 Id 查询 Parcel 详情");
 
         try {
             var parcel = await _parcelRepository.GetByIdAsync(parcelId, cancellationToken);

@@ -30,6 +30,9 @@
 │   │       ├── GetParcelPagedQueryService.cs（Parcel 分页查询应用服务）
 │   │       ├── ParcelContractMapper.cs（Parcel 领域模型到 Contracts 模型映射器）
 │   │       └── UpdateParcelStatusCommandService.cs（管理端更新包裹状态应用服务（仅支持领域允许的状态转换））
+│   ├── Utilities（应用层内部共享工具目录）
+│   │   ├── EnumGuard.cs（枚举值合法性校验工具：统一封装 Enum.IsDefined + Warn 日志 + 异常抛出）
+│   │   └── Guard.cs（基础参数边界守卫工具：ThrowIfZeroOrNegative / ThrowIfNegative，消除各服务重复检查代码）
 │   └── Zeye.Sorting.Hub.Application.csproj（Application 项目定义）
 ├── Zeye.Sorting.Hub.Contracts（契约层）
 │   ├── Class1.cs（程序集锚点类型）
@@ -135,7 +138,7 @@
 │   │   └── DevelopmentBrowserLauncherHostedService.cs（Development 启动浏览器隔离器：仅 Development + 配置开启 + 交互式/本机/非容器/非CI 场景生效；在 ApplicationStarted 后再打开 Swagger，异常由 SafeExecutor 隔离）
 │   ├── Program.cs（应用入口与 Host 构建流程；运行地址/Swagger 路径由 appsettings 的 Hosting 配置驱动；接入 XML 注释与枚举中文说明增强）
 │   ├── HostingOptions.cs（Hosting 配置模型与 Swagger/浏览器自动打开地址拼装逻辑）
-│   ├── LocalDateTimeParsing.cs（本地时间解析共享工具：TryParseLocalDateTime/TryParseOptionalLocalDateTime/IsUtcKind，供所有路由扩展复用）
+│   ├── LocalDateTimeParsing.cs（本地时间解析与 API 响应工厂共享工具：TryParseLocalDateTime/TryParseOptionalLocalDateTime/CreateBadRequestProblem/CreateNotFoundProblem，供所有路由扩展复用）
 │   ├── ParcelAdminApiRouteExtensions.cs（Parcel 管理端 API 路由扩展：POST/PUT/DELETE 普通写接口 + cleanup-expired 治理接口）
 │   ├── Swagger（Swagger 扩展目录）
 │   │   └── EnumDescriptionSchemaFilter.cs（枚举 Schema 中文增强：真实 enum 与 Contracts 中枚举数值 int 字段均显示“数值=枚举名（中文描述）”）
@@ -206,9 +209,9 @@
 │   │   └── SortingHubDbContext.cs（EF Core DbContext）
 │   │   └── DbProviderNames.cs（EF Core 数据库提供器名称常量集中定义）
 │   ├── Repositories（仓储基类与结果模型目录）
-│   │   ├── MemoryCacheRepositoryBase.cs（缓存仓储基类）
-│   │   ├── ParcelRepository.cs（Parcel 仓储第一阶段实现）
-│   │   └── RepositoryBase.cs（通用仓储基类）
+│   │   ├── MemoryCacheRepositoryBase.cs（带内存缓存失效的仓储基类，使用 NLog 日志）
+│   │   ├── ParcelRepository.cs（Parcel 仓储第一阶段实现，使用静态 NLog logger，无需 MEL ILogger 构造注入）
+│   │   └── RepositoryBase.cs（通用仓储基类，接受 NLog.ILogger 构造参数，由派生类传入确保日志来源类名正确）
 │   └── Zeye.Sorting.Hub.Infrastructure.csproj（Infrastructure 项目定义）
 ├── Zeye.Sorting.Hub.Realtime（实时通信子域，占位工程）
 │   ├── Class1.cs（占位类，预留实时推送/订阅能力）
@@ -216,8 +219,10 @@
 ├── Zeye.Sorting.Hub.RuleEngine（规则引擎子域，占位工程）
 │   ├── Class1.cs（占位类，预留规则执行引擎）
 │   └── Zeye.Sorting.Hub.RuleEngine.csproj（RuleEngine 项目定义）
-├── Zeye.Sorting.Hub.SharedKernel（共享内核，占位工程）
+├── Zeye.Sorting.Hub.SharedKernel（共享内核）
 │   ├── Class1.cs（占位类，预留通用基础能力）
+│   ├── Utilities（共享工具目录）
+│   │   └── SafeExecutor.cs（安全执行器：使用 NLog 静态 logger，不再依赖 MEL ILogger 构造注入；隔离任何异常，Execute/ExecuteAsync 确保副作用不会导致宿主崩溃）
 │   └── Zeye.Sorting.Hub.SharedKernel.csproj（SharedKernel 项目定义）
 ├── Zeye.Sorting.Hub.sln（.NET 解决方案入口）
 ├── EFCore-Migration.md（EF Core CodeFirst 迁移使用说明文档）
@@ -267,10 +272,14 @@
 - `Zeye.Sorting.Hub.Application.csproj`：Application 项目定义（引用 Domain + Contracts，承载应用服务实现）。
 - `Class1.cs`：程序集锚点类型。
 
+#### `Zeye.Sorting.Hub.Application/Utilities/`：应用层内部共享工具目录
+- `EnumGuard.cs`：枚举值合法性校验工具；统一封装 `Enum.IsDefined` 判断、Warn 日志记录与 `ArgumentOutOfRangeException` 抛出，消除各应用服务中重复的枚举验证模板代码；提供 `int` 和 `int?` 两个重载。
+- `Guard.cs`：基础参数边界守卫工具；提供 `ThrowIfZeroOrNegative`（Id 正数校验，有 long/int 两个重载）和 `ThrowIfNegative`（可选数量非负校验），统一记录 Warn 日志并抛出 `ArgumentOutOfRangeException`。
+
 #### `Zeye.Sorting.Hub.Application/Services/Parcels/`：Parcel 应用服务目录（查询 + 管理端写命令）
 - `GetParcelByIdQueryService.cs`：按 Id 查询 Parcel 详情应用服务（仓储调用 + 合同映射 + 最小参数校验）。
 - `GetParcelPagedQueryService.cs`：分页查询 Parcel 列表应用服务（请求校验、过滤映射、分页结果映射）。
-- `GetAdjacentParcelsQueryService.cs`：按基准扫码时间查询邻近 Parcel 应用服务（数量归一化、响应映射）。
+- `GetAdjacentParcelsQueryService.cs`：按基准扫码时间查询邻近 Parcel 应用服务（数量归一化至 `IParcelRepository.MaxAdjacentCountPerSide`、响应映射）。
 - `ParcelContractMapper.cs`：Parcel 领域模型/读模型到 Contracts 模型的统一映射器，避免 Host 层重复映射。
 - `CreateParcelCommandService.cs`：管理端新增包裹应用服务（枚举验证、领域工厂 Parcel.Create、仓储 AddAsync、合同映射）。
 - `UpdateParcelStatusCommandService.cs`：管理端更新包裹状态应用服务（仅支持 MarkCompleted/MarkSortingException/UpdateRequestStatus 三种领域方法，不允许任意字段修改）。
@@ -370,7 +379,7 @@
 - `AuditableEntity.cs`：可审计实体基类（创建/修改信息等）。
 
 #### `Zeye.Sorting.Hub.Domain/Repositories/`：领域仓储契约目录
-- `IParcelRepository.cs`：包裹仓储接口（第一阶段可落地契约：基础读写、分页查询、邻近查询、过期清理危险动作治理结果返回）。
+- `IParcelRepository.cs`：包裹仓储接口（第一阶段可落地契约：基础读写、分页查询、邻近查询、过期清理危险动作治理结果返回；同时定义 `MaxAdjacentCountPerSide = 200` 常量，为 Application 层与 Infrastructure 层提供唯一权威数字来源，禁止各自硬编码）。
 
 ##### `Zeye.Sorting.Hub.Domain/Repositories/Models/`：Parcel 仓储查询模型目录
 
@@ -393,7 +402,7 @@
 ### `Zeye.Sorting.Hub.Host/`：宿主层（程序入口、后台服务、启动配置）
 - `Program.cs`：应用入口与 Host 构建流程；注册 Parcel 只读 API 与管理端写 API；监听地址与 Swagger 路径均由 `Hosting` 配置驱动；Swagger 接入 Host/Contracts/Application/Domain 多程序集 XML 注释与枚举中文说明增强；使用 NLog 替换默认日志提供器，任何启动期异常均记录后再退出。
 - `HostingOptions.cs`：`Hosting` 配置模型（`Urls`、`EnableHttpsRedirection`、`Swagger`、`BrowserAutoOpen`）及 Swagger JSON 路由与开发期浏览器默认地址拼装逻辑。
-- `LocalDateTimeParsing.cs`：本地时间解析共享工具（`TryParseLocalDateTime`、`TryParseOptionalLocalDateTime`、`IsUtcKind`），统一供各路由扩展类复用，避免重复实现。
+- `LocalDateTimeParsing.cs`：本地时间解析与 API 响应工厂共享工具（`TryParseLocalDateTime`、`TryParseOptionalLocalDateTime`、`IsUtcKind`、`CreateBadRequestProblem`、`CreateNotFoundProblem`），统一供各路由扩展类复用，避免重复实现。
 - `ParcelAdminApiRouteExtensions.cs`：Parcel 管理端 API 路由扩展（`MapParcelAdminApis`），注册 `POST /api/admin/parcels`、`PUT /api/admin/parcels/{id}`、`DELETE /api/admin/parcels/{id}` 普通写接口及 `POST /api/admin/parcels/cleanup-expired` 危险治理接口，并补齐中文 Summary/Description。
 - `Worker.cs`：后台轮询任务示例服务。
 - `Zeye.Sorting.Hub.Host.csproj`：Host 项目定义。
@@ -477,9 +486,9 @@
 - `SortingHubDbContextModelSnapshot.cs`：当前模型快照，EF Core 用于计算下次迁移的差量（自动生成，勿手动修改）。
 
 #### `Zeye.Sorting.Hub.Infrastructure/Repositories/`：仓储基类与结果模型目录
-- `MemoryCacheRepositoryBase.cs`：带内存缓存失效逻辑的仓储基类。
-- `ParcelRepository.cs`：Parcel 仓储第一阶段实现（复用 `RepositoryBase` 与 `IDbContextFactory`，提供基础读写、分页查询、邻近查询与过期清理；过期清理纳入隔离器开关 + dry-run + 审计 + 补偿边界声明）。
-- `RepositoryBase.cs`：通用仓储基类（增删改查 + 自动持久化实现）。
+- `RepositoryBase.cs`：通用仓储基类（增删改查 + 自动持久化实现）；接受 `NLog.ILogger` 构造参数，由派生类传入，确保日志来源类名为实际仓储类而非基类名。
+- `MemoryCacheRepositoryBase.cs`：带内存缓存失效逻辑的仓储基类，继承 `RepositoryBase`，同样使用 NLog 日志。
+- `ParcelRepository.cs`：Parcel 仓储第一阶段实现（复用 `RepositoryBase`、`IDbContextFactory`，使用静态 `NLog.ILogger`，已移除 MEL `ILogger<ParcelRepository>` 构造依赖；提供基础读写、分页查询、邻近查询与过期清理；过期清理纳入隔离器开关 + dry-run + 审计 + 补偿边界声明）。
 
 ### `Zeye.Sorting.Hub.Realtime/`：实时通信子域（当前为占位工程）
 - `Zeye.Sorting.Hub.Realtime.csproj`：Realtime 项目定义。
@@ -489,9 +498,12 @@
 - `Zeye.Sorting.Hub.RuleEngine.csproj`：RuleEngine 项目定义。
 - `Class1.cs`：占位类，预留规则执行引擎实现位置。
 
-### `Zeye.Sorting.Hub.SharedKernel/`：跨模块共享内核（当前为占位工程）
-- `Zeye.Sorting.Hub.SharedKernel.csproj`：SharedKernel 项目定义。
+### `Zeye.Sorting.Hub.SharedKernel/`：跨模块共享内核
+- `Zeye.Sorting.Hub.SharedKernel.csproj`：SharedKernel 项目定义（已将 `Microsoft.Extensions.Logging.Abstractions` 替换为 `NLog`，与全局日志规范一致）。
 - `Class1.cs`：占位类，预留通用基础能力实现位置。
+
+#### `Zeye.Sorting.Hub.SharedKernel/Utilities/`：共享工具目录
+- `SafeExecutor.cs`：安全执行器；使用 NLog 静态 logger（`LogManager.GetCurrentClassLogger()`），移除了 MEL `ILogger<SafeExecutor>` 构造依赖；提供 `Execute`、`ExecuteAsync`（void）、`ExecuteAsync<T>`（带返回值）三个重载，确保任何异常都不会导致宿主崩溃。
 
 ### `Zeye.Sorting.Hub.Host.Tests/`：API 与应用层测试层
 - `Zeye.Sorting.Hub.Host.Tests.csproj`：xUnit 测试项目定义。
@@ -522,6 +534,9 @@
 - 已彻底解决 BarCodeKeyword 技术债务：在 MySQL 下为 `Parcels.BarCodes` 列添加 FULLTEXT 全文索引（`FTX_Parcels_BarCodes`），并将 `ParcelRepository.ApplyFilter` 改为 Provider 分支查询：MySQL 走双引号包裹的 `EF.Functions.IsMatch(phrase, Boolean)`（phrase 搜索防止条码中 `-` 等字符被 BOOLEAN MODE 解析为操作符），SQL Server 保留 `Contains()`（已知限制）。查询语义由任意子串匹配变更为 MySQL FULLTEXT 词级匹配，建议调用方传入完整词元（完整条码）。
 - 集中管理 Provider 名称常量：新增 `DbProviderNames.cs`，统一定义 `MySql` / `SqlServer` 常量，仓储与所有迁移文件均改引此处，消除跨文件重复硬编码。
 - 补充 `ParcelRepositoryTests` 中 BarCodeKeyword 过滤路径回归测试：覆盖含 `-` 分隔符条码的子串匹配、空格修剪、无匹配三个场景（InMemory Provider 自动走 Contains 回退路径）。
+- 消除应用层重复实现与魔法数字：新增 `Application/Utilities/EnumGuard.cs` 和 `Application/Utilities/Guard.cs`，将 8 处枚举验证、7 处参数边界检查统一收口；将 `MaxAdjacentCountPerSide = 200` 常量上移至 `IParcelRepository` 接口（唯一权威来源），Infrastructure 与 Application 均引用接口常量，消除两层各自定义魔法数字的重复。
+- 落实"日志只能使用 NLog"规范（仓储层与 SharedKernel）：① 将 `SafeExecutor`（SharedKernel）从 MEL `ILogger<T>` 迁移至 NLog 静态 logger，移除构造注入依赖，`SharedKernel.csproj` 改引用 `NLog 6.1.1`；② 将 `RepositoryBase` / `MemoryCacheRepositoryBase`（Infrastructure 仓储层）从 MEL ILogger 迁移至 NLog ILogger（构造传入模式，确保日志来源类名为实际仓储类）；③ `ParcelRepository` 新增静态 NLog logger，移除 MEL `ILogger<ParcelRepository>` 构造参数，简化 DI 注册；`Infrastructure.csproj` 新增 `NLog 6.1.1` 引用；同步清理 `ParcelRepositoryTests` / `ParcelQueryServicesTests` 中的 `NullLogger` 依赖。注意：`AutoTuning/` 下的 EF Core 拦截器与 `PersistenceServiceCollectionExtensions` 等 DI 绑定组件因须接入 EF Core MEL 管道，有意保留 MEL ILogger 注入，不在本轮迁移范围内。
+- 提取 404 Not Found 响应工厂方法：`LocalDateTimeParsing` 新增 `CreateNotFoundProblem(long id)` 方法（detail 使用通用描述"未找到 Id 为 {id} 的资源。"），消除只读 API（`GetParcelByIdAsync`）与管理端 API（`UpdateParcelStatusAsync`、`DeleteParcelAsync`）3 处重复的 `Results.Problem(title: "资源不存在", ...)` 构造。
 
 ### 可继续完善内容
 

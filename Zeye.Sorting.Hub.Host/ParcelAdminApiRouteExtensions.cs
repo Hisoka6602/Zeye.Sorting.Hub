@@ -144,10 +144,7 @@ public static class ParcelAdminApiRouteExtensions {
             // 步骤 2：调用 Application 服务，传入已解析的本地完结时间（服务无需感知 HTTP 时间格式）。
             var response = await commandService.ExecuteAsync(id, request, completedTime, cancellationToken);
             return response is null
-                ? Results.Problem(
-                    title: "资源不存在",
-                    detail: $"未找到 Id 为 {id} 的包裹。",
-                    statusCode: StatusCodes.Status404NotFound)
+                ? LocalDateTimeParsing.CreateNotFoundProblem(id)
                 : Results.Ok(response);
         }
         catch (ArgumentException ex) {
@@ -178,10 +175,7 @@ public static class ParcelAdminApiRouteExtensions {
             var deleted = await commandService.ExecuteAsync(id, cancellationToken);
             return deleted
                 ? Results.NoContent()
-                : Results.Problem(
-                    title: "资源不存在",
-                    detail: $"未找到 Id 为 {id} 的包裹。",
-                    statusCode: StatusCodes.Status404NotFound);
+                : LocalDateTimeParsing.CreateNotFoundProblem(id);
         }
         catch (ArgumentException ex) {
             Logger.Warn(ex, "删除 Parcel 参数校验失败，Id={ParcelId}", id);

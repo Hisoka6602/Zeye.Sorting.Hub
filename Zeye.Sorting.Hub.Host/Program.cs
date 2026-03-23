@@ -259,10 +259,7 @@ public static class ParcelReadOnlyApiRouteExtensions {
         try {
             var response = await queryService.ExecuteAsync(id, cancellationToken);
             return response is null
-                ? Results.Problem(
-                    title: "资源不存在",
-                    detail: $"未找到 Id 为 {id} 的包裹。",
-                    statusCode: StatusCodes.Status404NotFound)
+                ? LocalDateTimeParsing.CreateNotFoundProblem(id)
                 : Results.Ok(response);
         }
         catch (ArgumentException exception) {

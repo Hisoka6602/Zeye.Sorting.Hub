@@ -1,4 +1,5 @@
 using NLog;
+using Zeye.Sorting.Hub.Application.Utilities;
 using Zeye.Sorting.Hub.Contracts.Enums.Parcels;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.Admin;
@@ -39,20 +40,14 @@ public sealed class UpdateParcelStatusCommandService {
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>更新后的包裹详情；包裹不存在时返回 null。</returns>
     public async Task<ParcelDetailResponse?> ExecuteAsync(long parcelId, ParcelUpdateRequest request, DateTime? completedTime, CancellationToken cancellationToken) {
-        if (parcelId <= 0) {
-            Logger.Warn("更新包裹状态参数非法，ParcelId={ParcelId}", parcelId);
-            throw new ArgumentOutOfRangeException(nameof(parcelId), "包裹 Id 必须大于 0。");
-        }
+        Guard.ThrowIfZeroOrNegative(parcelId, nameof(parcelId), "包裹 Id 必须大于 0。", "更新包裹状态");
 
         if (request is null) {
             throw new ArgumentNullException(nameof(request));
         }
 
         // 步骤 1：解析操作类型枚举，拒绝无效操作码。
-        if (!Enum.IsDefined(typeof(ParcelUpdateOperation), request.Operation)) {
-            Logger.Warn("更新包裹状态参数非法，Operation={Operation}", request.Operation);
-            throw new ArgumentOutOfRangeException(nameof(request.Operation), "操作类型无效，请参阅 ParcelUpdateOperation 枚举定义。");
-        }
+        EnumGuard.ThrowIfUndefined<ParcelUpdateOperation>(request.Operation, nameof(request.Operation), "操作类型无效，请参阅 ParcelUpdateOperation 枚举定义。", "更新包裹状态");
 
         var operation = (ParcelUpdateOperation)request.Operation;
 
@@ -73,21 +68,13 @@ public sealed class UpdateParcelStatusCommandService {
                     break;
 
                 case ParcelUpdateOperation.MarkSortingException:
-                    if (!Enum.IsDefined(typeof(DomainParcelExceptionType), request.ExceptionType!.Value)) {
-                        Logger.Warn("更新包裹状态参数非法，ExceptionType={ExceptionType}", request.ExceptionType);
-                        throw new ArgumentOutOfRangeException(nameof(request.ExceptionType), "异常类型无效。");
-                    }
-
-                    parcel.MarkSortingException((DomainParcelExceptionType)request.ExceptionType.Value);
+                    EnumGuard.ThrowIfUndefined<DomainParcelExceptionType>(request.ExceptionType, nameof(request.ExceptionType), "异常类型无效。", "更新包裹状态");
+                    parcel.MarkSortingException((DomainParcelExceptionType)request.ExceptionType!.Value);
                     break;
 
                 case ParcelUpdateOperation.UpdateRequestStatus:
-                    if (!Enum.IsDefined(typeof(ApiRequestStatus), request.RequestStatus!.Value)) {
-                        Logger.Warn("更新包裹状态参数非法，RequestStatus={RequestStatus}", request.RequestStatus);
-                        throw new ArgumentOutOfRangeException(nameof(request.RequestStatus), "接口访问状态无效。");
-                    }
-
-                    parcel.UpdateRequestStatus((ApiRequestStatus)request.RequestStatus.Value);
+                    EnumGuard.ThrowIfUndefined<ApiRequestStatus>(request.RequestStatus, nameof(request.RequestStatus), "接口访问状态无效。", "更新包裹状态");
+                    parcel.UpdateRequestStatus((ApiRequestStatus)request.RequestStatus!.Value);
                     break;
             }
 
