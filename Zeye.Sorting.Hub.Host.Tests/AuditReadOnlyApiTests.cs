@@ -141,8 +141,69 @@ public sealed class AuditReadOnlyApiTests {
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var payload = await response.Content.ReadFromJsonAsync<JsonDocument>();
         Assert.NotNull(payload);
-        Assert.Equal(1001, payload.RootElement.GetProperty("id").GetInt64());
-        Assert.Equal("{}", payload.RootElement.GetProperty("requestHeadersJson").GetString());
+        var root = payload.RootElement;
+        Assert.Equal(1001, root.GetProperty("id").GetInt64());
+        Assert.Equal("trace-filter", root.GetProperty("traceId").GetString());
+        Assert.Equal("corr-filter", root.GetProperty("correlationId").GetString());
+        Assert.Equal("span-1001", root.GetProperty("spanId").GetString());
+        Assert.Equal("Test.Operation", root.GetProperty("operationName").GetString());
+        Assert.Equal("GET", root.GetProperty("requestMethod").GetString());
+        Assert.Equal("http", root.GetProperty("requestScheme").GetString());
+        Assert.Equal("localhost", root.GetProperty("requestHost").GetString());
+        Assert.Equal(80, root.GetProperty("requestPort").GetInt32());
+        Assert.Equal("/api/parcels", root.GetProperty("requestPath").GetString());
+        Assert.Equal("/api/parcels", root.GetProperty("requestRouteTemplate").GetString());
+        Assert.Equal(3001, root.GetProperty("userId").GetInt64());
+        Assert.Equal("seed-user-1001", root.GetProperty("userName").GetString());
+        Assert.True(root.GetProperty("isAuthenticated").GetBoolean());
+        Assert.Equal(9001, root.GetProperty("tenantId").GetInt64());
+        Assert.Equal(2, root.GetProperty("requestPayloadType").GetInt32());
+        Assert.Equal(201, root.GetProperty("requestSizeBytes").GetInt64());
+        Assert.True(root.GetProperty("hasRequestBody").GetBoolean());
+        Assert.False(root.GetProperty("isRequestBodyTruncated").GetBoolean());
+        Assert.Equal(2, root.GetProperty("responsePayloadType").GetInt32());
+        Assert.Equal(301, root.GetProperty("responseSizeBytes").GetInt64());
+        Assert.True(root.GetProperty("hasResponseBody").GetBoolean());
+        Assert.False(root.GetProperty("isResponseBodyTruncated").GetBoolean());
+        Assert.Equal(200, root.GetProperty("statusCode").GetInt32());
+        Assert.True(root.GetProperty("isSuccess").GetBoolean());
+        Assert.False(root.GetProperty("hasException").GetBoolean());
+        Assert.Equal(1, root.GetProperty("auditResourceType").GetInt32());
+        Assert.Equal("resource-1001", root.GetProperty("resourceId").GetString());
+        Assert.Equal("http://localhost/api/parcels?source=seed&id=1001", root.GetProperty("requestUrl").GetString());
+        Assert.Equal("?source=seed&id=1001", root.GetProperty("requestQueryString").GetString());
+        Assert.Equal("{\"x-seed\":\"1001\"}", root.GetProperty("requestHeadersJson").GetString());
+        Assert.Equal("{\"x-response\":\"1001\"}", root.GetProperty("responseHeadersJson").GetString());
+        Assert.Equal("application/json", root.GetProperty("requestContentType").GetString());
+        Assert.Equal("application/json", root.GetProperty("responseContentType").GetString());
+        Assert.Equal("application/json", root.GetProperty("accept").GetString());
+        Assert.Equal("https://ref.example.local/path", root.GetProperty("referer").GetString());
+        Assert.Equal("https://origin.example.local", root.GetProperty("origin").GetString());
+        Assert.Equal("Bearer", root.GetProperty("authorizationType").GetString());
+        Assert.Equal("xunit-seed/1.0", root.GetProperty("userAgent").GetString());
+        Assert.Equal("{\"requestId\":1001}", root.GetProperty("requestBody").GetString());
+        Assert.Equal("{\"ok\":true,\"id\":1001}", root.GetProperty("responseBody").GetString());
+        Assert.Contains("curl -X", root.GetProperty("curlCommand").GetString(), StringComparison.Ordinal);
+        Assert.Equal("detail-error-code-1001", root.GetProperty("errorCode").GetString());
+        Assert.Equal("{\"files\":[1001]}", root.GetProperty("fileMetadataJson").GetString());
+        Assert.True(root.GetProperty("hasFileAccess").GetBoolean());
+        Assert.Equal(1, root.GetProperty("fileOperationType").GetInt32());
+        Assert.Equal(2, root.GetProperty("fileCount").GetInt32());
+        Assert.Equal(2049, root.GetProperty("fileTotalBytes").GetInt64());
+        Assert.Equal("{\"images\":[1001]}", root.GetProperty("imageMetadataJson").GetString());
+        Assert.True(root.GetProperty("hasImageAccess").GetBoolean());
+        Assert.Equal(3, root.GetProperty("imageCount").GetInt32());
+        Assert.Equal("db-op-summary-1001", root.GetProperty("databaseOperationSummary").GetString());
+        Assert.True(root.GetProperty("hasDatabaseAccess").GetBoolean());
+        Assert.Equal(4, root.GetProperty("databaseAccessCount").GetInt32());
+        Assert.Equal(510, root.GetProperty("databaseDurationMs").GetInt64());
+        Assert.Equal("resource-code-1001", root.GetProperty("resourceCode").GetString());
+        Assert.Equal("resource-name-1001", root.GetProperty("resourceName").GetString());
+        Assert.Equal(121, root.GetProperty("actionDurationMs").GetInt64());
+        Assert.Equal(221, root.GetProperty("middlewareDurationMs").GetInt64());
+        Assert.Equal("tag-seed-1001", root.GetProperty("tags").GetString());
+        Assert.Equal("{\"seed\":\"1001\"}", root.GetProperty("extraPropertiesJson").GetString());
+        Assert.Equal("remark-seed-1001", root.GetProperty("remark").GetString());
     }
 
     /// <summary>
@@ -362,23 +423,23 @@ public sealed class AuditReadOnlyApiTests {
             RequestPort = 80,
             RequestPath = requestPath,
             RequestRouteTemplate = requestPath,
-            UserId = null,
-            UserName = string.Empty,
-            IsAuthenticated = false,
-            TenantId = null,
-            RequestPayloadType = WebRequestPayloadType.None,
-            RequestSizeBytes = 0,
-            HasRequestBody = false,
+            UserId = 3001,
+            UserName = $"seed-user-{id}",
+            IsAuthenticated = true,
+            TenantId = 9001,
+            RequestPayloadType = WebRequestPayloadType.Json,
+            RequestSizeBytes = 201,
+            HasRequestBody = true,
             IsRequestBodyTruncated = false,
             ResponsePayloadType = WebResponsePayloadType.Json,
-            ResponseSizeBytes = 128,
+            ResponseSizeBytes = 301,
             HasResponseBody = true,
             IsResponseBodyTruncated = false,
             StatusCode = statusCode,
             IsSuccess = isSuccess,
             HasException = !isSuccess,
             AuditResourceType = AuditResourceType.Api,
-            ResourceId = "resource-1",
+            ResourceId = $"resource-{id}",
             StartedAt = startedAt,
             EndedAt = startedAt.AddMilliseconds(50),
             DurationMs = 50,
@@ -386,43 +447,43 @@ public sealed class AuditReadOnlyApiTests {
             Detail = new WebRequestAuditLogDetail {
                 WebRequestAuditLogId = id,
                 StartedAt = startedAt,
-                RequestUrl = $"http://localhost{requestPath}",
-                RequestQueryString = string.Empty,
-                RequestHeadersJson = "{}",
-                ResponseHeadersJson = "{}",
+                RequestUrl = $"http://localhost{requestPath}?source=seed&id={id}",
+                RequestQueryString = $"?source=seed&id={id}",
+                RequestHeadersJson = $"{{\"x-seed\":\"{id}\"}}",
+                ResponseHeadersJson = $"{{\"x-response\":\"{id}\"}}",
                 RequestContentType = "application/json",
                 ResponseContentType = "application/json",
                 Accept = "application/json",
-                Referer = string.Empty,
-                Origin = string.Empty,
-                AuthorizationType = string.Empty,
-                UserAgent = "xunit",
-                RequestBody = string.Empty,
-                ResponseBody = "{\"ok\":true}",
-                CurlCommand = "curl",
+                Referer = "https://ref.example.local/path",
+                Origin = "https://origin.example.local",
+                AuthorizationType = "Bearer",
+                UserAgent = "xunit-seed/1.0",
+                RequestBody = $"{{\"requestId\":{id}}}",
+                ResponseBody = $"{{\"ok\":true,\"id\":{id}}}",
+                CurlCommand = $"curl -X GET 'http://localhost{requestPath}?source=seed&id={id}'",
                 ErrorMessage = string.Empty,
                 ExceptionType = string.Empty,
-                ErrorCode = string.Empty,
+                ErrorCode = $"detail-error-code-{id}",
                 ExceptionStackTrace = string.Empty,
-                FileMetadataJson = "{}",
-                HasFileAccess = false,
-                FileOperationType = FileOperationType.None,
-                FileCount = 0,
-                FileTotalBytes = 0,
-                ImageMetadataJson = "{}",
-                HasImageAccess = false,
-                ImageCount = 0,
-                DatabaseOperationSummary = string.Empty,
-                HasDatabaseAccess = false,
-                DatabaseAccessCount = 0,
-                DatabaseDurationMs = 0,
-                ResourceCode = string.Empty,
-                ResourceName = string.Empty,
-                ActionDurationMs = 0,
-                MiddlewareDurationMs = 0,
-                Tags = string.Empty,
-                ExtraPropertiesJson = "{}",
-                Remark = string.Empty
+                FileMetadataJson = $"{{\"files\":[{id}]}}",
+                HasFileAccess = true,
+                FileOperationType = FileOperationType.Read,
+                FileCount = 2,
+                FileTotalBytes = 2049,
+                ImageMetadataJson = $"{{\"images\":[{id}]}}",
+                HasImageAccess = true,
+                ImageCount = 3,
+                DatabaseOperationSummary = $"db-op-summary-{id}",
+                HasDatabaseAccess = true,
+                DatabaseAccessCount = 4,
+                DatabaseDurationMs = 510,
+                ResourceCode = $"resource-code-{id}",
+                ResourceName = $"resource-name-{id}",
+                ActionDurationMs = 121,
+                MiddlewareDurationMs = 221,
+                Tags = $"tag-seed-{id}",
+                ExtraPropertiesJson = $"{{\"seed\":\"{id}\"}}",
+                Remark = $"remark-seed-{id}"
             }
         };
     }

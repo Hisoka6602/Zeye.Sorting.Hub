@@ -665,6 +665,10 @@
 - 新增 `DatabaseConnectionOpenCoordinator`，收敛 MySQL/SQL Server 方言重复的连接打开逻辑，统一连接状态处理。
 - 补充测试覆盖：新增自动建库决策三态、Provider 连接键解析、方言数据库名提取/管理连接语义测试；补充中间件异步写审计时序断言。
 - 新要求落地：`WebRequestAuditLogMiddleware` 改为主请求零阻塞写审计（有界队列 + 后台消费者写入，不等待写库完成），并补充队列丢弃保护。
+- 审计详情接口修复：`GET /api/audit/web-requests/{id}` 现已覆盖热表 + 冷表全字段返回，补齐 Domain 读模型、Infrastructure 查询映射、Application 合同映射与 Contracts 响应字段。
+- 中间件采集修复：补齐 `RequestBody` / `ResponseBody` 采集链路，针对 `multipart/form-data` 与二进制正文采用占位文本记录，采集异常统一失败隔离并降级，不影响主请求链路。
+- `CurlCommand` 可回放修复：统一使用详情同源 `requestBodyCapture` 生成命令，补齐 method/url/关键头/`--data-raw`，并对 `Authorization` 脱敏、`Cookie`/`Set-Cookie`/`X-Api-Key` 屏蔽、单引号安全转义。
+- 新增 SQL 日志开关：`Persistence:SqlLogging:EnableQuerySqlLogging`（默认 `false`），默认关闭 EF 查询 SQL 日志输出，避免查询 SQL 被记录到日志。
 - 同步 README：更新文件树、逐文件职责、“本次更新内容”与“可继续完善内容”。
 
 ## 更新记录与待完善事项
@@ -676,6 +680,9 @@
 
 - 当前测试环境未直连真实 MySQL/SQL Server 实例，自动建库流程主要通过决策与方言连接语义单测覆盖；后续可在 CI 引入双数据库容器做端到端“空库自动创建 + 迁移接续”集成回归。
 - `WebRequestAuditLogMiddleware` 当前为“后台任务异步脱钩”模式，后续可升级为有界通道 + 后台批量写入服务，增加背压策略与丢弃审计指标。
+- 审计 body 脱敏策略可继续细化：按字段级规则（如手机号、证件号、Token）对 JSON 正文进行结构化脱敏，并提供按路由白名单/黑名单的采集策略。
+- `CurlCommand` 可继续工具化：增加一键回放脚本生成与失败重试诊断输出，提升线上问题复现效率。
+- 超大包体采样策略可继续优化：在保留当前截断标记基础上增加按比例采样与摘要哈希，兼顾可观测性与存储成本。
 
 ## Parcel API 发布门禁 / 使用边界说明
 
