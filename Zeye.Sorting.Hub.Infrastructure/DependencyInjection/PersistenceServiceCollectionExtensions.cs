@@ -10,6 +10,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects;
 using Zeye.Sorting.Hub.Domain.Repositories;
@@ -80,6 +81,13 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             CreateHashShardingRule<ImageInfo>(ParcelIdField),
             CreateHashShardingRule<VideoInfo>(ParcelIdField)
         ];
+        /// <summary>
+        /// WebRequestAuditLog 冷热模型分表规则：StartedAt 统一按日分表（与治理探测同源）。
+        /// </summary>
+        private static readonly IReadOnlyList<(Type EntityType, string ShardingField)> WebRequestAuditLogPerDayShardingRules = [
+            (typeof(WebRequestAuditLog), nameof(WebRequestAuditLog.StartedAt)),
+            (typeof(WebRequestAuditLogDetail), nameof(WebRequestAuditLogDetail.StartedAt))
+        ];
 
         /// <summary>
         /// 注册持久化层核心能力（EF Core、分表规则、自动调优拦截器与观测组件），并按 <c>Persistence:Provider</c> 选择数据库方言实现。
@@ -131,6 +139,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                         .UseDatabase(connectionString, DatabaseType.MySql, typeof(Parcel).Namespace!, static _ => { });
 
                     ConfigureParcelAggregateSharding(shardingBuilder, parcelShardingStartTime, parcelRelatedHashShardingMod, parcelShardingStrategyDecision);
+                    ConfigureWebRequestAuditLogSharding(shardingBuilder, parcelShardingStartTime);
                 });
 
                 services.AddSingleton<IDatabaseDialect, MySqlDialect>();
@@ -157,6 +166,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                         .UseDatabase(connectionString, DatabaseType.SqlServer, typeof(Parcel).Namespace!, static _ => { });
 
                     ConfigureParcelAggregateSharding(shardingBuilder, parcelShardingStartTime, parcelRelatedHashShardingMod, parcelShardingStrategyDecision);
+                    ConfigureWebRequestAuditLogSharding(shardingBuilder, parcelShardingStartTime);
                 });
 
                 services.AddSingleton<IDatabaseDialect, SqlServerDialect>();
@@ -168,6 +178,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             }
 
             services.AddScoped<IParcelRepository, ParcelRepository>();
+            services.AddScoped<IWebRequestAuditLogRepository, WebRequestAuditLogRepository>();
 
             return services;
         }
@@ -291,6 +302,17 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         }
 
         /// <summary>
+        /// 获取 WebRequestAuditLog 体系按日分表治理需要关注的实体类型清单（与分表注册规则同源）。
+        /// </summary>
+        /// <returns>实体类型清单。</returns>
+        public static IReadOnlyList<Type> GetWebRequestAuditLogPerDayShardingEntityTypes() {
+            return WebRequestAuditLogPerDayShardingRules
+                .Select(static rule => rule.EntityType)
+                .Distinct()
+                .ToArray();
+        }
+
+        /// <summary>
         /// 统一注册 Parcel 主表与属性表的分表规则。
         /// </summary>
         /// <param name="shardingBuilder">分表构建器。</param>
@@ -330,6 +352,27 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             foreach (var rule in ParcelAggregateShardingRules) {
                 rule.Register(shardingBuilder, localShardingStartTime, parcelRelatedHashShardingMod, parcelShardingStrategyDecision.EffectiveDateMode);
             }
+        }
+
+        /// <summary>
+        /// 注册 WebRequestAuditLog 冷热模型分表规则（统一 StartedAt 按日分表）。
+        /// </summary>
+        /// <param name="shardingBuilder">分表构建器。</param>
+        /// <param name="shardingStartTime">分表起始时间。</param>
+        private static void ConfigureWebRequestAuditLogSharding(
+            IShardingBuilder shardingBuilder,
+            DateTime shardingStartTime) {
+            var localShardingStartTime = AutoTuningConfigurationHelper.NormalizeToLocalTime(shardingStartTime);
+            shardingBuilder.SetDateSharding<WebRequestAuditLog>(
+                shardingField: nameof(WebRequestAuditLog.StartedAt),
+                expandByDateMode: ExpandByDateMode.PerDay,
+                startTime: localShardingStartTime,
+                sourceName: ShardingConstant.DefaultSource);
+            shardingBuilder.SetDateSharding<WebRequestAuditLogDetail>(
+                shardingField: nameof(WebRequestAuditLogDetail.StartedAt),
+                expandByDateMode: ExpandByDateMode.PerDay,
+                startTime: localShardingStartTime,
+                sourceName: ShardingConstant.DefaultSource);
         }
 
         /// <summary>

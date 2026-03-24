@@ -18,6 +18,7 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 using Zeye.Sorting.Hub.Domain.Enums.Sharding;
 
@@ -114,6 +115,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private readonly bool _enableCriticalIndexAudit;
         /// <summary>关键索引缺失时是否阻断启动。</summary>
         private readonly bool _blockOnCriticalIndexMissing;
+        /// <summary>自动调谐观测输出器。</summary>
+        private readonly IAutoTuningObservability _observability;
         /// <summary>Parcel 分表策略决策快照。</summary>
         private readonly ParcelShardingStrategyDecision _parcelShardingStrategyDecision;
         /// <summary>Parcel 分表策略配置校验错误集合。</summary>
@@ -160,6 +163,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _webRequestAuditLogRetentionDryRun = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, WebRequestAuditLogRetentionIsolatorDryRunConfigKey, true);
             _enableCriticalIndexAudit = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, ShardingCriticalIndexAuditEnabledConfigKey, true);
             _blockOnCriticalIndexMissing = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, ShardingCriticalIndexAuditBlockOnMissingConfigKey, true);
+            _observability = serviceProvider.GetService<IAutoTuningObservability>() ?? new NullAutoTuningObservability();
             var parcelShardingStrategyEvaluation = ParcelShardingStrategyEvaluator.Evaluate(configuration);
             _parcelShardingStrategyDecision = parcelShardingStrategyEvaluation.Decision;
             _parcelShardingStrategyValidationErrors = parcelShardingStrategyEvaluation.ValidationErrors;
@@ -777,24 +781,33 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 return;
             }
 
-            var webRequestAuditLogCandidateCount = EstimateWebRequestAuditLogRetentionCandidates(
-                requiredPrebuiltDates,
-                _webRequestAuditLogRetentionKeepRecentShardCount,
-                governanceGroups);
+            var webRequestAuditLogCandidates = await ResolveWebRequestAuditLogRetentionCandidatesFromMetadataAsync(
+                db,
+                governanceGroups,
+                schemaName,
+                cancellationToken);
             var webRequestAuditLogRetentionResult = EvaluateWebRequestAuditLogRetentionDecision(
-                candidateCount: webRequestAuditLogCandidateCount,
+                candidateCount: webRequestAuditLogCandidates.CandidateCount,
                 enableGuard: _webRequestAuditLogRetentionEnableGuard,
                 allowDangerousActionExecution: _webRequestAuditLogRetentionAllowDangerousActionExecution,
                 enableDryRun: _webRequestAuditLogRetentionDryRun);
+            var executedRetentionCount = await ExecuteWebRequestAuditLogRetentionAsync(
+                db,
+                schemaName,
+                webRequestAuditLogCandidates.CandidatePhysicalTableNames,
+                webRequestAuditLogRetentionResult,
+                cancellationToken);
+            webRequestAuditLogRetentionResult = webRequestAuditLogRetentionResult with { ExecutedCount = executedRetentionCount };
             _logger.LogInformation(
-                "WebRequestAuditLog 历史分表保留治理评估：ActionName={ActionName}, Decision={Decision}, PlannedCount={PlannedCount}, ExecutedCount={ExecutedCount}, IsDryRun={IsDryRun}, IsBlockedByGuard={IsBlockedByGuard}, KeepRecentShardCount={KeepRecentShardCount}",
+                "WebRequestAuditLog 历史分表保留治理评估：ActionName={ActionName}, Decision={Decision}, PlannedCount={PlannedCount}, ExecutedCount={ExecutedCount}, IsDryRun={IsDryRun}, IsBlockedByGuard={IsBlockedByGuard}, KeepRecentShardCount={KeepRecentShardCount}, CompensationBoundary={CompensationBoundary}",
                 webRequestAuditLogRetentionResult.ActionName,
                 webRequestAuditLogRetentionResult.Decision,
                 webRequestAuditLogRetentionResult.PlannedCount,
                 webRequestAuditLogRetentionResult.ExecutedCount,
                 webRequestAuditLogRetentionResult.IsDryRun,
                 webRequestAuditLogRetentionResult.IsBlockedByGuard,
-                _webRequestAuditLogRetentionKeepRecentShardCount);
+                _webRequestAuditLogRetentionKeepRecentShardCount,
+                webRequestAuditLogRetentionResult.CompensationBoundary);
         }
 
         /// <summary>
@@ -1208,6 +1221,178 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         /// <summary>
+        /// 根据真实分表元数据计算 WebRequestAuditLog 历史分表候选清单。
+        /// </summary>
+        /// <param name="db">数据库上下文。</param>
+        /// <param name="governanceGroups">治理组清单。</param>
+        /// <param name="schemaName">schema 名称。</param>
+        /// <param name="cancellationToken">取消令牌。</param>
+        /// <returns>候选总数与物理表名清单。</returns>
+        private async Task<WebRequestAuditLogRetentionCandidates> ResolveWebRequestAuditLogRetentionCandidatesFromMetadataAsync(
+            SortingHubDbContext db,
+            IReadOnlyList<PerDayGovernanceGroup> governanceGroups,
+            string? schemaName,
+            CancellationToken cancellationToken) {
+            ArgumentNullException.ThrowIfNull(db);
+            ArgumentNullException.ThrowIfNull(governanceGroups);
+            var webRequestAuditLogGroup = governanceGroups.FirstOrDefault(static group =>
+                string.Equals(group.GroupName, "WebRequestAuditLog", StringComparison.Ordinal));
+            if (string.IsNullOrWhiteSpace(webRequestAuditLogGroup.GroupName)
+                || webRequestAuditLogGroup.BaseTableNames is null
+                || webRequestAuditLogGroup.BaseTableNames.Count == 0) {
+                return new WebRequestAuditLogRetentionCandidates(0, Array.Empty<string>());
+            }
+
+            var candidatePhysicalTableNames = new List<string>();
+            foreach (var baseTableName in webRequestAuditLogGroup.BaseTableNames.Distinct(StringComparer.Ordinal)) {
+                var allPhysicalTables = await ResolveExistingPerDayPhysicalTablesAsync(
+                    db,
+                    schemaName,
+                    baseTableName,
+                    cancellationToken);
+                if (allPhysicalTables.Count <= _webRequestAuditLogRetentionKeepRecentShardCount) {
+                    continue;
+                }
+
+                var deleteCount = allPhysicalTables.Count - _webRequestAuditLogRetentionKeepRecentShardCount;
+                candidatePhysicalTableNames.AddRange(allPhysicalTables.Take(deleteCount));
+            }
+
+            return new WebRequestAuditLogRetentionCandidates(
+                CandidateCount: candidatePhysicalTableNames.Count,
+                CandidatePhysicalTableNames: candidatePhysicalTableNames.Distinct(StringComparer.Ordinal).ToArray());
+        }
+
+        /// <summary>
+        /// 解析指定逻辑表对应的已存在 PerDay 物理分表清单（按日期升序）。
+        /// </summary>
+        /// <param name="db">数据库上下文。</param>
+        /// <param name="schemaName">schema 名称。</param>
+        /// <param name="baseTableName">逻辑表名。</param>
+        /// <param name="cancellationToken">取消令牌。</param>
+        /// <returns>物理分表清单。</returns>
+        private async Task<IReadOnlyList<string>> ResolveExistingPerDayPhysicalTablesAsync(
+            SortingHubDbContext db,
+            string? schemaName,
+            string baseTableName,
+            CancellationToken cancellationToken) {
+            if (_shardingPhysicalTableProbe is not IBatchShardingPhysicalTableProbe batchProbe) {
+                return Array.Empty<string>();
+            }
+
+            var today = DateTime.Now.Date;
+            var expectedProbeTables = BuildRequiredPerDayShardDates(today, _shardingPrebuildWindowHours)
+                .Select(requiredDate => BuildPerDayPhysicalTableName(baseTableName, requiredDate))
+                .ToArray();
+            if (expectedProbeTables.Length == 0) {
+                return Array.Empty<string>();
+            }
+
+            var missingTables = await batchProbe.FindMissingTablesAsync(db, schemaName, expectedProbeTables, cancellationToken);
+            var missingSet = missingTables.ToHashSet(StringComparer.Ordinal);
+            return expectedProbeTables
+                .Where(tableName => !missingSet.Contains(tableName))
+                .OrderBy(static tableName => tableName, StringComparer.Ordinal)
+                .ToArray();
+        }
+
+        /// <summary>
+        /// 执行 WebRequestAuditLog 历史分表保留删除链路（仅 Decision=Execute 时落地）。
+        /// </summary>
+        /// <param name="db">数据库上下文。</param>
+        /// <param name="schemaName">schema 名称。</param>
+        /// <param name="candidatePhysicalTableNames">候选物理表。</param>
+        /// <param name="retentionDecision">治理决策。</param>
+        /// <param name="cancellationToken">取消令牌。</param>
+        /// <returns>实际执行删除数。</returns>
+        private async Task<int> ExecuteWebRequestAuditLogRetentionAsync(
+            SortingHubDbContext db,
+            string? schemaName,
+            IReadOnlyList<string> candidatePhysicalTableNames,
+            DangerousBatchActionResult retentionDecision,
+            CancellationToken cancellationToken) {
+            ArgumentNullException.ThrowIfNull(db);
+            ArgumentNullException.ThrowIfNull(candidatePhysicalTableNames);
+
+            var tags = new Dictionary<string, string>(StringComparer.Ordinal) {
+                ["action"] = retentionDecision.ActionName,
+                ["decision"] = retentionDecision.Decision.ToString(),
+                ["planned_count"] = retentionDecision.PlannedCount.ToString(CultureInfo.InvariantCulture),
+                ["compensation_boundary"] = retentionDecision.CompensationBoundary
+            };
+
+            if (retentionDecision.Decision != ActionIsolationDecision.Execute) {
+                _observability.EmitMetric("web_request_audit_log.retention.executed_count", 0, tags);
+                _observability.EmitEvent(
+                    name: "web_request_audit_log.retention.skipped",
+                    level: Microsoft.Extensions.Logging.LogLevel.Information,
+                    message: $"WebRequestAuditLog 历史分表保留未执行，Decision={retentionDecision.Decision}",
+                    tags: tags);
+                return 0;
+            }
+
+            if (candidatePhysicalTableNames.Count == 0) {
+                _observability.EmitMetric("web_request_audit_log.retention.executed_count", 0, tags);
+                return 0;
+            }
+
+            var executedCount = 0;
+            foreach (var physicalTableName in candidatePhysicalTableNames) {
+                try {
+                    var dropTableSql = BuildDropTableSql(_dialect.ProviderName, schemaName, physicalTableName);
+                    await db.Database.ExecuteSqlRawAsync(dropTableSql, cancellationToken);
+                    executedCount++;
+                }
+                catch (Exception ex) {
+                    _logger.LogError(ex,
+                        "WebRequestAuditLog 历史分表删除失败，PhysicalTable={PhysicalTable}, Decision={Decision}, CompensationBoundary={CompensationBoundary}",
+                        physicalTableName,
+                        retentionDecision.Decision,
+                        retentionDecision.CompensationBoundary);
+                    _observability.EmitEvent(
+                        name: "web_request_audit_log.retention.failed",
+                        level: Microsoft.Extensions.Logging.LogLevel.Error,
+                        message: $"WebRequestAuditLog 历史分表删除失败，PhysicalTable={physicalTableName}",
+                        tags: new Dictionary<string, string>(tags, StringComparer.Ordinal) {
+                            ["physical_table"] = physicalTableName
+                        });
+                    throw;
+                }
+            }
+
+            _observability.EmitMetric("web_request_audit_log.retention.executed_count", executedCount, tags);
+            _observability.EmitEvent(
+                name: "web_request_audit_log.retention.executed",
+                level: Microsoft.Extensions.Logging.LogLevel.Information,
+                message: $"WebRequestAuditLog 历史分表保留执行完成，ExecutedCount={executedCount}",
+                tags: tags);
+            return executedCount;
+        }
+
+        /// <summary>
+        /// 构建物理分表删除 SQL。
+        /// </summary>
+        /// <param name="providerName">数据库提供器名称。</param>
+        /// <param name="schemaName">schema 名称。</param>
+        /// <param name="physicalTableName">物理表名。</param>
+        /// <returns>DROP TABLE SQL。</returns>
+        /// <exception cref="InvalidOperationException">Provider 不支持时抛出。</exception>
+        private static string BuildDropTableSql(string providerName, string? schemaName, string physicalTableName) {
+            if (string.Equals(providerName, "MySQL", StringComparison.OrdinalIgnoreCase)) {
+                return string.IsNullOrWhiteSpace(schemaName)
+                    ? $"DROP TABLE IF EXISTS `{physicalTableName}`;"
+                    : $"DROP TABLE IF EXISTS `{schemaName}`.`{physicalTableName}`;";
+            }
+
+            if (string.Equals(providerName, "SQLServer", StringComparison.OrdinalIgnoreCase)) {
+                var safeSchemaName = string.IsNullOrWhiteSpace(schemaName) ? "dbo" : schemaName.Trim();
+                return $"IF OBJECT_ID(N'[{safeSchemaName}].[{physicalTableName}]', N'U') IS NOT NULL DROP TABLE [{safeSchemaName}].[{physicalTableName}];";
+            }
+
+            throw new InvalidOperationException($"不支持的数据库提供器：{providerName}");
+        }
+
+        /// <summary>
         /// PerDay 治理组模型。
         /// </summary>
         /// <param name="GroupName">治理组名称。</param>
@@ -1215,6 +1400,14 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         internal readonly record struct PerDayGovernanceGroup(
             string GroupName,
             IReadOnlyList<string> BaseTableNames);
+        /// <summary>
+        /// WebRequestAuditLog 历史分表保留候选模型。
+        /// </summary>
+        /// <param name="CandidateCount">候选总数。</param>
+        /// <param name="CandidatePhysicalTableNames">候选物理表名清单。</param>
+        private readonly record struct WebRequestAuditLogRetentionCandidates(
+            int CandidateCount,
+            IReadOnlyList<string> CandidatePhysicalTableNames);
 
     }
 }

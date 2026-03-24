@@ -8,6 +8,7 @@ using Zeye.Sorting.Hub.Host.HostedServices;
 using Zeye.Sorting.Hub.Host.Swagger;
 using Zeye.Sorting.Hub.SharedKernel.Utilities;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels;
+using Zeye.Sorting.Hub.Application.Services.AuditLogs;
 using Zeye.Sorting.Hub.Domain.Options.LogCleanup;
 using Zeye.Sorting.Hub.Application.Services.Parcels;
 using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
@@ -81,6 +82,7 @@ try {
     builder.Services.AddScoped<UpdateParcelStatusCommandService>();
     builder.Services.AddScoped<DeleteParcelCommandService>();
     builder.Services.AddScoped<CleanupExpiredParcelsCommandService>();
+    builder.Services.AddScoped<WriteWebRequestAuditLogCommandService>();
 
     // Host 启动时执行持久化初始化
     builder.Services.AddHostedService<DatabaseInitializerHostedService>();
