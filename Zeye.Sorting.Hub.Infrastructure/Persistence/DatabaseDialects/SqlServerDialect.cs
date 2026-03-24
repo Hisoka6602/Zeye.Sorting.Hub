@@ -79,7 +79,7 @@ WHERE s.name = @p0
         /// <returns>目标数据库名。</returns>
         public string ExtractDatabaseName(string connectionString) {
             var builder = new SqlConnectionStringBuilder(connectionString);
-            return DatabaseIdentifierGuard.NormalizeDatabaseName(builder.InitialCatalog, nameof(connectionString));
+            return DatabaseIdentifierPolicy.NormalizeDatabaseName(builder.InitialCatalog, nameof(connectionString));
         }
 
         /// <summary>
@@ -103,9 +103,9 @@ WHERE s.name = @p0
         /// <returns>存在返回 true，否则 false。</returns>
         public async Task<bool> DatabaseExistsAsync(DbConnection administrationConnection, string databaseName, CancellationToken cancellationToken) {
             ArgumentNullException.ThrowIfNull(administrationConnection);
-            var normalizedDatabaseName = DatabaseIdentifierGuard.NormalizeDatabaseName(databaseName, nameof(databaseName));
+            var normalizedDatabaseName = DatabaseIdentifierPolicy.NormalizeDatabaseName(databaseName, nameof(databaseName));
 
-            await DatabaseConnectionOpenHelper.EnsureOpenedAsync(administrationConnection, cancellationToken);
+            await DatabaseConnectionOpenCoordinator.EnsureOpenedAsync(administrationConnection, cancellationToken);
             await using var command = administrationConnection.CreateCommand();
             command.CommandText = "SELECT CASE WHEN DB_ID(@databaseName) IS NULL THEN CAST(0 AS bit) ELSE CAST(1 AS bit) END";
             var databaseNameParameter = command.CreateParameter();
@@ -126,9 +126,9 @@ WHERE s.name = @p0
         /// <returns>异步任务。</returns>
         public async Task CreateDatabaseAsync(DbConnection administrationConnection, string databaseName, CancellationToken cancellationToken) {
             ArgumentNullException.ThrowIfNull(administrationConnection);
-            var normalizedDatabaseName = DatabaseIdentifierGuard.NormalizeDatabaseName(databaseName, nameof(databaseName));
+            var normalizedDatabaseName = DatabaseIdentifierPolicy.NormalizeDatabaseName(databaseName, nameof(databaseName));
 
-            await DatabaseConnectionOpenHelper.EnsureOpenedAsync(administrationConnection, cancellationToken);
+            await DatabaseConnectionOpenCoordinator.EnsureOpenedAsync(administrationConnection, cancellationToken);
             await using var command = administrationConnection.CreateCommand();
             command.CommandText = """
 IF DB_ID(@databaseName) IS NULL

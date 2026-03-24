@@ -52,6 +52,7 @@ internal sealed class WebRequestAuditBackgroundWorkerHostedService : BackgroundS
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) {
+                NLogLogger.Warn("Web 请求审计后台消费收到停止信号，消费循环结束。");
                 break;
             }
             catch (Exception ex) {

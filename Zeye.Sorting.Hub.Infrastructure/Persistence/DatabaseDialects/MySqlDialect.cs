@@ -58,7 +58,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
         /// <returns>目标数据库名。</returns>
         public string ExtractDatabaseName(string connectionString) {
             var builder = new MySqlConnectionStringBuilder(connectionString);
-            return DatabaseIdentifierGuard.NormalizeDatabaseName(builder.Database, nameof(connectionString));
+            return DatabaseIdentifierPolicy.NormalizeDatabaseName(builder.Database, nameof(connectionString));
         }
 
         /// <summary>
@@ -82,9 +82,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
         /// <returns>存在返回 true，否则 false。</returns>
         public async Task<bool> DatabaseExistsAsync(DbConnection administrationConnection, string databaseName, CancellationToken cancellationToken) {
             ArgumentNullException.ThrowIfNull(administrationConnection);
-            var normalizedDatabaseName = DatabaseIdentifierGuard.NormalizeDatabaseName(databaseName, nameof(databaseName));
+            var normalizedDatabaseName = DatabaseIdentifierPolicy.NormalizeDatabaseName(databaseName, nameof(databaseName));
 
-            await DatabaseConnectionOpenHelper.EnsureOpenedAsync(administrationConnection, cancellationToken);
+            await DatabaseConnectionOpenCoordinator.EnsureOpenedAsync(administrationConnection, cancellationToken);
             await using var command = administrationConnection.CreateCommand();
             command.CommandText = """
 SELECT CASE WHEN EXISTS (
@@ -125,10 +125,10 @@ SELECT CASE WHEN EXISTS (
         /// <returns>异步任务。</returns>
         public async Task CreateDatabaseAsync(DbConnection administrationConnection, string databaseName, CancellationToken cancellationToken) {
             ArgumentNullException.ThrowIfNull(administrationConnection);
-            var normalizedDatabaseName = DatabaseIdentifierGuard.NormalizeDatabaseName(databaseName, nameof(databaseName));
-            var escapedDatabaseName = DatabaseIdentifierGuard.EscapeMySqlIdentifier(normalizedDatabaseName);
+            var normalizedDatabaseName = DatabaseIdentifierPolicy.NormalizeDatabaseName(databaseName, nameof(databaseName));
+            var escapedDatabaseName = DatabaseIdentifierPolicy.EscapeMySqlIdentifier(normalizedDatabaseName);
 
-            await DatabaseConnectionOpenHelper.EnsureOpenedAsync(administrationConnection, cancellationToken);
+            await DatabaseConnectionOpenCoordinator.EnsureOpenedAsync(administrationConnection, cancellationToken);
             await using var command = administrationConnection.CreateCommand();
             command.CommandText = $"CREATE DATABASE IF NOT EXISTS `{escapedDatabaseName}`";
             _ = await command.ExecuteNonQueryAsync(cancellationToken);

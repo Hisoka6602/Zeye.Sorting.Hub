@@ -3,9 +3,9 @@ using System.Text.RegularExpressions;
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
 
     /// <summary>
-    /// 数据库标识符安全守卫。
+    /// 数据库标识符安全策略。
     /// </summary>
-    internal static class DatabaseIdentifierGuard {
+    internal static class DatabaseIdentifierPolicy {
         /// <summary>
         /// 数据库名安全格式：字母/数字/下划线，首字符必须是字母或下划线。
         /// </summary>

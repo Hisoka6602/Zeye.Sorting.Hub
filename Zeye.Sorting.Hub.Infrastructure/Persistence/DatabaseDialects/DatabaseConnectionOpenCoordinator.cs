@@ -4,9 +4,9 @@ using System.Data.Common;
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
 
     /// <summary>
-    /// 数据库连接打开辅助工具。
+    /// 数据库连接打开协调器。
     /// </summary>
-    internal static class DatabaseConnectionOpenHelper {
+    internal static class DatabaseConnectionOpenCoordinator {
         /// <summary>
         /// 确保连接处于可用打开状态。
         /// </summary>

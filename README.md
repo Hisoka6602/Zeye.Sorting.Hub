@@ -256,8 +256,8 @@
 │   │   │       └── ParcelVolumeThresholdAction.cs（容量阈值动作枚举：AlertOnly/SwitchToPerDay）
 │   │   ├── DatabaseDialects（数据库方言目录）
 │   │   │   ├── DatabaseProviderExceptionHelper.cs（数据库异常错误码提取与方言共享索引构造辅助类）
-│   │   │   ├── DatabaseIdentifierGuard.cs（数据库名安全校验与标识符转义工具，统一防注入边界）
-│   │   │   ├── DatabaseConnectionOpenHelper.cs（数据库连接打开共享辅助，统一连接状态处理）
+│   │   │   ├── DatabaseIdentifierPolicy.cs（数据库名安全校验与标识符转义工具，统一防注入边界）
+│   │   │   ├── DatabaseConnectionOpenCoordinator.cs（数据库连接打开共享辅助，统一连接状态处理）
 │   │   │   ├── IDatabaseDialect.cs（数据库方言接口）
 │   │   │   ├── IShardingPhysicalTableProbe.cs（分表物理对象探测接口：支持物理表存在性与关键索引缺失探测（仅探测，不执行 DDL））
 │   │   │   ├── IBatchShardingPhysicalTableProbe.cs（批量分表物理表探测接口，支持缺失探测与按逻辑表枚举物理分表）
@@ -563,8 +563,8 @@
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/DatabaseDialects/`：数据库方言抽象与实现目录
 - `DatabaseProviderExceptionHelper.cs`：数据库异常错误码提取与方言共享索引列归一化/索引名构造辅助类。
-- `DatabaseIdentifierGuard.cs`：数据库名安全守卫（数据库名格式校验、MySQL/SQL Server 标识符转义）。
-- `DatabaseConnectionOpenHelper.cs`：数据库连接打开共享工具（统一处理 Open/Broken 状态）。
+- `DatabaseIdentifierPolicy.cs`：数据库名安全守卫（数据库名格式校验、MySQL/SQL Server 标识符转义）。
+- `DatabaseConnectionOpenCoordinator.cs`：数据库连接打开共享工具（统一处理 Open/Broken 状态）。
 - `IDatabaseDialect.cs`：数据库方言抽象接口。
 - `IShardingPhysicalTableProbe.cs`：分表物理对象探测抽象（最小职责：判断目标物理表是否存在 + 探测目标表缺失索引名集合；仅探测，不执行 DDL）。
 - `IBatchShardingPhysicalTableProbe.cs`：分表物理表批量探测抽象（返回缺失集合，并支持按逻辑表名前缀枚举已存在物理分表）。
@@ -661,8 +661,8 @@
 - 启动期数据库初始化新增“自动建库”能力：在 `DatabaseInitializerHostedService` 中于 `MigrateAsync` 前执行 Ensure Database Exists（MySQL/SQL Server 双分支），库存在则跳过，库不存在按方言自动创建后继续迁移。
 - 自动建库纳入危险动作隔离器：新增 `Persistence:DatabaseBootstrap:EnsureDatabaseExists` 配置（Enabled + Isolator: EnableGuard/AllowDangerousActionExecution/DryRun），并输出治理审计字段 `Decision/PlannedCount/ExecutedCount/Provider/DatabaseName/CompensationBoundary`。
 - 数据库方言扩展：`IDatabaseDialect` 新增数据库名提取、管理连接创建、存在性探测与建库执行契约；`MySqlDialect`/`SqlServerDialect` 实现对应逻辑。
-- 新增 `DatabaseIdentifierGuard`，集中处理数据库名安全校验与标识符转义，避免 SQL 标识符拼接风险与重复实现。
-- 新增 `DatabaseConnectionOpenHelper`，收敛 MySQL/SQL Server 方言重复的连接打开逻辑，统一连接状态处理。
+- 新增 `DatabaseIdentifierPolicy`，集中处理数据库名安全校验与标识符转义，避免 SQL 标识符拼接风险与重复实现。
+- 新增 `DatabaseConnectionOpenCoordinator`，收敛 MySQL/SQL Server 方言重复的连接打开逻辑，统一连接状态处理。
 - 补充测试覆盖：新增自动建库决策三态、Provider 连接键解析、方言数据库名提取/管理连接语义测试；补充中间件异步写审计时序断言。
 - 新要求落地：`WebRequestAuditLogMiddleware` 改为主请求零阻塞写审计（有界队列 + 后台消费者写入，不等待写库完成），并补充队列丢弃保护。
 - 同步 README：更新文件树、逐文件职责、“本次更新内容”与“可继续完善内容”。
