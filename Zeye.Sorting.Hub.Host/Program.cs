@@ -84,6 +84,8 @@ try {
     builder.Services.AddScoped<DeleteParcelCommandService>();
     builder.Services.AddScoped<CleanupExpiredParcelsCommandService>();
     builder.Services.AddScoped<WriteWebRequestAuditLogCommandService>();
+    builder.Services.AddScoped<GetWebRequestAuditLogPagedQueryService>();
+    builder.Services.AddScoped<GetWebRequestAuditLogByIdQueryService>();
     builder.Services.AddWebRequestAuditLogging(builder.Configuration);
 
     // Host 启动时执行持久化初始化
@@ -156,6 +158,8 @@ try {
     app.MapParcelReadOnlyApis();
     // Parcel 管理端写接口：普通写操作 + 危险治理接口（cleanup-expired）分开治理。
     app.MapParcelAdminApis();
+    // 审计日志只读查询端点：查询热表摘要与冷热详情。
+    app.MapAuditReadOnlyApis();
 
     app.Run();
 }

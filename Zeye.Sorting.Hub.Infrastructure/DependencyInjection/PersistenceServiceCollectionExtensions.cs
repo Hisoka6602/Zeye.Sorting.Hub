@@ -178,6 +178,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
 
             services.AddScoped<IParcelRepository, ParcelRepository>();
             services.AddScoped<IWebRequestAuditLogRepository, WebRequestAuditLogRepository>();
+            services.AddScoped<IWebRequestAuditLogQueryRepository, WebRequestAuditLogRepository>();
 
             return services;
         }
