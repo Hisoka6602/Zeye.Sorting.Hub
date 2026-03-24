@@ -163,9 +163,10 @@ try {
     // Parcel 管理端写接口：普通写操作 + 危险治理接口（cleanup-expired）分开治理。
     app.MapParcelAdminApis();
     // 审计日志只读查询端点：默认关闭，需显式开启配置后再接线。
-    var auditReadOnlyApiOptions = builder.Configuration
-        .GetSection(AuditReadOnlyApiOptions.SectionName)
-        .Get<AuditReadOnlyApiOptions>() ?? new AuditReadOnlyApiOptions();
+    var auditSection = builder.Configuration.GetSection(AuditReadOnlyApiOptions.SectionName);
+    var auditReadOnlyApiOptions = auditSection.Exists()
+        ? (auditSection.Get<AuditReadOnlyApiOptions>() ?? new AuditReadOnlyApiOptions())
+        : new AuditReadOnlyApiOptions();
     if (auditReadOnlyApiOptions.Enabled) {
         app.MapAuditReadOnlyApis();
     }

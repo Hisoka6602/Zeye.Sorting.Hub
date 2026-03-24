@@ -276,7 +276,7 @@ public sealed class AuditReadOnlyApiTests {
                 builder.Configuration[$"{AuditReadOnlyApiOptions.SectionName}:Enabled"],
                 out var optionEnabled)
                 ? optionEnabled
-                : true
+                : false
         };
         if (options.Enabled) {
             app.MapAuditReadOnlyApis();

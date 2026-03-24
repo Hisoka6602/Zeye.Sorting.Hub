@@ -614,6 +614,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 dbContext: db,
                 parcelShardingDecision: _parcelShardingStrategyDecision,
                 enableWebRequestAuditLogPerDayGuard: _enableWebRequestAuditLogPerDayGuard);
+            var schemaName = ResolvePerDayPhysicalTableProbeSchemaName(_dialect.ProviderName);
 
             if (!_enableWebRequestAuditLogRetention) {
                 return;
@@ -622,7 +623,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             var webRequestAuditLogCandidates = await ResolveWebRequestAuditLogRetentionCandidatesFromMetadataAsync(
                 db,
                 governanceGroups,
-                null,
+                schemaName,
                 cancellationToken);
             var webRequestAuditLogRetentionResult = EvaluateWebRequestAuditLogRetentionDecision(
                 candidateCount: webRequestAuditLogCandidates.CandidateCount,
@@ -631,7 +632,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 enableDryRun: _webRequestAuditLogRetentionDryRun);
             var executedRetentionCount = await ExecuteWebRequestAuditLogRetentionAsync(
                 db,
-                null,
+                schemaName,
                 webRequestAuditLogCandidates.CandidatePhysicalTableNames,
                 webRequestAuditLogRetentionResult,
                 cancellationToken);
@@ -688,13 +689,13 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
                 var missingBlockingIndexes = await _shardingPhysicalTableProbe.FindMissingIndexesAsync(
                     db,
-                    null,
+                    schemaName,
                     physicalTableName,
                     blockingCriticalIndexes,
                     cancellationToken);
                 var missingAuditOnlyIndexes = await _shardingPhysicalTableProbe.FindMissingIndexesAsync(
                     db,
-                    null,
+                    schemaName,
                     physicalTableName,
                     auditOnlyIndexes,
                     cancellationToken);
@@ -1053,7 +1054,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             foreach (var baseTableName in webRequestAuditLogGroup.BaseTableNames.Distinct(StringComparer.Ordinal)) {
                 var allPhysicalTables = await ResolveExistingPerDayPhysicalTablesAsync(
                     db,
-                    null,
+                    schemaName,
                     baseTableName,
                     cancellationToken);
                 if (allPhysicalTables.Count <= _webRequestAuditLogRetentionKeepRecentShardCount) {
@@ -1088,7 +1089,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
             var physicalTables = await batchProbe.ListPhysicalTablesByBaseNameAsync(
                 db,
-                null,
+                schemaName,
                 baseTableName,
                 cancellationToken);
             return physicalTables

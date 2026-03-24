@@ -12,5 +12,5 @@ public sealed class AuditReadOnlyApiOptions {
     /// <summary>
     /// 是否启用审计日志只读 API。
     /// </summary>
-    public bool Enabled { get; init; } = true;
+    public bool Enabled { get; init; } = false;
 }
