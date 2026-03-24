@@ -200,5 +200,42 @@ WHERE TABLE_SCHEMA = COALESCE(NULLIF(@p0, ''), DATABASE())
                 .ToArray();
         }
 
+        /// <summary>
+        /// 按逻辑基础表名前缀列出已存在的物理分表名。
+        /// </summary>
+        /// <param name="dbContext">数据库上下文。</param>
+        /// <param name="schemaName">schema 名称；为空时默认使用当前数据库。</param>
+        /// <param name="baseTableName">逻辑基础表名。</param>
+        /// <param name="cancellationToken">取消令牌。</param>
+        /// <returns>已存在物理分表名集合。</returns>
+        public async Task<IReadOnlyList<string>> ListPhysicalTablesByBaseNameAsync(
+            DbContext dbContext,
+            string? schemaName,
+            string baseTableName,
+            CancellationToken cancellationToken) {
+            ArgumentNullException.ThrowIfNull(dbContext);
+            if (string.IsNullOrWhiteSpace(baseTableName)) {
+                throw new ArgumentException("逻辑基础表名不能为空。", nameof(baseTableName));
+            }
+
+            var normalizedSchemaName = string.IsNullOrWhiteSpace(schemaName) ? null : schemaName.Trim();
+            var normalizedBaseTableName = baseTableName.Trim();
+            var likePattern = $"{normalizedBaseTableName}\\_%";
+
+            const string sql = """
+SELECT TABLE_NAME
+FROM INFORMATION_SCHEMA.TABLES
+WHERE TABLE_SCHEMA = COALESCE(NULLIF(@p0, ''), DATABASE())
+  AND TABLE_NAME LIKE @p1 ESCAPE '\'
+""";
+            var tableNames = await dbContext.Database
+                .SqlQueryRaw<string>(sql, normalizedSchemaName ?? string.Empty, likePattern)
+                .ToListAsync(cancellationToken);
+            return tableNames
+                .Where(static tableName => !string.IsNullOrWhiteSpace(tableName))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+        }
+
     }
 }

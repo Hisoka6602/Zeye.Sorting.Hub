@@ -30,7 +30,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
         /// <param name="auditLog">审计日志聚合。</param>
         /// <param name="cancellationToken">取消令牌。</param>
         /// <returns>仓储执行结果。</returns>
-        public async Task<RepositoryResult> AddAsync(WebRequestAuditLog auditLog, CancellationToken cancellationToken) {
+        public override async Task<RepositoryResult> AddAsync(WebRequestAuditLog auditLog, CancellationToken cancellationToken) {
             if (auditLog is null) {
                 return RepositoryResult.Fail("审计日志不能为空");
             }
@@ -41,12 +41,16 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
 
             try {
                 await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
-                await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-
-                await db.Set<WebRequestAuditLog>().AddAsync(auditLog, cancellationToken);
-                await db.SaveChangesAsync(cancellationToken);
-
-                await transaction.CommitAsync(cancellationToken);
+                if (db.Database.IsRelational()) {
+                    await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+                    await db.Set<WebRequestAuditLog>().AddAsync(auditLog, cancellationToken);
+                    await db.SaveChangesAsync(cancellationToken);
+                    await transaction.CommitAsync(cancellationToken);
+                }
+                else {
+                    await db.Set<WebRequestAuditLog>().AddAsync(auditLog, cancellationToken);
+                    await db.SaveChangesAsync(cancellationToken);
+                }
                 return RepositoryResult.Success();
             }
             catch (OperationCanceledException ex) {

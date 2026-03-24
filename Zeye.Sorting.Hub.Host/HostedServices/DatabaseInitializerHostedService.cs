@@ -18,7 +18,6 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
-using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 using Zeye.Sorting.Hub.Domain.Enums.Sharding;
 
@@ -797,7 +796,15 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 webRequestAuditLogCandidates.CandidatePhysicalTableNames,
                 webRequestAuditLogRetentionResult,
                 cancellationToken);
-            webRequestAuditLogRetentionResult = webRequestAuditLogRetentionResult with { ExecutedCount = executedRetentionCount };
+            webRequestAuditLogRetentionResult = new DangerousBatchActionResult {
+                ActionName = webRequestAuditLogRetentionResult.ActionName,
+                Decision = webRequestAuditLogRetentionResult.Decision,
+                PlannedCount = webRequestAuditLogRetentionResult.PlannedCount,
+                ExecutedCount = executedRetentionCount,
+                IsDryRun = webRequestAuditLogRetentionResult.IsDryRun,
+                IsBlockedByGuard = webRequestAuditLogRetentionResult.IsBlockedByGuard,
+                CompensationBoundary = webRequestAuditLogRetentionResult.CompensationBoundary
+            };
             _logger.LogInformation(
                 "WebRequestAuditLog 历史分表保留治理评估：ActionName={ActionName}, Decision={Decision}, PlannedCount={PlannedCount}, ExecutedCount={ExecutedCount}, IsDryRun={IsDryRun}, IsBlockedByGuard={IsBlockedByGuard}, KeepRecentShardCount={KeepRecentShardCount}, CompensationBoundary={CompensationBoundary}",
                 webRequestAuditLogRetentionResult.ActionName,
@@ -1078,7 +1085,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// </summary>
         /// <returns>实体类型数组。</returns>
         private static IReadOnlyList<Type> BuildWebRequestAuditLogPerDayShardingEntityTypes() {
-            return new[] { typeof(WebRequestAuditLog), typeof(WebRequestAuditLogDetail) };
+            return PersistenceServiceCollectionExtensions.GetWebRequestAuditLogPerDayShardingEntityTypes();
         }
 
         /// <summary>
@@ -1280,18 +1287,14 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 return Array.Empty<string>();
             }
 
-            var today = DateTime.Now.Date;
-            var expectedProbeTables = BuildRequiredPerDayShardDates(today, _shardingPrebuildWindowHours)
-                .Select(requiredDate => BuildPerDayPhysicalTableName(baseTableName, requiredDate))
-                .ToArray();
-            if (expectedProbeTables.Length == 0) {
-                return Array.Empty<string>();
-            }
-
-            var missingTables = await batchProbe.FindMissingTablesAsync(db, schemaName, expectedProbeTables, cancellationToken);
-            var missingSet = missingTables.ToHashSet(StringComparer.Ordinal);
-            return expectedProbeTables
-                .Where(tableName => !missingSet.Contains(tableName))
+            var physicalTables = await batchProbe.ListPhysicalTablesByBaseNameAsync(
+                db,
+                schemaName,
+                baseTableName,
+                cancellationToken);
+            return physicalTables
+                .Where(tableName => TryResolveLogicalBaseTableNameFromPhysicalTableName(tableName, out var resolvedBaseName)
+                                    && string.Equals(resolvedBaseName, baseTableName, StringComparison.Ordinal))
                 .OrderBy(static tableName => tableName, StringComparer.Ordinal)
                 .ToArray();
         }
@@ -1322,7 +1325,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             };
 
             if (retentionDecision.Decision != ActionIsolationDecision.Execute) {
-                _observability.EmitMetric("web_request_audit_log.retention.executed_count", 0, tags);
+                _observability.EmitMetric("web_request_audit_log.retention.executed_count", 0d, tags);
                 _observability.EmitEvent(
                     name: "web_request_audit_log.retention.skipped",
                     level: Microsoft.Extensions.Logging.LogLevel.Information,
@@ -1332,7 +1335,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
 
             if (candidatePhysicalTableNames.Count == 0) {
-                _observability.EmitMetric("web_request_audit_log.retention.executed_count", 0, tags);
+                _observability.EmitMetric("web_request_audit_log.retention.executed_count", 0d, tags);
                 return 0;
             }
 
@@ -1378,6 +1381,10 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <returns>DROP TABLE SQL。</returns>
         /// <exception cref="InvalidOperationException">Provider 不支持时抛出。</exception>
         private static string BuildDropTableSql(string providerName, string? schemaName, string physicalTableName) {
+            if (!TryResolveLogicalBaseTableNameFromPhysicalTableName(physicalTableName, out _)) {
+                throw new InvalidOperationException($"物理表名不符合 PerDay 分表命名规范：{physicalTableName}");
+            }
+
             if (string.Equals(providerName, "MySQL", StringComparison.OrdinalIgnoreCase)) {
                 return string.IsNullOrWhiteSpace(schemaName)
                     ? $"DROP TABLE IF EXISTS `{physicalTableName}`;"
