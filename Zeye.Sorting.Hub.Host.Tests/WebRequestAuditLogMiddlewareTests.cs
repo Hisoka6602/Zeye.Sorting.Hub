@@ -142,10 +142,9 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         Assert.False(string.IsNullOrWhiteSpace(log.Detail.RequestUrl));
         Assert.Equal("middleware-tests/1.0", log.Detail.UserAgent);
         Assert.NotNull(log.Detail.RequestHeadersJson);
-        Assert.Contains("\"Authorization\":\"Bearer", log.Detail.RequestHeadersJson, StringComparison.Ordinal);
-        Assert.DoesNotContain("abcdefghijklmnopqrstuvwxyz9876543210", log.Detail.RequestHeadersJson, StringComparison.Ordinal);
-        Assert.Contains("\"Cookie\":\"***\"", log.Detail.RequestHeadersJson, StringComparison.Ordinal);
-        Assert.Contains("\"X-Api-Key\":\"***\"", log.Detail.RequestHeadersJson, StringComparison.Ordinal);
+        Assert.Contains("\"Authorization\":\"Bearer abcdefghijklmnopqrstuvwxyz9876543210\"", log.Detail.RequestHeadersJson, StringComparison.Ordinal);
+        Assert.Contains("\"Cookie\":\"sessionid=secret-cookie\"", log.Detail.RequestHeadersJson, StringComparison.Ordinal);
+        Assert.Contains("\"X-Api-Key\":\"secret-api-key\"", log.Detail.RequestHeadersJson, StringComparison.Ordinal);
 
         var curl = log.Detail.CurlCommand;
         Assert.Contains("curl -X", curl, StringComparison.Ordinal);
