@@ -5,6 +5,8 @@ using System.Runtime.ExceptionServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using Microsoft.Data.SqlClient;
+using MySqlConnector;
 using EFCore.Sharding;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -1065,6 +1067,102 @@ public sealed class AutoTuningProductionControlTests {
             isRollback: false);
 
         Assert.Equal(ActionIsolationDecision.BlockedByGuard, decision);
+    }
+
+    /// <summary>
+    /// 验证场景：EnsureDatabaseExistsDecision_GuardDryRunExecute_ShouldKeepPlannedAndExecutedSemanticsConsistent。
+    /// </summary>
+    [Fact]
+    public void EnsureDatabaseExistsDecision_GuardDryRunExecute_ShouldKeepPlannedAndExecutedSemanticsConsistent() {
+        var blocked = DatabaseInitializerHostedService.EvaluateEnsureDatabaseExistsDecision(
+            databaseMissing: true,
+            enableGuard: true,
+            allowDangerousActionExecution: false,
+            enableDryRun: false);
+        var dryRun = DatabaseInitializerHostedService.EvaluateEnsureDatabaseExistsDecision(
+            databaseMissing: true,
+            enableGuard: true,
+            allowDangerousActionExecution: true,
+            enableDryRun: true);
+        var executed = DatabaseInitializerHostedService.EvaluateEnsureDatabaseExistsDecision(
+            databaseMissing: true,
+            enableGuard: false,
+            allowDangerousActionExecution: false,
+            enableDryRun: false);
+
+        Assert.Equal(ActionIsolationDecision.BlockedByGuard, blocked.Decision);
+        Assert.Equal(1, blocked.PlannedCount);
+        Assert.Equal(0, blocked.ExecutedCount);
+        Assert.True(blocked.IsBlockedByGuard);
+        Assert.False(blocked.IsDryRun);
+
+        Assert.Equal(ActionIsolationDecision.DryRunOnly, dryRun.Decision);
+        Assert.Equal(1, dryRun.PlannedCount);
+        Assert.Equal(0, dryRun.ExecutedCount);
+        Assert.False(dryRun.IsBlockedByGuard);
+        Assert.True(dryRun.IsDryRun);
+
+        Assert.Equal(ActionIsolationDecision.Execute, executed.Decision);
+        Assert.Equal(1, executed.PlannedCount);
+        Assert.Equal(1, executed.ExecutedCount);
+        Assert.False(executed.IsBlockedByGuard);
+        Assert.False(executed.IsDryRun);
+    }
+
+    /// <summary>
+    /// 验证场景：EnsureDatabaseExistsDecision_WhenDatabaseAlreadyExists_ShouldSkipCreatePlan。
+    /// </summary>
+    [Fact]
+    public void EnsureDatabaseExistsDecision_WhenDatabaseAlreadyExists_ShouldSkipCreatePlan() {
+        var decision = DatabaseInitializerHostedService.EvaluateEnsureDatabaseExistsDecision(
+            databaseMissing: false,
+            enableGuard: true,
+            allowDangerousActionExecution: false,
+            enableDryRun: true);
+
+        Assert.Equal(ActionIsolationDecision.Execute, decision.Decision);
+        Assert.Equal(0, decision.PlannedCount);
+        Assert.Equal(0, decision.ExecutedCount);
+        Assert.False(decision.IsBlockedByGuard);
+        Assert.False(decision.IsDryRun);
+    }
+
+    /// <summary>
+    /// 验证场景：ResolveProviderConnectionStringKey_ShouldResolveMySqlAndSqlServerAndUnknown。
+    /// </summary>
+    [Fact]
+    public void ResolveProviderConnectionStringKey_ShouldResolveMySqlAndSqlServerAndUnknown() {
+        var mySqlByConfig = DatabaseInitializerHostedService.ResolveProviderConnectionStringKey("MySql", "Test");
+        var sqlServerByDialect = DatabaseInitializerHostedService.ResolveProviderConnectionStringKey(null, "SQLServer");
+        var unknown = DatabaseInitializerHostedService.ResolveProviderConnectionStringKey("Test", "Test");
+
+        Assert.Equal("MySql", mySqlByConfig);
+        Assert.Equal("SqlServer", sqlServerByDialect);
+        Assert.Null(unknown);
+    }
+
+    /// <summary>
+    /// 验证场景：Dialect_ExtractDatabaseNameAndAdminConnection_ShouldFollowProviderSemantics。
+    /// </summary>
+    [Fact]
+    public void Dialect_ExtractDatabaseNameAndAdminConnection_ShouldFollowProviderSemantics() {
+        var mySqlConnectionString = "Server=127.0.0.1;Port=3306;Database=zeye_sorting_hub;User Id=root;Password=admin;";
+        var sqlServerConnectionString = "Server=127.0.0.1,1433;Database=zeye_sorting_hub;User Id=sa;Password=Admin@1234;TrustServerCertificate=True;Encrypt=False;";
+
+        var mySqlDialect = new MySqlDialect();
+        var sqlServerDialect = new SqlServerDialect();
+
+        var mySqlDatabaseName = mySqlDialect.ExtractDatabaseName(mySqlConnectionString);
+        var sqlServerDatabaseName = sqlServerDialect.ExtractDatabaseName(sqlServerConnectionString);
+        using var mySqlAdminConnection = mySqlDialect.CreateAdministrationConnection(mySqlConnectionString);
+        using var sqlServerAdminConnection = sqlServerDialect.CreateAdministrationConnection(sqlServerConnectionString);
+        var mySqlAdminBuilder = new MySqlConnectionStringBuilder(mySqlAdminConnection.ConnectionString);
+        var sqlServerAdminBuilder = new SqlConnectionStringBuilder(sqlServerAdminConnection.ConnectionString);
+
+        Assert.Equal("zeye_sorting_hub", mySqlDatabaseName);
+        Assert.Equal("zeye_sorting_hub", sqlServerDatabaseName);
+        Assert.True(string.IsNullOrWhiteSpace(mySqlAdminBuilder.Database));
+        Assert.Equal("master", sqlServerAdminBuilder.InitialCatalog);
     }
 
     /// <summary>

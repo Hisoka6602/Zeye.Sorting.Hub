@@ -1,9 +1,12 @@
 using System;
 using System.Linq;
+using System.Data;
+using System.Data.Common;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
+using MySqlConnector;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
 
@@ -46,6 +49,75 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
         /// <summary>判断异常是否可被视为“已存在”并忽略。</summary>
         public bool ShouldIgnoreAutoTuningException(Exception exception) {
             return DatabaseProviderExceptionHelper.TryGetProviderErrorNumber(exception, out var errorNumber) && errorNumber == 1061;
+        }
+
+        /// <summary>
+        /// 从连接字符串提取目标数据库名。
+        /// </summary>
+        /// <param name="connectionString">原始连接字符串。</param>
+        /// <returns>目标数据库名。</returns>
+        public string ExtractDatabaseName(string connectionString) {
+            var builder = new MySqlConnectionStringBuilder(connectionString);
+            return DatabaseIdentifierGuard.NormalizeDatabaseName(builder.Database, nameof(connectionString));
+        }
+
+        /// <summary>
+        /// 基于业务连接字符串构建服务器级管理连接（不指定 Database）。
+        /// </summary>
+        /// <param name="connectionString">原始连接字符串。</param>
+        /// <returns>服务器级连接。</returns>
+        public DbConnection CreateAdministrationConnection(string connectionString) {
+            var builder = new MySqlConnectionStringBuilder(connectionString) {
+                Database = string.Empty
+            };
+            return new MySqlConnection(builder.ConnectionString);
+        }
+
+        /// <summary>
+        /// 探测目标数据库是否存在。
+        /// </summary>
+        /// <param name="administrationConnection">服务器级连接。</param>
+        /// <param name="databaseName">目标数据库名。</param>
+        /// <param name="cancellationToken">取消令牌。</param>
+        /// <returns>存在返回 true，否则 false。</returns>
+        public async Task<bool> DatabaseExistsAsync(DbConnection administrationConnection, string databaseName, CancellationToken cancellationToken) {
+            ArgumentNullException.ThrowIfNull(administrationConnection);
+            var normalizedDatabaseName = DatabaseIdentifierGuard.NormalizeDatabaseName(databaseName, nameof(databaseName));
+
+            await EnsureConnectionOpenedAsync(administrationConnection, cancellationToken);
+            await using var command = administrationConnection.CreateCommand();
+            command.CommandText = """
+SELECT CASE WHEN EXISTS (
+    SELECT 1
+    FROM INFORMATION_SCHEMA.SCHEMATA
+    WHERE SCHEMA_NAME = @databaseName
+) THEN TRUE ELSE FALSE END
+""";
+            var databaseNameParameter = command.CreateParameter();
+            databaseNameParameter.ParameterName = "@databaseName";
+            databaseNameParameter.DbType = DbType.String;
+            databaseNameParameter.Value = normalizedDatabaseName;
+            command.Parameters.Add(databaseNameParameter);
+            var scalar = await command.ExecuteScalarAsync(cancellationToken);
+            return scalar is true || (scalar is bool value && value);
+        }
+
+        /// <summary>
+        /// 创建目标数据库（MySQL 幂等语义：CREATE DATABASE IF NOT EXISTS）。
+        /// </summary>
+        /// <param name="administrationConnection">服务器级连接。</param>
+        /// <param name="databaseName">目标数据库名。</param>
+        /// <param name="cancellationToken">取消令牌。</param>
+        /// <returns>异步任务。</returns>
+        public async Task CreateDatabaseAsync(DbConnection administrationConnection, string databaseName, CancellationToken cancellationToken) {
+            ArgumentNullException.ThrowIfNull(administrationConnection);
+            var normalizedDatabaseName = DatabaseIdentifierGuard.NormalizeDatabaseName(databaseName, nameof(databaseName));
+            var escapedDatabaseName = DatabaseIdentifierGuard.EscapeMySqlIdentifier(normalizedDatabaseName);
+
+            await EnsureConnectionOpenedAsync(administrationConnection, cancellationToken);
+            await using var command = administrationConnection.CreateCommand();
+            command.CommandText = $"CREATE DATABASE IF NOT EXISTS `{escapedDatabaseName}`";
+            _ = await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
         /// <summary>生成闭环自治维护 SQL（高峰/高风险仅执行轻量动作）。</summary>
@@ -235,6 +307,20 @@ WHERE TABLE_SCHEMA = COALESCE(NULLIF(@p0, ''), DATABASE())
                 .Where(static tableName => !string.IsNullOrWhiteSpace(tableName))
                 .Distinct(StringComparer.Ordinal)
                 .ToArray();
+        }
+
+        /// <summary>
+        /// 确保连接处于打开状态。
+        /// </summary>
+        /// <param name="connection">数据库连接。</param>
+        /// <param name="cancellationToken">取消令牌。</param>
+        /// <returns>异步任务。</returns>
+        private static async Task EnsureConnectionOpenedAsync(DbConnection connection, CancellationToken cancellationToken) {
+            if (connection.State == ConnectionState.Open) {
+                return;
+            }
+
+            await connection.OpenAsync(cancellationToken);
         }
 
     }

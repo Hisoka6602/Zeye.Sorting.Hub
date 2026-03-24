@@ -32,6 +32,13 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private const string MigrationFailureStrategyProductionConfigKey = "Persistence:Migration:FailureStrategy:Production";
         private const string MigrationFailureStrategyNonProductionConfigKey = "Persistence:Migration:FailureStrategy:NonProduction";
         private const string FailStartupOnMigrationErrorConfigKey = "Persistence:Migration:FailStartupOnError";
+        private const string MySqlProviderKey = "MySql";
+        private const string SqlServerProviderKey = "SqlServer";
+        private const string PersistenceProviderConfigKey = "Persistence:Provider";
+        private const string EnsureDatabaseExistsEnabledConfigKey = "Persistence:DatabaseBootstrap:EnsureDatabaseExists:Enabled";
+        private const string EnsureDatabaseExistsIsolatorEnableGuardConfigKey = "Persistence:DatabaseBootstrap:EnsureDatabaseExists:Isolator:EnableGuard";
+        private const string EnsureDatabaseExistsIsolatorAllowDangerousActionExecutionConfigKey = "Persistence:DatabaseBootstrap:EnsureDatabaseExists:Isolator:AllowDangerousActionExecution";
+        private const string EnsureDatabaseExistsIsolatorDryRunConfigKey = "Persistence:DatabaseBootstrap:EnsureDatabaseExists:Isolator:DryRun";
         private const string CreateShardingTableOnStartingConfigKey = "Persistence:Sharding:CreateShardingTableOnStarting";
         private const string ParcelRelatedHashShardingModConfigKey = "Persistence:Sharding:ParcelRelatedHashShardingMod";
         private const string HashShardingExpansionTriggerRatioConfigKey = "Persistence:Sharding:HashSharding:ExpansionTriggerRatio";
@@ -53,6 +60,10 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// 字段：_serviceProvider。
         /// </summary>
         private readonly IServiceProvider _serviceProvider;
+        /// <summary>
+        /// 应用配置源。
+        /// </summary>
+        private readonly IConfiguration _configuration;
         /// <summary>
         /// NLog 记录器（用于规则化异常日志输出）。
         /// </summary>
@@ -109,6 +120,16 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private readonly IReadOnlyList<string> _parcelShardingStrategyValidationErrors;
         /// <summary>物理分表存在性探测器。</summary>
         private readonly IShardingPhysicalTableProbe _shardingPhysicalTableProbe;
+        /// <summary>是否启用启动期自动建库检查。</summary>
+        private readonly bool _ensureDatabaseExistsEnabled;
+        /// <summary>自动建库隔离守卫开关。</summary>
+        private readonly bool _ensureDatabaseExistsEnableGuard;
+        /// <summary>自动建库是否允许执行危险动作。</summary>
+        private readonly bool _ensureDatabaseExistsAllowDangerousActionExecution;
+        /// <summary>自动建库是否启用 dry-run。</summary>
+        private readonly bool _ensureDatabaseExistsDryRun;
+        /// <summary>当前数据库 Provider 配置键。</summary>
+        private readonly string? _databaseProviderKey;
 
         /// <summary>
         /// 字段：_retryPolicy。
@@ -122,6 +143,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             IHostEnvironment hostEnvironment,
             IConfiguration configuration) {
             _serviceProvider = serviceProvider;
+            _configuration = configuration;
             _dialect = dialect;
             _environmentName = hostEnvironment.EnvironmentName;
             _isProductionEnvironment = hostEnvironment.IsProduction();
@@ -148,6 +170,12 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _parcelShardingStrategyDecision = parcelShardingStrategyEvaluation.Decision;
             _parcelShardingStrategyValidationErrors = parcelShardingStrategyEvaluation.ValidationErrors;
             _shardingPhysicalTableProbe = shardingPhysicalTableProbe;
+            _ensureDatabaseExistsEnabled = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, EnsureDatabaseExistsEnabledConfigKey, true);
+            _ensureDatabaseExistsEnableGuard = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, EnsureDatabaseExistsIsolatorEnableGuardConfigKey, true);
+            _ensureDatabaseExistsAllowDangerousActionExecution = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, EnsureDatabaseExistsIsolatorAllowDangerousActionExecutionConfigKey, false);
+            _ensureDatabaseExistsDryRun = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, EnsureDatabaseExistsIsolatorDryRunConfigKey, false);
+            var providerRaw = configuration[PersistenceProviderConfigKey];
+            _databaseProviderKey = ResolveProviderConnectionStringKey(providerRaw, _dialect.ProviderName);
 
             _retryPolicy = Policy
                 .Handle<Exception>(ex => ex is not OperationCanceledException and not ShardingGovernanceGuardException)
@@ -193,6 +221,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     await using var scope = _serviceProvider.CreateAsyncScope();
                     var db = scope.ServiceProvider.GetRequiredService<SortingHubDbContext>();
 
+                    await EnsureDatabaseExistsAsync(ct);
                     NLogLogger.Info("开始执行数据库迁移，Provider={Provider}", _dialect.ProviderName);
                     await db.Database.MigrateAsync(ct);
                     NLogLogger.Info("数据库迁移完成，Provider={Provider}", _dialect.ProviderName);
@@ -267,6 +296,40 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             ArgumentNullException.ThrowIfNull(configuration);
             var raw = configuration[FailStartupOnMigrationErrorConfigKey];
             return bool.TryParse(raw, out var value) && value;
+        }
+
+        /// <summary>
+        /// 评估“启动期自动建库”隔离器决策。
+        /// </summary>
+        /// <param name="databaseMissing">目标数据库是否缺失。</param>
+        /// <param name="enableGuard">是否启用守卫。</param>
+        /// <param name="allowDangerousActionExecution">是否允许危险动作执行。</param>
+        /// <param name="enableDryRun">是否启用 dry-run。</param>
+        /// <returns>危险动作决策结果。</returns>
+        internal static DangerousBatchActionResult EvaluateEnsureDatabaseExistsDecision(
+            bool databaseMissing,
+            bool enableGuard,
+            bool allowDangerousActionExecution,
+            bool enableDryRun) {
+            var plannedCount = databaseMissing ? 1 : 0;
+            var decision = databaseMissing
+                ? ActionIsolationPolicy.Evaluate(
+                    enableGuard,
+                    allowDangerousActionExecution,
+                    enableDryRun,
+                    dangerousAction: true,
+                    isRollback: false)
+                : ActionIsolationDecision.Execute;
+            var executedCount = databaseMissing && decision == ActionIsolationDecision.Execute ? 1 : 0;
+            return new DangerousBatchActionResult {
+                ActionName = "DatabaseBootstrap.EnsureDatabaseExists",
+                Decision = decision,
+                PlannedCount = plannedCount,
+                ExecutedCount = executedCount,
+                IsDryRun = decision == ActionIsolationDecision.DryRunOnly,
+                IsBlockedByGuard = decision == ActionIsolationDecision.BlockedByGuard,
+                CompensationBoundary = "数据库创建后如需回滚，需由运维执行受控 DROP DATABASE 或备份恢复。"
+            };
         }
 
         /// <summary>
@@ -365,6 +428,81 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// 解析当前 Provider 对应连接字符串键名。
+        /// </summary>
+        /// <param name="configuredProvider">配置中的 Provider 值。</param>
+        /// <param name="dialectProviderName">方言 ProviderName。</param>
+        /// <returns>连接字符串键名；不支持时返回 null。</returns>
+        internal static string? ResolveProviderConnectionStringKey(string? configuredProvider, string dialectProviderName) {
+            if (MatchesProvider(configuredProvider, MySqlProviderKey) || MatchesProvider(dialectProviderName, "MySQL")) {
+                return MySqlProviderKey;
+            }
+
+            if (MatchesProvider(configuredProvider, SqlServerProviderKey) || MatchesProvider(dialectProviderName, "SQLServer")) {
+                return SqlServerProviderKey;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// 判断 Provider 标识是否命中。
+        /// </summary>
+        /// <param name="raw">原始值。</param>
+        /// <param name="expected">期望值。</param>
+        /// <returns>命中返回 true。</returns>
+        private static bool MatchesProvider(string? raw, string expected) {
+            return string.Equals(raw?.Trim(), expected, StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// 启动期自动建库检查与执行。
+        /// </summary>
+        /// <param name="cancellationToken">取消令牌。</param>
+        /// <returns>异步任务。</returns>
+        private async Task EnsureDatabaseExistsAsync(CancellationToken cancellationToken) {
+            if (!_ensureDatabaseExistsEnabled) {
+                NLogLogger.Info("启动期自动建库检查已禁用，Provider={Provider}, ConfigKey={ConfigKey}", _dialect.ProviderName, EnsureDatabaseExistsEnabledConfigKey);
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(_databaseProviderKey)) {
+                NLogLogger.Warn("当前 Provider 不在自动建库支持范围内，跳过检查。Provider={Provider}", _dialect.ProviderName);
+                return;
+            }
+
+            var connectionString = _configuration.GetConnectionString(_databaseProviderKey);
+            if (string.IsNullOrWhiteSpace(connectionString)) {
+                throw new InvalidOperationException($"缺少连接字符串：ConnectionStrings:{_databaseProviderKey}");
+            }
+
+            var databaseName = _dialect.ExtractDatabaseName(connectionString);
+            await using var administrationConnection = _dialect.CreateAdministrationConnection(connectionString);
+            var databaseExists = await _dialect.DatabaseExistsAsync(administrationConnection, databaseName, cancellationToken);
+            var decisionResult = EvaluateEnsureDatabaseExistsDecision(
+                databaseMissing: !databaseExists,
+                enableGuard: _ensureDatabaseExistsEnableGuard,
+                allowDangerousActionExecution: _ensureDatabaseExistsAllowDangerousActionExecution,
+                enableDryRun: _ensureDatabaseExistsDryRun);
+
+            NLogLogger.Info(
+                "启动期自动建库治理审计：Decision={Decision}, PlannedCount={PlannedCount}, ExecutedCount={ExecutedCount}, Provider={Provider}, DatabaseName={DatabaseName}, CompensationBoundary={CompensationBoundary}",
+                decisionResult.Decision,
+                decisionResult.PlannedCount,
+                decisionResult.ExecutedCount,
+                _dialect.ProviderName,
+                databaseName,
+                decisionResult.CompensationBoundary);
+
+            if (databaseExists || decisionResult.Decision != ActionIsolationDecision.Execute) {
+                return;
+            }
+
+            await _dialect.CreateDatabaseAsync(administrationConnection, databaseName, cancellationToken);
+            NLogLogger.Info("启动期自动建库已执行完成，Provider={Provider}, DatabaseName={DatabaseName}", _dialect.ProviderName, databaseName);
         }
 
         /// <summary>

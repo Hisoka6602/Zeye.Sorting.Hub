@@ -156,6 +156,7 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
         using var problemJson = JsonDocument.Parse(responseText);
         Assert.Equal("服务器内部错误", problemJson.RootElement.GetProperty("title").GetString());
+        await WaitForWriteCountAsync(repository, expectedCount: 1, maxAttempts: 20, delayMilliseconds: 50);
         var log = Assert.Single(repository.Logs);
         Assert.True(log.HasException);
         Assert.True(log.Detail is not null);
@@ -224,7 +225,36 @@ public sealed class WebRequestAuditLogMiddlewareTests {
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("pong", responseText);
-        Assert.Equal(1, repository.WriteCount);
+        await WaitForWriteCountAsync(repository, expectedCount: 1, maxAttempts: 20, delayMilliseconds: 50);
+    }
+
+    /// <summary>
+    /// 验证场景：审计仓储慢写不阻塞主请求返回。
+    /// </summary>
+    [Fact]
+    public async Task Middleware_WithSlowAuditWrite_ShouldNotBlockMainResponse() {
+        var repository = new InMemoryWebRequestAuditLogRepository {
+            AddDelayMilliseconds = 1200
+        };
+        await using var app = await BuildTestAppAsync(
+            new WebRequestAuditLogOptions {
+                Enabled = true,
+                SampleRate = 1,
+                IncludeRequestBody = false,
+                IncludeResponseBody = false,
+                MaxRequestBodyLength = 1024,
+                MaxResponseBodyLength = 1024
+            },
+            repository);
+
+        using var client = app.GetTestClient();
+        var startedAt = DateTime.Now;
+        using var response = await client.GetAsync("/ok");
+        var elapsedMilliseconds = (DateTime.Now - startedAt).TotalMilliseconds;
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(elapsedMilliseconds < 200, $"主请求被审计写入阻塞，ElapsedMilliseconds={elapsedMilliseconds}");
+        await WaitForWriteCountAsync(repository, expectedCount: 1, maxAttempts: 40, delayMilliseconds: 50);
     }
 
     /// <summary>
