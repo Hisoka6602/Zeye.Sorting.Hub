@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -8,7 +9,6 @@ using EFCore.Sharding;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
@@ -2851,13 +2851,19 @@ public sealed class AutoTuningProductionControlTests {
             .GetMethod("ValidateShardingGovernanceGuardAsync", BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotNull(validateMethod);
 
-        try {
-            var task = (Task?)validateMethod!.Invoke(service, [CancellationToken.None]);
-            Assert.NotNull(task);
-            await task!;
+        Task? guardTask = null;
+        var invocationException = Record.Exception(() => {
+            guardTask = (Task?)validateMethod!.Invoke(service, [CancellationToken.None]);
+        });
+        if (invocationException is TargetInvocationException targetInvocationException
+            && targetInvocationException.InnerException is not null) {
+            ExceptionDispatchInfo.Capture(targetInvocationException.InnerException).Throw();
         }
-        catch (TargetInvocationException ex) when (ex.InnerException is not null) {
-            throw ex.InnerException;
+        if (invocationException is not null) {
+            ExceptionDispatchInfo.Capture(invocationException).Throw();
         }
+
+        Assert.NotNull(guardTask);
+        await guardTask!;
     }
 }

@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using EFCore.Sharding;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
+using NLog;
 using Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests;
 using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.Results;
@@ -54,7 +55,14 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// 字段：_serviceProvider。
         /// </summary>
         private readonly IServiceProvider _serviceProvider;
-        private readonly ILogger<DatabaseInitializerHostedService> _logger;
+        /// <summary>
+        /// 宿主日志桥接器（用于结构化运行态日志）。
+        /// </summary>
+        private readonly global::Microsoft.Extensions.Logging.ILogger _logger;
+        /// <summary>
+        /// NLog 记录器（用于规则化异常日志输出）。
+        /// </summary>
+        private static readonly Logger NLogLogger = LogManager.GetCurrentClassLogger();
         /// <summary>
         /// 字段：_dialect。
         /// </summary>
@@ -119,7 +127,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
         public DatabaseInitializerHostedService(
             IServiceProvider serviceProvider,
-            ILogger<DatabaseInitializerHostedService> logger,
+            global::Microsoft.Extensions.Logging.ILogger logger,
             IDatabaseDialect dialect,
             IShardingPhysicalTableProbe shardingPhysicalTableProbe,
             IHostEnvironment hostEnvironment,
@@ -191,6 +199,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                             await db.Database.ExecuteSqlRawAsync(sql, ct);
                         }
                         catch (Exception ex) {
+                            NLogLogger.Warn(ex,
+                                "可选初始化 SQL 执行失败，已降级忽略，Provider={Provider}, Sql={Sql}",
+                                _dialect.ProviderName, sql);
                             _logger.LogWarning(ex,
                                 "可选初始化 SQL 执行失败，已降级忽略，Provider={Provider}, Sql={Sql}",
                                 _dialect.ProviderName, sql);
@@ -200,9 +211,14 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
             catch (OperationCanceledException) {
                 // 宿主正常停止时触发，不计为错误
+                NLogLogger.Info("数据库初始化已因取消令牌中止，Provider={Provider}", _dialect.ProviderName);
                 _logger.LogInformation("数据库初始化已因取消令牌中止，Provider={Provider}", _dialect.ProviderName);
             }
             catch (Exception ex) {
+                NLogLogger.Fatal(ex,
+                    "[数据库初始化] 发生异常，Provider={Provider}, Environment={Environment}",
+                    _dialect.ProviderName,
+                    _environmentName);
                 if (ex is ShardingGovernanceGuardException) {
                     _logger.LogCritical(ex,
                         "[数据库初始化] 分表治理守卫触发，启动被阻断。Provider={Provider}, Environment={Environment}",
