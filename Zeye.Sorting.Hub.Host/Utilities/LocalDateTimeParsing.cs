@@ -9,6 +9,11 @@ namespace Zeye.Sorting.Hub.Host.Utilities;
 /// </summary>
 internal static class LocalDateTimeParsing {
     /// <summary>
+    /// 纯日期格式长度（yyyy-MM-dd）。
+    /// </summary>
+    private const int DateOnlyFormatLength = 10;
+
+    /// <summary>
     /// 允许的本地时间格式列表（禁止 Z/offset 表达）。
     /// </summary>
     private static readonly string[] LocalDateTimeFormats = [
@@ -29,7 +34,7 @@ internal static class LocalDateTimeParsing {
         if (string.IsNullOrWhiteSpace(input)
             || input.Contains('Z', StringComparison.OrdinalIgnoreCase)
             || input.Contains('+', StringComparison.Ordinal)
-            || input.LastIndexOf('-') > "yyyy-MM-dd".Length - 1) {
+            || input.LastIndexOf('-') > DateOnlyFormatLength - 1) {
             parsedTime = default;
             return false;
         }

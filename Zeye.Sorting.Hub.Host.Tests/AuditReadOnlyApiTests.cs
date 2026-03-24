@@ -256,9 +256,7 @@ public sealed class AuditReadOnlyApiTests {
         bool enabled) {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
-        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> {
-            [$"{AuditReadOnlyApiOptions.SectionName}:Enabled"] = enabled.ToString()
-        });
+        builder.Configuration[$"{AuditReadOnlyApiOptions.SectionName}:Enabled"] = enabled.ToString();
         builder.Services.AddProblemDetails();
         builder.Services.AddAuthorization();
         builder.Services.AddScoped<IWebRequestAuditLogRepository>(_ => repository);
@@ -273,9 +271,13 @@ public sealed class AuditReadOnlyApiTests {
             await next();
         });
         app.UseAuthorization();
-        var options = builder.Configuration
-            .GetSection(AuditReadOnlyApiOptions.SectionName)
-            .Get<AuditReadOnlyApiOptions>() ?? new AuditReadOnlyApiOptions();
+        var options = new AuditReadOnlyApiOptions {
+            Enabled = bool.TryParse(
+                builder.Configuration[$"{AuditReadOnlyApiOptions.SectionName}:Enabled"],
+                out var optionEnabled)
+                ? optionEnabled
+                : true
+        };
         if (options.Enabled) {
             app.MapAuditReadOnlyApis();
         }
