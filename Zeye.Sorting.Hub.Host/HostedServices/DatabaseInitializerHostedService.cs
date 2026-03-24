@@ -1178,7 +1178,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
             var webRequestAuditLogGroup = governanceGroups.FirstOrDefault(static group =>
                 string.Equals(group.GroupName, "WebRequestAuditLog", StringComparison.Ordinal));
-            if (webRequestAuditLogGroup.GroupName is null || webRequestAuditLogGroup.BaseTableNames.Count == 0) {
+            if (string.IsNullOrWhiteSpace(webRequestAuditLogGroup.GroupName) || webRequestAuditLogGroup.BaseTableNames.Count == 0) {
                 return 0;
             }
 
