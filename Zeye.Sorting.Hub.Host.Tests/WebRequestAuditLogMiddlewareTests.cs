@@ -110,6 +110,11 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         using var client = app.GetTestClient();
         var request = new HttpRequestMessage(HttpMethod.Post, "/echo?source=test");
         request.Headers.Add("X-Correlation-Id", "corr-test-001");
+        request.Headers.TryAddWithoutValidation("Authorization", "Bearer abcdefghijklmnopqrstuvwxyz9876543210");
+        request.Headers.TryAddWithoutValidation("User-Agent", "middleware-tests/1.0");
+        request.Headers.TryAddWithoutValidation("X-Request-Id", "req-123");
+        request.Headers.TryAddWithoutValidation("Cookie", "sessionid=secret-cookie");
+        request.Headers.TryAddWithoutValidation("X-Api-Key", "secret-api-key");
         request.Content = JsonContent.Create(new { name = "zeye", count = 2 });
 
         using var response = await client.SendAsync(request);
@@ -130,7 +135,26 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         Assert.True(log.Detail is not null);
         Assert.Contains("source=test", log.Detail!.RequestQueryString, StringComparison.Ordinal);
         Assert.Contains("application/json", log.Detail.RequestContentType, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"name\":\"zeye\"", log.Detail.RequestBody, StringComparison.Ordinal);
         Assert.Contains("result", log.Detail.ResponseBody, StringComparison.Ordinal);
+        Assert.False(string.IsNullOrWhiteSpace(log.Detail.RequestUrl));
+        Assert.Equal("middleware-tests/1.0", log.Detail.UserAgent);
+
+        var curl = log.Detail.CurlCommand;
+        Assert.Contains("curl -X", curl, StringComparison.Ordinal);
+        Assert.Contains("http://localhost/echo?source=test", curl, StringComparison.Ordinal);
+        Assert.Contains("-H 'Content-Type: application/json", curl, StringComparison.Ordinal);
+        Assert.Contains("-H 'Accept: application/json", curl, StringComparison.Ordinal);
+        Assert.Contains("-H 'User-Agent: middleware-tests/1.0'", curl, StringComparison.Ordinal);
+        Assert.Contains("-H 'Authorization: Bearer", curl, StringComparison.Ordinal);
+        Assert.DoesNotContain("abcdefghijklmnopqrstuvwxyz9876543210", curl, StringComparison.Ordinal);
+        Assert.DoesNotContain("sessionid=secret-cookie", curl, StringComparison.Ordinal);
+        Assert.DoesNotContain("secret-api-key", curl, StringComparison.Ordinal);
+        Assert.Contains("-H 'X-Request-Id: req-123'", curl, StringComparison.Ordinal);
+        Assert.Contains("--data-raw", curl, StringComparison.Ordinal);
+
+        var bodyShellLiteral = ToSingleQuotedShellLiteral(log.Detail.RequestBody);
+        Assert.Contains($"--data-raw {bodyShellLiteral}", curl, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -200,6 +224,39 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         // 请求体超限短路时仅标记截断，不采集正文内容。
         Assert.Equal(0, log.Detail!.RequestBody.Length);
         Assert.Equal(16, log.Detail.ResponseBody.Length);
+    }
+
+    /// <summary>
+    /// 验证场景：multipart 二进制正文使用占位文本，且主请求成功。
+    /// </summary>
+    [Fact]
+    public async Task Middleware_WithMultipartRequest_ShouldRecordBinaryPlaceholder() {
+        var repository = new InMemoryWebRequestAuditLogRepository();
+        await using var app = await BuildTestAppAsync(
+            new WebRequestAuditLogOptions {
+                Enabled = true,
+                SampleRate = 1,
+                IncludeRequestBody = true,
+                IncludeResponseBody = true,
+                MaxRequestBodyLength = 1024,
+                MaxResponseBodyLength = 1024
+            },
+            repository);
+
+        using var client = app.GetTestClient();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/echo");
+        request.Content = new MultipartFormDataContent {
+            { new StringContent("text-part"), "name" },
+            { new ByteArrayContent(Encoding.UTF8.GetBytes("binary-part")), "file", "a.bin" }
+        };
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        await WaitForWriteCountAsync(repository, expectedCount: 1, maxAttempts: 20, delayMilliseconds: 50);
+        var log = Assert.Single(repository.Logs);
+        Assert.True(log.HasRequestBody);
+        Assert.Equal("[binary payload omitted]", log.Detail?.RequestBody);
+        Assert.Contains("--data-raw '[binary payload omitted]'", log.Detail?.CurlCommand ?? string.Empty, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -472,5 +529,18 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         return new DbContextOptionsBuilder<SortingHubDbContext>()
             .UseInMemoryDatabase(databaseName)
             .Options;
+    }
+
+    /// <summary>
+    /// 构建 shell 单引号字面量。
+    /// </summary>
+    /// <param name="value">原始文本。</param>
+    /// <returns>shell 单引号字面量。</returns>
+    private static string ToSingleQuotedShellLiteral(string value) {
+        if (string.IsNullOrEmpty(value)) {
+            return "''";
+        }
+
+        return $"'{value.Replace("'", "'\"'\"'", StringComparison.Ordinal)}'";
     }
 }

@@ -20,6 +20,15 @@ public sealed class WebRequestAuditLogMiddleware {
     /// 请求体缓冲阈值（30KB），超过阈值后由框架切换到临时文件。
     /// </summary>
     private const int RequestBodyBufferThresholdBytes = 1024 * 30;
+    /// <summary>
+    /// 不适宜记录全文的二进制正文占位文本。
+    /// </summary>
+    private const string BinaryPayloadOmittedPlaceholder = "[binary payload omitted]";
+
+    /// <summary>
+    /// Curl 脱敏后授权头占位。
+    /// </summary>
+    private const string AuthorizationMaskedPlaceholder = "***";
 
     /// <summary>
     /// NLog 日志器。
@@ -85,9 +94,15 @@ public sealed class WebRequestAuditLogMiddleware {
         var requestSizeBytes = context.Request.ContentLength ?? 0L;
 
         if (_options.IncludeRequestBody) {
-            requestBodyCapture = await CaptureRequestBodyAsync(context.Request, _options.MaxRequestBodyLength);
-            if (context.Request.ContentLength is null or <= 0L) {
-                requestSizeBytes = requestBodyCapture.OriginalLengthBytes;
+            try {
+                requestBodyCapture = await CaptureRequestBodyAsync(context.Request, _options.MaxRequestBodyLength);
+                if (context.Request.ContentLength is null or <= 0L) {
+                    requestSizeBytes = requestBodyCapture.OriginalLengthBytes;
+                }
+            }
+            catch (Exception exception) {
+                NLogLogger.Error(exception, "请求体采集失败，降级为空正文采集，Path={Path}, TraceId={TraceId}", context.Request.Path, traceId);
+                requestBodyCapture = new CapturedBody(string.Empty, context.Request.ContentLength is > 0L, false, context.Request.ContentLength ?? 0L);
             }
         }
 
@@ -115,16 +130,27 @@ public sealed class WebRequestAuditLogMiddleware {
             // 步骤 4：恢复响应流并完成响应体采集（失败不得污染主请求）。
             if (responseCaptureStream is not null) {
                 try {
-                    var responseCaptureResult = responseCaptureStream.BuildCaptureResult();
-                    responseBodyCapture = new CapturedBody(
-                        responseCaptureResult.Content,
-                        responseCaptureResult.HasBody,
-                        responseCaptureResult.IsTruncated,
-                        responseCaptureResult.TotalBytes);
+                    try {
+                        var responseCaptureResult = responseCaptureStream.BuildCaptureResult();
+                        responseBodyCapture = new CapturedBody(
+                            responseCaptureResult.Content ?? string.Empty,
+                            responseCaptureResult.HasBody,
+                            responseCaptureResult.IsTruncated,
+                            responseCaptureResult.TotalBytes);
+                    }
+                    catch (Exception exception) {
+                        NLogLogger.Error(exception, "响应体采集失败，降级为空正文采集，Path={Path}, TraceId={TraceId}", context.Request.Path, traceId);
+                        responseBodyCapture = new CapturedBody(string.Empty, context.Response.ContentLength is > 0L, false, context.Response.ContentLength ?? 0L);
+                    }
                 }
                 finally {
                     context.Response.Body = originalResponseBody;
-                    await responseCaptureStream.DisposeAsync();
+                    try {
+                        await responseCaptureStream.DisposeAsync();
+                    }
+                    catch (Exception exception) {
+                        NLogLogger.Error(exception, "响应体采集流释放失败，已降级忽略，Path={Path}, TraceId={TraceId}", context.Request.Path, traceId);
+                    }
                 }
             }
 
@@ -134,52 +160,57 @@ public sealed class WebRequestAuditLogMiddleware {
             var statusCode = context.Response.StatusCode;
             var isSuccess = statusCode is >= StatusCodes.Status200OK and < StatusCodes.Status400BadRequest;
             var resolvedException = capturedException ?? context.Features.Get<IExceptionHandlerFeature>()?.Error;
-            var detail = BuildDetail(
-                context,
-                startedAt,
-                requestBodyCapture,
-                responseBodyCapture,
-                resolvedException,
-                traceId,
-                correlationId);
-            var log = new WebRequestAuditLog {
-                TraceId = traceId,
-                CorrelationId = correlationId,
-                SpanId = ResolveSpanId(),
-                OperationName = ResolveOperationName(context, routeTemplate),
-                RequestMethod = context.Request.Method,
-                RequestScheme = context.Request.Scheme,
-                RequestHost = context.Request.Host.Host,
-                RequestPort = context.Request.Host.Port,
-                RequestPath = context.Request.Path.Value ?? string.Empty,
-                RequestRouteTemplate = routeTemplate,
-                UserName = context.User.Identity?.Name ?? string.Empty,
-                IsAuthenticated = context.User.Identity?.IsAuthenticated ?? false,
-                RequestPayloadType = ResolveRequestPayloadType(context.Request.ContentType, requestBodyCapture.HasBody),
-                RequestSizeBytes = Math.Max(0L, requestSizeBytes),
-                HasRequestBody = requestBodyCapture.HasBody,
-                IsRequestBodyTruncated = requestBodyCapture.IsTruncated,
-                ResponsePayloadType = ResolveResponsePayloadType(context.Response.ContentType, responseBodyCapture.HasBody),
-                ResponseSizeBytes = Math.Max(0L, responseBodyCapture.OriginalLengthBytes),
-                HasResponseBody = responseBodyCapture.HasBody,
-                IsResponseBodyTruncated = responseBodyCapture.IsTruncated,
-                StatusCode = statusCode,
-                IsSuccess = isSuccess,
-                HasException = resolvedException is not null,
-                AuditResourceType = AuditResourceType.Api,
-                ResourceId = context.Request.Path.Value ?? string.Empty,
-                StartedAt = startedAt,
-                EndedAt = endedAt,
-                DurationMs = Math.Max(0L, durationMs),
-                CreatedAt = endedAt,
-                Detail = detail
-            };
-            if (!_backgroundQueue.TryEnqueue(new WebRequestAuditBackgroundEntry {
-                    Log = log,
+            try {
+                var detail = BuildDetail(
+                    context,
+                    startedAt,
+                    requestBodyCapture,
+                    responseBodyCapture,
+                    resolvedException,
+                    traceId,
+                    correlationId);
+                var log = new WebRequestAuditLog {
                     TraceId = traceId,
-                    CorrelationId = correlationId
-                })) {
-                NLogLogger.Warn("Web 请求审计入队失败，已触发丢弃保护。TraceId={TraceId}, CorrelationId={CorrelationId}", traceId, correlationId);
+                    CorrelationId = correlationId,
+                    SpanId = ResolveSpanId(),
+                    OperationName = ResolveOperationName(context, routeTemplate),
+                    RequestMethod = context.Request.Method,
+                    RequestScheme = context.Request.Scheme,
+                    RequestHost = context.Request.Host.Host,
+                    RequestPort = context.Request.Host.Port,
+                    RequestPath = context.Request.Path.Value ?? string.Empty,
+                    RequestRouteTemplate = routeTemplate,
+                    UserName = context.User.Identity?.Name ?? string.Empty,
+                    IsAuthenticated = context.User.Identity?.IsAuthenticated ?? false,
+                    RequestPayloadType = ResolveRequestPayloadType(context.Request.ContentType, requestBodyCapture.HasBody),
+                    RequestSizeBytes = Math.Max(0L, requestSizeBytes),
+                    HasRequestBody = requestBodyCapture.HasBody,
+                    IsRequestBodyTruncated = requestBodyCapture.IsTruncated,
+                    ResponsePayloadType = ResolveResponsePayloadType(context.Response.ContentType, responseBodyCapture.HasBody),
+                    ResponseSizeBytes = Math.Max(0L, responseBodyCapture.OriginalLengthBytes),
+                    HasResponseBody = responseBodyCapture.HasBody,
+                    IsResponseBodyTruncated = responseBodyCapture.IsTruncated,
+                    StatusCode = statusCode,
+                    IsSuccess = isSuccess,
+                    HasException = resolvedException is not null,
+                    AuditResourceType = AuditResourceType.Api,
+                    ResourceId = context.Request.Path.Value ?? string.Empty,
+                    StartedAt = startedAt,
+                    EndedAt = endedAt,
+                    DurationMs = Math.Max(0L, durationMs),
+                    CreatedAt = endedAt,
+                    Detail = detail
+                };
+                if (!_backgroundQueue.TryEnqueue(new WebRequestAuditBackgroundEntry {
+                        Log = log,
+                        TraceId = traceId,
+                        CorrelationId = correlationId
+                    })) {
+                    NLogLogger.Warn("Web 请求审计入队失败，已触发丢弃保护。TraceId={TraceId}, CorrelationId={CorrelationId}", traceId, correlationId);
+                }
+            }
+            catch (Exception exception) {
+                NLogLogger.Error(exception, "Web 请求审计构建或入队失败，已降级忽略，Path={Path}, TraceId={TraceId}, CorrelationId={CorrelationId}", context.Request.Path, traceId, correlationId);
             }
         }
 
@@ -214,23 +245,23 @@ public sealed class WebRequestAuditLogMiddleware {
 
         return new WebRequestAuditLogDetail {
             StartedAt = startedAt,
-            RequestUrl = requestUrl,
+            RequestUrl = requestUrl ?? string.Empty,
             RequestQueryString = context.Request.QueryString.Value ?? string.Empty,
-            RequestHeadersJson = requestHeaders,
-            ResponseHeadersJson = responseHeaders,
+            RequestHeadersJson = requestHeaders ?? string.Empty,
+            ResponseHeadersJson = responseHeaders ?? string.Empty,
             RequestContentType = context.Request.ContentType ?? string.Empty,
             ResponseContentType = context.Response.ContentType ?? string.Empty,
-            Accept = context.Request.Headers.Accept.ToString(),
-            Referer = context.Request.Headers.Referer.ToString(),
-            Origin = context.Request.Headers.Origin.ToString(),
+            Accept = context.Request.Headers.Accept.ToString() ?? string.Empty,
+            Referer = context.Request.Headers.Referer.ToString() ?? string.Empty,
+            Origin = context.Request.Headers.Origin.ToString() ?? string.Empty,
             AuthorizationType = ResolveAuthorizationType(context.Request.Headers.Authorization.ToString()),
-            UserAgent = context.Request.Headers.UserAgent.ToString(),
-            RequestBody = requestBodyCapture.Content,
-            ResponseBody = responseBodyCapture.Content,
-            CurlCommand = BuildCurlCommand(context.Request, requestBodyCapture.Content),
-            ErrorMessage = errorMessage,
-            ExceptionType = exceptionType,
-            ExceptionStackTrace = exceptionStackTrace,
+            UserAgent = context.Request.Headers.UserAgent.ToString() ?? string.Empty,
+            RequestBody = requestBodyCapture.Content ?? string.Empty,
+            ResponseBody = responseBodyCapture.Content ?? string.Empty,
+            CurlCommand = BuildCurlCommand(context.Request, requestBodyCapture),
+            ErrorMessage = errorMessage ?? string.Empty,
+            ExceptionType = exceptionType ?? string.Empty,
+            ExceptionStackTrace = exceptionStackTrace ?? string.Empty,
             ExtraPropertiesJson = BuildExtraPropertiesJson(traceId, correlationId),
             DatabaseOperationSummary = string.Empty,
             Tags = "web-request-audit"
@@ -246,6 +277,13 @@ public sealed class WebRequestAuditLogMiddleware {
     private static async Task<CapturedBody> CaptureRequestBodyAsync(HttpRequest request, int maxLength) {
         if (request.Body == Stream.Null || !request.Body.CanRead) {
             return CapturedBody.Empty;
+        }
+
+        var knownLength = Math.Max(0L, request.ContentLength ?? 0L);
+        var contentType = request.ContentType ?? string.Empty;
+        if (!IsTextualRequestContentType(contentType)) {
+            var hasBody = request.ContentLength is > 0L;
+            return new CapturedBody(hasBody ? BinaryPayloadOmittedPlaceholder : string.Empty, hasBody, false, knownLength);
         }
 
         if (maxLength <= 0) {
@@ -279,6 +317,12 @@ public sealed class WebRequestAuditLogMiddleware {
             NLogLogger.Error(ex, "请求体缓冲过程中发生 I/O 异常，Path={Path}, MaxLength={MaxLength}", request.Path, maxLength);
             request.Body.Position = 0;
             var knownLength = request.ContentLength ?? 0L;
+            var hasBody = request.ContentLength is > 0L;
+            return new CapturedBody(string.Empty, hasBody, hasBody, knownLength);
+        }
+        catch (Exception ex) {
+            NLogLogger.Error(ex, "请求体缓冲过程中发生异常，Path={Path}, MaxLength={MaxLength}", request.Path, maxLength);
+            request.Body.Position = 0;
             var hasBody = request.ContentLength is > 0L;
             return new CapturedBody(string.Empty, hasBody, hasBody, knownLength);
         }
@@ -498,20 +542,137 @@ public sealed class WebRequestAuditLogMiddleware {
     /// <param name="request">请求对象。</param>
     /// <param name="requestBody">请求体文本。</param>
     /// <returns>Curl 命令。</returns>
-    private static string BuildCurlCommand(HttpRequest request, string requestBody) {
+    private static string BuildCurlCommand(HttpRequest request, CapturedBody requestBodyCapture) {
         var builder = new StringBuilder();
-        builder.Append("curl -X ").Append(request.Method).Append(' ');
-        builder.Append('"').Append(BuildRequestUrl(request)).Append('"');
+        var method = string.IsNullOrWhiteSpace(request.Method) ? "GET" : request.Method;
+        builder.Append("curl -X ").Append(ShellEscapeSingleQuoted(method)).Append(' ');
+        builder.Append(ShellEscapeSingleQuoted(BuildRequestUrl(request)));
 
         if (!string.IsNullOrWhiteSpace(request.ContentType)) {
-            builder.Append(" -H \"Content-Type: ").Append(request.ContentType).Append("\"");
+            builder.Append(" -H ").Append(ShellEscapeSingleQuoted($"Content-Type: {request.ContentType}"));
         }
 
-        if (!string.IsNullOrWhiteSpace(requestBody)) {
-            builder.Append(" --data '").Append(requestBody.Replace("'", "'\"'\"'", StringComparison.Ordinal)).Append('\'');
+        var accept = request.Headers.Accept.ToString();
+        if (!string.IsNullOrWhiteSpace(accept)) {
+            builder.Append(" -H ").Append(ShellEscapeSingleQuoted($"Accept: {accept}"));
+        }
+
+        var userAgent = request.Headers.UserAgent.ToString();
+        if (!string.IsNullOrWhiteSpace(userAgent)) {
+            builder.Append(" -H ").Append(ShellEscapeSingleQuoted($"User-Agent: {userAgent}"));
+        }
+
+        var authorization = request.Headers.Authorization.ToString();
+        if (!string.IsNullOrWhiteSpace(authorization)) {
+            builder.Append(" -H ").Append(ShellEscapeSingleQuoted($"Authorization: {MaskAuthorizationHeader(authorization)}"));
+        }
+
+        foreach (var header in request.Headers) {
+            if (!ShouldIncludeInCurl(header.Key)) {
+                continue;
+            }
+
+            var value = header.Value.ToString();
+            if (string.IsNullOrWhiteSpace(value)) {
+                continue;
+            }
+
+            builder.Append(" -H ").Append(ShellEscapeSingleQuoted($"{header.Key}: {value}"));
+        }
+
+        if (requestBodyCapture.HasBody) {
+            builder.Append(" --data-raw ").Append(ShellEscapeSingleQuoted(requestBodyCapture.Content ?? string.Empty));
         }
 
         return builder.ToString();
+    }
+
+    /// <summary>
+    /// 判断请求 Content-Type 是否适宜按文本采集。
+    /// </summary>
+    /// <param name="contentType">请求 Content-Type。</param>
+    /// <returns>适宜文本采集返回 true。</returns>
+    private static bool IsTextualRequestContentType(string contentType) {
+        if (string.IsNullOrWhiteSpace(contentType)) {
+            return true;
+        }
+
+        var normalized = contentType.ToLowerInvariant();
+        if (normalized.Contains("multipart/form-data", StringComparison.Ordinal)
+            || normalized.Contains("application/octet-stream", StringComparison.Ordinal)) {
+            return false;
+        }
+
+        return normalized.StartsWith("text/", StringComparison.Ordinal)
+               || normalized.Contains("application/json", StringComparison.Ordinal)
+               || normalized.Contains("application/xml", StringComparison.Ordinal)
+               || normalized.Contains("application/x-www-form-urlencoded", StringComparison.Ordinal)
+               || normalized.Contains("application/javascript", StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// 判断请求头是否允许写入 Curl 命令。
+    /// </summary>
+    /// <param name="headerName">请求头名。</param>
+    /// <returns>允许写入返回 true。</returns>
+    private static bool ShouldIncludeInCurl(string headerName) {
+        if (string.IsNullOrWhiteSpace(headerName)) {
+            return false;
+        }
+
+        return !headerName.Equals("Content-Type", StringComparison.OrdinalIgnoreCase)
+               && !headerName.Equals("Accept", StringComparison.OrdinalIgnoreCase)
+               && !headerName.Equals("Authorization", StringComparison.OrdinalIgnoreCase)
+               && !headerName.Equals("User-Agent", StringComparison.OrdinalIgnoreCase)
+               && !headerName.Equals("Host", StringComparison.OrdinalIgnoreCase)
+               && !headerName.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)
+               && !headerName.Equals("Cookie", StringComparison.OrdinalIgnoreCase)
+               && !headerName.Equals("Set-Cookie", StringComparison.OrdinalIgnoreCase)
+               && !headerName.Equals("X-Api-Key", StringComparison.OrdinalIgnoreCase)
+               && !headerName.Equals("Connection", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// 对 shell 单引号字符串进行安全转义。
+    /// </summary>
+    /// <param name="value">待转义文本。</param>
+    /// <returns>转义后的 shell 参数。</returns>
+    private static string ShellEscapeSingleQuoted(string value) {
+        if (string.IsNullOrEmpty(value)) {
+            return "''";
+        }
+
+        return $"'{value.Replace("'", "'\"'\"'", StringComparison.Ordinal)}'";
+    }
+
+    /// <summary>
+    /// 脱敏授权头值。
+    /// </summary>
+    /// <param name="authorizationHeader">授权头值。</param>
+    /// <returns>脱敏后的授权头值。</returns>
+    private static string MaskAuthorizationHeader(string authorizationHeader) {
+        if (string.IsNullOrWhiteSpace(authorizationHeader)) {
+            return AuthorizationMaskedPlaceholder;
+        }
+
+        var parts = authorizationHeader.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) {
+            return AuthorizationMaskedPlaceholder;
+        }
+
+        var scheme = parts[0];
+        if (parts.Length == 1) {
+            return scheme;
+        }
+
+        var credential = string.Join(' ', parts.Skip(1));
+        if (credential.Length <= 10) {
+            return $"{scheme} {AuthorizationMaskedPlaceholder}";
+        }
+
+        var prefix = credential[..6];
+        var suffix = credential[^4..];
+        return $"{scheme} {prefix}***{suffix}";
     }
 
     /// <summary>
