@@ -1365,6 +1365,11 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     executedCount++;
                 }
                 catch (Exception ex) {
+                    NLogLogger.Error(ex,
+                        "WebRequestAuditLog 历史分表删除失败，PhysicalTable={PhysicalTable}, Decision={Decision}, CompensationBoundary={CompensationBoundary}",
+                        physicalTableName,
+                        retentionDecision.Decision,
+                        retentionDecision.CompensationBoundary);
                     _logger.LogError(ex,
                         "WebRequestAuditLog 历史分表删除失败，PhysicalTable={PhysicalTable}, Decision={Decision}, CompensationBoundary={CompensationBoundary}",
                         physicalTableName,

@@ -46,11 +46,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
                 return RepositoryResult.Success();
             }
             catch (OperationCanceledException ex) {
-                Logger.Warn(ex, "写入 Web 请求审计日志被取消，TraceId={TraceId}, CorrelationId={CorrelationId}", auditLog.TraceId, auditLog.CorrelationId);
+                NLogLogger.Warn(ex, "写入 Web 请求审计日志被取消，TraceId={TraceId}, CorrelationId={CorrelationId}", auditLog.TraceId, auditLog.CorrelationId);
                 return RepositoryResult.Fail("操作已取消");
             }
             catch (Exception ex) {
-                Logger.Error(ex, "写入 Web 请求审计日志失败，TraceId={TraceId}, CorrelationId={CorrelationId}", auditLog.TraceId, auditLog.CorrelationId);
+                NLogLogger.Error(ex, "写入 Web 请求审计日志失败，TraceId={TraceId}, CorrelationId={CorrelationId}", auditLog.TraceId, auditLog.CorrelationId);
                 return RepositoryResult.Fail("写入 Web 请求审计日志失败");
             }
         }

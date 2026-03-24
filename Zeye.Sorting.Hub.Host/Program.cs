@@ -17,7 +17,7 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 // ──────────────────────────────────────────────────────────
 // 启动期引导日志：在 DI 容器就绪之前捕获启动异常
 // ──────────────────────────────────────────────────────────
-var bootstrapLogger = LogManager.GetCurrentClassLogger();
+var NLogLogger = LogManager.GetCurrentClassLogger();
 const string UrlsConfigKey = "urls";
 
 try {
@@ -158,7 +158,7 @@ try {
 }
 catch (Exception ex) {
     // 捕获启动期间的顶层异常，确保日志落盘后再退出
-    bootstrapLogger.Fatal(ex, "宿主启动失败，程序即将退出");
+    NLogLogger.Fatal(ex, "宿主启动失败，程序即将退出");
     throw;
 }
 finally {

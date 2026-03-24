@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Logging;
+using NLog;
 using Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects;
@@ -62,6 +62,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         private static readonly Regex TimeZoneSuffixRegex = new(
             pattern: @"(Z|[+\-]\d{2}:\d{2}|[+\-]\d{4})$",
             options: RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        /// <summary>
+        /// NLog 日志器。
+        /// </summary>
+        private static readonly Logger NLogLogger = LogManager.GetCurrentClassLogger();
         /// <summary>
         /// Parcel 关联值对象分表规则：以声明式清单注册，避免注册点继续膨胀为手工长列表。
         /// </summary>
@@ -190,15 +194,14 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             var cfg = sp.GetRequiredService<IConfiguration>();
             var interceptor = sp.GetRequiredService<SlowQueryCommandInterceptor>();
             var mySqlSessionInterceptor = sp.GetRequiredService<MySqlSessionBootstrapConnectionInterceptor>();
-            var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger(MySqlServerVersionLoggerCategory);
             var cs = cfg.GetConnectionString(ConfiguredProviderNames.MySql)!;
             var commandTimeoutSeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
             var maxRetryCount = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryCount", 5);
             var maxRetryDelaySeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryDelaySeconds", 10);
 
-            var serverVersion = ResolveMySqlServerVersion(cfg, cs, logger);
+            var serverVersion = ResolveMySqlServerVersion(cfg, cs, null);
             options.UseMySql(cs, serverVersion, mySqlOptions => {
-                // 迁移程序集通常指向 Host 或 Infrastructure，按你迁移放置位置调整
+                // 迁移程序集通常指向 Host 或 Infrastructure，按迁移放置位置调整
                 // mySqlOptions.MigrationsAssembly("Zeye.Sorting.Hub.Host");
                 mySqlOptions.EnableRetryOnFailure(
                     maxRetryCount: maxRetryCount,
@@ -216,7 +219,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// </summary>
         /// <param name="configuration">应用配置。</param>
         /// <param name="connectionString">MySQL 连接字符串。</param>
-        /// <param name="logger">日志记录器（用于记录配置非法与探测失败）。</param>
+        /// <param name="logger">可选日志记录器（仅用于测试中捕获告警）。</param>
         /// <returns>可用于 EF Core UseMySql 的服务端版本对象。</returns>
         /// <remarks>
         /// 处理策略：
@@ -224,7 +227,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// 2) 若配置缺失或非法，尝试 <c>ServerVersion.AutoDetect</c>；
         /// 3) 若探测失败，回退到 MySQL 8.0.0。
         /// </remarks>
-        internal static ServerVersion ResolveMySqlServerVersion(IConfiguration configuration, string connectionString, ILogger logger) {
+        internal static ServerVersion ResolveMySqlServerVersion(IConfiguration configuration, string connectionString, Microsoft.Extensions.Logging.ILogger? logger = null) {
             var configuredVersion = configuration["Persistence:MySql:ServerVersion"];
             if (!string.IsNullOrWhiteSpace(configuredVersion)) {
                 if (Version.TryParse(configuredVersion, out var parsedVersion) && parsedVersion.Major >= 5) {
@@ -242,6 +245,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 return ServerVersion.AutoDetect(connectionString);
             }
             catch (Exception ex) {
+                NLogLogger.Warn(ex, "MySQL ServerVersion 自动探测失败，将回退到默认版本 8.0.0");
                 LogResolveWarning(logger, ex, "MySQL ServerVersion 自动探测失败，将回退到默认版本 8.0.0");
                 return new MySqlServerVersion(new Version(8, 0, 0));
             }
@@ -254,12 +258,16 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// <param name="exception">异常对象。</param>
         /// <param name="messageTemplate">消息模板。</param>
         /// <param name="args">模板参数。</param>
-        private static void LogResolveWarning(ILogger logger, Exception? exception, string messageTemplate, params object[] args) {
+        private static void LogResolveWarning(Microsoft.Extensions.Logging.ILogger? logger, Exception? exception, string messageTemplate, params object[] args) {
+            if (logger is null) {
+                return;
+            }
+
             if (exception is null) {
-                logger.LogWarning(messageTemplate, args);
+                Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger, messageTemplate, args);
             }
             else {
-                logger.LogWarning(exception, messageTemplate, args);
+                Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger, exception, messageTemplate, args);
             }
         }
 
@@ -275,7 +283,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             var maxRetryDelaySeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryDelaySeconds", 10);
 
             options.UseSqlServer(cs, sqlServerOptions => {
-                // 迁移程序集通常指向 Host 或 Infrastructure，按你迁移放置位置调整
+                // 迁移程序集通常指向 Host 或 Infrastructure，按迁移放置位置调整
                 // sqlServerOptions.MigrationsAssembly("Zeye.Sorting.Hub.Host");
                 sqlServerOptions.EnableRetryOnFailure(
                     maxRetryCount: maxRetryCount,
