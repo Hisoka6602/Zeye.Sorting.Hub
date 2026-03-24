@@ -158,24 +158,44 @@
 │   │   └── MigrationFailureMode.cs（数据库迁移失败策略枚举：FailFast/Degraded，含 Description）
 │   ├── HostedServices（托管服务目录）
 │   │   ├── AutoTuningLoggerObservability.cs（自动调优观测默认日志实现）
-│   │   ├── DatabaseAutoTuningHostedService.cs（数据库自动调谐托管服务（闭环阶段流转、执行隔离、自动验证标准化输出与回滚审计；分表命中/跨表占比/热点倾斜改为全量慢 SQL 口径，并在自动索引建议前做覆盖/重复/低价值过滤））
-│   │   ├── DatabaseInitializerHostedService.cs（数据库初始化与迁移托管服务（含分表治理基线、Runbook 审计、PerDay 手工预建窗口守卫；Parcel 与 WebRequestAuditLog 分组独立触发守卫；新增 WebRequestAuditLog 历史分表保留治理审计与关键索引按逻辑表分发））
-│   │   └── DevelopmentBrowserLauncherHostedService.cs（Development 启动浏览器隔离器：仅 Development + 配置开启 + 交互式/本机/非容器/非CI 场景生效；在 ApplicationStarted 后再打开 Swagger，异常由 SafeExecutor 隔离）
-│   ├── AuditReadOnlyApiRouteExtensions.cs（Web 请求审计日志只读 API 路由扩展：列表与详情查询）
-│   ├── Program.cs（应用入口与 Host 构建流程；运行地址/Swagger 路径由 appsettings 的 Hosting 配置驱动；接入 XML 注释与枚举中文说明增强）
-│   ├── HostingOptions.cs（Hosting 配置模型与 Swagger/浏览器自动打开地址拼装逻辑）
-│   ├── LocalDateTimeParsing.cs（本地时间解析与 API 响应工厂共享工具：TryParseLocalDateTime/TryParseOptionalLocalDateTime/CreateBadRequestProblem/CreateParcelMissingProblem/CreateNotFoundProblem，供所有路由扩展复用）
-│   ├── ParcelAdminApiRouteExtensions.cs（Parcel 管理端 API 路由扩展：POST/PUT/DELETE 普通写接口 + cleanup-expired 治理接口）
-│   ├── WebRequestAuditLogListQueryParameters.cs（Web 请求审计日志列表查询参数绑定模型）
+│   │   ├── DatabaseAutoTuningHostedService.cs（数据库自动调谐托管服务）
+│   │   ├── DatabaseInitializerHostedService.cs（数据库初始化与迁移托管服务：移除手工预建链路，仅保留自动建表语义与保留治理）
+│   │   ├── DevelopmentBrowserLauncherHostedService.cs（Development 启动浏览器隔离器）
+│   │   ├── ShardingGovernanceGuardException.cs（分表治理守卫异常类型）
+│   │   ├── EvidenceContext.cs（自动调优证据上下文）
+│   │   ├── PendingRollbackAction.cs（待回滚动作模型）
+│   │   ├── PolicyDecision.cs（策略决策模型）
+│   │   └── TableCapacitySnapshot.cs（表容量快照模型）
+│   ├── Routing（路由扩展目录）
+│   │   ├── ParcelReadOnlyApiRouteExtensions.cs（Parcel 只读 API 路由扩展）
+│   │   ├── ParcelAdminApiRouteExtensions.cs（Parcel 管理端 API 路由扩展）
+│   │   └── AuditReadOnlyApiRouteExtensions.cs（Web 请求审计日志只读 API 路由扩展）
+│   ├── QueryParameters（路由参数绑定模型目录）
+│   │   ├── ParcelListQueryParameters.cs（Parcel 列表查询参数）
+│   │   ├── ParcelAdjacentQueryParameters.cs（Parcel 邻近查询参数）
+│   │   └── WebRequestAuditLogListQueryParameters.cs（审计日志列表查询参数）
+│   ├── Options（配置模型目录）
+│   │   ├── HostingOptions.cs（Hosting 主配置模型）
+│   │   ├── SwaggerOptions.cs（Swagger 子配置模型）
+│   │   ├── BrowserAutoOpenOptions.cs（Development 浏览器自动打开配置）
+│   │   └── AuditReadOnlyApiOptions.cs（AuditReadOnlyApi 显式开关配置）
+│   ├── Utilities（工具目录）
+│   │   └── LocalDateTimeParsing.cs（本地时间解析与 API 问题响应工厂共享工具）
+│   ├── Middleware（请求审计中间件目录）
+│   │   ├── ResponseCaptureResult.cs（响应采集结果值类型）
+│   │   ├── ResponseCaptureTeeStream.cs（响应双写有界采集流）
+│   │   ├── WebRequestAuditLogOptions.cs（Web 请求审计中间件配置模型）
+│   │   ├── WebRequestAuditLogMiddleware.cs（Web 请求审计中间件实现）
+│   │   └── WebRequestAuditLogMiddlewareExtensions.cs（中间件注册与接线扩展）
 │   ├── Swagger（Swagger 扩展目录）
-│   │   └── EnumDescriptionSchemaFilter.cs（枚举 Schema 中文增强：真实 enum 与 Contracts 中枚举数值 int 字段均显示“数值=枚举名（中文描述）”）
+│   │   └── EnumDescriptionSchemaFilter.cs（枚举 Schema 中文增强）
 │   ├── Properties（运行调试属性目录）
-│   │   └── launchSettings.json（本地调试启动配置：Development 环境变量 + 本地 applicationUrl，浏览器自动打开由运行时隔离器负责）
-│   ├── Worker.cs（后台轮询任务示例服务）
+│   │   └── launchSettings.json（本地调试启动配置）
+│   ├── Program.cs（应用入口与 Host 构建流程）
 │   ├── Zeye.Sorting.Hub.Host.csproj（Host 项目定义）
-│   ├── nlog.config（NLog 日志配置：双路落盘，低开销异步写盘）
+│   ├── nlog.config（NLog 日志配置）
 │   ├── appsettings.Development.json（开发环境配置）
-│   └── appsettings.json（默认运行配置（含分表策略结构化 Observation、PerDay 预建日期清单、WebRequestAuditLog 独立治理与历史保留隔离器、仓储危险动作隔离默认策略））
+│   └── appsettings.json（默认运行配置，含 AuditReadOnlyApi:Enabled 显式开关）
 ├── Zeye.Sorting.Hub.Host.Tests（自动调优行为测试工程）
 │   ├── AutoTuningProductionControlTests.cs（自动调优生产可控能力测试：dry-run/隔离器/告警恢复/普通与严重回归/探针双路径/闭环链路；含分表策略评估与 PerDay 预建守卫联动测试；新增 WebRequestAuditLog 治理解耦/保留治理三态/逻辑表索引分发/配置错误键指向回归；配置键拼装参数化覆盖（Theory））
 │   ├── AlwaysExistsShardingPhysicalTableProbe.cs（物理表探测测试桩：始终存在场景，支撑分表守卫探测调用断言）
@@ -242,22 +262,9 @@
 │   │   │   ├── MySqlContextFactory.cs（统一设计时 DbContext 工厂，支持 --provider 切换 MySql/SqlServer）
 │   │   │   └── SqlServerContextFactory.cs（SQL Server 设计时 DbContext 构建器）
 │   │   ├── Migrations（EF Core 迁移文件目录）
-│   │   │   ├── 20260316184030_InitialCreate.cs（初始迁移：全部表建表与回滚逻辑）
-│   │   │   ├── 20260316184030_InitialCreate.Designer.cs（迁移元数据，自动生成）
-│   │   │   ├── 20260317024345_UseAttributeBasedIndexesAndPrecision.cs（索引/精度特征标记对齐迁移）
-│   │   │   ├── 20260317024345_UseAttributeBasedIndexesAndPrecision.Designer.cs（迁移元数据，自动生成）
-│   │   │   ├── 20260317062930_SplitParcelStatusAndExceptionType.cs（Parcel 状态拆分与异常类型字段迁移）
-│   │   │   ├── 20260317062930_SplitParcelStatusAndExceptionType.Designer.cs（迁移元数据，自动生成）
-│   │   │   ├── 20260318024421_OptimizeParcelAggregateQueryIndexes.cs（Parcel 聚合高频查询索引优化迁移）
-│   │   │   ├── 20260318024421_OptimizeParcelAggregateQueryIndexes.Designer.cs（迁移元数据，自动生成）
-│   │   │   ├── 20260322050329_OptimizeBagCodeAndActualChuteIdQueryIndexes.cs（BagCode 单列→复合索引 + ActualChuteId_ScannedTime 新增复合索引迁移）
-│   │   │   ├── 20260322050329_OptimizeBagCodeAndActualChuteIdQueryIndexes.Designer.cs（迁移元数据，自动生成）
-│   │   │   ├── 20260322072600_AddBarCodesFullTextIndex.cs（BarCodes 列 FULLTEXT 全文索引迁移，仅 MySQL）
-│   │   │   ├── 20260322072600_AddBarCodesFullTextIndex.Designer.cs（迁移元数据，自动生成）
-│   │   │   ├── 20260323045038_UseExternalProvidedParcelId.cs（Parcel 主表主键改为外部提供，移除主键自动生成策略）
-│   │   │   ├── 20260323045038_UseExternalProvidedParcelId.Designer.cs（迁移元数据，自动生成）
-│   │   │   ├── AddWebRequestAuditLogHotColdTables.cs（新增 WebRequestAuditLog 热主表与冷详情表及索引）
-│   │   │   ├── AddWebRequestAuditLogHotColdTablesDesigner.cs（迁移元数据，自动生成）
+│   │   │   ├── 20260324094539_RebuildBaseline20260324.cs（全新基线迁移：空库初始化全量建表/索引/约束）
+│   │   │   ├── 20260324094539_RebuildBaseline20260324.Designer.cs（迁移元数据，自动生成）
+│   │   │   ├── MigrationSchemaResolver.cs（迁移 schema 解析器）
 │   │   │   └── SortingHubDbContextModelSnapshot.cs（当前模型快照，自动生成）
 │   │   └── SortingHubDbContext.cs（EF Core DbContext）
 │   │   ├── DbProviderNames.cs（EF Core 运行时/迁移 providerName 常量）
@@ -491,42 +498,41 @@
 - `MaxTimeRangeAttribute.cs`：时间范围校验特性（限制起止时间跨度，默认不超过 3 个月）。
 
 ### `Zeye.Sorting.Hub.Host/`：宿主层（程序入口、后台服务、启动配置）
-- `Program.cs`：应用入口与 Host 构建流程（注册 Parcel 与 WebRequestAuditLog 读写应用服务，绑定 `WebRequestAuditLog` 配置并接入 `WebRequestAuditLogMiddleware`）。
-- `AuditReadOnlyApiRouteExtensions.cs`：Web 请求审计日志只读路由扩展（`GET /api/audit/web-requests`、`GET /api/audit/web-requests/{id}`）。
-- `Middleware/WebRequestAuditLogOptions.cs`：Web 请求审计中间件配置模型（Enabled、SampleRate、请求/响应体采集与截断长度）。
-- `Middleware/WebRequestAuditLogMiddleware.cs`：Web 请求审计中间件实现，覆盖请求开始/结束/异常全生命周期采集，并通过应用服务写入热冷模型。
-- `Middleware/WebRequestAuditLogMiddlewareExtensions.cs`：中间件依赖注册与管线接线扩展（Options 绑定校验 + UseMiddleware）。
-- `Middleware/ResponseCaptureTeeStream.cs`：响应双写采集流，主响应实时透传并在有界缓冲中截断采集正文，避免全量内存缓冲。
-- `Middleware/ResponseCaptureResult.cs`：响应正文采集结果值类型，承载正文内容/是否存在/是否截断/总字节数。
-- `ParcelReadOnlyApiRouteExtensions.cs`：Parcel 只读路由注册与处理逻辑。
-- `WebRequestAuditLogListQueryParameters.cs`：Web 请求审计日志列表查询参数模型（AsParameters 绑定）。
-- `ParcelListQueryParameters.cs`：只读列表查询参数模型。
-- `ParcelAdjacentQueryParameters.cs`：只读邻近查询参数模型。
-- `HostingOptions.cs`：`Hosting` 主配置模型及地址/Swagger 拼装逻辑。
-- `SwaggerOptions.cs`：Swagger 子配置模型。
-- `BrowserAutoOpenOptions.cs`：开发期浏览器自动打开配置模型。
-- `LocalDateTimeParsing.cs`：本地时间解析与 API 响应工厂共享工具（`TryParseLocalDateTime`、`TryParseOptionalLocalDateTime`、`CreateBadRequestProblem`、`CreateParcelMissingProblem`、`CreateNotFoundProblem`），统一供各路由扩展类复用，避免重复实现（其中“包裹不存在”统一返回 404）。
-- `ParcelAdminApiRouteExtensions.cs`：Parcel 管理端 API 路由扩展（`MapParcelAdminApis`），注册 `POST /api/admin/parcels`、`PUT /api/admin/parcels/{id}`、`DELETE /api/admin/parcels/{id}` 普通写接口及 `POST /api/admin/parcels/cleanup-expired` 危险治理接口，并补齐中文 Summary/Description；新增创建接口 `id` 参数校验与重复 Id 冲突映射（409）。
-- `Worker.cs`：后台轮询任务示例服务。
+- `Program.cs`：应用入口与 Host 构建流程（按 `AuditReadOnlyApi:Enabled` 显式开关控制审计只读路由映射）。
+- `Routing/ParcelReadOnlyApiRouteExtensions.cs`：Parcel 只读路由注册与处理逻辑。
+- `Routing/ParcelAdminApiRouteExtensions.cs`：Parcel 管理端路由扩展（普通写接口 + cleanup-expired 治理接口）。
+- `Routing/AuditReadOnlyApiRouteExtensions.cs`：Web 请求审计日志只读路由扩展（`GET /api/audit/web-requests`、`GET /api/audit/web-requests/{id}`）。
+- `QueryParameters/ParcelListQueryParameters.cs`：Parcel 列表查询参数模型（AsParameters 绑定）。
+- `QueryParameters/ParcelAdjacentQueryParameters.cs`：Parcel 邻近查询参数模型（AsParameters 绑定）。
+- `QueryParameters/WebRequestAuditLogListQueryParameters.cs`：审计日志列表查询参数模型（AsParameters 绑定）。
+- `Options/HostingOptions.cs`：`Hosting` 主配置模型及地址/Swagger 拼装逻辑。
+- `Options/SwaggerOptions.cs`：Swagger 子配置模型。
+- `Options/BrowserAutoOpenOptions.cs`：Development 浏览器自动打开配置模型。
+- `Options/AuditReadOnlyApiOptions.cs`：审计只读 API 开关配置模型（`AuditReadOnlyApi:Enabled`）。
+- `Utilities/LocalDateTimeParsing.cs`：本地时间解析与 API 问题响应工厂共享工具。
+- `Middleware/WebRequestAuditLogOptions.cs`：Web 请求审计中间件配置模型。
+- `Middleware/WebRequestAuditLogMiddleware.cs`：Web 请求审计中间件实现。
+- `Middleware/WebRequestAuditLogMiddlewareExtensions.cs`：中间件依赖注册与管线接线扩展。
+- `Middleware/ResponseCaptureTeeStream.cs`：响应双写采集流。
+- `Middleware/ResponseCaptureResult.cs`：响应正文采集结果值类型。
 - `Zeye.Sorting.Hub.Host.csproj`：Host 项目定义。
-- `nlog.config`：NLog 日志配置，双路落盘（`logs/app-*.log` 全量 + `logs/database-*.log` 数据库专属），低开销设计（异步队列 + keepFileOpen + optimizeBufferReuse），保留 30 天。
-- `appsettings.json`：默认运行配置（新增 `Hosting` 段用于驱动监听地址、Swagger 路径与 Development 浏览器自动打开；并包含连接字符串、迁移失败策略分环境配置、分表治理守卫、Time/Volume/Hybrid 双策略配置、结构化容量观测入口 Observation、PerDay 预建日期清单、WebRequestAuditLog 独立守卫与历史分表保留隔离器、Web 请求审计中间件采集配置、仓储危险动作隔离开关、结构化扩容计划、日志级别与自动调优参数）。
+- `nlog.config`：NLog 日志配置。
+- `appsettings.json`：默认运行配置（新增 `AuditReadOnlyApi:Enabled` 显式开关；移除手工预建配置键）。
 - `appsettings.Development.json`：开发环境配置覆盖文件。
 
 #### `Zeye.Sorting.Hub.Host/Swagger/`：Swagger 扩展目录
-- `EnumDescriptionSchemaFilter.cs`：枚举 Schema 中文增强过滤器，保留真实 enum 增强逻辑，并扩展 Contracts 中“枚举数值 int 字段”的全量映射，向 Swagger 输出“数值 = 枚举名（Description 中文）”可选值说明。
+- `EnumDescriptionSchemaFilter.cs`：枚举 Schema 中文增强过滤器。
 
 #### `Zeye.Sorting.Hub.Host/HostedServices/`：启动/常驻托管服务目录
-- `AutoTuningLoggerObservability.cs`：自动调优观测默认日志实现（统一日志 + 指标抽象默认落地）。
+- `AutoTuningLoggerObservability.cs`：自动调优观测默认日志实现。
 - `DatabaseAutoTuningHostedService.cs`：数据库自动调谐托管服务主流程。
 - `PendingRollbackAction.cs` / `TableCapacitySnapshot.cs` / `EvidenceContext.cs` / `PolicyDecision.cs`：自动调谐内部模型与决策类型。
-- `DatabaseInitializerHostedService.cs`：数据库初始化与迁移托管服务主流程（新增 WebRequestAuditLog 独立治理触发、历史分表保留真实元数据候选计算与执行隔离、关键索引按逻辑表分发审计）。
-- `PrebuiltPerDayShardDatesResolution.cs`：日分表预建日期解析结果模型。
+- `DatabaseInitializerHostedService.cs`：数据库初始化与迁移托管服务主流程（移除手工预建日期配置链路，统一自动建表语义）。
 - `ShardingGovernanceGuardException.cs`：分表治理守卫异常类型。
-- `DevelopmentBrowserLauncherHostedService.cs`：Development 浏览器启动隔离器，仅在 Development + `Hosting:BrowserAutoOpen:Enabled=true` + 交互式/本机/非容器/非 CI 场景触发；通过 `IHostApplicationLifetime.ApplicationStarted` 确保服务可访问后再尝试打开，并持续使用 `SafeExecutor` 隔离异常，避免影响宿主启动。
+- `DevelopmentBrowserLauncherHostedService.cs`：Development 浏览器启动隔离器。
 
 #### `Zeye.Sorting.Hub.Host/Properties/`：项目运行调试属性目录
-- `launchSettings.json`：本地调试启动配置（Development Profile、环境变量、本地 `applicationUrl`）；`launchBrowser=false`，避免与运行时浏览器隔离器重复打开窗口。
+- `launchSettings.json`：本地调试启动配置。
 
 ### `Zeye.Sorting.Hub.Infrastructure/`：基础设施层（EF Core 持久化、仓储实现、DI 注册、数据库方言）
 - `Zeye.Sorting.Hub.Infrastructure.csproj`：Infrastructure 项目定义。
@@ -581,24 +587,10 @@
 - `SqlServerContextFactory.cs`：SQL Server 设计时 DbContext 构建器（由统一设计时工厂按 provider 分发调用），连接字符串 key 使用 `ConfiguredProviderNames.SqlServer`，提供 SQL Server 连接字符串搜索与 `DbContextOptions` 组装能力。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/`：EF Core 迁移文件目录
-- `20260316184030_InitialCreate.cs`：初始迁移主体。
+- `20260324094539_RebuildBaseline20260324.cs`：全新基线迁移（清空历史后重建，支持空库初始化）。
+- `20260324094539_RebuildBaseline20260324.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
 - `MigrationSchemaResolver.cs`：迁移共享 schema 解析器。
-- `20260316184030_InitialCreate.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
-- `20260317024345_UseAttributeBasedIndexesAndPrecision.cs`：索引/精度特征标记对齐迁移（空 `Up/Down`，用于同步模型快照）。
-- `20260317024345_UseAttributeBasedIndexesAndPrecision.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
-- `20260317062930_SplitParcelStatusAndExceptionType.cs`：Parcel 状态三态收敛后新增 `ExceptionType` 可空字段迁移。
-- `20260317062930_SplitParcelStatusAndExceptionType.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
-- `20260318024421_OptimizeParcelAggregateQueryIndexes.cs`：Parcel 聚合高频查询索引优化迁移（离散条件 + 时间范围复合索引）。
-- `20260318024421_OptimizeParcelAggregateQueryIndexes.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
-- `20260322050329_OptimizeBagCodeAndActualChuteIdQueryIndexes.cs`：补齐两处索引覆盖缺口迁移：① 将 `BagCode` 单列索引升级为 `(BagCode, ScannedTime)` 复合索引（覆盖 GetByBagCodeAsync 的等值 + 范围路径，并对 ScannedTime 主排序提供索引支撑）；② 新增 `(ActualChuteId, ScannedTime)` 复合索引（覆盖 GetByChuteAsync 的过滤 + ScannedTime 主排序路径，原有 ActualChuteId_DischargeTime 索引保留）。
-- `20260322050329_OptimizeBagCodeAndActualChuteIdQueryIndexes.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
-- `20260322072600_AddBarCodesFullTextIndex.cs`：为 Parcels.BarCodes 列添加 MySQL FULLTEXT 全文索引（`FTX_Parcels_BarCodes`），仅 MySQL Provider 生效；SQL Server 路径为空操作。当前该索引作为物理分表关键索引一致性审计对象之一（仅探测/记录/阻断，不自动执行危险 DDL）。
-- `20260322072600_AddBarCodesFullTextIndex.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
-- `20260323045038_UseExternalProvidedParcelId.cs`：Parcel 主表主键生成策略迁移（移除 Parcels.Id 自动生成，改为外部传入）；MySQL 路径执行 Identity 注解变更，SQL Server 路径保持 no-op（因 SQL Server 不支持通过 ALTER COLUMN 直接切换 IDENTITY）。
-- `20260323045038_UseExternalProvidedParcelId.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
-- `AddWebRequestAuditLogHotColdTables.cs`：新增 WebRequestAuditLog 热主表与冷详情表，落地一对一关联与写优化索引。
-- `AddWebRequestAuditLogHotColdTablesDesigner.cs`：迁移元数据文件（自动生成，勿手动修改）。
-- `SortingHubDbContextModelSnapshot.cs`：当前模型快照，EF Core 用于计算下次迁移的差量（自动生成，勿手动修改）。
+- `SortingHubDbContextModelSnapshot.cs`：当前模型快照（自动生成，勿手动修改）。
 
 #### `Zeye.Sorting.Hub.Infrastructure/Repositories/`：仓储基类与结果模型目录
 - `RepositoryBase.cs`：通用仓储基类（增删改查 + 自动持久化实现）；接受 `NLog.ILogger` 构造参数，由派生类传入，确保日志来源类名为实际仓储类而非基类名。
@@ -656,44 +648,14 @@
 
 ## 本次更新内容
 
-- 完成“WebRequestAuditLog 查询端点闭环”：新增 Contracts 查询模型、Application 查询服务、Domain 查询契约、Infrastructure 查询实现、Host 审计只读路由与 Program 接线。
-- 新增审计查询端点：
-  - `GET /api/audit/web-requests`（分页 + 过滤：pageNumber/pageSize/startedAtStart/startedAtEnd/statusCode/isSuccess/traceId/correlationId/requestPathKeyword）
-  - `GET /api/audit/web-requests/{id}`（按 Id 返回热表 + 冷表详情）
-- 审计查询路由统一复用本地时间解析 `LocalDateTimeParsing`，拒绝 UTC/offset 时间入参；统一 400/404 ProblemDetails 返回。
-- 扩展 `WebRequestAuditLogRepository`：新增 `AsNoTracking` 分页查询、按 Id `Include(Detail)` 详情查询，默认按 `StartedAt DESC, Id DESC` 排序。
-- 新增 `AuditReadOnlyApiTests` 与 Swagger 回归测试断言，覆盖分页过滤、参数非法 400、详情 200/404、文档声明与中间件写读联动场景。
-- 新增并接入 `WebRequestAuditLogMiddleware` 闭环：请求进入采集 `StartedAt/TraceId/CorrelationId/Method/Scheme/Host/Port/Path/RouteTemplate`，响应完成采集 `StatusCode/EndedAt/DurationMs/IsSuccess`，异常路径补齐 `HasException/ExceptionType/ErrorMessage/ExceptionStackTrace`。
-- 按审查意见完成中间件性能整改：请求体有界缓冲与超限短路、响应体改为双写有界采集并保持主流实时写出、`HasBody` 与正文采集解耦、异常链路统一通过 `IExceptionHandlerFeature` 关联。
-- 调整宿主管线顺序：`UseWebRequestAuditLogging` 前移至 `UseExceptionHandler` 之前，确保异常响应与异常特征可被同一审计上下文采集。
-- 下调默认采集风险：`WebRequestAuditLog.IncludeRequestBody/IncludeResponseBody` 默认改为 `false`，降低敏感信息落库与大响应采集风险。
-- 中间件写入严格复用 `WriteWebRequestAuditLogCommandService`，按 `WebRequestAuditLog + WebRequestAuditLogDetail` 一对一映射落库，不绕过应用服务直连数据库。
-- 新增 `WebRequestAuditLog` 配置项并完成 Program 绑定与中间件接线，支持 `Enabled`、`SampleRate`、`IncludeRequestBody/IncludeResponseBody`、`MaxRequestBodyLength/MaxResponseBodyLength`。
-- 完成请求体与响应体超长截断与标记（`IsRequestBodyTruncated` / `IsResponseBodyTruncated`），并保证审计写入失败仅记录 NLog，不影响主请求状态码与响应体。
-- 新增 `WebRequestAuditLogMiddlewareTests` 覆盖验收清单全部必测项，同时保留并兼容现有仓储/迁移/分表治理回归测试。
-- 完成 WebRequestAuditLog 持久化写入闭环：新增 `WebRequestAuditLogRepository` 并在 `AddSortingHubPersistence` 注册 `IWebRequestAuditLogRepository`，补齐最小应用写入入口 `WriteWebRequestAuditLogCommandService`。
-- 完成 WebRequestAuditLog 分表自治接线：在 EFCore.Sharding 注册链路为 `WebRequestAuditLog/WebRequestAuditLogDetail` 按 `StartedAt` 接入 PerDay 分表，并将 `DatabaseInitializerHostedService` 治理实体来源切换为分表注册同源来源。
-- 完成 WebRequestAuditLog 历史分表保留真实执行链路：新增基于真实分表元数据的候选计算（按 `KeepRecentShardCount` 保留最近 N 个），仅在 `Decision=Execute` 时执行删除，保留 Guard/DryRun 语义并输出 PlannedCount/ExecutedCount/Decision/CompensationBoundary 审计与观测事件。
-- 扩展方言批量探测能力：`IBatchShardingPhysicalTableProbe` 新增“按逻辑表枚举物理分表”接口，MySQL/SQLServer 方言实现同步补齐。
-- 补齐回归测试：新增 `WebRequestAuditLogRepositoryTests`（仓储写入 + 最小应用入口 + 分表实体清单断言），并在 `AutoTuningProductionControlTests` 新增 WebRequestAuditLog 分表治理同源与保留边界断言。
-- 修复上一版未闭环点 P0-1：`DatabaseInitializerHostedService` 新增 `Persistence:Sharding:Governance:WebRequestAuditLog:EnablePerDayGuard` 独立触发条件，WebRequestAuditLog 分表治理不再由 Parcel 决策单点控制。
-- 修复上一版未闭环点 P0-2：新增 `EvaluateWebRequestAuditLogRetentionDecision`，统一危险动作结果语义为 `PlannedCount=候选处理数量`、`ExecutedCount=实际执行数量`，并将审计文案与三态决策对齐。
-- 修复上一版未闭环点 P0-3：关键索引审计改为“按逻辑表分发”，同时纳入 `WebRequestAuditLogs` 与 `WebRequestAuditLogDetails` 规则；自动调优白名单同步补齐热表与详情表。
-- 补齐治理配置：`appsettings.json` 新增 `Persistence:Sharding:Governance:WebRequestAuditLog` 段，包含独立守卫开关、历史保留开关、保留分表数量、隔离器三态（EnableGuard/AllowDangerousActionExecution/DryRun），默认保持保守阻断 + dry-run。
-- 补齐 P1 回归测试：新增“Parcel 非 PerDay 时 WebRequestAuditLog 仍触发守卫”“历史保留 Guard/DryRun/Execute 三态计数一致”“关键索引按逻辑表分发”“配置非法时错误信息指向精确配置键”等测试。
-- 修复审查线程收敛问题：补齐 `WebRequestAuditLogDetail` 索引常量来源、修复 Retention 组未命中时空引用风险、解除 Retention 评估对 `CriticalIndexAudit` 开关的隐式耦合、消除 PerDay 基础表解析方法重复实现。
-- 新增 Copilot 规则 CI：`copilot-instructions-validation.yml`，每次 PR 自动执行 `.github/scripts/validate-copilot-rules.sh`。
-- 新增规则校验脚本：从 `.github/copilot-instructions.md` 动态解析“Copilot 限制规则”，对可自动化规则执行校验，对未映射规则直接失败，确保规则文件更新后 CI 必须同步更新。
-- 收敛测试结构尾项：`AutoTuningProductionControlTests.cs` 与 `ParcelReadOnlyApiTests.cs` 中的测试替身/辅助类型全部拆分到同名独立文件，保持测试行为不变。
-- 同步完成测试侧同类问题收口：拆分 `ParcelQueryServicesTests.cs` 与 `ParcelRepositoryTests.cs` 中内嵌 `TestDbContextFactory`，消除“一个文件多个类型”。
-- 为新拆分测试替身字段/属性/单例补齐高信息量 XML 注释（含观测集合、日志消息集合、空作用域单例等测试用途说明）。
-- 完成 PR2 结构整改：补齐 `DatabaseAutoTuningHostedService` 剩余正则字段 XML 注释。
-- 枚举集中到 `Zeye.Sorting.Hub.Domain/Enums`（含 `Sharding` 子目录），并清理 Contracts/Host/Infrastructure 旧枚举定义。
-- 生产代码完成“每个类型独立文件”收口：拆分 Host/Domain/Application/Infrastructure 中多类型同文件问题。
-- 删除无引用 `AssemblyReference.cs` 空壳文件，避免无效锚点类型残留。
-- 将英文命名文档改为中文文件名并更新工作流/README/文档引用路径。
-- 新增 WebRequestAuditLog 领域冷热分离模型与映射基础能力，并补齐 README 文件树与逐项职责说明（满足新增文件同步更新要求）。
-- 修复 WebRequestAuditLog 冷表映射的跨 Provider 兼容风险（移除显式 `longtext` 绑定），并补齐审计冷热表迁移与模型快照更新。
+- 新增 `AuditReadOnlyApi:Enabled` 显式配置，并引入 `AuditReadOnlyApiOptions` 统一绑定，`Program.cs` 仅在开关开启时映射 `/api/audit/web-requests` 与 `/api/audit/web-requests/{id}`。
+- 新增审计只读开关回归测试：覆盖 Enabled=true 可访问、Enabled=false 不映射（404）。
+- 删除“手工预建分表”配置/代码链路：移除 手工预建守卫与日期清单配置键 的 appsettings 配置和 `DatabaseInitializerHostedService` 读取/校验/日志/异常文案。
+- 清理并改造相关测试断言，从“手工预建必填”切换为“自动建表路径不依赖预建日期清单”。
+- 清空 `Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations` 历史迁移并重建基线迁移：`20260324094539_RebuildBaseline20260324` 与新的 `SortingHubDbContextModelSnapshot`。
+- 重构 `Zeye.Sorting.Hub.Host` 文件分层：路由扩展迁入 `Routing/`、参数模型迁入 `QueryParameters/`、配置模型迁入 `Options/`、时间工具迁入 `Utilities/`，并同步修正命名空间与 using。
+- 在 `.github/copilot-instructions.md` 新增硬规则：命名空间必须与目录层级一致，并补充新建/移动文件时同步修正 namespace 的执行说明。
+- 同步 README：更新 Host 文件树、迁移文件树、逐文件职责与本次更新内容。
 
 ## 更新记录与待完善事项
 
@@ -702,9 +664,8 @@
 
 ### 可继续完善内容
 
-- 可继续补充真实 MySQL / SQL Server 集成测试，验证审计日志查询在大数据量下的执行计划与索引命中稳定性。
-- 可继续评估审计日志异步批量写入通道，在保持“失败不影响主请求”前提下进一步降低高并发写放大。
-- 可继续完善审计日志查询端点鉴权与限流策略，按角色分层开放只读范围并增强访问审计。
+- 当前环境未提供可访问的 MySQL 实例，`dotnet ef database update` 仅完成命令级执行验证，仍需在可连接数据库环境补充空库迁移落地验证记录。
+- 可继续补充 SQL Server 路径的空库迁移回归，形成 MySQL/SQL Server 双 Provider 的基线迁移验收矩阵。
 
 ## Parcel API 发布门禁 / 使用边界说明
 

@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Zeye.Sorting.Hub.Application.Services.Parcels;
 using Zeye.Sorting.Hub.Domain.Repositories;
-using Zeye.Sorting.Hub.Host;
+using Zeye.Sorting.Hub.Host.Routing;
 using ParcelListResponse = Zeye.Sorting.Hub.Contracts.Models.Parcels.ParcelListResponse;
 
 namespace Zeye.Sorting.Hub.Host.Tests;

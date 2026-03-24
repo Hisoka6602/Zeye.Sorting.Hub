@@ -10,8 +10,9 @@ using Zeye.Sorting.Hub.Application.Services.AuditLogs;
 using Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests;
 using Zeye.Sorting.Hub.Domain.Enums.AuditLogs;
 using Zeye.Sorting.Hub.Domain.Repositories;
-using Zeye.Sorting.Hub.Host;
+using Zeye.Sorting.Hub.Host.Options;
 using Zeye.Sorting.Hub.Host.Middleware;
+using Zeye.Sorting.Hub.Host.Routing;
 using WebRequestAuditLogListResponse = Zeye.Sorting.Hub.Contracts.Models.AuditLogs.WebRequests.WebRequestAuditLogListResponse;
 
 namespace Zeye.Sorting.Hub.Host.Tests;
@@ -20,6 +21,38 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 /// 审计日志只读 API 端点回归测试。
 /// </summary>
 public sealed class AuditReadOnlyApiTests {
+    /// <summary>
+    /// 验证场景：AuditReadOnlyApi:Enabled=true 时映射审计只读端点。
+    /// </summary>
+    [Fact]
+    public async Task AuditReadOnlyApiEnabled_WhenTrue_ShouldMapEndpoints() {
+        var repository = new InMemoryWebRequestAuditLogRepository();
+        SeedLogs(repository);
+        await using var app = await BuildConditionalAuditRouteAppAsync(repository, enabled: true);
+        using var client = app.GetTestClient();
+
+        var response = await client.GetAsync("/api/audit/web-requests?pageNumber=1&pageSize=10");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    /// <summary>
+    /// 验证场景：AuditReadOnlyApi:Enabled=false 时不映射审计只读端点。
+    /// </summary>
+    [Fact]
+    public async Task AuditReadOnlyApiEnabled_WhenFalse_ShouldNotMapEndpoints() {
+        var repository = new InMemoryWebRequestAuditLogRepository();
+        SeedLogs(repository);
+        await using var app = await BuildConditionalAuditRouteAppAsync(repository, enabled: false);
+        using var client = app.GetTestClient();
+
+        var listResponse = await client.GetAsync("/api/audit/web-requests?pageNumber=1&pageSize=10");
+        var detailResponse = await client.GetAsync("/api/audit/web-requests/1001");
+
+        Assert.Equal(HttpStatusCode.NotFound, listResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, detailResponse.StatusCode);
+    }
+
     /// <summary>
     /// 验证场景：默认分页查询返回列表。
     /// </summary>
@@ -208,6 +241,47 @@ public sealed class AuditReadOnlyApiTests {
         app.UseAuthorization();
         app.MapGet("/ok", () => Results.Text("pong", "text/plain"));
         app.MapAuditReadOnlyApis();
+        await app.StartAsync();
+        return app;
+    }
+
+    /// <summary>
+    /// 构建按配置条件映射审计只读端点的测试应用。
+    /// </summary>
+    /// <param name="repository">审计日志仓储替身。</param>
+    /// <param name="enabled">是否启用审计只读端点。</param>
+    /// <returns>已启动应用。</returns>
+    private static async Task<WebApplication> BuildConditionalAuditRouteAppAsync(
+        InMemoryWebRequestAuditLogRepository repository,
+        bool enabled) {
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseTestServer();
+        builder.Configuration[$"{AuditReadOnlyApiOptions.SectionName}:Enabled"] = enabled.ToString();
+        builder.Services.AddProblemDetails();
+        builder.Services.AddAuthorization();
+        builder.Services.AddScoped<IWebRequestAuditLogRepository>(_ => repository);
+        builder.Services.AddScoped<IWebRequestAuditLogQueryRepository>(_ => repository);
+        builder.Services.AddScoped<GetWebRequestAuditLogPagedQueryService>();
+        builder.Services.AddScoped<GetWebRequestAuditLogByIdQueryService>();
+        var app = builder.Build();
+        app.Use(async (context, next) => {
+            context.User = new ClaimsPrincipal(new ClaimsIdentity(
+                [new Claim(ClaimTypes.Name, "audit-test-user")],
+                authenticationType: "TestAuth"));
+            await next();
+        });
+        app.UseAuthorization();
+        var options = new AuditReadOnlyApiOptions {
+            Enabled = bool.TryParse(
+                builder.Configuration[$"{AuditReadOnlyApiOptions.SectionName}:Enabled"],
+                out var optionEnabled)
+                ? optionEnabled
+                : false
+        };
+        if (options.Enabled) {
+            app.MapAuditReadOnlyApis();
+        }
+
         await app.StartAsync();
         return app;
     }

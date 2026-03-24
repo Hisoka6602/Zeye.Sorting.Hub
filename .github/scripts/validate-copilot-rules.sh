@@ -6,7 +6,7 @@ set -euo pipefail
 FAILURES=0
 
 # Copilot 限制规则快照哈希；规则变更后运行脚本内 compute_rules_hash 对应逻辑重新计算并更新此值。
-COPILOT_RULES_SHA256="c12fca7a1d694d2d7dad88c5d15a70ffd6be77885f44339ffaa0feb7c6cc906e"
+COPILOT_RULES_SHA256="6a9aab29c6f452e3bbdf2839a552e9c8a35439eb86c11ae0050cc2a957172c77"
 
 # PR diff 缓存，避免重复计算。
 PR_DIFF_READY=0
@@ -472,7 +472,7 @@ check_exception_logging() {
       [[ -z "$line_no" ]] && continue
       local block
       block="$(extract_brace_block "$file_path" "$line_no")"
-      if ! echo "$block" | grep -q -E '(^|[[:space:]])(Log|_?logger|NLogLogger)\.(Error|Warn|Info|Debug|Fatal|Trace)\('; then
+      if ! echo "$block" | grep -q -E '(^|[[:space:]])(Log|Logger|_?logger|NLogLogger)\.(Error|Warn|Info|Debug|Fatal|Trace)\('; then
         record_failure "catch 块缺少日志输出，违反规则 12：${file_path}:${line_no}"
       fi
     done <<< "$catch_lines"
@@ -1017,7 +1017,50 @@ run_rule_by_text() {
     return
   fi
 
+  if [[ "$normalized_text" == *"命名空间必须与物理目录层级严格一致"* ]]; then
+    check_namespace_matches_directory
+    return
+  fi
+
   record_failure "发现未映射的 Copilot 规则，请同步更新 CI 校验逻辑（规则 ${rule_number}: ${rule_text}）。"
+}
+
+# 检查命名空间与目录层级一致（增量）。
+check_namespace_matches_directory() {
+  log_step "执行规则校验：命名空间与目录层级一致"
+  if ! is_pull_request_context; then
+    log_step "当前不是 pull_request 上下文，跳过规则 28 的增量校验"
+    return
+  fi
+
+  local changed_cs_files
+  changed_cs_files="$(get_pr_changed_files_by_suffix "cs")"
+  if [[ -z "$changed_cs_files" ]]; then
+    return
+  fi
+
+  local file_path=""
+  while IFS= read -r file_path; do
+    [[ -z "$file_path" ]] && continue
+    [[ -f "$file_path" ]] || continue
+    if [[ "$file_path" =~ \.Tests/ ]]; then
+      continue
+    fi
+
+    local namespace_line
+    namespace_line="$(grep -n -E '^[[:space:]]*namespace[[:space:]]+[A-Za-z0-9_\.]+[[:space:]]*;?[[:space:]]*$' "$file_path" | head -n 1 || true)"
+    [[ -z "$namespace_line" ]] && continue
+    local declared_namespace
+    declared_namespace="$(echo "$namespace_line" | sed -E 's/^[0-9]+:[[:space:]]*namespace[[:space:]]+([A-Za-z0-9_\.]+).*/\1/')"
+
+    local expected_namespace
+    if [[ "$file_path" =~ ^Zeye\.Sorting\.Hub\..*\.cs$ ]]; then
+      expected_namespace="$(echo "$file_path" | sed -E 's/\.cs$//; s#/[^/]+$##; s#/#.#g')"
+      if [[ "$declared_namespace" != "$expected_namespace" ]]; then
+        record_failure "命名空间与目录层级不一致，违反规则 28：${file_path}（声明：${declared_namespace}，期望：${expected_namespace}）"
+      fi
+    fi
+  done <<< "$changed_cs_files"
 }
 
 # 读取 Copilot 限制规则并逐条执行对应校验。

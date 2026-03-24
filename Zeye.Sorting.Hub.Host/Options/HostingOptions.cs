@@ -1,4 +1,4 @@
-namespace Zeye.Sorting.Hub.Host;
+namespace Zeye.Sorting.Hub.Host.Options;
 
 /// <summary>
 /// Host 运行与 Swagger 暴露配置。

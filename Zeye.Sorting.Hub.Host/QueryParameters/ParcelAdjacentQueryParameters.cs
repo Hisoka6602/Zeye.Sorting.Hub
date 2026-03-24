@@ -1,4 +1,4 @@
-namespace Zeye.Sorting.Hub.Host;
+namespace Zeye.Sorting.Hub.Host.QueryParameters;
 
 /// <summary>
 /// Parcel 邻近查询参数模型。

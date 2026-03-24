@@ -2,8 +2,10 @@ using Microsoft.AspNetCore.Mvc;
 using NLog;
 using Zeye.Sorting.Hub.Application.Services.AuditLogs;
 using Zeye.Sorting.Hub.Contracts.Models.AuditLogs.WebRequests;
+using Zeye.Sorting.Hub.Host.QueryParameters;
+using Zeye.Sorting.Hub.Host.Utilities;
 
-namespace Zeye.Sorting.Hub.Host;
+namespace Zeye.Sorting.Hub.Host.Routing;
 
 /// <summary>
 /// 审计日志只读 API 路由扩展。

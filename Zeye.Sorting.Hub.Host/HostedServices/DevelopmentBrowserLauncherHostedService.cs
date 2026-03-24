@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using Microsoft.Extensions.Options;
+using NLog;
+using Zeye.Sorting.Hub.Host.Options;
 using Zeye.Sorting.Hub.SharedKernel.Utilities;
 
 namespace Zeye.Sorting.Hub.Host.HostedServices;
@@ -29,9 +31,9 @@ public sealed class DevelopmentBrowserLauncherHostedService : IHostedService {
     private readonly IHostApplicationLifetime _applicationLifetime;
 
     /// <summary>
-    /// 日志器。
+    /// NLog 日志器。
     /// </summary>
-    private readonly ILogger<DevelopmentBrowserLauncherHostedService> _logger;
+    private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
 
     /// <summary>
     /// ApplicationStarted 回调注册句柄。
@@ -50,18 +52,15 @@ public sealed class DevelopmentBrowserLauncherHostedService : IHostedService {
     /// <param name="hostingOptions">Host 配置。</param>
     /// <param name="applicationLifetime">应用生命周期。</param>
     /// <param name="safeExecutor">安全执行器。</param>
-    /// <param name="logger">日志器。</param>
     public DevelopmentBrowserLauncherHostedService(
         IHostEnvironment environment,
         IOptions<HostingOptions> hostingOptions,
         IHostApplicationLifetime applicationLifetime,
-        SafeExecutor safeExecutor,
-        ILogger<DevelopmentBrowserLauncherHostedService> logger) {
+        SafeExecutor safeExecutor) {
         _environment = environment;
         _hostingOptions = hostingOptions;
         _applicationLifetime = applicationLifetime;
         _safeExecutor = safeExecutor;
-        _logger = logger;
     }
 
     /// <summary>
@@ -79,12 +78,12 @@ public sealed class DevelopmentBrowserLauncherHostedService : IHostedService {
             return Task.CompletedTask;
         }
         if (!options.Swagger.Enabled) {
-            _logger.LogInformation("跳过自动打开浏览器：Swagger 未启用。");
+            Logger.Info("跳过自动打开浏览器：Swagger 未启用。");
             return Task.CompletedTask;
         }
 
         if (!CanRunBrowserSideEffect()) {
-            _logger.LogInformation("跳过自动打开浏览器：当前环境非交互式、容器/CI 或不支持图形化浏览器。");
+            Logger.Info("跳过自动打开浏览器：当前环境非交互式、容器/CI 或不支持图形化浏览器。");
             return Task.CompletedTask;
         }
 
@@ -95,7 +94,7 @@ public sealed class DevelopmentBrowserLauncherHostedService : IHostedService {
 
             TryLaunchBrowser(_hostingOptions.Value);
         });
-        _logger.LogInformation("Development 浏览器自动打开已注册为 ApplicationStarted 回调。");
+        Logger.Info("Development 浏览器自动打开已注册为 ApplicationStarted 回调。");
         return Task.CompletedTask;
     }
 
@@ -129,17 +128,17 @@ public sealed class DevelopmentBrowserLauncherHostedService : IHostedService {
     private void TryLaunchBrowser(HostingOptions options) {
         var targetUrl = options.BuildBrowserAutoOpenUrl();
         if (string.IsNullOrWhiteSpace(targetUrl)) {
-            _logger.LogWarning("跳过自动打开浏览器：未能从配置推导有效地址。");
+            Logger.Warn("跳过自动打开浏览器：未能从配置推导有效地址。");
             return;
         }
 
         if (!Uri.TryCreate(targetUrl, UriKind.Absolute, out var targetUri)) {
-            _logger.LogWarning("跳过自动打开浏览器：自动打开地址不是有效绝对地址，Url={SwaggerUrl}", targetUrl);
+            Logger.Warn("跳过自动打开浏览器：自动打开地址不是有效绝对地址，Url={SwaggerUrl}", targetUrl);
             return;
         }
 
         if (!targetUri.IsLoopback && !string.Equals(targetUri.Host, "localhost", StringComparison.OrdinalIgnoreCase)) {
-            _logger.LogInformation("跳过自动打开浏览器：仅允许本机地址，当前 Url={SwaggerUrl}", targetUrl);
+            Logger.Info("跳过自动打开浏览器：仅允许本机地址，当前 Url={SwaggerUrl}", targetUrl);
             return;
         }
 
@@ -150,14 +149,14 @@ public sealed class DevelopmentBrowserLauncherHostedService : IHostedService {
                     UseShellExecute = true
                 };
                 var process = Process.Start(startInfo);
-                _logger.LogInformation(
+                Logger.Info(
                     "已在 Development 环境触发浏览器自动打开：{SwaggerUrl}，进程创建：{ProcessStarted}",
                     targetUrl,
                     process is not null);
             },
             "Development 启动自动打开 Swagger 页面");
         if (!launchSuccess) {
-            _logger.LogWarning("Development 浏览器自动打开执行失败，已由 SafeExecutor 隔离。");
+            Logger.Warn("Development 浏览器自动打开执行失败，已由 SafeExecutor 隔离。");
         }
     }
 }

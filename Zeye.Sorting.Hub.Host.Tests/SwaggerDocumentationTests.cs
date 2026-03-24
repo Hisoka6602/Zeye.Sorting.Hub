@@ -8,7 +8,7 @@ using Zeye.Sorting.Hub.Application.Services.AuditLogs;
 using Zeye.Sorting.Hub.Domain.Repositories;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.Admin;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.ValueObjects;
-using Zeye.Sorting.Hub.Host;
+using Zeye.Sorting.Hub.Host.Routing;
 using Zeye.Sorting.Hub.Host.Swagger;
 
 namespace Zeye.Sorting.Hub.Host.Tests;

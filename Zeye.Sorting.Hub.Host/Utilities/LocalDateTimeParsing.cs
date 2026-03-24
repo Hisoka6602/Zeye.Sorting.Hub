@@ -1,11 +1,18 @@
 using System.Globalization;
 using Microsoft.AspNetCore.Mvc;
 
+namespace Zeye.Sorting.Hub.Host.Utilities;
+
 /// <summary>
 /// 本地时间字符串解析工具与 API 层统一错误响应工厂（供所有 API 路由层共用）。
 /// 全项目禁止 UTC 语义，所有时间字符串均按本地时间解析。
 /// </summary>
 internal static class LocalDateTimeParsing {
+    /// <summary>
+    /// 纯日期格式长度（yyyy-MM-dd）。
+    /// </summary>
+    private const int DateOnlyFormatLength = 10;
+
     /// <summary>
     /// 允许的本地时间格式列表（禁止 Z/offset 表达）。
     /// </summary>
@@ -27,7 +34,7 @@ internal static class LocalDateTimeParsing {
         if (string.IsNullOrWhiteSpace(input)
             || input.Contains('Z', StringComparison.OrdinalIgnoreCase)
             || input.Contains('+', StringComparison.Ordinal)
-            || input.LastIndexOf('-') > "yyyy-MM-dd".Length - 1) {
+            || input.LastIndexOf('-') > DateOnlyFormatLength - 1) {
             parsedTime = default;
             return false;
         }

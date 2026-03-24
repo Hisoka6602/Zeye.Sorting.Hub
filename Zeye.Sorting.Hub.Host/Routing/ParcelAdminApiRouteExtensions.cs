@@ -3,6 +3,9 @@ using NLog;
 using Zeye.Sorting.Hub.Application.Services.Parcels;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.Admin;
+using Zeye.Sorting.Hub.Host.Utilities;
+
+namespace Zeye.Sorting.Hub.Host.Routing;
 
 /// <summary>
 /// Parcel 管理端写接口路由扩展。
