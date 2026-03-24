@@ -613,6 +613,7 @@
 - 修复上一版未闭环点 P0-3：关键索引审计改为“按逻辑表分发”，同时纳入 `WebRequestAuditLogs` 与 `WebRequestAuditLogDetails` 规则；自动调优白名单同步补齐热表与详情表。
 - 补齐治理配置：`appsettings.json` 新增 `Persistence:Sharding:Governance:WebRequestAuditLog` 段，包含独立守卫开关、历史保留开关、保留分表数量、隔离器三态（EnableGuard/AllowDangerousActionExecution/DryRun），默认保持保守阻断 + dry-run。
 - 补齐 P1 回归测试：新增“Parcel 非 PerDay 时 WebRequestAuditLog 仍触发守卫”“历史保留 Guard/DryRun/Execute 三态计数一致”“关键索引按逻辑表分发”“配置非法时错误信息指向精确配置键”等测试。
+- 修复审查线程收敛问题：补齐 `WebRequestAuditLogDetail` 索引常量来源、修复 Retention 组未命中时空引用风险、解除 Retention 评估对 `CriticalIndexAudit` 开关的隐式耦合、消除 PerDay 基础表解析方法重复实现。
 - 新增 Copilot 规则 CI：`copilot-instructions-validation.yml`，每次 PR 自动执行 `.github/scripts/validate-copilot-rules.sh`。
 - 新增规则校验脚本：从 `.github/copilot-instructions.md` 动态解析“Copilot 限制规则”，对可自动化规则执行校验，对未映射规则直接失败，确保规则文件更新后 CI 必须同步更新。
 - 收敛测试结构尾项：`AutoTuningProductionControlTests.cs` 与 `ParcelReadOnlyApiTests.cs` 中的测试替身/辅助类型全部拆分到同名独立文件，保持测试行为不变。

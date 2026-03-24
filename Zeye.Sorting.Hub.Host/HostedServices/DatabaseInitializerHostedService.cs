@@ -722,36 +722,36 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 _logger.LogInformation(
                     "分表关键索引一致性审计已关闭：ConfigKey={ConfigKey}",
                     ShardingCriticalIndexAuditEnabledConfigKey);
-                return;
-            }
-
-            var missingCriticalIndexes = await AuditPerDayShardCriticalIndexesAsync(
-                db,
-                expectedPhysicalTables,
-                schemaName,
-                _dialect.ProviderName,
-                cancellationToken);
-            if (missingCriticalIndexes.Count == 0) {
-                if (!_enableWebRequestAuditLogRetention) {
-                    return;
-                }
             }
             else {
-                var summarizedMissing = missingCriticalIndexes
-                    .SelectMany(static pair => pair.Value.Select(indexName => $"{pair.Key}:{indexName}"))
-                    .ToArray();
-                _logger.LogError(
-                    "分表关键索引一致性审计发现缺失：MissingIndexEntries={MissingIndexEntries}",
-                    string.Join(", ", summarizedMissing));
-                if (_blockOnCriticalIndexMissing) {
-                    throw new ShardingGovernanceGuardException(
-                        $"分表治理守卫触发：物理分表关键索引一致性审计发现缺失索引。缺失项：{string.Join(", ", summarizedMissing)}。");
+                var missingCriticalIndexes = await AuditPerDayShardCriticalIndexesAsync(
+                    db,
+                    expectedPhysicalTables,
+                    schemaName,
+                    _dialect.ProviderName,
+                    cancellationToken);
+                if (missingCriticalIndexes.Count == 0) {
+                    if (!_enableWebRequestAuditLogRetention) {
+                        return;
+                    }
                 }
+                else {
+                    var summarizedMissing = missingCriticalIndexes
+                        .SelectMany(static pair => pair.Value.Select(indexName => $"{pair.Key}:{indexName}"))
+                        .ToArray();
+                    _logger.LogError(
+                        "分表关键索引一致性审计发现缺失：MissingIndexEntries={MissingIndexEntries}",
+                        string.Join(", ", summarizedMissing));
+                    if (_blockOnCriticalIndexMissing) {
+                        throw new ShardingGovernanceGuardException(
+                            $"分表治理守卫触发：物理分表关键索引一致性审计发现缺失索引。缺失项：{string.Join(", ", summarizedMissing)}。");
+                    }
 
-                _logger.LogWarning(
-                    "分表关键索引一致性审计发现缺失，但当前配置仅审计不阻断：ConfigKey={ConfigKey}, MissingIndexEntries={MissingIndexEntries}",
-                    ShardingCriticalIndexAuditBlockOnMissingConfigKey,
-                    string.Join(", ", summarizedMissing));
+                    _logger.LogWarning(
+                        "分表关键索引一致性审计发现缺失，但当前配置仅审计不阻断：ConfigKey={ConfigKey}, MissingIndexEntries={MissingIndexEntries}",
+                        ShardingCriticalIndexAuditBlockOnMissingConfigKey,
+                        string.Join(", ", summarizedMissing));
+                }
             }
 
             if (!_enableWebRequestAuditLogRetention) {
@@ -855,6 +855,25 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <param name="providerName">数据库提供器名称。</param>
         /// <returns>阻断关键索引映射。</returns>
         internal static IReadOnlyDictionary<string, IReadOnlyList<string>> ResolveCriticalIndexesByLogicalTableForProvider(string providerName) {
+            if (string.Equals(providerName, "MySQL", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(providerName, "SQLServer", StringComparison.OrdinalIgnoreCase)) {
+                return new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal) {
+                    ["Parcels"] = [
+                        ParcelIndexNames.BagCodeScannedTime,
+                        ParcelIndexNames.ActualChuteIdScannedTime,
+                        ParcelIndexNames.TargetChuteIdScannedTime
+                    ],
+                    ["WebRequestAuditLogs"] = [
+                        WebRequestAuditLogIndexNames.StartedAt,
+                        WebRequestAuditLogIndexNames.StatusCodeStartedAt,
+                        WebRequestAuditLogIndexNames.IsSuccessStartedAt
+                    ],
+                    ["WebRequestAuditLogDetails"] = [
+                        WebRequestAuditLogIndexNames.DetailStartedAt
+                    ]
+                };
+            }
+
             var mapping = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal) {
                 ["Parcels"] = [
                     ParcelIndexNames.BagCodeScannedTime,
@@ -867,7 +886,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     WebRequestAuditLogIndexNames.IsSuccessStartedAt
                 ],
                 ["WebRequestAuditLogDetails"] = [
-                    "IX_WebRequestAuditLogDetails_StartedAt"
+                    WebRequestAuditLogIndexNames.DetailStartedAt
                 ]
             };
             return mapping;
@@ -951,26 +970,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <param name="dbContext">数据库上下文。</param>
         /// <returns>基础逻辑表名清单。</returns>
         internal static IReadOnlyList<string> ResolvePerDayShardingBaseTableNames(SortingHubDbContext dbContext) {
-            ArgumentNullException.ThrowIfNull(dbContext);
-            var baseTableNames = new List<string>(PerDayShardingEntityTypes.Count);
-            foreach (var entityType in PerDayShardingEntityTypes) {
-                var mappedEntityTypes = dbContext.Model
-                    .GetEntityTypes()
-                    .Where(modelEntityType => modelEntityType.ClrType == entityType)
-                    .Select(modelEntityType => modelEntityType.GetTableName())
-                    .Where(static tableName => !string.IsNullOrWhiteSpace(tableName))
-                    .Cast<string>()
-                    .Distinct(StringComparer.Ordinal)
-                    .ToArray();
-                if (mappedEntityTypes.Length != 1) {
-                    throw new ShardingGovernanceGuardException(
-                        $"分表治理守卫触发：无法从 EF 模型唯一解析 PerDay 探测目标表，EntityType={entityType.Name}, MatchedCount={mappedEntityTypes.Length}。");
-                }
-
-                baseTableNames.Add(mappedEntityTypes[0]);
-            }
-
-            return baseTableNames;
+            return ResolvePerDayShardingBaseTableNamesByEntityTypes(dbContext, PerDayShardingEntityTypes);
         }
 
         /// <summary>
@@ -1178,7 +1178,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
             var webRequestAuditLogGroup = governanceGroups.FirstOrDefault(static group =>
                 string.Equals(group.GroupName, "WebRequestAuditLog", StringComparison.Ordinal));
-            if (string.IsNullOrWhiteSpace(webRequestAuditLogGroup.GroupName) || webRequestAuditLogGroup.BaseTableNames.Count == 0) {
+            if (string.IsNullOrWhiteSpace(webRequestAuditLogGroup.GroupName)
+                || webRequestAuditLogGroup.BaseTableNames is null
+                || webRequestAuditLogGroup.BaseTableNames.Count == 0) {
                 return 0;
             }
 
