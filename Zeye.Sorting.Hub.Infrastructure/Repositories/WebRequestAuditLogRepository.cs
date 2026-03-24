@@ -41,16 +41,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
 
             try {
                 await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
-                if (db.Database.IsRelational()) {
-                    await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-                    await db.Set<WebRequestAuditLog>().AddAsync(auditLog, cancellationToken);
-                    await db.SaveChangesAsync(cancellationToken);
-                    await transaction.CommitAsync(cancellationToken);
-                }
-                else {
-                    await db.Set<WebRequestAuditLog>().AddAsync(auditLog, cancellationToken);
-                    await db.SaveChangesAsync(cancellationToken);
-                }
+                await db.Set<WebRequestAuditLog>().AddAsync(auditLog, cancellationToken);
+                await db.SaveChangesAsync(cancellationToken);
                 return RepositoryResult.Success();
             }
             catch (OperationCanceledException ex) {
