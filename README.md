@@ -144,7 +144,7 @@
 │   ├── HostedServices（托管服务目录）
 │   │   ├── AutoTuningLoggerObservability.cs（自动调优观测默认日志实现）
 │   │   ├── DatabaseAutoTuningHostedService.cs（数据库自动调谐托管服务（闭环阶段流转、执行隔离、自动验证标准化输出与回滚审计；分表命中/跨表占比/热点倾斜改为全量慢 SQL 口径，并在自动索引建议前做覆盖/重复/低价值过滤））
-│   │   ├── DatabaseInitializerHostedService.cs（数据库初始化与迁移托管服务（含分表治理基线、Runbook 审计、PerDay 手工预建窗口守卫；新增“配置清单 + 物理分表存在性 + 关键索引一致性审计（阻断项与仅审计项分离）”三重校验））
+│   │   ├── DatabaseInitializerHostedService.cs（数据库初始化与迁移托管服务（含分表治理基线、Runbook 审计、PerDay 手工预建窗口守卫；Parcel 与 WebRequestAuditLog 分组独立触发守卫；新增 WebRequestAuditLog 历史分表保留治理审计与关键索引按逻辑表分发））
 │   │   └── DevelopmentBrowserLauncherHostedService.cs（Development 启动浏览器隔离器：仅 Development + 配置开启 + 交互式/本机/非容器/非CI 场景生效；在 ApplicationStarted 后再打开 Swagger，异常由 SafeExecutor 隔离）
 │   ├── Program.cs（应用入口与 Host 构建流程；运行地址/Swagger 路径由 appsettings 的 Hosting 配置驱动；接入 XML 注释与枚举中文说明增强）
 │   ├── HostingOptions.cs（Hosting 配置模型与 Swagger/浏览器自动打开地址拼装逻辑）
@@ -158,9 +158,9 @@
 │   ├── Zeye.Sorting.Hub.Host.csproj（Host 项目定义）
 │   ├── nlog.config（NLog 日志配置：双路落盘，低开销异步写盘）
 │   ├── appsettings.Development.json（开发环境配置）
-│   └── appsettings.json（默认运行配置（含分表策略结构化 Observation、PerDay 预建日期清单与仓储危险动作隔离默认策略））
+│   └── appsettings.json（默认运行配置（含分表策略结构化 Observation、PerDay 预建日期清单、WebRequestAuditLog 独立治理与历史保留隔离器、仓储危险动作隔离默认策略））
 ├── Zeye.Sorting.Hub.Host.Tests（自动调优行为测试工程）
-│   ├── AutoTuningProductionControlTests.cs（自动调优生产可控能力测试：dry-run/隔离器/告警恢复/普通与严重回归/探针双路径/闭环链路；含分表策略评估与 PerDay 预建守卫联动测试；配置键拼装参数化覆盖（Theory））
+│   ├── AutoTuningProductionControlTests.cs（自动调优生产可控能力测试：dry-run/隔离器/告警恢复/普通与严重回归/探针双路径/闭环链路；含分表策略评估与 PerDay 预建守卫联动测试；新增 WebRequestAuditLog 治理解耦/保留治理三态/逻辑表索引分发/配置错误键指向回归；配置键拼装参数化覆盖（Theory））
 │   ├── AlwaysExistsShardingPhysicalTableProbe.cs（物理表探测测试桩：始终存在场景，支撑分表守卫探测调用断言）
 │   ├── BatchSelectiveMissingShardingPhysicalTableProbe.cs（批量物理表探测测试桩：选择性缺失与 schema 透传断言）
 │   ├── CaptureWarningLogger.cs（Warning 日志捕获测试桩：收集告警消息供断言）
@@ -467,7 +467,7 @@
 - `Worker.cs`：后台轮询任务示例服务。
 - `Zeye.Sorting.Hub.Host.csproj`：Host 项目定义。
 - `nlog.config`：NLog 日志配置，双路落盘（`logs/app-*.log` 全量 + `logs/database-*.log` 数据库专属），低开销设计（异步队列 + keepFileOpen + optimizeBufferReuse），保留 30 天。
-- `appsettings.json`：默认运行配置（新增 `Hosting` 段用于驱动监听地址、Swagger 路径与 Development 浏览器自动打开；并包含连接字符串、迁移失败策略分环境配置、分表治理守卫、Time/Volume/Hybrid 双策略配置、结构化容量观测入口 Observation、PerDay 预建日期清单、仓储危险动作隔离开关、结构化扩容计划、日志级别与自动调优参数）。
+- `appsettings.json`：默认运行配置（新增 `Hosting` 段用于驱动监听地址、Swagger 路径与 Development 浏览器自动打开；并包含连接字符串、迁移失败策略分环境配置、分表治理守卫、Time/Volume/Hybrid 双策略配置、结构化容量观测入口 Observation、PerDay 预建日期清单、WebRequestAuditLog 独立守卫与历史分表保留隔离器、仓储危险动作隔离开关、结构化扩容计划、日志级别与自动调优参数）。
 - `appsettings.Development.json`：开发环境配置覆盖文件。
 
 #### `Zeye.Sorting.Hub.Host/Swagger/`：Swagger 扩展目录
@@ -477,7 +477,7 @@
 - `AutoTuningLoggerObservability.cs`：自动调优观测默认日志实现（统一日志 + 指标抽象默认落地）。
 - `DatabaseAutoTuningHostedService.cs`：数据库自动调谐托管服务主流程。
 - `PendingRollbackAction.cs` / `TableCapacitySnapshot.cs` / `EvidenceContext.cs` / `PolicyDecision.cs`：自动调谐内部模型与决策类型。
-- `DatabaseInitializerHostedService.cs`：数据库初始化与迁移托管服务主流程。
+- `DatabaseInitializerHostedService.cs`：数据库初始化与迁移托管服务主流程（新增 WebRequestAuditLog 独立治理触发、历史分表保留治理决策评估、关键索引按逻辑表分发审计）。
 - `PrebuiltPerDayShardDatesResolution.cs`：日分表预建日期解析结果模型。
 - `ShardingGovernanceGuardException.cs`：分表治理守卫异常类型。
 - `DevelopmentBrowserLauncherHostedService.cs`：Development 浏览器启动隔离器，仅在 Development + `Hosting:BrowserAutoOpen:Enabled=true` + 交互式/本机/非容器/非 CI 场景触发；通过 `IHostApplicationLifetime.ApplicationStarted` 确保服务可访问后再尝试打开，并持续使用 `SafeExecutor` 隔离异常，避免影响宿主启动。
@@ -576,7 +576,7 @@
 
 ### `Zeye.Sorting.Hub.Host.Tests/`：API 与应用层测试层
 - `Zeye.Sorting.Hub.Host.Tests.csproj`：xUnit 测试项目定义。
-- `AutoTuningProductionControlTests.cs`：覆盖 dry-run、危险动作隔离、告警防抖与恢复、普通/严重回归、unavailable 指标处理、执行计划探针 available/unavailable 双路径、闭环链路与分表覆盖守卫校验、迁移失败策略分环境解析、结构化扩容计划解析、Time/Volume/Hybrid 分表策略评估、PerDay 预建守卫（配置+物理探测）与分表观测口径/自动索引过滤规则回归；含配置键拼装参数化（Theory）覆盖。
+- `AutoTuningProductionControlTests.cs`：覆盖 dry-run、危险动作隔离、告警防抖与恢复、普通/严重回归、unavailable 指标处理、执行计划探针 available/unavailable 双路径、闭环链路与分表覆盖守卫校验、迁移失败策略分环境解析、结构化扩容计划解析、Time/Volume/Hybrid 分表策略评估、PerDay 预建守卫（配置+物理探测）与分表观测口径/自动索引过滤规则回归；新增 WebRequestAuditLog 治理解耦与历史保留治理语义回归；含配置键拼装参数化（Theory）覆盖。
 - `AlwaysExistsShardingPhysicalTableProbe.cs`：物理表探测测试桩，始终返回存在并记录调用次数。
 - `BatchSelectiveMissingShardingPhysicalTableProbe.cs`：批量物理表探测测试桩，支持选择性缺失结果与 schema 透传断言。
 - `CaptureWarningLogger.cs`：Warning 日志捕获测试桩，收集告警消息用于断言版本解析与回退路径。
@@ -608,6 +608,12 @@
 
 ## 本次更新内容
 
+- 修复上一版未闭环点 P0-1：`DatabaseInitializerHostedService` 新增 `Persistence:Sharding:Governance:WebRequestAuditLog:EnablePerDayGuard` 独立触发条件，WebRequestAuditLog 分表治理不再由 Parcel 决策单点控制。
+- 修复上一版未闭环点 P0-2：新增 `EvaluateWebRequestAuditLogRetentionDecision`，统一危险动作结果语义为 `PlannedCount=候选处理数量`、`ExecutedCount=实际执行数量`，并将审计文案与三态决策对齐。
+- 修复上一版未闭环点 P0-3：关键索引审计改为“按逻辑表分发”，同时纳入 `WebRequestAuditLogs` 与 `WebRequestAuditLogDetails` 规则；自动调优白名单同步补齐热表与详情表。
+- 补齐治理配置：`appsettings.json` 新增 `Persistence:Sharding:Governance:WebRequestAuditLog` 段，包含独立守卫开关、历史保留开关、保留分表数量、隔离器三态（EnableGuard/AllowDangerousActionExecution/DryRun），默认保持保守阻断 + dry-run。
+- 补齐 P1 回归测试：新增“Parcel 非 PerDay 时 WebRequestAuditLog 仍触发守卫”“历史保留 Guard/DryRun/Execute 三态计数一致”“关键索引按逻辑表分发”“配置非法时错误信息指向精确配置键”等测试。
+- 修复审查线程收敛问题：补齐 `WebRequestAuditLogDetail` 索引常量来源、修复 Retention 组未命中时空引用风险、解除 Retention 评估对 `CriticalIndexAudit` 开关的隐式耦合、消除 PerDay 基础表解析方法重复实现。
 - 新增 Copilot 规则 CI：`copilot-instructions-validation.yml`，每次 PR 自动执行 `.github/scripts/validate-copilot-rules.sh`。
 - 新增规则校验脚本：从 `.github/copilot-instructions.md` 动态解析“Copilot 限制规则”，对可自动化规则执行校验，对未映射规则直接失败，确保规则文件更新后 CI 必须同步更新。
 - 收敛测试结构尾项：`AutoTuningProductionControlTests.cs` 与 `ParcelReadOnlyApiTests.cs` 中的测试替身/辅助类型全部拆分到同名独立文件，保持测试行为不变。
@@ -643,6 +649,8 @@
 - 后续可补充真实 MySQL / SQL Server 集成测试，验证在大数据量下“Provider 差异语义（MySQL FULLTEXT Boolean / 其他 Contains）”的性能与执行计划稳定性。
 - 后续可在“条码检索语义差异”场景评估按关键字长度/模式的可观测分级策略（开关 + 审计），在召回率与性能之间建立可运营平衡。
 - 后续可补齐 WebRequestAuditLog 的分表治理接线（StartedAt 时间分表、历史物理表保留隔离器、关键索引审计接入）与对应迁移验证。
+- 当前 WebRequestAuditLog 历史分表保留治理仍为“决策+审计”模式，后续可按发布窗口引入真实物理删除执行链路（仍需保持开关、dry-run、审计与回滚资产）。
+- 后续可对 WebRequestAuditLog 保留策略接入真实分表统计（按数据库实际分表元数据计算候选），替代当前基于预建窗口的候选估算口径。
 
 ## Parcel API 发布门禁 / 使用边界说明
 

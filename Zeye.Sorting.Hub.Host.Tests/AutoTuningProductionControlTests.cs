@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -8,7 +9,6 @@ using EFCore.Sharding;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
@@ -1025,6 +1025,24 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
+    /// 验证场景：CriticalIndexAudit_DispatchesByLogicalTable_ShouldHitParcelAndWebRequestAuditLogSeparately。
+    /// </summary>
+    [Fact]
+    public void CriticalIndexAudit_DispatchesByLogicalTable_ShouldHitParcelAndWebRequestAuditLogSeparately() {
+        var criticalIndexes = DatabaseInitializerHostedService.ResolveCriticalIndexesByLogicalTableForProvider("MySQL");
+        var auditOnlyIndexes = DatabaseInitializerHostedService.ResolveAuditOnlyIndexesByLogicalTableForProvider("MySQL");
+
+        Assert.Contains("Parcels", criticalIndexes.Keys);
+        Assert.Contains("WebRequestAuditLogs", criticalIndexes.Keys);
+        Assert.Contains("WebRequestAuditLogDetails", criticalIndexes.Keys);
+        Assert.Contains(ParcelIndexNames.BagCodeScannedTime, criticalIndexes["Parcels"]);
+        Assert.Contains(WebRequestAuditLogIndexNames.StartedAt, criticalIndexes["WebRequestAuditLogs"]);
+        Assert.Contains("IX_WebRequestAuditLogDetails_StartedAt", criticalIndexes["WebRequestAuditLogDetails"]);
+        Assert.Contains("Parcels", auditOnlyIndexes.Keys);
+        Assert.Contains(ParcelIndexNames.BarCodesFullText, auditOnlyIndexes["Parcels"]);
+    }
+
+    /// <summary>
     /// 验证场景：ShardingGovernanceGuard_PerDayWithMissingCriticalIndex_ShouldFailWhenBlockOnMissingEnabled。
     /// </summary>
     [Fact]
@@ -1142,13 +1160,38 @@ public sealed class AutoTuningProductionControlTests {
             enableManualPrebuildGuard: true,
             timeGranularity: "PerMonth",
             prebuildWindowHours: 0,
-            prebuiltDates: []);
+            prebuiltDates: [],
+            enableWebRequestAuditLogPerDayGuard: false);
         var probe = new AlwaysExistsShardingPhysicalTableProbe();
         var service = CreateDatabaseInitializerHostedService(configuration, probe);
 
         var exception = await Record.ExceptionAsync(() => InvokeShardingGovernanceGuardAsync(service));
         Assert.Null(exception);
         Assert.Equal(0, probe.CallCount);
+    }
+
+    /// <summary>
+    /// 验证场景：ShardingGovernanceGuard_ParcelNotPerDayButWebRequestAuditLogGuardEnabled_ShouldStillProbePhysicalTables。
+    /// </summary>
+    [Fact]
+    public async Task ShardingGovernanceGuard_ParcelNotPerDayButWebRequestAuditLogGuardEnabled_ShouldStillProbePhysicalTables() {
+        var requiredDates = DatabaseInitializerHostedService
+            .BuildRequiredPerDayShardDates(DateTime.Now, 24)
+            .Select(static requiredDate => requiredDate.ToString("yyyy-MM-dd"))
+            .ToArray();
+        var configuration = BuildPerDayGovernanceConfiguration(
+            createShardingTableOnStarting: false,
+            enableManualPrebuildGuard: true,
+            timeGranularity: "PerMonth",
+            prebuildWindowHours: 24,
+            prebuiltDates: requiredDates,
+            enableWebRequestAuditLogPerDayGuard: true);
+        var probe = new AlwaysExistsShardingPhysicalTableProbe();
+        var service = CreateDatabaseInitializerHostedService(configuration, probe);
+
+        var exception = await Record.ExceptionAsync(() => InvokeShardingGovernanceGuardAsync(service));
+        Assert.Null(exception);
+        Assert.True(probe.CallCount > 0);
     }
 
     /// <summary>
@@ -1187,6 +1230,46 @@ public sealed class AutoTuningProductionControlTests {
             isRollback: false);
 
         Assert.Equal(ActionIsolationDecision.DryRunOnly, decision);
+    }
+
+    /// <summary>
+    /// 验证场景：WebRequestAuditLogRetentionDecision_GuardDryRunExecute_ShouldKeepPlannedAndExecutedSemanticsConsistent。
+    /// </summary>
+    [Fact]
+    public void WebRequestAuditLogRetentionDecision_GuardDryRunExecute_ShouldKeepPlannedAndExecutedSemanticsConsistent() {
+        var blocked = DatabaseInitializerHostedService.EvaluateWebRequestAuditLogRetentionDecision(
+            candidateCount: 6,
+            enableGuard: true,
+            allowDangerousActionExecution: false,
+            enableDryRun: true);
+        var dryRun = DatabaseInitializerHostedService.EvaluateWebRequestAuditLogRetentionDecision(
+            candidateCount: 6,
+            enableGuard: true,
+            allowDangerousActionExecution: true,
+            enableDryRun: true);
+        var executed = DatabaseInitializerHostedService.EvaluateWebRequestAuditLogRetentionDecision(
+            candidateCount: 6,
+            enableGuard: false,
+            allowDangerousActionExecution: false,
+            enableDryRun: false);
+
+        Assert.Equal(ActionIsolationDecision.BlockedByGuard, blocked.Decision);
+        Assert.Equal(6, blocked.PlannedCount);
+        Assert.Equal(0, blocked.ExecutedCount);
+        Assert.True(blocked.IsBlockedByGuard);
+        Assert.False(blocked.IsDryRun);
+
+        Assert.Equal(ActionIsolationDecision.DryRunOnly, dryRun.Decision);
+        Assert.Equal(6, dryRun.PlannedCount);
+        Assert.Equal(0, dryRun.ExecutedCount);
+        Assert.False(dryRun.IsBlockedByGuard);
+        Assert.True(dryRun.IsDryRun);
+
+        Assert.Equal(ActionIsolationDecision.Execute, executed.Decision);
+        Assert.Equal(6, executed.PlannedCount);
+        Assert.Equal(6, executed.ExecutedCount);
+        Assert.False(executed.IsBlockedByGuard);
+        Assert.False(executed.IsDryRun);
     }
 
     /// <summary>
@@ -2239,6 +2322,22 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
+    /// 验证场景：ResolveWebRequestAuditLogRetentionKeepRecentShardCount_InvalidValue_ShouldPointToExactConfigKey。
+    /// </summary>
+    [Fact]
+    public void ResolveWebRequestAuditLogRetentionKeepRecentShardCount_InvalidValue_ShouldPointToExactConfigKey() {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:Sharding:Governance:WebRequestAuditLog:Retention:KeepRecentShardCount"] = "0"
+            })
+            .Build();
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => DatabaseInitializerHostedService.ResolveWebRequestAuditLogRetentionKeepRecentShardCount(configuration));
+        Assert.Contains("Persistence:Sharding:Governance:WebRequestAuditLog:Retention:KeepRecentShardCount", exception.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// 验证场景：ClosedLoopFlow_TriggersMonitorExecuteVerifyRollback_WithAuditAndRollbackTrigger。
     /// </summary>
     [Fact]
@@ -2664,13 +2763,15 @@ public sealed class AutoTuningProductionControlTests {
         int prebuildWindowHours,
         IReadOnlyList<string> prebuiltDates,
         bool criticalIndexAuditEnabled = true,
-        bool blockOnCriticalIndexMissing = true) {
+        bool blockOnCriticalIndexMissing = true,
+        bool enableWebRequestAuditLogPerDayGuard = true) {
         var configData = new Dictionary<string, string?> {
             ["Persistence:Migration:FailureStrategy:NonProduction"] = "Degraded",
             ["Persistence:Sharding:CreateShardingTableOnStarting"] = createShardingTableOnStarting.ToString(),
             ["Persistence:Sharding:Governance:EnableManualPrebuildGuard"] = enableManualPrebuildGuard.ToString(),
             ["Persistence:Sharding:Governance:Runbook"] = "docs/internal/sharding-governance-runbook",
             ["Persistence:Sharding:Governance:PrebuildWindowHours"] = prebuildWindowHours.ToString(),
+            ["Persistence:Sharding:Governance:WebRequestAuditLog:EnablePerDayGuard"] = enableWebRequestAuditLogPerDayGuard.ToString(),
             ["Persistence:Sharding:Governance:CriticalIndexAudit:Enabled"] = criticalIndexAuditEnabled.ToString(),
             ["Persistence:Sharding:Governance:CriticalIndexAudit:BlockOnMissing"] = blockOnCriticalIndexMissing.ToString(),
             ["Persistence:Sharding:HashSharding:ExpansionPlan:CurrentMod"] = "16",
@@ -2750,13 +2851,19 @@ public sealed class AutoTuningProductionControlTests {
             .GetMethod("ValidateShardingGovernanceGuardAsync", BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotNull(validateMethod);
 
-        try {
-            var task = (Task?)validateMethod!.Invoke(service, [CancellationToken.None]);
-            Assert.NotNull(task);
-            await task!;
+        Task? guardTask = null;
+        var invocationException = Record.Exception(() => {
+            guardTask = (Task?)validateMethod!.Invoke(service, [CancellationToken.None]);
+        });
+        if (invocationException is TargetInvocationException targetInvocationException
+            && targetInvocationException.InnerException is not null) {
+            ExceptionDispatchInfo.Capture(targetInvocationException.InnerException).Throw();
         }
-        catch (TargetInvocationException ex) when (ex.InnerException is not null) {
-            throw ex.InnerException;
+        if (invocationException is not null) {
+            ExceptionDispatchInfo.Capture(invocationException).Throw();
         }
+
+        Assert.NotNull(guardTask);
+        await guardTask!;
     }
 }

@@ -53,5 +53,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence {
         /// AuditResourceType + ResourceId + StartedAt 复合索引名。
         /// </summary>
         public const string AuditResourceTypeResourceIdStartedAt = "IX_WebRequestAuditLogs_AuditResourceType_ResourceId_StartedAt";
+
+        /// <summary>
+        /// 冷数据详情表 StartedAt 单列索引名。
+        /// </summary>
+        public const string DetailStartedAt = "IX_WebRequestAuditLogDetails_StartedAt";
     }
 }
