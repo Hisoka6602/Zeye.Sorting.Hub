@@ -127,11 +127,16 @@ WHERE s.name = @p0
         public async Task CreateDatabaseAsync(DbConnection administrationConnection, string databaseName, CancellationToken cancellationToken) {
             ArgumentNullException.ThrowIfNull(administrationConnection);
             var normalizedDatabaseName = DatabaseIdentifierGuard.NormalizeDatabaseName(databaseName, nameof(databaseName));
-            var escapedDatabaseName = DatabaseIdentifierGuard.EscapeSqlServerIdentifier(normalizedDatabaseName);
 
             await EnsureConnectionOpenedAsync(administrationConnection, cancellationToken);
             await using var command = administrationConnection.CreateCommand();
-            command.CommandText = $"IF DB_ID(@databaseName) IS NULL CREATE DATABASE [{escapedDatabaseName}]";
+            command.CommandText = """
+IF DB_ID(@databaseName) IS NULL
+BEGIN
+    DECLARE @sql nvarchar(max) = N'CREATE DATABASE ' + QUOTENAME(@databaseName);
+    EXEC (@sql);
+END
+""";
             var databaseNameParameter = command.CreateParameter();
             databaseNameParameter.ParameterName = "@databaseName";
             databaseNameParameter.DbType = DbType.String;

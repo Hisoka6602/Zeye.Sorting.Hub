@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using NLog;
@@ -39,6 +40,10 @@ public sealed class WebRequestAuditLogMiddleware {
     /// 作用域工厂（用于后台异步写审计，避免阻塞主请求）。
     /// </summary>
     private readonly IServiceScopeFactory _scopeFactory;
+    /// <summary>
+    /// 应用生命周期（用于后台任务取消控制）。
+    /// </summary>
+    private readonly IHostApplicationLifetime _applicationLifetime;
 
     /// <summary>
     /// JSON 序列化选项。
@@ -52,13 +57,17 @@ public sealed class WebRequestAuditLogMiddleware {
     /// </summary>
     /// <param name="next">下一个中间件委托。</param>
     /// <param name="options">审计配置。</param>
+    /// <param name="scopeFactory">服务作用域工厂。</param>
+    /// <param name="applicationLifetime">应用生命周期对象。</param>
     public WebRequestAuditLogMiddleware(
         RequestDelegate next,
         IOptions<WebRequestAuditLogOptions> options,
-        IServiceScopeFactory scopeFactory) {
+        IServiceScopeFactory scopeFactory,
+        IHostApplicationLifetime applicationLifetime) {
         _next = next ?? throw new ArgumentNullException(nameof(next));
         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
+        _applicationLifetime = applicationLifetime ?? throw new ArgumentNullException(nameof(applicationLifetime));
     }
 
     /// <summary>
@@ -183,11 +192,12 @@ public sealed class WebRequestAuditLogMiddleware {
     /// <param name="traceId">追踪标识。</param>
     /// <param name="correlationId">关联标识。</param>
     private void QueueAuditWrite(WebRequestAuditLog log, string traceId, string correlationId) {
+        var cancellationToken = _applicationLifetime.ApplicationStopping;
         _ = Task.Run(async () => {
             try {
                 using var scope = _scopeFactory.CreateScope();
                 var writeService = scope.ServiceProvider.GetRequiredService<WriteWebRequestAuditLogCommandService>();
-                var result = await writeService.WriteAsync(log, CancellationToken.None);
+                var result = await writeService.WriteAsync(log, cancellationToken);
                 if (!result.IsSuccess) {
                     NLogLogger.Error("写入 Web 请求审计日志返回失败，TraceId={TraceId}, CorrelationId={CorrelationId}, ErrorCode={ErrorCode}, ErrorMessage={ErrorMessage}",
                         traceId,
@@ -199,7 +209,7 @@ public sealed class WebRequestAuditLogMiddleware {
             catch (Exception ex) {
                 NLogLogger.Error(ex, "写入 Web 请求审计日志发生异常，TraceId={TraceId}, CorrelationId={CorrelationId}", traceId, correlationId);
             }
-        });
+        }, cancellationToken);
     }
 
     /// <summary>

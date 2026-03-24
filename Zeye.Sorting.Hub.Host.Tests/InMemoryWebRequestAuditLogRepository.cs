@@ -84,7 +84,6 @@ public sealed class InMemoryWebRequestAuditLogRepository : IWebRequestAuditLogRe
     /// <returns>仓储结果。</returns>
     public async Task<RepositoryResult> AddAsync(WebRequestAuditLog auditLog, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
-        Interlocked.Increment(ref _writeCount);
 
         if (AddDelayMilliseconds > 0) {
             await Task.Delay(AddDelayMilliseconds, cancellationToken);
@@ -98,6 +97,7 @@ public sealed class InMemoryWebRequestAuditLogRepository : IWebRequestAuditLogRe
             return RepositoryResult.Fail(_failureMessage, _failureCode);
         }
 
+        Interlocked.Increment(ref _writeCount);
         _logs.Enqueue(auditLog);
         return RepositoryResult.Success();
     }

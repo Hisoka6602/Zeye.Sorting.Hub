@@ -34,6 +34,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private const string FailStartupOnMigrationErrorConfigKey = "Persistence:Migration:FailStartupOnError";
         private const string MySqlProviderKey = "MySql";
         private const string SqlServerProviderKey = "SqlServer";
+        private const string DialectProviderNameMySql = "MySQL";
+        private const string DialectProviderNameSqlServer = "SQLServer";
         private const string PersistenceProviderConfigKey = "Persistence:Provider";
         private const string EnsureDatabaseExistsEnabledConfigKey = "Persistence:DatabaseBootstrap:EnsureDatabaseExists:Enabled";
         private const string EnsureDatabaseExistsIsolatorEnableGuardConfigKey = "Persistence:DatabaseBootstrap:EnsureDatabaseExists:Isolator:EnableGuard";
@@ -437,11 +439,11 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <param name="dialectProviderName">方言 ProviderName。</param>
         /// <returns>连接字符串键名；不支持时返回 null。</returns>
         internal static string? ResolveProviderConnectionStringKey(string? configuredProvider, string dialectProviderName) {
-            if (MatchesProvider(configuredProvider, MySqlProviderKey) || MatchesProvider(dialectProviderName, "MySQL")) {
+            if (MatchesProvider(configuredProvider, MySqlProviderKey) || MatchesProvider(dialectProviderName, DialectProviderNameMySql)) {
                 return MySqlProviderKey;
             }
 
-            if (MatchesProvider(configuredProvider, SqlServerProviderKey) || MatchesProvider(dialectProviderName, "SQLServer")) {
+            if (MatchesProvider(configuredProvider, SqlServerProviderKey) || MatchesProvider(dialectProviderName, DialectProviderNameSqlServer)) {
                 return SqlServerProviderKey;
             }
 
