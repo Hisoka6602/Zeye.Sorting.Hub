@@ -1,4 +1,4 @@
-namespace Zeye.Sorting.Hub.Host;
+namespace Zeye.Sorting.Hub.Host.QueryParameters;
 
 /// <summary>
 /// Web 请求审计日志列表查询参数模型。

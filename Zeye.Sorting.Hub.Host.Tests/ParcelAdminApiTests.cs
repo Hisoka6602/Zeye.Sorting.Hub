@@ -9,6 +9,7 @@ using Zeye.Sorting.Hub.Application.Services.Parcels;
 using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Repositories;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.Admin;
+using Zeye.Sorting.Hub.Host.Routing;
 
 namespace Zeye.Sorting.Hub.Host.Tests;
 

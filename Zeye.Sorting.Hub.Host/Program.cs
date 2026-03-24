@@ -1,5 +1,6 @@
 using NLog;
-using Zeye.Sorting.Hub.Host;
+using Zeye.Sorting.Hub.Host.Options;
+using Zeye.Sorting.Hub.Host.Routing;
 using Microsoft.OpenApi.Models;
 using NLog.Extensions.Logging;
 using Microsoft.AspNetCore.Mvc;
@@ -20,7 +21,6 @@ using Zeye.Sorting.Hub.Host.Middleware;
 // ──────────────────────────────────────────────────────────
 var logger = LogManager.GetCurrentClassLogger();
 const string UrlsConfigKey = "urls";
-const string AuditReadOnlyApiEnabledConfigKey = "AuditReadOnlyApi:Enabled";
 
 try {
     var builder = WebApplication.CreateBuilder(args);
@@ -47,8 +47,8 @@ try {
     builder.Services.Configure<LogCleanupSettings>(
         builder.Configuration.GetSection("LogCleanup"));
     builder.Services.Configure<HostingOptions>(builder.Configuration.GetSection("Hosting"));
+    builder.Services.Configure<AuditReadOnlyApiOptions>(builder.Configuration.GetSection(AuditReadOnlyApiOptions.SectionName));
     builder.Services.AddHostedService<LogCleanupService>();
-    builder.Services.AddHostedService<Worker>();
     builder.Services.AddHostedService<DevelopmentBrowserLauncherHostedService>();
     builder.Services.AddSingleton<SafeExecutor>();
     builder.Services.AddSortingHubPersistence(builder.Configuration);
@@ -163,8 +163,10 @@ try {
     // Parcel 管理端写接口：普通写操作 + 危险治理接口（cleanup-expired）分开治理。
     app.MapParcelAdminApis();
     // 审计日志只读查询端点：默认关闭，需显式开启配置后再接线。
-    var auditReadOnlyApiEnabled = builder.Configuration.GetValue(AuditReadOnlyApiEnabledConfigKey, false);
-    if (auditReadOnlyApiEnabled) {
+    var auditReadOnlyApiOptions = builder.Configuration
+        .GetSection(AuditReadOnlyApiOptions.SectionName)
+        .Get<AuditReadOnlyApiOptions>() ?? new AuditReadOnlyApiOptions();
+    if (auditReadOnlyApiOptions.Enabled) {
         app.MapAuditReadOnlyApis();
     }
 

@@ -1,4 +1,4 @@
-namespace Zeye.Sorting.Hub.Host;
+namespace Zeye.Sorting.Hub.Host.Options;
 
 /// <summary>
 /// 开发期浏览器自动打开配置。

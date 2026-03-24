@@ -41,8 +41,6 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private const string HashShardingExpansionPlanStagesConfigKey = "Persistence:Sharding:HashSharding:ExpansionPlan:Stages";
         private const string ShardingPrebuildWindowHoursConfigKey = "Persistence:Sharding:Governance:PrebuildWindowHours";
         private const string ShardingRunbookConfigKey = "Persistence:Sharding:Governance:Runbook";
-        private const string ShardingManualPrebuildGuardConfigKey = "Persistence:Sharding:Governance:EnableManualPrebuildGuard";
-        private const string ShardingPrebuiltPerDayDatesConfigKey = "Persistence:Sharding:Governance:PrebuiltPerDayDates";
         private const string WebRequestAuditLogPerDayGuardEnabledConfigKey = "Persistence:Sharding:Governance:WebRequestAuditLog:EnablePerDayGuard";
         private const string WebRequestAuditLogRetentionEnabledConfigKey = "Persistence:Sharding:Governance:WebRequestAuditLog:Retention:Enabled";
         private const string WebRequestAuditLogRetentionKeepRecentShardCountConfigKey = "Persistence:Sharding:Governance:WebRequestAuditLog:Retention:KeepRecentShardCount";
@@ -87,12 +85,6 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private readonly int _shardingPrebuildWindowHours;
         /// <summary>分表治理 Runbook 标识（文档路径或链接）。</summary>
         private readonly string _shardingRunbook;
-        /// <summary>是否启用“手工预建分表”治理守卫。</summary>
-        private readonly bool _enableManualPrebuildGuard;
-        /// <summary>手工预建模式下已完成预建的日分表日期（本地日期）。</summary>
-        private readonly IReadOnlySet<DateTime> _prebuiltPerDayShardDates;
-        /// <summary>日分表预建日期配置解析错误集合。</summary>
-        private readonly IReadOnlyList<string> _prebuiltPerDayShardDateValidationErrors;
         /// <summary>是否启用 WebRequestAuditLog PerDay 治理守卫。</summary>
         private readonly bool _enableWebRequestAuditLogPerDayGuard;
         /// <summary>是否启用 WebRequestAuditLog 历史分表保留治理。</summary>
@@ -143,10 +135,6 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _hashShardingLegacyExpansionPlan = NormalizeOptionalTextOrPlaceholder(configuration[HashShardingLegacyExpansionPlanConfigKey], NotConfiguredPlaceholder);
             _shardingPrebuildWindowHours = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, ShardingPrebuildWindowHoursConfigKey, 72);
             _shardingRunbook = NormalizeOptionalTextOrPlaceholder(configuration[ShardingRunbookConfigKey], NotConfiguredPlaceholder);
-            _enableManualPrebuildGuard = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, ShardingManualPrebuildGuardConfigKey, true);
-            var prebuiltPerDayShards = ResolvePrebuiltPerDayShardDates(configuration);
-            _prebuiltPerDayShardDates = prebuiltPerDayShards.PrebuiltDates;
-            _prebuiltPerDayShardDateValidationErrors = prebuiltPerDayShards.ValidationErrors;
             _enableWebRequestAuditLogPerDayGuard = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, WebRequestAuditLogPerDayGuardEnabledConfigKey, true);
             _enableWebRequestAuditLogRetention = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, WebRequestAuditLogRetentionEnabledConfigKey, true);
             _webRequestAuditLogRetentionKeepRecentShardCount = ResolveWebRequestAuditLogRetentionKeepRecentShardCount(configuration);
@@ -350,58 +338,6 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
 
             return string.Equals(legacyPlan, placeholder, StringComparison.Ordinal) ? placeholder : legacyPlan;
-        }
-
-        /// <summary>
-        /// 解析手工预建的日分表日期清单（yyyy-MM-dd，本地时间语义）。
-        /// </summary>
-        /// <param name="configuration">配置源。</param>
-        /// <returns>解析结果。</returns>
-        internal static PrebuiltPerDayShardDatesResolution ResolvePrebuiltPerDayShardDates(IConfiguration configuration) {
-            ArgumentNullException.ThrowIfNull(configuration);
-
-            var parsedDates = new HashSet<DateTime>();
-            var validationErrors = new List<string>();
-            foreach (var item in configuration.GetSection(ShardingPrebuiltPerDayDatesConfigKey).GetChildren()) {
-                var raw = item.Value?.Trim();
-                if (string.IsNullOrWhiteSpace(raw)) {
-                    continue;
-                }
-
-                if (!DateTime.TryParseExact(
-                    raw,
-                    "yyyy-MM-dd",
-                    CultureInfo.InvariantCulture,
-                    DateTimeStyles.AssumeLocal,
-                    out var parsedDate)) {
-                    validationErrors.Add($"配置项 {ShardingPrebuiltPerDayDatesConfigKey} 包含非法日期：{raw}。格式必须为 yyyy-MM-dd。");
-                    continue;
-                }
-
-                parsedDates.Add(parsedDate.Date);
-            }
-
-            return new PrebuiltPerDayShardDatesResolution(
-                PrebuiltDates: parsedDates,
-                ValidationErrors: Array.AsReadOnly(validationErrors.ToArray()));
-        }
-
-        /// <summary>
-        /// 计算预建窗口内必须完成预建的日分表日期清单（含当前日期）。
-        /// </summary>
-        /// <param name="localNow">当前本地时间。</param>
-        /// <param name="prebuildWindowHours">预建窗口小时数。</param>
-        /// <returns>必需预建的日期清单。</returns>
-        internal static IReadOnlyList<DateTime> BuildRequiredPerDayShardDates(DateTime localNow, int prebuildWindowHours) {
-            var windowEndDate = localNow.AddHours(prebuildWindowHours).Date;
-            var cursor = localNow.Date;
-            var requiredDates = new List<DateTime>();
-            while (cursor <= windowEndDate) {
-                requiredDates.Add(cursor);
-                cursor = cursor.AddDays(1);
-            }
-
-            return requiredDates;
         }
 
         /// <summary>
@@ -623,20 +559,12 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     string.Join(" | ", _parcelShardingStrategyValidationErrors));
             }
 
-            if (_prebuiltPerDayShardDateValidationErrors.Count > 0) {
-                NLogLogger.Error(
-                    "检测到日分表预建日期配置校验失败：{ValidationErrors}",
-                    string.Join(" | ", _prebuiltPerDayShardDateValidationErrors));
-            }
-
             if (!_createShardingTableOnStarting) {
                 NLogLogger.Warn(
-                    "分表自动创建已关闭，必须依赖外部预建流程：Provider={Provider}, PrebuildWindowHours={PrebuildWindowHours}, Runbook={Runbook}, EnableManualPrebuildGuard={EnableManualPrebuildGuard}, PrebuiltPerDayDatesCount={PrebuiltPerDayDatesCount}",
+                    "分表自动创建已关闭：Provider={Provider}, PrebuildWindowHours={PrebuildWindowHours}, Runbook={Runbook}",
                     _dialect.ProviderName,
                     _shardingPrebuildWindowHours,
-                    _shardingRunbook,
-                    _enableManualPrebuildGuard,
-                    _prebuiltPerDayShardDates.Count);
+                    _shardingRunbook);
             }
 
             if (string.Equals(_shardingRunbook, NotConfiguredPlaceholder, StringComparison.Ordinal)) {
@@ -651,10 +579,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// </summary>
         /// <remarks>
         /// 规则：
-        /// 1) 当启动自动建表关闭且守卫开启时，必须配置 Runbook；
+        /// 1) 当启动自动建表关闭时，必须配置 Runbook；
         /// 2) 结构化扩容计划的 TargetMod 必须大于 CurrentMod；
-        /// 3) 生产环境且手工预建模式下，结构化阶段列表不能为空；
-        /// 4) 当策略生效为 PerDay 且手工预建模式开启时，必须校验预建窗口内目标日表均已预建。
+        /// 3) 生产环境下结构化阶段列表不能为空。
         /// </remarks>
         private async Task ValidateShardingGovernanceGuardAsync(CancellationToken cancellationToken) {
             if (_parcelShardingStrategyValidationErrors.Count > 0) {
@@ -662,12 +589,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     $"分表策略配置非法：{string.Join(" | ", _parcelShardingStrategyValidationErrors)}");
             }
 
-            if (_prebuiltPerDayShardDateValidationErrors.Count > 0) {
-                throw new ShardingGovernanceGuardException(
-                    $"日分表预建配置非法：{string.Join(" | ", _prebuiltPerDayShardDateValidationErrors)}");
-            }
-
-            if (_createShardingTableOnStarting || !_enableManualPrebuildGuard) {
+            if (_createShardingTableOnStarting) {
                 return;
             }
 
@@ -678,7 +600,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
             if (string.Equals(_shardingRunbook, NotConfiguredPlaceholder, StringComparison.Ordinal)) {
                 throw new ShardingGovernanceGuardException(
-                    $"分表治理守卫触发：当 {CreateShardingTableOnStartingConfigKey}=false 且 {ShardingManualPrebuildGuardConfigKey}=true 时，必须配置 {ShardingRunbookConfigKey}。");
+                    $"分表治理守卫触发：当 {CreateShardingTableOnStartingConfigKey}=false 时，必须配置 {ShardingRunbookConfigKey}。");
             }
 
             if (_isProductionEnvironment && _hashShardingExpansionStages.Count == 0) {
@@ -686,98 +608,12 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     $"分表治理守卫触发：生产环境要求使用结构化扩容计划，请至少配置 {HashShardingExpansionPlanStagesConfigKey}:0。");
             }
 
-            var governanceGroups = ResolvePerDayGovernanceGroups(
-                dbContext: null,
-                parcelShardingDecision: _parcelShardingStrategyDecision,
-                enableWebRequestAuditLogPerDayGuard: _enableWebRequestAuditLogPerDayGuard);
-            if (governanceGroups.Count == 0) {
-                return;
-            }
-
-            var requiredPrebuiltDates = BuildRequiredPerDayShardDates(DateTime.Now, _shardingPrebuildWindowHours);
-            var missingDates = requiredPrebuiltDates
-                .Where(requiredDate => !_prebuiltPerDayShardDates.Contains(requiredDate))
-                .Select(requiredDate => requiredDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))
-                .ToArray();
-            if (missingDates.Length > 0) {
-                throw new ShardingGovernanceGuardException(
-                    $"分表治理守卫触发：当前治理组已启用 PerDay 预建校验（GovernanceGroups={string.Join(",", governanceGroups.Select(static group => group.GroupName))}），且 {CreateShardingTableOnStartingConfigKey}=false。请先完成目标日表预建并配置 {ShardingPrebuiltPerDayDatesConfigKey}，缺失日期：{string.Join(", ", missingDates)}。");
-            }
-
-            var missingPhysicalTables = new List<string>();
             await using var scope = _serviceProvider.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<SortingHubDbContext>();
-            governanceGroups = ResolvePerDayGovernanceGroups(
+            var governanceGroups = ResolvePerDayGovernanceGroups(
                 dbContext: db,
                 parcelShardingDecision: _parcelShardingStrategyDecision,
                 enableWebRequestAuditLogPerDayGuard: _enableWebRequestAuditLogPerDayGuard);
-            var perDayShardingBaseTableNames = governanceGroups
-                .SelectMany(static group => group.BaseTableNames)
-                .Distinct(StringComparer.Ordinal)
-                .ToArray();
-            var expectedPhysicalTables = BuildExpectedPerDayPhysicalTableNames(requiredPrebuiltDates, perDayShardingBaseTableNames);
-            var schemaName = ResolvePerDayPhysicalTableProbeSchemaName(_dialect.ProviderName);
-            if (_shardingPhysicalTableProbe is IBatchShardingPhysicalTableProbe batchShardingPhysicalTableProbe) {
-                var missingPhysicalTableSet = await batchShardingPhysicalTableProbe.FindMissingTablesAsync(
-                    db,
-                    schemaName,
-                    expectedPhysicalTables,
-                    cancellationToken);
-                missingPhysicalTables.AddRange(missingPhysicalTableSet);
-            }
-            else {
-                foreach (var expectedPhysicalTable in expectedPhysicalTables) {
-                    var exists = await _shardingPhysicalTableProbe.ExistsAsync(
-                        db,
-                        schemaName,
-                        expectedPhysicalTable,
-                        cancellationToken);
-                    if (!exists) {
-                        missingPhysicalTables.Add(expectedPhysicalTable);
-                    }
-                }
-            }
-
-            if (missingPhysicalTables.Count > 0) {
-                throw new ShardingGovernanceGuardException(
-                    $"分表治理守卫触发：当前策略已生效为 PerDay，且 {CreateShardingTableOnStartingConfigKey}=false。检测到配置清单已声明预建，但数据库物理表不存在。缺失物理表：{string.Join(", ", missingPhysicalTables)}。");
-            }
-
-            if (!_enableCriticalIndexAudit) {
-                NLogLogger.Info(
-                    "分表关键索引一致性审计已关闭：ConfigKey={ConfigKey}",
-                    ShardingCriticalIndexAuditEnabledConfigKey);
-            }
-            else {
-                var missingCriticalIndexes = await AuditPerDayShardCriticalIndexesAsync(
-                    db,
-                    expectedPhysicalTables,
-                    schemaName,
-                    _dialect.ProviderName,
-                    cancellationToken);
-                if (missingCriticalIndexes.Count == 0) {
-                    if (!_enableWebRequestAuditLogRetention) {
-                        return;
-                    }
-                }
-                else {
-                    var summarizedMissing = missingCriticalIndexes
-                        .SelectMany(static pair => pair.Value.Select(indexName => $"{pair.Key}:{indexName}"))
-                        .ToArray();
-                    NLogLogger.Error(
-                        "分表关键索引一致性审计发现缺失：MissingIndexEntries={MissingIndexEntries}",
-                        string.Join(", ", summarizedMissing));
-                    if (_blockOnCriticalIndexMissing) {
-                        throw new ShardingGovernanceGuardException(
-                            $"分表治理守卫触发：物理分表关键索引一致性审计发现缺失索引。缺失项：{string.Join(", ", summarizedMissing)}。");
-                    }
-
-                    NLogLogger.Warn(
-                        "分表关键索引一致性审计发现缺失，但当前配置仅审计不阻断：ConfigKey={ConfigKey}, MissingIndexEntries={MissingIndexEntries}",
-                        ShardingCriticalIndexAuditBlockOnMissingConfigKey,
-                        string.Join(", ", summarizedMissing));
-                }
-            }
 
             if (!_enableWebRequestAuditLogRetention) {
                 return;
@@ -786,7 +622,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             var webRequestAuditLogCandidates = await ResolveWebRequestAuditLogRetentionCandidatesFromMetadataAsync(
                 db,
                 governanceGroups,
-                schemaName,
+                null,
                 cancellationToken);
             var webRequestAuditLogRetentionResult = EvaluateWebRequestAuditLogRetentionDecision(
                 candidateCount: webRequestAuditLogCandidates.CandidateCount,
@@ -795,7 +631,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 enableDryRun: _webRequestAuditLogRetentionDryRun);
             var executedRetentionCount = await ExecuteWebRequestAuditLogRetentionAsync(
                 db,
-                schemaName,
+                null,
                 webRequestAuditLogCandidates.CandidatePhysicalTableNames,
                 webRequestAuditLogRetentionResult,
                 cancellationToken);
@@ -852,13 +688,13 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
                 var missingBlockingIndexes = await _shardingPhysicalTableProbe.FindMissingIndexesAsync(
                     db,
-                    schemaName,
+                    null,
                     physicalTableName,
                     blockingCriticalIndexes,
                     cancellationToken);
                 var missingAuditOnlyIndexes = await _shardingPhysicalTableProbe.FindMissingIndexesAsync(
                     db,
-                    schemaName,
+                    null,
                     physicalTableName,
                     auditOnlyIndexes,
                     cancellationToken);
@@ -962,42 +798,6 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         /// <summary>
-        /// 构建 PerDay 预建窗口对应的目标物理表名集合。
-        /// </summary>
-        /// <param name="requiredPrebuiltDates">窗口内必须预建的日期集合。</param>
-        /// <returns>目标物理表名集合。</returns>
-        /// <remarks>
-        /// 规则说明：
-        /// 1) 复用当前分表治理同源对象（Parcel 主表 + 已注册的日期型值对象表）；
-        /// 2) 物理表名规则与 EFCore.Sharding 的按日扩展语义保持一致：BaseTable_yyyyMMdd；
-        /// 3) 当前仅用于 PerDay 治理探测，不引入自动建表/迁移动作。
-        /// </remarks>
-        internal static IReadOnlyList<string> BuildExpectedPerDayPhysicalTableNames(
-            IReadOnlyList<DateTime> requiredPrebuiltDates,
-            IReadOnlyList<string> perDayShardingBaseTableNames) {
-            ArgumentNullException.ThrowIfNull(requiredPrebuiltDates);
-            ArgumentNullException.ThrowIfNull(perDayShardingBaseTableNames);
-            var expectedPhysicalTables = new List<string>(requiredPrebuiltDates.Count * perDayShardingBaseTableNames.Count);
-            foreach (var requiredDate in requiredPrebuiltDates) {
-                foreach (var baseTableName in perDayShardingBaseTableNames) {
-                    expectedPhysicalTables.Add(BuildPerDayPhysicalTableName(baseTableName, requiredDate));
-                }
-            }
-
-            return expectedPhysicalTables;
-        }
-
-        /// <summary>
-        /// 构建单个按日分表的物理表名。
-        /// </summary>
-        /// <param name="baseTableName">逻辑基础表名。</param>
-        /// <param name="date">本地日期。</param>
-        /// <returns>物理表名。</returns>
-        internal static string BuildPerDayPhysicalTableName(string baseTableName, DateTime date) {
-            return $"{baseTableName}_{date:yyyyMMdd}";
-        }
-
-        /// <summary>
         /// 解析 PerDay 物理探测使用的 schema。
         /// </summary>
         /// <param name="providerName">数据库提供器名称。</param>
@@ -1016,13 +816,10 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         /// <summary>
-        /// 判断是否需要执行 PerDay 预建窗口守卫。
+        /// 判断是否需要执行 PerDay 治理组。
         /// </summary>
         /// <param name="decision">分表策略决策快照。</param>
-        /// <returns>
-        /// 当且仅当当前生效粒度为 PerDay 时返回 <c>true</c>，保持既有 PerDay 手工预建窗口守卫约束不变。
-        /// finer-granularity 规划中的守卫开关将用于后续更细粒度守卫扩展，不影响现有 PerDay 守卫触发。
-        /// </returns>
+        /// <returns>当前生效粒度为 PerDay 时返回 true。</returns>
         internal static bool ShouldEnforcePerDayPrebuildGuard(ParcelShardingStrategyDecision decision) {
             return decision.EffectiveDateMode == ExpandByDateMode.PerDay;
         }
@@ -1256,7 +1053,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             foreach (var baseTableName in webRequestAuditLogGroup.BaseTableNames.Distinct(StringComparer.Ordinal)) {
                 var allPhysicalTables = await ResolveExistingPerDayPhysicalTablesAsync(
                     db,
-                    schemaName,
+                    null,
                     baseTableName,
                     cancellationToken);
                 if (allPhysicalTables.Count <= _webRequestAuditLogRetentionKeepRecentShardCount) {
@@ -1291,7 +1088,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
             var physicalTables = await batchProbe.ListPhysicalTablesByBaseNameAsync(
                 db,
-                schemaName,
+                null,
                 baseTableName,
                 cancellationToken);
             return physicalTables

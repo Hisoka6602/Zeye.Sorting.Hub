@@ -1,4 +1,4 @@
-using Zeye.Sorting.Hub.Host;
+using Zeye.Sorting.Hub.Host.Options;
 
 namespace Zeye.Sorting.Hub.Host.Tests;
 

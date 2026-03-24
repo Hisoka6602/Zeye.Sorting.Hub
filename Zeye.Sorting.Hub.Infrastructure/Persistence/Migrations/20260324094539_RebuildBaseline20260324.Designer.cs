@@ -12,8 +12,8 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence;
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(SortingHubDbContext))]
-    [Migration("20260317062930_SplitParcelStatusAndExceptionType")]
-    partial class SplitParcelStatusAndExceptionType
+    [Migration("20260324094539_RebuildBaseline20260324")]
+    partial class RebuildBaseline20260324
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -25,13 +25,331 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
             MySqlModelBuilderExtensions.AutoIncrementColumns(modelBuilder);
 
-            modelBuilder.Entity("Zeye.Sorting.Hub.Domain.Aggregates.Parcels.Parcel", b =>
+            modelBuilder.Entity("Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests.WebRequestAuditLog", b =>
                 {
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bigint");
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("AuditResourceType")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CorrelationId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<long>("DurationMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("EndedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<bool>("HasException")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("HasRequestBody")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("HasResponseBody")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("IsAuthenticated")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("IsRequestBodyTruncated")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("IsResponseBodyTruncated")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("IsSuccess")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<string>("OperationName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("varchar(256)");
+
+                    b.Property<string>("RequestHost")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("varchar(256)");
+
+                    b.Property<string>("RequestMethod")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)");
+
+                    b.Property<string>("RequestPath")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)");
+
+                    b.Property<int>("RequestPayloadType")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("RequestPort")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RequestRouteTemplate")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)");
+
+                    b.Property<string>("RequestScheme")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)");
+
+                    b.Property<long>("RequestSizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ResourceId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<int>("ResponsePayloadType")
+                        .HasColumnType("int");
+
+                    b.Property<long>("ResponseSizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("SpanId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("StatusCode")
+                        .HasColumnType("int");
+
+                    b.Property<long?>("TenantId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("TraceId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<long?>("UserId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("UserName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CorrelationId")
+                        .HasDatabaseName("IX_WebRequestAuditLogs_CorrelationId");
+
+                    b.HasIndex("StartedAt")
+                        .HasDatabaseName("IX_WebRequestAuditLogs_StartedAt");
+
+                    b.HasIndex("TraceId")
+                        .HasDatabaseName("IX_WebRequestAuditLogs_TraceId");
+
+                    b.HasIndex("IsSuccess", "StartedAt")
+                        .HasDatabaseName("IX_WebRequestAuditLogs_IsSuccess_StartedAt");
+
+                    b.HasIndex("OperationName", "StartedAt")
+                        .HasDatabaseName("IX_WebRequestAuditLogs_OperationName_StartedAt");
+
+                    b.HasIndex("RequestPath", "StartedAt")
+                        .HasDatabaseName("IX_WebRequestAuditLogs_RequestPath_StartedAt");
+
+                    b.HasIndex("StatusCode", "StartedAt")
+                        .HasDatabaseName("IX_WebRequestAuditLogs_StatusCode_StartedAt");
+
+                    b.HasIndex("TenantId", "StartedAt")
+                        .HasDatabaseName("IX_WebRequestAuditLogs_TenantId_StartedAt");
+
+                    b.HasIndex("UserId", "StartedAt")
+                        .HasDatabaseName("IX_WebRequestAuditLogs_UserId_StartedAt");
+
+                    b.HasIndex("AuditResourceType", "ResourceId", "StartedAt")
+                        .HasDatabaseName("IX_WebRequestAuditLogs_AuditResourceType_ResourceId_StartedAt");
+
+                    b.ToTable("WebRequestAuditLogs", (string)null);
+                });
+
+            modelBuilder.Entity("Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests.WebRequestAuditLogDetail", b =>
+                {
+                    b.Property<long>("WebRequestAuditLogId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Accept")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("varchar(1024)");
+
+                    b.Property<long>("ActionDurationMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("AuthorizationType")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<string>("CurlCommand")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("DatabaseAccessCount")
+                        .HasColumnType("int");
+
+                    b.Property<long>("DatabaseDurationMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("DatabaseOperationSummary")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ErrorCode")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<string>("ErrorMessage")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ExceptionStackTrace")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ExceptionType")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)");
+
+                    b.Property<string>("ExtraPropertiesJson")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("FileCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("FileMetadataJson")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("FileOperationType")
+                        .HasColumnType("int");
+
+                    b.Property<long>("FileTotalBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("HasDatabaseAccess")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("HasFileAccess")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<bool>("HasImageAccess")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<int>("ImageCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ImageMetadataJson")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<long>("MiddlewareDurationMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Origin")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("varchar(1024)");
+
+                    b.Property<string>("Referer")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("varchar(1024)");
+
+                    b.Property<string>("Remark")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("RequestBody")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("RequestContentType")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)");
+
+                    b.Property<string>("RequestHeadersJson")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("RequestQueryString")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("RequestUrl")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ResourceCode")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<string>("ResourceName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("varchar(256)");
+
+                    b.Property<string>("ResponseBody")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ResponseContentType")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)");
+
+                    b.Property<string>("ResponseHeadersJson")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Tags")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("UserAgent")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("varchar(2048)");
+
+                    b.HasKey("WebRequestAuditLogId");
+
+                    b.HasIndex("StartedAt");
+
+                    b.ToTable("WebRequestAuditLogDetails", (string)null);
+                });
+
+            modelBuilder.Entity("Zeye.Sorting.Hub.Domain.Aggregates.Parcels.Parcel", b =>
+                {
+                    b.Property<long>("Id")
+                        .HasColumnType("bigint");
 
                     b.Property<long>("ActualChuteId")
                         .HasColumnType("bigint");
@@ -142,17 +460,33 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("BagCode");
-
                     b.HasIndex("BagId");
+
+                    b.HasIndex("CreatedTime");
 
                     b.HasIndex("ParcelTimestamp");
 
                     b.HasIndex("ScannedTime");
 
-                    b.HasIndex("WorkstationName");
+                    b.HasIndex("ActualChuteId", "DischargeTime");
 
-                    b.ToTable("Parcels");
+                    b.HasIndex("ActualChuteId", "ScannedTime");
+
+                    b.HasIndex("BagCode", "ScannedTime");
+
+                    b.HasIndex("NoReadType", "ScannedTime");
+
+                    b.HasIndex("RequestStatus", "ScannedTime");
+
+                    b.HasIndex("Status", "ScannedTime");
+
+                    b.HasIndex("TargetChuteId", "ScannedTime");
+
+                    b.HasIndex("WorkstationName", "ScannedTime");
+
+                    b.HasIndex("Status", "ExceptionType", "ScannedTime");
+
+                    b.ToTable("Parcels", (string)null);
                 });
 
             modelBuilder.Entity("Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects.BagInfo", b =>
@@ -190,7 +524,18 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                     b.HasIndex("ChuteId")
                         .IsUnique();
 
-                    b.ToTable("Bags");
+                    b.ToTable("Bags", (string)null);
+                });
+
+            modelBuilder.Entity("Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests.WebRequestAuditLogDetail", b =>
+                {
+                    b.HasOne("Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests.WebRequestAuditLog", "WebRequestAuditLog")
+                        .WithOne("Detail")
+                        .HasForeignKey("Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests.WebRequestAuditLogDetail", "WebRequestAuditLogId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("WebRequestAuditLog");
                 });
 
             modelBuilder.Entity("Zeye.Sorting.Hub.Domain.Aggregates.Parcels.Parcel", b =>
@@ -271,7 +616,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
                             b1.HasIndex("RequestTime");
 
-                            b1.ToTable("Parcel_ApiRequests");
+                            b1.ToTable("Parcel_ApiRequests", (string)null);
 
                             b1.WithOwner()
                                 .HasForeignKey("ParcelId");
@@ -297,17 +642,18 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                                 .HasColumnType("datetime(6)");
 
                             b1.Property<long>("ParcelId")
-                                .HasColumnType("bigint");
+                                .HasColumnType("bigint")
+                                .HasColumnName("ParcelId");
 
                             b1.HasKey("Id");
-
-                            b1.HasIndex("BarCode");
 
                             b1.HasIndex("CapturedTime");
 
                             b1.HasIndex("ParcelId");
 
-                            b1.ToTable("Parcel_BarCodeInfos");
+                            b1.HasIndex("BarCode", "ParcelId");
+
+                            b1.ToTable("Parcel_BarCodeInfos", (string)null);
 
                             b1.WithOwner()
                                 .HasForeignKey("ParcelId");
@@ -345,7 +691,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
                             b1.HasIndex("TargetChuteId");
 
-                            b1.ToTable("Parcel_ChuteInfos");
+                            b1.ToTable("Parcel_ChuteInfos", (string)null);
 
                             b1.WithOwner()
                                 .HasForeignKey("ParcelId");
@@ -401,7 +747,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
                             b1.HasIndex("ParcelId");
 
-                            b1.ToTable("Parcel_CommandInfos");
+                            b1.ToTable("Parcel_CommandInfos", (string)null);
 
                             b1.WithOwner()
                                 .HasForeignKey("ParcelId");
@@ -455,7 +801,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                             b1.HasIndex("ParcelId")
                                 .IsUnique();
 
-                            b1.ToTable("Parcel_GrayDetectorInfos");
+                            b1.ToTable("Parcel_GrayDetectorInfos", (string)null);
 
                             b1.WithOwner()
                                 .HasForeignKey("ParcelId");
@@ -491,7 +837,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                                 .HasColumnType("int");
 
                             b1.Property<long>("ParcelId")
-                                .HasColumnType("bigint");
+                                .HasColumnType("bigint")
+                                .HasColumnName("ParcelId");
 
                             b1.Property<string>("RelativePath")
                                 .IsRequired()
@@ -504,7 +851,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
                             b1.HasIndex("ParcelId");
 
-                            b1.ToTable("Parcel_ImageInfos");
+                            b1.ToTable("Parcel_ImageInfos", (string)null);
 
                             b1.WithOwner()
                                 .HasForeignKey("ParcelId");
@@ -529,7 +876,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                                 .HasColumnType("varchar(128)");
 
                             b1.Property<long>("ParcelId")
-                                .HasColumnType("bigint");
+                                .HasColumnType("bigint")
+                                .HasColumnName("ParcelId");
 
                             b1.Property<string>("WorkstationName")
                                 .IsRequired()
@@ -543,7 +891,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                             b1.HasIndex("ParcelId")
                                 .IsUnique();
 
-                            b1.ToTable("Parcel_DeviceInfos");
+                            b1.ToTable("Parcel_DeviceInfos", (string)null);
 
                             b1.WithOwner()
                                 .HasForeignKey("ParcelId");
@@ -574,7 +922,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                                 .HasColumnType("decimal(18,3)");
 
                             b1.Property<long>("ParcelId")
-                                .HasColumnType("bigint");
+                                .HasColumnType("bigint")
+                                .HasColumnName("ParcelId");
 
                             b1.Property<decimal>("X1")
                                 .HasPrecision(18, 3)
@@ -597,7 +946,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                             b1.HasIndex("ParcelId")
                                 .IsUnique();
 
-                            b1.ToTable("Parcel_PositionInfos");
+                            b1.ToTable("Parcel_PositionInfos", (string)null);
 
                             b1.WithOwner()
                                 .HasForeignKey("ParcelId");
@@ -634,7 +983,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
                             b1.HasIndex("SorterCarrierId");
 
-                            b1.ToTable("Parcel_SorterCarrierInfos");
+                            b1.ToTable("Parcel_SorterCarrierInfos", (string)null);
 
                             b1.WithOwner()
                                 .HasForeignKey("ParcelId");
@@ -655,7 +1004,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                                 .HasColumnType("tinyint(1)");
 
                             b1.Property<long>("ParcelId")
-                                .HasColumnType("bigint");
+                                .HasColumnType("bigint")
+                                .HasColumnName("ParcelId");
 
                             b1.Property<string>("RawData")
                                 .IsRequired()
@@ -670,7 +1020,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                             b1.HasIndex("ParcelId")
                                 .IsUnique();
 
-                            b1.ToTable("Parcel_StickingParcelInfos");
+                            b1.ToTable("Parcel_StickingParcelInfos", (string)null);
 
                             b1.WithOwner()
                                 .HasForeignKey("ParcelId");
@@ -696,7 +1046,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                                 .HasColumnType("varchar(128)");
 
                             b1.Property<long>("ParcelId")
-                                .HasColumnType("bigint");
+                                .HasColumnType("bigint")
+                                .HasColumnName("ParcelId");
 
                             b1.HasKey("Id");
 
@@ -706,7 +1057,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
                             b1.HasIndex("ParcelId");
 
-                            b1.ToTable("Parcel_VideoInfos");
+                            b1.ToTable("Parcel_VideoInfos", (string)null);
 
                             b1.WithOwner()
                                 .HasForeignKey("ParcelId");
@@ -779,7 +1130,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                             b1.HasIndex("ParcelId")
                                 .IsUnique();
 
-                            b1.ToTable("Parcel_VolumeInfos");
+                            b1.ToTable("Parcel_VolumeInfos", (string)null);
 
                             b1.WithOwner()
                                 .HasForeignKey("ParcelId");
@@ -823,7 +1174,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
                             b1.HasIndex("WeighingTime");
 
-                            b1.ToTable("Parcel_WeightInfos");
+                            b1.ToTable("Parcel_WeightInfos", (string)null);
 
                             b1.WithOwner()
                                 .HasForeignKey("ParcelId");
@@ -856,6 +1207,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                     b.Navigation("VolumeInfo");
 
                     b.Navigation("WeightInfos");
+                });
+
+            modelBuilder.Entity("Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests.WebRequestAuditLog", b =>
+                {
+                    b.Navigation("Detail");
                 });
 #pragma warning restore 612, 618
         }
