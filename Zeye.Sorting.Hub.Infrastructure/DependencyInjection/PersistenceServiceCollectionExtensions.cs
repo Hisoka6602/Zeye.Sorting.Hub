@@ -9,7 +9,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Logging;
+using NLog;
+using Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects;
 using Zeye.Sorting.Hub.Domain.Repositories;
@@ -26,11 +27,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
     /// 持久化模块注册扩展（仅负责能力注册，不负责进程启动编排）
     /// </summary>
     public static class PersistenceServiceCollectionExtensions {
-        /// <summary>
-        /// MySQL ServerVersion 解析日志分类。
-        /// </summary>
-        private const string MySqlServerVersionLoggerCategory = "Infrastructure.Persistence.MySql.ServerVersion";
-
         /// <summary>
         /// 针对“无天然时间字段/时间字段可为空”的属性表，采用固定哈希分表。
         /// </summary>
@@ -62,6 +58,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             pattern: @"(Z|[+\-]\d{2}:\d{2}|[+\-]\d{4})$",
             options: RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
         /// <summary>
+        /// NLog 日志器。
+        /// </summary>
+        private static readonly Logger NLogLogger = LogManager.GetCurrentClassLogger();
+        /// <summary>
         /// Parcel 关联值对象分表规则：以声明式清单注册，避免注册点继续膨胀为手工长列表。
         /// </summary>
         private static readonly IReadOnlyList<ParcelAggregateShardingRule> ParcelAggregateShardingRules = [
@@ -79,6 +79,13 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             CreateHashShardingRule<BarCodeInfo>(ParcelIdField),
             CreateHashShardingRule<ImageInfo>(ParcelIdField),
             CreateHashShardingRule<VideoInfo>(ParcelIdField)
+        ];
+        /// <summary>
+        /// WebRequestAuditLog 冷热模型分表规则：StartedAt 统一按日分表（与治理探测同源）。
+        /// </summary>
+        private static readonly IReadOnlyList<(Type EntityType, string ShardingField)> WebRequestAuditLogPerDayShardingRules = [
+            (typeof(WebRequestAuditLog), nameof(WebRequestAuditLog.StartedAt)),
+            (typeof(WebRequestAuditLogDetail), nameof(WebRequestAuditLogDetail.StartedAt))
         ];
 
         /// <summary>
@@ -131,6 +138,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                         .UseDatabase(connectionString, DatabaseType.MySql, typeof(Parcel).Namespace!, static _ => { });
 
                     ConfigureParcelAggregateSharding(shardingBuilder, parcelShardingStartTime, parcelRelatedHashShardingMod, parcelShardingStrategyDecision);
+                    ConfigureWebRequestAuditLogSharding(shardingBuilder, parcelShardingStartTime);
                 });
 
                 services.AddSingleton<IDatabaseDialect, MySqlDialect>();
@@ -157,6 +165,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                         .UseDatabase(connectionString, DatabaseType.SqlServer, typeof(Parcel).Namespace!, static _ => { });
 
                     ConfigureParcelAggregateSharding(shardingBuilder, parcelShardingStartTime, parcelRelatedHashShardingMod, parcelShardingStrategyDecision);
+                    ConfigureWebRequestAuditLogSharding(shardingBuilder, parcelShardingStartTime);
                 });
 
                 services.AddSingleton<IDatabaseDialect, SqlServerDialect>();
@@ -168,6 +177,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             }
 
             services.AddScoped<IParcelRepository, ParcelRepository>();
+            services.AddScoped<IWebRequestAuditLogRepository, WebRequestAuditLogRepository>();
 
             return services;
         }
@@ -179,15 +189,14 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             var cfg = sp.GetRequiredService<IConfiguration>();
             var interceptor = sp.GetRequiredService<SlowQueryCommandInterceptor>();
             var mySqlSessionInterceptor = sp.GetRequiredService<MySqlSessionBootstrapConnectionInterceptor>();
-            var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger(MySqlServerVersionLoggerCategory);
             var cs = cfg.GetConnectionString(ConfiguredProviderNames.MySql)!;
             var commandTimeoutSeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
             var maxRetryCount = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryCount", 5);
             var maxRetryDelaySeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryDelaySeconds", 10);
 
-            var serverVersion = ResolveMySqlServerVersion(cfg, cs, logger);
+            var serverVersion = ResolveMySqlServerVersion(cfg, cs, null);
             options.UseMySql(cs, serverVersion, mySqlOptions => {
-                // 迁移程序集通常指向 Host 或 Infrastructure，按你迁移放置位置调整
+                // 迁移程序集通常指向 Host 或 Infrastructure，按迁移放置位置调整
                 // mySqlOptions.MigrationsAssembly("Zeye.Sorting.Hub.Host");
                 mySqlOptions.EnableRetryOnFailure(
                     maxRetryCount: maxRetryCount,
@@ -205,7 +214,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// </summary>
         /// <param name="configuration">应用配置。</param>
         /// <param name="connectionString">MySQL 连接字符串。</param>
-        /// <param name="logger">日志记录器（用于记录配置非法与探测失败）。</param>
+        /// <param name="logger">可选日志记录器（仅用于测试中捕获告警）。</param>
         /// <returns>可用于 EF Core UseMySql 的服务端版本对象。</returns>
         /// <remarks>
         /// 处理策略：
@@ -213,7 +222,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// 2) 若配置缺失或非法，尝试 <c>ServerVersion.AutoDetect</c>；
         /// 3) 若探测失败，回退到 MySQL 8.0.0。
         /// </remarks>
-        internal static ServerVersion ResolveMySqlServerVersion(IConfiguration configuration, string connectionString, ILogger logger) {
+        internal static ServerVersion ResolveMySqlServerVersion(IConfiguration configuration, string connectionString, Microsoft.Extensions.Logging.ILogger? logger = null) {
             var configuredVersion = configuration["Persistence:MySql:ServerVersion"];
             if (!string.IsNullOrWhiteSpace(configuredVersion)) {
                 if (Version.TryParse(configuredVersion, out var parsedVersion) && parsedVersion.Major >= 5) {
@@ -231,7 +240,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 return ServerVersion.AutoDetect(connectionString);
             }
             catch (Exception ex) {
-                LogResolveWarning(logger, ex, "MySQL ServerVersion 自动探测失败，将回退到默认版本 8.0.0");
+                NLogLogger.Warn(ex, "MySQL ServerVersion 自动探测失败，将回退到默认版本 8.0.0");
+                if (logger is not null) {
+                    Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger, "MySQL ServerVersion 自动探测失败，将回退到默认版本 8.0.0");
+                }
                 return new MySqlServerVersion(new Version(8, 0, 0));
             }
         }
@@ -243,12 +255,22 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// <param name="exception">异常对象。</param>
         /// <param name="messageTemplate">消息模板。</param>
         /// <param name="args">模板参数。</param>
-        private static void LogResolveWarning(ILogger logger, Exception? exception, string messageTemplate, params object[] args) {
+        private static void LogResolveWarning(Microsoft.Extensions.Logging.ILogger? logger, Exception? exception, string messageTemplate, params object[] args) {
+            if (logger is not null) {
+                if (exception is null) {
+                    Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger, messageTemplate, args);
+                }
+                else {
+                    Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger, exception, messageTemplate, args);
+                }
+                return;
+            }
+
             if (exception is null) {
-                logger.LogWarning(messageTemplate, args);
+                NLogLogger.Warn(messageTemplate, args);
             }
             else {
-                logger.LogWarning(exception, messageTemplate, args);
+                NLogLogger.Warn(exception, messageTemplate, args);
             }
         }
 
@@ -264,7 +286,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             var maxRetryDelaySeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryDelaySeconds", 10);
 
             options.UseSqlServer(cs, sqlServerOptions => {
-                // 迁移程序集通常指向 Host 或 Infrastructure，按你迁移放置位置调整
+                // 迁移程序集通常指向 Host 或 Infrastructure，按迁移放置位置调整
                 // sqlServerOptions.MigrationsAssembly("Zeye.Sorting.Hub.Host");
                 sqlServerOptions.EnableRetryOnFailure(
                     maxRetryCount: maxRetryCount,
@@ -286,6 +308,17 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 .Where(static rule => rule.RuleKind == ParcelAggregateShardingRuleKind.Date)
                 .Select(static rule => rule.EntityType)
                 .Prepend(typeof(Parcel))
+                .Distinct()
+                .ToArray();
+        }
+
+        /// <summary>
+        /// 获取 WebRequestAuditLog 体系按日分表治理需要关注的实体类型清单（与分表注册规则同源）。
+        /// </summary>
+        /// <returns>实体类型清单。</returns>
+        public static IReadOnlyList<Type> GetWebRequestAuditLogPerDayShardingEntityTypes() {
+            return WebRequestAuditLogPerDayShardingRules
+                .Select(static rule => rule.EntityType)
                 .Distinct()
                 .ToArray();
         }
@@ -330,6 +363,27 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             foreach (var rule in ParcelAggregateShardingRules) {
                 rule.Register(shardingBuilder, localShardingStartTime, parcelRelatedHashShardingMod, parcelShardingStrategyDecision.EffectiveDateMode);
             }
+        }
+
+        /// <summary>
+        /// 注册 WebRequestAuditLog 冷热模型分表规则（统一 StartedAt 按日分表）。
+        /// </summary>
+        /// <param name="shardingBuilder">分表构建器。</param>
+        /// <param name="shardingStartTime">分表起始时间。</param>
+        private static void ConfigureWebRequestAuditLogSharding(
+            IShardingBuilder shardingBuilder,
+            DateTime shardingStartTime) {
+            var localShardingStartTime = AutoTuningConfigurationHelper.NormalizeToLocalTime(shardingStartTime);
+            shardingBuilder.SetDateSharding<WebRequestAuditLog>(
+                shardingField: nameof(WebRequestAuditLog.StartedAt),
+                expandByDateMode: ExpandByDateMode.PerDay,
+                startTime: localShardingStartTime,
+                sourceName: ShardingConstant.DefaultSource);
+            shardingBuilder.SetDateSharding<WebRequestAuditLogDetail>(
+                shardingField: nameof(WebRequestAuditLogDetail.StartedAt),
+                expandByDateMode: ExpandByDateMode.PerDay,
+                startTime: localShardingStartTime,
+                sourceName: ShardingConstant.DefaultSource);
         }
 
         /// <summary>

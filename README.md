@@ -22,6 +22,8 @@
 │   └── Zeye.Sorting.Hub.Analytics.csproj（Analytics 项目定义）
 ├── Zeye.Sorting.Hub.Application（应用层）
 │   ├── Services（应用服务目录）
+│   │   ├── AuditLogs（审计日志应用服务目录）
+│   │   │   └── WriteWebRequestAuditLogCommandService.cs（Web 请求审计日志最小写入应用服务入口）
 │   │   └── Parcels（Parcel 查询应用服务目录）
 │   │       ├── CleanupExpiredParcelsCommandService.cs（过期包裹清理应用服务（治理型，调用仓储隔离器，不可绕过））
 │   │       ├── CreateParcelCommandService.cs（管理端新增包裹应用服务）
@@ -181,6 +183,7 @@
 │   ├── ParcelRepositoryTests.cs（Parcel 仓储第一阶段能力测试：分页过滤、详情与邻近查询、写操作与过期清理；含阻断/dry-run/显式放开的危险动作治理回归）
 │   ├── SelectiveMissingShardingPhysicalTableProbe.cs（物理表探测测试桩：选择性缺失场景）
 │   ├── SortingHubTestDbContextFactory.cs（Host.Tests 通用 InMemory DbContextFactory，供查询服务/仓储测试复用）
+│   ├── WebRequestAuditLogRepositoryTests.cs（Web 请求审计日志仓储写入测试：DI 解析、冷热一对一落库与应用服务写入入口）
 │   ├── TestDialect.cs（通用数据库方言测试桩）
 │   ├── TestHostEnvironment.cs（IHostEnvironment 测试桩）
 │   ├── TestLogger.cs（通用泛型日志测试桩）
@@ -216,9 +219,9 @@
 │   │   │   ├── DatabaseProviderExceptionHelper.cs（数据库异常错误码提取与方言共享索引构造辅助类）
 │   │   │   ├── IDatabaseDialect.cs（数据库方言接口）
 │   │   │   ├── IShardingPhysicalTableProbe.cs（分表物理对象探测接口：支持物理表存在性与关键索引缺失探测（仅探测，不执行 DDL））
-│   │   │   ├── IBatchShardingPhysicalTableProbe.cs（批量分表物理表存在性探测接口，支持一次性探测多张表是否存在）
-│   │   │   ├── MySqlDialect.cs（MySQL 方言实现：自动调优 SQL + 物理分表存在性探测 + 关键索引缺失探测）
-│   │   │   └── SqlServerDialect.cs（SQL Server 方言实现：自动调优 SQL + 物理分表存在性探测 + 关键索引缺失探测）
+│   │   │   ├── IBatchShardingPhysicalTableProbe.cs（批量分表物理表探测接口，支持缺失探测与按逻辑表枚举物理分表）
+│   │   │   ├── MySqlDialect.cs（MySQL 方言实现：自动调优 SQL + 物理分表存在性/枚举探测 + 关键索引缺失探测）
+│   │   │   └── SqlServerDialect.cs（SQL Server 方言实现：自动调优 SQL + 物理分表存在性/枚举探测 + 关键索引缺失探测）
 │   │   ├── DesignTime（EF 设计时支持目录）
 │   │   │   ├── MySqlContextFactory.cs（统一设计时 DbContext 工厂，支持 --provider 切换 MySql/SqlServer）
 │   │   │   └── SqlServerContextFactory.cs（SQL Server 设计时 DbContext 构建器）
@@ -247,7 +250,8 @@
 │   ├── Repositories（仓储基类与结果模型目录）
 │   │   ├── MemoryCacheRepositoryBase.cs（带内存缓存失效的仓储基类，使用 NLog 日志）
 │   │   ├── ParcelRepository.cs（Parcel 仓储第一阶段实现，使用静态 NLog logger，无需 MEL ILogger 构造注入；BarCodeKeyword 检索按 Provider 分支：MySQL 走 FULLTEXT Boolean，其他 Provider 回退 Contains）
-│   │   └── RepositoryBase.cs（通用仓储基类，接受 NLog.ILogger 构造参数，由派生类传入确保日志来源类名正确）
+│   │   ├── RepositoryBase.cs（通用仓储基类，接受 NLog.ILogger 构造参数，由派生类传入确保日志来源类名正确）
+│   │   └── WebRequestAuditLogRepository.cs（Web 请求审计日志仓储实现：热表+冷表同事务写入）
 │   └── Zeye.Sorting.Hub.Infrastructure.csproj（Infrastructure 项目定义）
 ├── Zeye.Sorting.Hub.Realtime（实时通信子域，占位工程）
 │   └── Zeye.Sorting.Hub.Realtime.csproj（Realtime 项目定义）
@@ -309,6 +313,9 @@
 #### `Zeye.Sorting.Hub.Application/Utilities/`：应用层内部共享工具目录
 - `EnumGuard.cs`：枚举值合法性校验工具；统一封装 `Enum.IsDefined` 判断、Warn 日志记录与 `ArgumentOutOfRangeException` 抛出，消除各应用服务中重复的枚举验证模板代码；提供 `int` 和 `int?` 两个重载。
 - `Guard.cs`：基础参数边界守卫工具；提供 `ThrowIfZeroOrNegative`（Id 正数校验，有 long/int 两个重载）和 `ThrowIfNegative`（可选数量非负校验），统一记录 Warn 日志并抛出 `ArgumentOutOfRangeException`。
+
+#### `Zeye.Sorting.Hub.Application/Services/AuditLogs/`：审计日志应用服务目录
+- `WriteWebRequestAuditLogCommandService.cs`：Web 请求审计日志最小写入应用服务入口，负责将聚合写入委托给仓储。
 
 #### `Zeye.Sorting.Hub.Application/Services/Parcels/`：Parcel 应用服务目录（查询 + 管理端写命令）
 - `GetParcelByIdQueryService.cs`：按 Id 查询 Parcel 详情应用服务（仓储调用 + 合同映射 + 最小参数校验）。
@@ -455,7 +462,7 @@
 - `MaxTimeRangeAttribute.cs`：时间范围校验特性（限制起止时间跨度，默认不超过 3 个月）。
 
 ### `Zeye.Sorting.Hub.Host/`：宿主层（程序入口、后台服务、启动配置）
-- `Program.cs`：应用入口与 Host 构建流程。
+- `Program.cs`：应用入口与 Host 构建流程（新增 `WriteWebRequestAuditLogCommandService` 注册）。
 - `ParcelReadOnlyApiRouteExtensions.cs`：Parcel 只读路由注册与处理逻辑。
 - `ParcelListQueryParameters.cs`：只读列表查询参数模型。
 - `ParcelAdjacentQueryParameters.cs`：只读邻近查询参数模型。
@@ -477,7 +484,7 @@
 - `AutoTuningLoggerObservability.cs`：自动调优观测默认日志实现（统一日志 + 指标抽象默认落地）。
 - `DatabaseAutoTuningHostedService.cs`：数据库自动调谐托管服务主流程。
 - `PendingRollbackAction.cs` / `TableCapacitySnapshot.cs` / `EvidenceContext.cs` / `PolicyDecision.cs`：自动调谐内部模型与决策类型。
-- `DatabaseInitializerHostedService.cs`：数据库初始化与迁移托管服务主流程（新增 WebRequestAuditLog 独立治理触发、历史分表保留治理决策评估、关键索引按逻辑表分发审计）。
+- `DatabaseInitializerHostedService.cs`：数据库初始化与迁移托管服务主流程（新增 WebRequestAuditLog 独立治理触发、历史分表保留真实元数据候选计算与执行隔离、关键索引按逻辑表分发审计）。
 - `PrebuiltPerDayShardDatesResolution.cs`：日分表预建日期解析结果模型。
 - `ShardingGovernanceGuardException.cs`：分表治理守卫异常类型。
 - `DevelopmentBrowserLauncherHostedService.cs`：Development 浏览器启动隔离器，仅在 Development + `Hosting:BrowserAutoOpen:Enabled=true` + 交互式/本机/非容器/非 CI 场景触发；通过 `IHostApplicationLifetime.ApplicationStarted` 确保服务可访问后再尝试打开，并持续使用 `SafeExecutor` 隔离异常，避免影响宿主启动。
@@ -508,9 +515,9 @@
 - `DatabaseProviderExceptionHelper.cs`：数据库异常错误码提取与方言共享索引列归一化/索引名构造辅助类。
 - `IDatabaseDialect.cs`：数据库方言抽象接口。
 - `IShardingPhysicalTableProbe.cs`：分表物理对象探测抽象（最小职责：判断目标物理表是否存在 + 探测目标表缺失索引名集合；仅探测，不执行 DDL）。
-- `IBatchShardingPhysicalTableProbe.cs`：分表物理表批量探测抽象（最小职责：一次性返回缺失物理表集合）。
-- `MySqlDialect.cs`：MySQL 方言实现（自动调优 SQL + INFORMATION_SCHEMA.TABLES 物理分表探测 + INFORMATION_SCHEMA.STATISTICS 关键索引缺失探测）。
-- `SqlServerDialect.cs`：SQL Server 方言实现（自动调优 SQL + sys.tables/sys.schemas 物理分表探测 + sys.indexes 关键索引缺失探测）。
+- `IBatchShardingPhysicalTableProbe.cs`：分表物理表批量探测抽象（返回缺失集合，并支持按逻辑表名前缀枚举已存在物理分表）。
+- `MySqlDialect.cs`：MySQL 方言实现（自动调优 SQL + INFORMATION_SCHEMA.TABLES 物理分表存在性/枚举探测 + INFORMATION_SCHEMA.STATISTICS 关键索引缺失探测）。
+- `SqlServerDialect.cs`：SQL Server 方言实现（自动调优 SQL + sys.tables/sys.schemas 物理分表存在性/枚举探测 + sys.indexes 关键索引缺失探测）。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/`：自动调谐核心目录
 - `IAutoTuningObservability.cs`：自动调优观测输出抽象接口。
@@ -561,6 +568,7 @@
 - `RepositoryBase.cs`：通用仓储基类（增删改查 + 自动持久化实现）；接受 `NLog.ILogger` 构造参数，由派生类传入，确保日志来源类名为实际仓储类而非基类名。
 - `MemoryCacheRepositoryBase.cs`：带内存缓存失效逻辑的仓储基类，继承 `RepositoryBase`，同样使用 NLog 日志。
 - `ParcelRepository.cs`：Parcel 仓储第一阶段实现（复用 `RepositoryBase`、`IDbContextFactory`，使用静态 `NLog.ILogger`，已移除 MEL `ILogger<ParcelRepository>` 构造依赖；提供基础读写、分页查询、按 Id 邻近查询与过期清理；条码检索按 Provider 分支（MySQL FULLTEXT Boolean、其他 Provider Contains）；过期清理纳入隔离器开关 + dry-run + 审计 + 补偿边界声明）。
+- `WebRequestAuditLogRepository.cs`：Web 请求审计日志仓储实现，负责热表与冷表详情同事务写入。
 
 ### `Zeye.Sorting.Hub.Realtime/`：实时通信子域（当前为占位工程）
 - `Zeye.Sorting.Hub.Realtime.csproj`：Realtime 项目定义。
@@ -593,6 +601,7 @@
 - `ParcelAdminApiTests.cs`：Parcel 管理端写接口测试，覆盖新增成功路径、创建请求 `id<=0` 返回 400、重复 Id 返回 409、UTC 时间拒绝、更新状态成功路径 + 不存在 404 + 非法操作码 400、删除成功路径 + 不存在 404、cleanup-expired blocked/dry-run/execute 三态 + UTC 时间与非法参数拒绝。
 - `ParcelReadOnlyApiTests.cs`：Parcel 只读 API 端点测试，覆盖列表查询、详情查询、详情不存在返回 404、`/api/parcels/adjacent` 按 `id` 查询的 400/404/稳定排序回归。
 - `SortingHubTestDbContextFactory.cs`：Host.Tests 通用 InMemory `DbContextFactory`，供查询服务测试与仓储测试复用。
+- `WebRequestAuditLogRepositoryTests.cs`：Web 请求审计日志仓储测试，覆盖 DI 解析、冷热一对一落库与最小写入服务入口。
 - `ParcelQueryServicesTests.cs`：Parcel 应用层查询服务测试（列表/详情/邻近查询映射与最小参数校验）；新增邻近查询锚点不存在异常场景；多重过滤条件联合成功路径（bagCode + workstationName + actualChuteId + status）；ExceptionType 筛选成功路径与非法值校验。
 - `ParcelRepositoryTests.cs`：Parcel 仓储第一阶段能力测试，覆盖分页过滤、详情与按 Id 邻近查询、新增/更新/删除、过期清理与批量新增；新增同一扫描时间稳定排序、锚点不存在、重复主键冲突语义回归，并验证危险清理动作的 blocked/dry-run/executed 三态。
 - `SelectiveMissingShardingPhysicalTableProbe.cs`：物理表探测测试桩，模拟指定分表缺失场景。
@@ -608,6 +617,11 @@
 
 ## 本次更新内容
 
+- 完成 WebRequestAuditLog 持久化写入闭环：新增 `WebRequestAuditLogRepository` 并在 `AddSortingHubPersistence` 注册 `IWebRequestAuditLogRepository`，补齐最小应用写入入口 `WriteWebRequestAuditLogCommandService`。
+- 完成 WebRequestAuditLog 分表自治接线：在 EFCore.Sharding 注册链路为 `WebRequestAuditLog/WebRequestAuditLogDetail` 按 `StartedAt` 接入 PerDay 分表，并将 `DatabaseInitializerHostedService` 治理实体来源切换为分表注册同源来源。
+- 完成 WebRequestAuditLog 历史分表保留真实执行链路：新增基于真实分表元数据的候选计算（按 `KeepRecentShardCount` 保留最近 N 个），仅在 `Decision=Execute` 时执行删除，保留 Guard/DryRun 语义并输出 PlannedCount/ExecutedCount/Decision/CompensationBoundary 审计与观测事件。
+- 扩展方言批量探测能力：`IBatchShardingPhysicalTableProbe` 新增“按逻辑表枚举物理分表”接口，MySQL/SQLServer 方言实现同步补齐。
+- 补齐回归测试：新增 `WebRequestAuditLogRepositoryTests`（仓储写入 + 最小应用入口 + 分表实体清单断言），并在 `AutoTuningProductionControlTests` 新增 WebRequestAuditLog 分表治理同源与保留边界断言。
 - 修复上一版未闭环点 P0-1：`DatabaseInitializerHostedService` 新增 `Persistence:Sharding:Governance:WebRequestAuditLog:EnablePerDayGuard` 独立触发条件，WebRequestAuditLog 分表治理不再由 Parcel 决策单点控制。
 - 修复上一版未闭环点 P0-2：新增 `EvaluateWebRequestAuditLogRetentionDecision`，统一危险动作结果语义为 `PlannedCount=候选处理数量`、`ExecutedCount=实际执行数量`，并将审计文案与三态决策对齐。
 - 修复上一版未闭环点 P0-3：关键索引审计改为“按逻辑表分发”，同时纳入 `WebRequestAuditLogs` 与 `WebRequestAuditLogDetails` 规则；自动调优白名单同步补齐热表与详情表。
@@ -634,6 +648,8 @@
 
 ### 可继续完善内容
 
+- 后续可补充真实 MySQL / SQL Server 集成用例，验证 WebRequestAuditLog 历史分表保留在真实数据库中的物理表枚举与删除执行链路。
+- 后续可在 WebRequestAuditLog 写入入口接入真实 HTTP 请求上下文采集（中间件/管道），并增加端到端压测基线。
 - 后续可将当前“人工审查范围”规则逐步转为自动化校验项（例如注释覆盖率、命名规范、重复代码检测），进一步提升 CI 门禁覆盖度。
 - 后续可考虑为测试替身目录增加更细分命名分组（如 `Fakes/Probes/Logging` 子目录），在保持单类型单文件前提下进一步提升可导航性。
 - 后续可补充真实 MySQL / SQL Server 集成用例，分别覆盖 `GetAdjacentByIdAsync` 的同一扫描时间稳定排序与重复主键冲突语义，验证跨 Provider 一致性。

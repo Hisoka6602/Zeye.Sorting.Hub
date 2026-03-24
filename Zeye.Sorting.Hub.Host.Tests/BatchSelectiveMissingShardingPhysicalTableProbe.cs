@@ -65,4 +65,16 @@ internal sealed class BatchSelectiveMissingShardingPhysicalTableProbe : IBatchSh
             .ToArray();
         return Task.FromResult<IReadOnlyList<string>>(missing);
     }
+
+    /// <summary>
+    /// 验证场景：ListPhysicalTablesByBaseNameAsync。
+    /// </summary>
+    public Task<IReadOnlyList<string>> ListPhysicalTablesByBaseNameAsync(
+        DbContext dbContext,
+        string? schemaName,
+        string baseTableName,
+        CancellationToken cancellationToken) {
+        LastSchemaName = schemaName;
+        return Task.FromResult<IReadOnlyList<string>>([]);
+    }
 }

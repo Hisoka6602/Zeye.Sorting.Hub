@@ -5,7 +5,7 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 /// <summary>
 /// 通用数据库方言测试桩，仅用于提供可控 ProviderName。
 /// </summary>
-internal sealed class TestDialect : IDatabaseDialect {
+internal sealed class TestDialect : IDatabaseDialect, IBatchShardingPhysicalTableProbe {
     /// <summary>
     /// 返回测试方言名称，用于触发默认治理分支。
     /// </summary>
@@ -30,4 +30,55 @@ internal sealed class TestDialect : IDatabaseDialect {
     /// 返回空集合，避免自治维护 SQL 干扰当前测试目标（仅验证治理守卫与 Provider 分支）。
     /// </summary>
     public IReadOnlyList<string> BuildAutonomousMaintenanceSql(string? schemaName, string tableName, bool inPeakWindow, bool highRisk) => [];
+
+    /// <summary>
+    /// 固定返回 true，保持探测调用可通过。
+    /// </summary>
+    public Task<bool> ExistsAsync(
+        Microsoft.EntityFrameworkCore.DbContext dbContext,
+        string? schemaName,
+        string physicalTableName,
+        CancellationToken cancellationToken) {
+        return Task.FromResult(true);
+    }
+
+    /// <summary>
+    /// 固定返回空集合，保持测试聚焦。
+    /// </summary>
+    public Task<IReadOnlyList<string>> FindMissingIndexesAsync(
+        Microsoft.EntityFrameworkCore.DbContext dbContext,
+        string? schemaName,
+        string physicalTableName,
+        IReadOnlyList<string> indexNames,
+        CancellationToken cancellationToken) {
+        return Task.FromResult<IReadOnlyList<string>>([]);
+    }
+
+    /// <summary>
+    /// 固定返回空集合，保持测试聚焦。
+    /// </summary>
+    public Task<IReadOnlyList<string>> FindMissingTablesAsync(
+        Microsoft.EntityFrameworkCore.DbContext dbContext,
+        string? schemaName,
+        IReadOnlyList<string> physicalTableNames,
+        CancellationToken cancellationToken) {
+        return Task.FromResult<IReadOnlyList<string>>([]);
+    }
+
+    /// <summary>
+    /// 返回固定按日物理表列表，支撑保留候选边界测试。
+    /// </summary>
+    public Task<IReadOnlyList<string>> ListPhysicalTablesByBaseNameAsync(
+        Microsoft.EntityFrameworkCore.DbContext dbContext,
+        string? schemaName,
+        string baseTableName,
+        CancellationToken cancellationToken) {
+        var tables = new[] {
+            $"{baseTableName}_20260301",
+            $"{baseTableName}_20260302",
+            $"{baseTableName}_20260303",
+            $"{baseTableName}_20260304"
+        };
+        return Task.FromResult<IReadOnlyList<string>>(tables);
+    }
 }

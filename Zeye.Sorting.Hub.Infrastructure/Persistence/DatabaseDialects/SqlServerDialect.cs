@@ -220,5 +220,56 @@ WHERE s.name = @p0
                 .ToArray();
         }
 
+        /// <summary>
+        /// 按逻辑基础表名前缀列出已存在的物理分表名。
+        /// </summary>
+        /// <param name="dbContext">数据库上下文。</param>
+        /// <param name="schemaName">schema 名称；为空时默认使用 dbo。</param>
+        /// <param name="baseTableName">逻辑基础表名。</param>
+        /// <param name="cancellationToken">取消令牌。</param>
+        /// <returns>已存在物理分表名集合。</returns>
+        public async Task<IReadOnlyList<string>> ListPhysicalTablesByBaseNameAsync(
+            DbContext dbContext,
+            string? schemaName,
+            string baseTableName,
+            CancellationToken cancellationToken) {
+            ArgumentNullException.ThrowIfNull(dbContext);
+            if (string.IsNullOrWhiteSpace(baseTableName)) {
+                throw new ArgumentException("逻辑基础表名不能为空。", nameof(baseTableName));
+            }
+
+            var normalizedSchemaName = string.IsNullOrWhiteSpace(schemaName) ? "dbo" : schemaName.Trim();
+            var normalizedBaseTableName = baseTableName.Trim();
+            var likePattern = $"{EscapeSqlServerLikePattern(normalizedBaseTableName)}\\_%";
+
+            const string sql = """
+SELECT t.name
+FROM sys.tables AS t
+INNER JOIN sys.schemas AS s ON s.schema_id = t.schema_id
+WHERE s.name = @p0
+  AND t.name LIKE @p1 ESCAPE '\'
+""";
+            var tableNames = await dbContext.Database
+                .SqlQueryRaw<string>(sql, normalizedSchemaName, likePattern)
+                .ToListAsync(cancellationToken);
+            return tableNames
+                .Where(static tableName => !string.IsNullOrWhiteSpace(tableName))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+        }
+
+        /// <summary>
+        /// 转义 SQL Server LIKE 模式中的通配符与转义符本身。
+        /// </summary>
+        /// <param name="pattern">原始模式文本。</param>
+        /// <returns>可安全用于 LIKE + ESCAPE '\' 的文本。</returns>
+        private static string EscapeSqlServerLikePattern(string pattern) {
+            return pattern
+                .Replace("\\", "\\\\", StringComparison.Ordinal)
+                .Replace("%", "\\%", StringComparison.Ordinal)
+                .Replace("_", "\\_", StringComparison.Ordinal)
+                .Replace("[", "\\[", StringComparison.Ordinal);
+        }
+
     }
 }

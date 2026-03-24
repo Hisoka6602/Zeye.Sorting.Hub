@@ -8,6 +8,7 @@ using Zeye.Sorting.Hub.Host.HostedServices;
 using Zeye.Sorting.Hub.Host.Swagger;
 using Zeye.Sorting.Hub.SharedKernel.Utilities;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels;
+using Zeye.Sorting.Hub.Application.Services.AuditLogs;
 using Zeye.Sorting.Hub.Domain.Options.LogCleanup;
 using Zeye.Sorting.Hub.Application.Services.Parcels;
 using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
@@ -16,7 +17,7 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 // ──────────────────────────────────────────────────────────
 // 启动期引导日志：在 DI 容器就绪之前捕获启动异常
 // ──────────────────────────────────────────────────────────
-var bootstrapLogger = LogManager.GetCurrentClassLogger();
+var logger = LogManager.GetCurrentClassLogger();
 const string UrlsConfigKey = "urls";
 
 try {
@@ -81,6 +82,7 @@ try {
     builder.Services.AddScoped<UpdateParcelStatusCommandService>();
     builder.Services.AddScoped<DeleteParcelCommandService>();
     builder.Services.AddScoped<CleanupExpiredParcelsCommandService>();
+    builder.Services.AddScoped<WriteWebRequestAuditLogCommandService>();
 
     // Host 启动时执行持久化初始化
     builder.Services.AddHostedService<DatabaseInitializerHostedService>();
@@ -156,7 +158,7 @@ try {
 }
 catch (Exception ex) {
     // 捕获启动期间的顶层异常，确保日志落盘后再退出
-    bootstrapLogger.Fatal(ex, "宿主启动失败，程序即将退出");
+    logger.Fatal(ex, "宿主启动失败，程序即将退出");
     throw;
 }
 finally {

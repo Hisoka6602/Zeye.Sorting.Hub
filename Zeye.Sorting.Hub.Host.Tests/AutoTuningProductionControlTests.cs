@@ -880,7 +880,7 @@ public sealed class AutoTuningProductionControlTests {
 
         var exception = await Record.ExceptionAsync(() => InvokeShardingGovernanceGuardAsync(service));
         Assert.Null(exception);
-        Assert.True(probe.CallCount > 0);
+        Assert.True(probe.FindMissingTablesCallCount > 0);
     }
 
     /// <summary>
@@ -1191,7 +1191,7 @@ public sealed class AutoTuningProductionControlTests {
 
         var exception = await Record.ExceptionAsync(() => InvokeShardingGovernanceGuardAsync(service));
         Assert.Null(exception);
-        Assert.True(probe.CallCount > 0);
+        Assert.True(probe.FindMissingTablesCallCount > 0);
     }
 
     /// <summary>
@@ -1270,6 +1270,135 @@ public sealed class AutoTuningProductionControlTests {
         Assert.Equal(6, executed.ExecutedCount);
         Assert.False(executed.IsBlockedByGuard);
         Assert.False(executed.IsDryRun);
+    }
+
+    /// <summary>
+    /// 验证场景：ResolvePerDayGovernanceGroups_ShouldUseShardingRegistrationSameSourceForWebRequestAuditLog。
+    /// </summary>
+    [Fact]
+    public void ResolvePerDayGovernanceGroups_ShouldUseShardingRegistrationSameSourceForWebRequestAuditLog() {
+        var options = new DbContextOptionsBuilder<SortingHubDbContext>()
+            .UseInMemoryDatabase($"resolve-governance-webrequest-{Guid.NewGuid():N}")
+            .Options;
+        using var db = new SortingHubDbContext(options);
+        var decision = new ParcelShardingStrategyDecision(
+            Mode: ParcelShardingStrategyMode.Time,
+            TimeGranularity: ParcelTimeShardingGranularity.PerMonth,
+            ThresholdAction: ParcelVolumeThresholdAction.AlertOnly,
+            VolumeObservation: new ParcelShardingVolumeObservation("test", null, null),
+            ThresholdReached: false,
+            EffectiveDateMode: ExpandByDateMode.PerMonth,
+            FinerGranularityExtensionPlan: new ParcelFinerGranularityExtensionPlan(
+                ShouldPlanExtension: false,
+                SuggestedMode: ParcelFinerGranularityMode.None,
+                Lifecycle: ParcelFinerGranularityPlanLifecycle.PlanOnly,
+                RequiresPrebuildGuard: false,
+                Reason: "test"),
+            Reason: "test",
+            ConfigSnapshot: new ParcelShardingStrategyConfigSnapshot(
+                Mode: ParcelShardingStrategyMode.Time,
+                TimeGranularity: ParcelTimeShardingGranularity.PerMonth,
+                ThresholdAction: ParcelVolumeThresholdAction.AlertOnly,
+                MaxRowsPerShard: null,
+                HotThresholdRatio: null,
+                VolumeObservation: new ParcelShardingVolumeObservation("test", null, null),
+                FinerGranularity: new ParcelFinerGranularityStrategySnapshot(
+                    ModeWhenPerDayStillHot: ParcelFinerGranularityMode.None,
+                    Lifecycle: ParcelFinerGranularityPlanLifecycle.PlanOnly,
+                    RequirePrebuildGuard: false,
+                    BucketCount: null)));
+
+        var groups = DatabaseInitializerHostedService.ResolvePerDayGovernanceGroups(
+            dbContext: db,
+            parcelShardingDecision: decision,
+            enableWebRequestAuditLogPerDayGuard: true);
+
+        var webRequestGroup = Assert.Single(groups, static group => group.GroupName == "WebRequestAuditLog");
+        Assert.Contains("WebRequestAuditLogs", webRequestGroup.BaseTableNames);
+        Assert.Contains("WebRequestAuditLogDetails", webRequestGroup.BaseTableNames);
+        Assert.Equal(2, webRequestGroup.BaseTableNames.Count);
+    }
+
+    /// <summary>
+    /// 验证场景：EstimateWebRequestAuditLogRetentionCandidates_KeepRecentBoundary_ShouldReturnExpectedCount。
+    /// </summary>
+    [Fact]
+    public void EstimateWebRequestAuditLogRetentionCandidates_KeepRecentBoundary_ShouldReturnExpectedCount() {
+        var requiredDates = new[] {
+            DateTime.Now.Date.AddDays(-4),
+            DateTime.Now.Date.AddDays(-3),
+            DateTime.Now.Date.AddDays(-2),
+            DateTime.Now.Date.AddDays(-1)
+        };
+        var governanceGroups = new[] {
+            new DatabaseInitializerHostedService.PerDayGovernanceGroup(
+                GroupName: "WebRequestAuditLog",
+                BaseTableNames: new[] { "WebRequestAuditLogs", "WebRequestAuditLogDetails" })
+        };
+
+        var candidatesWhenKeep2 = DatabaseInitializerHostedService.EstimateWebRequestAuditLogRetentionCandidates(
+            requiredDates,
+            keepRecentShardCount: 2,
+            governanceGroups);
+        var candidatesWhenKeep5 = DatabaseInitializerHostedService.EstimateWebRequestAuditLogRetentionCandidates(
+            requiredDates,
+            keepRecentShardCount: 5,
+            governanceGroups);
+
+        Assert.Equal(4, candidatesWhenKeep2);
+        Assert.Equal(0, candidatesWhenKeep5);
+    }
+
+    /// <summary>
+    /// 验证场景：WebRequestAuditLogRetention_MetadataCandidatesAndDryRun_ShouldUseRealPhysicalMetadataAndEmitObservability。
+    /// </summary>
+    [Fact]
+    public async Task WebRequestAuditLogRetention_MetadataCandidatesAndDryRun_ShouldUseRealPhysicalMetadataAndEmitObservability() {
+        var requiredDates = DatabaseInitializerHostedService
+            .BuildRequiredPerDayShardDates(DateTime.Now, 24)
+            .Select(static requiredDate => requiredDate.ToString("yyyy-MM-dd"))
+            .ToArray();
+        var configuration = BuildPerDayGovernanceConfiguration(
+            createShardingTableOnStarting: false,
+            enableManualPrebuildGuard: true,
+            timeGranularity: "PerMonth",
+            prebuildWindowHours: 24,
+            prebuiltDates: requiredDates,
+            enableWebRequestAuditLogPerDayGuard: true);
+        var overrideValues = new Dictionary<string, string?> {
+            ["Persistence:Sharding:Governance:WebRequestAuditLog:Retention:KeepRecentShardCount"] = "2",
+            ["Persistence:Sharding:Governance:WebRequestAuditLog:Retention:Isolator:EnableGuard"] = "false",
+            ["Persistence:Sharding:Governance:WebRequestAuditLog:Retention:Isolator:DryRun"] = "true"
+        };
+        var mergedConfiguration = new ConfigurationBuilder()
+            .AddConfiguration(configuration)
+            .AddInMemoryCollection(overrideValues)
+            .Build();
+        var observability = new TestObservability();
+        var serviceProvider = new ServiceCollection()
+            .AddSingleton(CreateTestingDbContext())
+            .AddSingleton<IAutoTuningObservability>(observability)
+            .BuildServiceProvider();
+        var probe = new AlwaysExistsShardingPhysicalTableProbe();
+        var service = new DatabaseInitializerHostedService(
+            serviceProvider,
+            new TestLogger<DatabaseInitializerHostedService>(),
+            new TestSqlServerDialect(),
+            probe,
+            new TestHostEnvironment("Development"),
+            mergedConfiguration);
+
+        var exception = await Record.ExceptionAsync(() => InvokeShardingGovernanceGuardAsync(service));
+        Assert.Null(exception);
+        Assert.True(probe.ListPhysicalTablesCallCount > 0);
+        Assert.Contains(observability.Metrics, metricName => string.Equals(metricName, "web_request_audit_log.retention.executed_count", StringComparison.Ordinal));
+        var executedMetric = Assert.Single(
+            observability.MetricEntries,
+            static entry => string.Equals(entry.Name, "web_request_audit_log.retention.executed_count", StringComparison.Ordinal));
+        Assert.Equal(0d, executedMetric.Value);
+        Assert.Contains(
+            observability.EventEntries,
+            entry => string.Equals(entry.Name, "web_request_audit_log.retention.skipped", StringComparison.Ordinal));
     }
 
     /// <summary>
