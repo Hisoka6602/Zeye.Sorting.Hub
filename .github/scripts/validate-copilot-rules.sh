@@ -472,7 +472,7 @@ check_exception_logging() {
       [[ -z "$line_no" ]] && continue
       local block
       block="$(extract_brace_block "$file_path" "$line_no")"
-      if ! echo "$block" | grep -q -E '(^|[[:space:]])(Log|_?logger|NLogLogger)\.(Error|Warn|Info|Debug|Fatal|Trace)\('; then
+      if ! echo "$block" | grep -q -E '(^|[[:space:]])(Log|Logger|_?logger|NLogLogger)\.(Error|Warn|Info|Debug|Fatal|Trace)\('; then
         record_failure "catch 块缺少日志输出，违反规则 12：${file_path}:${line_no}"
       fi
     done <<< "$catch_lines"
