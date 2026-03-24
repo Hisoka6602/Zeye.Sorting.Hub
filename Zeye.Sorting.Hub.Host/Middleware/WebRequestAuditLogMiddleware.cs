@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Options;
 using NLog;
@@ -14,6 +15,11 @@ namespace Zeye.Sorting.Hub.Host.Middleware;
 /// Web 请求审计日志中间件。
 /// </summary>
 public sealed class WebRequestAuditLogMiddleware {
+    /// <summary>
+    /// 请求体缓冲阈值（30KB），超过阈值后由框架切换到临时文件。
+    /// </summary>
+    private const int RequestBodyBufferThresholdBytes = 1024 * 30;
+
     /// <summary>
     /// NLog 日志器。
     /// </summary>
@@ -34,6 +40,16 @@ public sealed class WebRequestAuditLogMiddleware {
     /// </summary>
     private static readonly JsonSerializerOptions JsonSerializerOptions = new() {
         WriteIndented = false
+    };
+
+    /// <summary>
+    /// 敏感请求/响应头名称集合。
+    /// </summary>
+    private static readonly HashSet<string> SensitiveHeaderNames = new(StringComparer.OrdinalIgnoreCase) {
+        "Authorization",
+        "Proxy-Authorization",
+        "Cookie",
+        "Set-Cookie"
     };
 
     /// <summary>
@@ -73,11 +89,15 @@ public sealed class WebRequestAuditLogMiddleware {
 
         if (_options.IncludeRequestBody) {
             requestBodyCapture = await CaptureRequestBodyAsync(context.Request, _options.MaxRequestBodyLength);
-            requestSizeBytes = requestBodyCapture.OriginalLengthBytes;
+            if (context.Request.ContentLength is null or <= 0L) {
+                requestSizeBytes = requestBodyCapture.OriginalLengthBytes;
+            }
         }
 
         var originalResponseBody = context.Response.Body;
-        var responseCaptureStream = _options.IncludeResponseBody ? new MemoryStream() : null;
+        var responseCaptureStream = _options.IncludeResponseBody
+            ? new ResponseCaptureTeeStream(originalResponseBody, _options.MaxResponseBodyLength)
+            : null;
         if (responseCaptureStream is not null) {
             context.Response.Body = responseCaptureStream;
         }
@@ -90,12 +110,13 @@ public sealed class WebRequestAuditLogMiddleware {
                 var durationMs = stopwatch.ElapsedMilliseconds;
                 var statusCode = context.Response.StatusCode;
                 var isSuccess = statusCode is >= StatusCodes.Status200OK and < StatusCodes.Status400BadRequest;
+                var resolvedException = capturedException ?? context.Features.Get<IExceptionHandlerFeature>()?.Error;
                 var detail = BuildDetail(
                     context,
                     startedAt,
                     requestBodyCapture,
                     responseBodyCapture,
-                    capturedException,
+                    resolvedException,
                     traceId,
                     correlationId);
                 var log = new WebRequestAuditLog {
@@ -121,7 +142,7 @@ public sealed class WebRequestAuditLogMiddleware {
                     IsResponseBodyTruncated = responseBodyCapture.IsTruncated,
                     StatusCode = statusCode,
                     IsSuccess = isSuccess,
-                    HasException = capturedException is not null,
+                    HasException = resolvedException is not null,
                     AuditResourceType = AuditResourceType.Api,
                     ResourceId = context.Request.Path.Value ?? string.Empty,
                     StartedAt = startedAt,
@@ -159,12 +180,12 @@ public sealed class WebRequestAuditLogMiddleware {
             // 步骤 4：恢复响应流并完成响应体采集（失败不得污染主请求）。
             if (responseCaptureStream is not null) {
                 try {
-                    responseBodyCapture = await CaptureResponseBodyAsync(responseCaptureStream, _options.MaxResponseBodyLength);
-                    if (capturedException is null) {
-                        responseCaptureStream.Position = 0;
-                        await responseCaptureStream.CopyToAsync(originalResponseBody);
-                        await originalResponseBody.FlushAsync();
-                    }
+                    var responseCaptureResult = responseCaptureStream.BuildCaptureResult();
+                    responseBodyCapture = new CapturedBody(
+                        responseCaptureResult.Content,
+                        responseCaptureResult.HasBody,
+                        responseCaptureResult.IsTruncated,
+                        responseCaptureResult.TotalBytes);
                 }
                 finally {
                     context.Response.Body = originalResponseBody;
@@ -232,31 +253,43 @@ public sealed class WebRequestAuditLogMiddleware {
     /// <param name="maxLength">最大采集长度。</param>
     /// <returns>采集结果。</returns>
     private static async Task<CapturedBody> CaptureRequestBodyAsync(HttpRequest request, int maxLength) {
-        if (maxLength == 0 || request.Body == Stream.Null || !request.Body.CanRead) {
+        if (request.Body == Stream.Null || !request.Body.CanRead) {
             return CapturedBody.Empty;
         }
 
-        request.EnableBuffering();
-        request.Body.Position = 0;
-        var content = await ReadBodyWithinLimitAsync(request.Body, maxLength);
-        request.Body.Position = 0;
-        return content;
-    }
-
-    /// <summary>
-    /// 采集响应体。
-    /// </summary>
-    /// <param name="responseCaptureStream">响应采集流。</param>
-    /// <param name="maxLength">最大采集长度。</param>
-    /// <returns>采集结果。</returns>
-    private static async Task<CapturedBody> CaptureResponseBodyAsync(MemoryStream responseCaptureStream, int maxLength) {
-        if (maxLength == 0) {
-            return new CapturedBody(string.Empty, false, false, responseCaptureStream.Length);
+        if (maxLength <= 0) {
+            var hasBody = request.ContentLength is > 0L;
+            var bodySize = request.ContentLength ?? 0L;
+            return new CapturedBody(string.Empty, hasBody, hasBody, bodySize);
         }
 
-        responseCaptureStream.Position = 0;
-        var content = await ReadBodyWithinLimitAsync(responseCaptureStream, maxLength);
-        return new CapturedBody(content.Content, responseCaptureStream.Length > 0, content.IsTruncated, responseCaptureStream.Length);
+        var safeLength = Math.Min(maxLength, int.MaxValue - 1);
+        var bufferLimit = Math.Max(1L, Encoding.UTF8.GetMaxByteCount(safeLength));
+        if (request.ContentLength is > 0L) {
+            var contentLength = request.ContentLength.Value;
+            if (contentLength > bufferLimit) {
+                return new CapturedBody(string.Empty, true, true, contentLength);
+            }
+        }
+
+        var bufferThreshold = Math.Min(RequestBodyBufferThresholdBytes, bufferLimit);
+        request.EnableBuffering((int)bufferThreshold, bufferLimit);
+        request.Body.Position = 0;
+        try {
+            var content = await ReadBodyWithinLimitAsync(request.Body, maxLength);
+            request.Body.Position = 0;
+            if (request.ContentLength is > 0L) {
+                return content with { OriginalLengthBytes = request.ContentLength.Value };
+            }
+
+            return content;
+        }
+        catch (IOException) {
+            request.Body.Position = 0;
+            var knownLength = request.ContentLength ?? 0L;
+            var hasBody = request.ContentLength is > 0L;
+            return new CapturedBody(string.Empty, hasBody, hasBody, knownLength);
+        }
     }
 
     /// <summary>
@@ -445,9 +478,13 @@ public sealed class WebRequestAuditLogMiddleware {
     /// <param name="headers">Header 集合。</param>
     /// <returns>JSON 文本。</returns>
     private static string SerializeHeaders(IHeaderDictionary headers) {
-        var values = headers.ToDictionary(
-            static pair => pair.Key,
-            static pair => pair.Value.ToString());
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in headers) {
+            values[pair.Key] = SensitiveHeaderNames.Contains(pair.Key)
+                ? "***"
+                : pair.Value.ToString();
+        }
+
         return JsonSerializer.Serialize(values, JsonSerializerOptions);
     }
 

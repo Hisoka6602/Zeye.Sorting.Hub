@@ -466,6 +466,8 @@
 - `Middleware/WebRequestAuditLogOptions.cs`：Web 请求审计中间件配置模型（Enabled、SampleRate、请求/响应体采集与截断长度）。
 - `Middleware/WebRequestAuditLogMiddleware.cs`：Web 请求审计中间件实现，覆盖请求开始/结束/异常全生命周期采集，并通过应用服务写入热冷模型。
 - `Middleware/WebRequestAuditLogMiddlewareExtensions.cs`：中间件依赖注册与管线接线扩展（Options 绑定校验 + UseMiddleware）。
+- `Middleware/ResponseCaptureTeeStream.cs`：响应双写采集流，主响应实时透传并在有界缓冲中截断采集正文，避免全量内存缓冲。
+- `Middleware/ResponseCaptureResult.cs`：响应正文采集结果值类型，承载正文内容/是否存在/是否截断/总字节数。
 - `ParcelReadOnlyApiRouteExtensions.cs`：Parcel 只读路由注册与处理逻辑。
 - `ParcelListQueryParameters.cs`：只读列表查询参数模型。
 - `ParcelAdjacentQueryParameters.cs`：只读邻近查询参数模型。
@@ -623,6 +625,9 @@
 ## 本次更新内容
 
 - 新增并接入 `WebRequestAuditLogMiddleware` 闭环：请求进入采集 `StartedAt/TraceId/CorrelationId/Method/Scheme/Host/Port/Path/RouteTemplate`，响应完成采集 `StatusCode/EndedAt/DurationMs/IsSuccess`，异常路径补齐 `HasException/ExceptionType/ErrorMessage/ExceptionStackTrace`。
+- 按审查意见完成中间件安全与性能整改：敏感 Header 脱敏（Authorization/Cookie/Set-Cookie 等）、请求体有界缓冲与超限短路、响应体改为双写有界采集并保持主流实时写出、`HasBody` 与正文采集解耦、异常链路统一通过 `IExceptionHandlerFeature` 关联。
+- 调整宿主管线顺序：`UseWebRequestAuditLogging` 前移至 `UseExceptionHandler` 之前，确保异常响应与异常特征可被同一审计上下文采集。
+- 下调默认采集风险：`WebRequestAuditLog.IncludeRequestBody/IncludeResponseBody` 默认改为 `false`，降低敏感信息落库与大响应采集风险。
 - 中间件写入严格复用 `WriteWebRequestAuditLogCommandService`，按 `WebRequestAuditLog + WebRequestAuditLogDetail` 一对一映射落库，不绕过应用服务直连数据库。
 - 新增 `WebRequestAuditLog` 配置项并完成 Program 绑定与中间件接线，支持 `Enabled`、`SampleRate`、`IncludeRequestBody/IncludeResponseBody`、`MaxRequestBodyLength/MaxResponseBodyLength`。
 - 完成请求体与响应体超长截断与标记（`IsRequestBodyTruncated` / `IsResponseBodyTruncated`），并保证审计写入失败仅记录 NLog，不影响主请求状态码与响应体。

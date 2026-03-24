@@ -1,8 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.TestHost;
@@ -108,6 +110,7 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         using var client = app.GetTestClient();
         var request = new HttpRequestMessage(HttpMethod.Post, "/echo?source=test");
         request.Headers.Add("X-Correlation-Id", "corr-test-001");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "secret-token-value");
         request.Content = JsonContent.Create(new { name = "zeye", count = 2 });
 
         using var response = await client.SendAsync(request);
@@ -128,6 +131,7 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         Assert.Contains("source=test", log.Detail!.RequestQueryString, StringComparison.Ordinal);
         Assert.Contains("application/json", log.Detail.RequestContentType, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("result", log.Detail.ResponseBody, StringComparison.Ordinal);
+        Assert.Contains("\"Authorization\":\"***\"", log.Detail.RequestHeadersJson, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -192,7 +196,8 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         Assert.True(log.IsRequestBodyTruncated);
         Assert.True(log.IsResponseBodyTruncated);
         Assert.True(log.Detail is not null);
-        Assert.Equal(16, log.Detail!.RequestBody.Length);
+        // 请求体超限短路时仅标记截断，不采集正文内容。
+        Assert.Equal(0, log.Detail!.RequestBody.Length);
         Assert.Equal(16, log.Detail.ResponseBody.Length);
     }
 
@@ -314,8 +319,8 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         builder.Services.Configure<WebRequestAuditLogOptions>(configured => CopyOptions(options, configured));
 
         var app = builder.Build();
-        ConfigureErrorHandling(app);
         app.UseWebRequestAuditLogging();
+        ConfigureErrorHandling(app);
         ConfigureEndpoints(app);
         await app.StartAsync();
         return app;
@@ -347,19 +352,18 @@ public sealed class WebRequestAuditLogMiddlewareTests {
     /// </summary>
     /// <param name="app">应用对象。</param>
     private static void ConfigureErrorHandling(WebApplication app) {
-        app.Use(async (context, next) => {
-            try {
-                await next(context);
-            }
-            catch (Exception exception) {
+        app.UseExceptionHandler(exceptionHandlerApp => {
+            exceptionHandlerApp.Run(async context => {
+                var exceptionFeature = context.Features.Get<IExceptionHandlerFeature>();
+                var detail = exceptionFeature?.Error.Message ?? "unknown";
                 if (!context.Response.HasStarted) {
                     context.Response.Clear();
                     context.Response.StatusCode = StatusCodes.Status500InternalServerError;
                     context.Response.ContentType = "application/problem+json";
-                    var payload = JsonSerializer.Serialize(new { title = "服务器内部错误", detail = exception.Message });
+                    var payload = JsonSerializer.Serialize(new { title = "服务器内部错误", detail });
                     await context.Response.WriteAsync(payload);
                 }
-            }
+            });
         });
     }
 

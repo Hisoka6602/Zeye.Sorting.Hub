@@ -91,6 +91,7 @@ try {
     builder.Services.AddHostedService<DatabaseAutoTuningHostedService>();
 
     var app = builder.Build();
+    app.UseWebRequestAuditLogging();
 
     // ──────────────────────────────────────────────────────
     // 全局异常出口：统一 ProblemDetails + 异常日志落盘
@@ -131,8 +132,6 @@ try {
     if (hostingOptions.EnableHttpsRedirection) {
         app.UseHttpsRedirection();
     }
-
-    app.UseWebRequestAuditLogging();
     var isSwaggerEnabled = app.Environment.IsDevelopment() && hostingOptions.Swagger.Enabled;
     if (isSwaggerEnabled) {
         app.UseSwagger(options => {
