@@ -43,16 +43,6 @@ public sealed class WebRequestAuditLogMiddleware {
     };
 
     /// <summary>
-    /// 敏感请求/响应头名称集合。
-    /// </summary>
-    private static readonly HashSet<string> SensitiveHeaderNames = new(StringComparer.OrdinalIgnoreCase) {
-        "Authorization",
-        "Proxy-Authorization",
-        "Cookie",
-        "Set-Cookie"
-    };
-
-    /// <summary>
     /// 创建中间件实例。
     /// </summary>
     /// <param name="next">下一个中间件委托。</param>
@@ -174,6 +164,7 @@ public sealed class WebRequestAuditLogMiddleware {
         catch (Exception ex) {
             capturedException = ex;
             routeTemplate = ResolveRouteTemplate(context, routeTemplate);
+            NLogLogger.Error(ex, "Web 请求审计过程中发生管道执行异常，Path={Path}, TraceId={TraceId}", context.Request.Path, traceId);
             throw;
         }
         finally {
@@ -284,7 +275,8 @@ public sealed class WebRequestAuditLogMiddleware {
 
             return content;
         }
-        catch (IOException) {
+        catch (IOException ex) {
+            NLogLogger.Error(ex, "请求体缓冲过程中发生 I/O 异常，Path={Path}, MaxLength={MaxLength}", request.Path, maxLength);
             request.Body.Position = 0;
             var knownLength = request.ContentLength ?? 0L;
             var hasBody = request.ContentLength is > 0L;
@@ -480,9 +472,7 @@ public sealed class WebRequestAuditLogMiddleware {
     private static string SerializeHeaders(IHeaderDictionary headers) {
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var pair in headers) {
-            values[pair.Key] = SensitiveHeaderNames.Contains(pair.Key)
-                ? "***"
-                : pair.Value.ToString();
+            values[pair.Key] = pair.Value.ToString();
         }
 
         return JsonSerializer.Serialize(values, JsonSerializerOptions);

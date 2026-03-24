@@ -625,7 +625,7 @@
 ## 本次更新内容
 
 - 新增并接入 `WebRequestAuditLogMiddleware` 闭环：请求进入采集 `StartedAt/TraceId/CorrelationId/Method/Scheme/Host/Port/Path/RouteTemplate`，响应完成采集 `StatusCode/EndedAt/DurationMs/IsSuccess`，异常路径补齐 `HasException/ExceptionType/ErrorMessage/ExceptionStackTrace`。
-- 按审查意见完成中间件安全与性能整改：敏感 Header 脱敏（Authorization/Cookie/Set-Cookie 等）、请求体有界缓冲与超限短路、响应体改为双写有界采集并保持主流实时写出、`HasBody` 与正文采集解耦、异常链路统一通过 `IExceptionHandlerFeature` 关联。
+- 按审查意见完成中间件性能整改：请求体有界缓冲与超限短路、响应体改为双写有界采集并保持主流实时写出、`HasBody` 与正文采集解耦、异常链路统一通过 `IExceptionHandlerFeature` 关联。
 - 调整宿主管线顺序：`UseWebRequestAuditLogging` 前移至 `UseExceptionHandler` 之前，确保异常响应与异常特征可被同一审计上下文采集。
 - 下调默认采集风险：`WebRequestAuditLog.IncludeRequestBody/IncludeResponseBody` 默认改为 `false`，降低敏感信息落库与大响应采集风险。
 - 中间件写入严格复用 `WriteWebRequestAuditLogCommandService`，按 `WebRequestAuditLog + WebRequestAuditLogDetail` 一对一映射落库，不绕过应用服务直连数据库。
