@@ -13,6 +13,7 @@ using Zeye.Sorting.Hub.Domain.Options.LogCleanup;
 using Zeye.Sorting.Hub.Application.Services.Parcels;
 using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
+using Zeye.Sorting.Hub.Host.Middleware;
 
 // ──────────────────────────────────────────────────────────
 // 启动期引导日志：在 DI 容器就绪之前捕获启动异常
@@ -83,12 +84,14 @@ try {
     builder.Services.AddScoped<DeleteParcelCommandService>();
     builder.Services.AddScoped<CleanupExpiredParcelsCommandService>();
     builder.Services.AddScoped<WriteWebRequestAuditLogCommandService>();
+    builder.Services.AddWebRequestAuditLogging(builder.Configuration);
 
     // Host 启动时执行持久化初始化
     builder.Services.AddHostedService<DatabaseInitializerHostedService>();
     builder.Services.AddHostedService<DatabaseAutoTuningHostedService>();
 
     var app = builder.Build();
+    app.UseWebRequestAuditLogging();
 
     // ──────────────────────────────────────────────────────
     // 全局异常出口：统一 ProblemDetails + 异常日志落盘
