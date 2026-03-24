@@ -28,11 +28,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
     /// </summary>
     public static class PersistenceServiceCollectionExtensions {
         /// <summary>
-        /// MySQL ServerVersion 解析日志分类。
-        /// </summary>
-        private const string MySqlServerVersionLoggerCategory = "Infrastructure.Persistence.MySql.ServerVersion";
-
-        /// <summary>
         /// 针对“无天然时间字段/时间字段可为空”的属性表，采用固定哈希分表。
         /// </summary>
         /// <remarks>
@@ -246,7 +241,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             }
             catch (Exception ex) {
                 NLogLogger.Warn(ex, "MySQL ServerVersion 自动探测失败，将回退到默认版本 8.0.0");
-                LogResolveWarning(logger, ex, "MySQL ServerVersion 自动探测失败，将回退到默认版本 8.0.0");
+                if (logger is not null) {
+                    Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger, "MySQL ServerVersion 自动探测失败，将回退到默认版本 8.0.0");
+                }
                 return new MySqlServerVersion(new Version(8, 0, 0));
             }
         }
@@ -259,15 +256,21 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// <param name="messageTemplate">消息模板。</param>
         /// <param name="args">模板参数。</param>
         private static void LogResolveWarning(Microsoft.Extensions.Logging.ILogger? logger, Exception? exception, string messageTemplate, params object[] args) {
-            if (logger is null) {
+            if (logger is not null) {
+                if (exception is null) {
+                    Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger, messageTemplate, args);
+                }
+                else {
+                    Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger, exception, messageTemplate, args);
+                }
                 return;
             }
 
             if (exception is null) {
-                Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger, messageTemplate, args);
+                NLogLogger.Warn(messageTemplate, args);
             }
             else {
-                Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger, exception, messageTemplate, args);
+                NLogLogger.Warn(exception, messageTemplate, args);
             }
         }
 

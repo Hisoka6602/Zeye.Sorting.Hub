@@ -1370,11 +1370,6 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                         physicalTableName,
                         retentionDecision.Decision,
                         retentionDecision.CompensationBoundary);
-                    _logger.LogError(ex,
-                        "WebRequestAuditLog 历史分表删除失败，PhysicalTable={PhysicalTable}, Decision={Decision}, CompensationBoundary={CompensationBoundary}",
-                        physicalTableName,
-                        retentionDecision.Decision,
-                        retentionDecision.CompensationBoundary);
                     _observability.EmitEvent(
                         name: "web_request_audit_log.retention.failed",
                         level: Microsoft.Extensions.Logging.LogLevel.Error,
