@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Diagnostics;
@@ -34,6 +35,10 @@ public sealed class WebRequestAuditLogMiddleware {
     /// 审计配置。
     /// </summary>
     private readonly WebRequestAuditLogOptions _options;
+    /// <summary>
+    /// 后台审计队列（有界队列+背压保护）。
+    /// </summary>
+    private readonly WebRequestAuditBackgroundQueue _backgroundQueue;
 
     /// <summary>
     /// JSON 序列化选项。
@@ -47,20 +52,22 @@ public sealed class WebRequestAuditLogMiddleware {
     /// </summary>
     /// <param name="next">下一个中间件委托。</param>
     /// <param name="options">审计配置。</param>
+    /// <param name="backgroundQueue">后台审计队列。</param>
     public WebRequestAuditLogMiddleware(
         RequestDelegate next,
-        IOptions<WebRequestAuditLogOptions> options) {
+        IOptions<WebRequestAuditLogOptions> options,
+        WebRequestAuditBackgroundQueue backgroundQueue) {
         _next = next ?? throw new ArgumentNullException(nameof(next));
         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
+        _backgroundQueue = backgroundQueue ?? throw new ArgumentNullException(nameof(backgroundQueue));
     }
 
     /// <summary>
     /// 执行中间件。
     /// </summary>
     /// <param name="context">HTTP 上下文。</param>
-    /// <param name="writeService">审计写入应用服务。</param>
     /// <returns>异步任务。</returns>
-    public async Task InvokeAsync(HttpContext context, WriteWebRequestAuditLogCommandService writeService) {
+    public async Task InvokeAsync(HttpContext context) {
         if (!_options.Enabled || !ShouldSample(_options.SampleRate)) {
             await _next(context);
             return;
@@ -92,70 +99,7 @@ public sealed class WebRequestAuditLogMiddleware {
             context.Response.Body = responseCaptureStream;
         }
 
-        // 步骤 2：注册响应完成回调，确保获取最终状态码并落审计。
-        context.Response.OnCompleted(async () => {
-            try {
-                routeTemplate = ResolveRouteTemplate(context, routeTemplate);
-                var endedAt = DateTime.Now;
-                var durationMs = stopwatch.ElapsedMilliseconds;
-                var statusCode = context.Response.StatusCode;
-                var isSuccess = statusCode is >= StatusCodes.Status200OK and < StatusCodes.Status400BadRequest;
-                var resolvedException = capturedException ?? context.Features.Get<IExceptionHandlerFeature>()?.Error;
-                var detail = BuildDetail(
-                    context,
-                    startedAt,
-                    requestBodyCapture,
-                    responseBodyCapture,
-                    resolvedException,
-                    traceId,
-                    correlationId);
-                var log = new WebRequestAuditLog {
-                    TraceId = traceId,
-                    CorrelationId = correlationId,
-                    SpanId = ResolveSpanId(),
-                    OperationName = ResolveOperationName(context, routeTemplate),
-                    RequestMethod = context.Request.Method,
-                    RequestScheme = context.Request.Scheme,
-                    RequestHost = context.Request.Host.Host,
-                    RequestPort = context.Request.Host.Port,
-                    RequestPath = context.Request.Path.Value ?? string.Empty,
-                    RequestRouteTemplate = routeTemplate,
-                    UserName = context.User.Identity?.Name ?? string.Empty,
-                    IsAuthenticated = context.User.Identity?.IsAuthenticated ?? false,
-                    RequestPayloadType = ResolveRequestPayloadType(context.Request.ContentType, requestBodyCapture.HasBody),
-                    RequestSizeBytes = Math.Max(0L, requestSizeBytes),
-                    HasRequestBody = requestBodyCapture.HasBody,
-                    IsRequestBodyTruncated = requestBodyCapture.IsTruncated,
-                    ResponsePayloadType = ResolveResponsePayloadType(context.Response.ContentType, responseBodyCapture.HasBody),
-                    ResponseSizeBytes = Math.Max(0L, responseBodyCapture.OriginalLengthBytes),
-                    HasResponseBody = responseBodyCapture.HasBody,
-                    IsResponseBodyTruncated = responseBodyCapture.IsTruncated,
-                    StatusCode = statusCode,
-                    IsSuccess = isSuccess,
-                    HasException = resolvedException is not null,
-                    AuditResourceType = AuditResourceType.Api,
-                    ResourceId = context.Request.Path.Value ?? string.Empty,
-                    StartedAt = startedAt,
-                    EndedAt = endedAt,
-                    DurationMs = Math.Max(0L, durationMs),
-                    CreatedAt = endedAt,
-                    Detail = detail
-                };
-
-                var result = await writeService.WriteAsync(log, CancellationToken.None);
-                if (!result.IsSuccess) {
-                    NLogLogger.Error("写入 Web 请求审计日志返回失败，TraceId={TraceId}, CorrelationId={CorrelationId}, ErrorCode={ErrorCode}, ErrorMessage={ErrorMessage}",
-                        traceId,
-                        correlationId,
-                        result.ErrorCode,
-                        result.ErrorMessage);
-                }
-            }
-            catch (Exception ex) {
-                NLogLogger.Error(ex, "写入 Web 请求审计日志发生异常，TraceId={TraceId}, CorrelationId={CorrelationId}", traceId, correlationId);
-            }
-        });
-
+        ExceptionDispatchInfo? exceptionDispatchInfo = null;
         try {
             // 步骤 3：继续执行后续管线并记录异常信息。
             await _next(context);
@@ -163,9 +107,9 @@ public sealed class WebRequestAuditLogMiddleware {
         }
         catch (Exception ex) {
             capturedException = ex;
+            exceptionDispatchInfo = ExceptionDispatchInfo.Capture(ex);
             routeTemplate = ResolveRouteTemplate(context, routeTemplate);
             NLogLogger.Error(ex, "Web 请求审计过程中发生管道执行异常，Path={Path}, TraceId={TraceId}", context.Request.Path, traceId);
-            throw;
         }
         finally {
             // 步骤 4：恢复响应流并完成响应体采集（失败不得污染主请求）。
@@ -183,7 +127,63 @@ public sealed class WebRequestAuditLogMiddleware {
                     await responseCaptureStream.DisposeAsync();
                 }
             }
+
+            // 步骤 5：后台异步写审计，不等待写库完成，确保不阻塞主请求返回。
+            var endedAt = DateTime.Now;
+            var durationMs = stopwatch.ElapsedMilliseconds;
+            var statusCode = context.Response.StatusCode;
+            var isSuccess = statusCode is >= StatusCodes.Status200OK and < StatusCodes.Status400BadRequest;
+            var resolvedException = capturedException ?? context.Features.Get<IExceptionHandlerFeature>()?.Error;
+            var detail = BuildDetail(
+                context,
+                startedAt,
+                requestBodyCapture,
+                responseBodyCapture,
+                resolvedException,
+                traceId,
+                correlationId);
+            var log = new WebRequestAuditLog {
+                TraceId = traceId,
+                CorrelationId = correlationId,
+                SpanId = ResolveSpanId(),
+                OperationName = ResolveOperationName(context, routeTemplate),
+                RequestMethod = context.Request.Method,
+                RequestScheme = context.Request.Scheme,
+                RequestHost = context.Request.Host.Host,
+                RequestPort = context.Request.Host.Port,
+                RequestPath = context.Request.Path.Value ?? string.Empty,
+                RequestRouteTemplate = routeTemplate,
+                UserName = context.User.Identity?.Name ?? string.Empty,
+                IsAuthenticated = context.User.Identity?.IsAuthenticated ?? false,
+                RequestPayloadType = ResolveRequestPayloadType(context.Request.ContentType, requestBodyCapture.HasBody),
+                RequestSizeBytes = Math.Max(0L, requestSizeBytes),
+                HasRequestBody = requestBodyCapture.HasBody,
+                IsRequestBodyTruncated = requestBodyCapture.IsTruncated,
+                ResponsePayloadType = ResolveResponsePayloadType(context.Response.ContentType, responseBodyCapture.HasBody),
+                ResponseSizeBytes = Math.Max(0L, responseBodyCapture.OriginalLengthBytes),
+                HasResponseBody = responseBodyCapture.HasBody,
+                IsResponseBodyTruncated = responseBodyCapture.IsTruncated,
+                StatusCode = statusCode,
+                IsSuccess = isSuccess,
+                HasException = resolvedException is not null,
+                AuditResourceType = AuditResourceType.Api,
+                ResourceId = context.Request.Path.Value ?? string.Empty,
+                StartedAt = startedAt,
+                EndedAt = endedAt,
+                DurationMs = Math.Max(0L, durationMs),
+                CreatedAt = endedAt,
+                Detail = detail
+            };
+            if (!_backgroundQueue.TryEnqueue(new WebRequestAuditBackgroundEntry {
+                    Log = log,
+                    TraceId = traceId,
+                    CorrelationId = correlationId
+                })) {
+                NLogLogger.Warn("Web 请求审计入队失败，已触发丢弃保护。TraceId={TraceId}, CorrelationId={CorrelationId}", traceId, correlationId);
+            }
         }
+
+        exceptionDispatchInfo?.Throw();
     }
 
     /// <summary>

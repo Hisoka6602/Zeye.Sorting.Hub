@@ -41,6 +41,10 @@ public sealed class InMemoryWebRequestAuditLogRepository : IWebRequestAuditLogRe
     /// 是否抛出异常。
     /// </summary>
     public bool ShouldThrowException { get; set; }
+    /// <summary>
+    /// 模拟写入延迟毫秒数（用于验证中间件不阻塞主请求）。
+    /// </summary>
+    public int AddDelayMilliseconds { get; set; }
 
     /// <summary>
     /// 获取当前写入次数。
@@ -78,8 +82,13 @@ public sealed class InMemoryWebRequestAuditLogRepository : IWebRequestAuditLogRe
     /// <param name="auditLog">审计日志聚合。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>仓储结果。</returns>
-    public Task<RepositoryResult> AddAsync(WebRequestAuditLog auditLog, CancellationToken cancellationToken) {
+    public async Task<RepositoryResult> AddAsync(WebRequestAuditLog auditLog, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
+
+        if (AddDelayMilliseconds > 0) {
+            await Task.Delay(AddDelayMilliseconds, cancellationToken);
+        }
+
         Interlocked.Increment(ref _writeCount);
 
         if (ShouldThrowException) {
@@ -87,11 +96,11 @@ public sealed class InMemoryWebRequestAuditLogRepository : IWebRequestAuditLogRe
         }
 
         if (ShouldReturnFailure) {
-            return Task.FromResult(RepositoryResult.Fail(_failureMessage, _failureCode));
+            return RepositoryResult.Fail(_failureMessage, _failureCode);
         }
 
         _logs.Enqueue(auditLog);
-        return Task.FromResult(RepositoryResult.Success());
+        return RepositoryResult.Success();
     }
 
     /// <summary>

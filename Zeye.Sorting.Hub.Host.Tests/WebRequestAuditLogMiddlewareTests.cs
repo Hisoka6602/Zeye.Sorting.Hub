@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using System.Diagnostics;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http;
@@ -156,6 +157,7 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
         using var problemJson = JsonDocument.Parse(responseText);
         Assert.Equal("服务器内部错误", problemJson.RootElement.GetProperty("title").GetString());
+        await WaitForWriteCountAsync(repository, expectedCount: 1, maxAttempts: 20, delayMilliseconds: 50);
         var log = Assert.Single(repository.Logs);
         Assert.True(log.HasException);
         Assert.True(log.Detail is not null);
@@ -190,6 +192,7 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.StartsWith("BBBB", responseText, StringComparison.Ordinal);
 
+        await WaitForWriteCountAsync(repository, expectedCount: 1, maxAttempts: 20, delayMilliseconds: 50);
         var log = Assert.Single(repository.Logs);
         Assert.True(log.IsRequestBodyTruncated);
         Assert.True(log.IsResponseBodyTruncated);
@@ -224,7 +227,37 @@ public sealed class WebRequestAuditLogMiddlewareTests {
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("pong", responseText);
-        Assert.Equal(1, repository.WriteCount);
+        await WaitForWriteCountAsync(repository, expectedCount: 1, maxAttempts: 20, delayMilliseconds: 50);
+    }
+
+    /// <summary>
+    /// 验证场景：审计仓储慢写不阻塞主请求返回。
+    /// </summary>
+    [Fact]
+    public async Task Middleware_WithSlowAuditWrite_ShouldNotBlockMainResponse() {
+        var repository = new InMemoryWebRequestAuditLogRepository {
+            AddDelayMilliseconds = 1200
+        };
+        await using var app = await BuildTestAppAsync(
+            new WebRequestAuditLogOptions {
+                Enabled = true,
+                SampleRate = 1,
+                IncludeRequestBody = false,
+                IncludeResponseBody = false,
+                MaxRequestBodyLength = 1024,
+                MaxResponseBodyLength = 1024
+            },
+            repository);
+
+        using var client = app.GetTestClient();
+        var stopwatch = Stopwatch.StartNew();
+        using var response = await client.GetAsync("/ok");
+        var elapsedMilliseconds = stopwatch.Elapsed.TotalMilliseconds;
+        var maxAllowedMilliseconds = Math.Max(400d, repository.AddDelayMilliseconds * 0.5d);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(elapsedMilliseconds < maxAllowedMilliseconds, $"主请求被审计写入阻塞，ElapsedMilliseconds={elapsedMilliseconds}, MaxAllowedMilliseconds={maxAllowedMilliseconds}");
+        await WaitForWriteCountAsync(repository, expectedCount: 1, maxAttempts: 40, delayMilliseconds: 50);
     }
 
     /// <summary>
@@ -313,6 +346,8 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
         builder.Services.AddProblemDetails();
+        builder.Services.AddSingleton(new WebRequestAuditBackgroundQueue(Math.Max(1, options.BackgroundQueueCapacity)));
+        builder.Services.AddHostedService<WebRequestAuditBackgroundWorkerHostedService>();
         configureServices(builder.Services);
         builder.Services.Configure<WebRequestAuditLogOptions>(configured => CopyOptions(options, configured));
 

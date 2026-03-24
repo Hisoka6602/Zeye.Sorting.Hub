@@ -1,4 +1,5 @@
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
+using System.Data.Common;
 
 namespace Zeye.Sorting.Hub.Host.Tests;
 
@@ -30,4 +31,24 @@ internal sealed class TestMySqlDialect : IDatabaseDialect {
     /// 返回空集合，避免自治维护 SQL 干扰“仅审计项”行为断言。
     /// </summary>
     public IReadOnlyList<string> BuildAutonomousMaintenanceSql(string? schemaName, string tableName, bool inPeakWindow, bool highRisk) => [];
+
+    /// <summary>
+    /// 返回固定数据库名，便于测试分支控制。
+    /// </summary>
+    public string ExtractDatabaseName(string connectionString) => "test_db";
+
+    /// <summary>
+    /// 当前测试桩不支持管理连接。
+    /// </summary>
+    public DbConnection CreateAdministrationConnection(string connectionString) => throw new NotSupportedException();
+
+    /// <summary>
+    /// 固定返回已存在，避免触发真实创建链路。
+    /// </summary>
+    public Task<bool> DatabaseExistsAsync(DbConnection administrationConnection, string databaseName, CancellationToken cancellationToken) => Task.FromResult(true);
+
+    /// <summary>
+    /// 测试桩无需真实建库。
+    /// </summary>
+    public Task CreateDatabaseAsync(DbConnection administrationConnection, string databaseName, CancellationToken cancellationToken) => Task.CompletedTask;
 }

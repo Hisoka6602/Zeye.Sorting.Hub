@@ -159,7 +159,7 @@
 │   ├── HostedServices（托管服务目录）
 │   │   ├── AutoTuningLoggerObservability.cs（自动调优观测默认日志实现）
 │   │   ├── DatabaseAutoTuningHostedService.cs（数据库自动调谐托管服务）
-│   │   ├── DatabaseInitializerHostedService.cs（数据库初始化与迁移托管服务：移除手工预建链路，仅保留自动建表语义与保留治理）
+│   │   ├── DatabaseInitializerHostedService.cs（数据库初始化与迁移托管服务：迁移前自动建库检查（隔离器+审计）并继续迁移链路）
 │   │   ├── DevelopmentBrowserLauncherHostedService.cs（Development 启动浏览器隔离器）
 │   │   ├── ShardingGovernanceGuardException.cs（分表治理守卫异常类型）
 │   │   ├── EvidenceContext.cs（自动调优证据上下文）
@@ -184,8 +184,11 @@
 │   ├── Middleware（请求审计中间件目录）
 │   │   ├── ResponseCaptureResult.cs（响应采集结果值类型）
 │   │   ├── ResponseCaptureTeeStream.cs（响应双写有界采集流）
+│   │   ├── WebRequestAuditBackgroundEntry.cs（审计后台队列项值类型）
+│   │   ├── WebRequestAuditBackgroundQueue.cs（审计有界后台队列，含丢弃保护）
+│   │   ├── WebRequestAuditBackgroundWorkerHostedService.cs（审计后台消费者服务）
 │   │   ├── WebRequestAuditLogOptions.cs（Web 请求审计中间件配置模型）
-│   │   ├── WebRequestAuditLogMiddleware.cs（Web 请求审计中间件实现）
+│   │   ├── WebRequestAuditLogMiddleware.cs（Web 请求审计中间件实现：主请求零阻塞，异步脱钩写审计）
 │   │   └── WebRequestAuditLogMiddlewareExtensions.cs（中间件注册与接线扩展）
 │   ├── Swagger（Swagger 扩展目录）
 │   │   └── EnumDescriptionSchemaFilter.cs（枚举 Schema 中文增强）
@@ -253,11 +256,13 @@
 │   │   │       └── ParcelVolumeThresholdAction.cs（容量阈值动作枚举：AlertOnly/SwitchToPerDay）
 │   │   ├── DatabaseDialects（数据库方言目录）
 │   │   │   ├── DatabaseProviderExceptionHelper.cs（数据库异常错误码提取与方言共享索引构造辅助类）
+│   │   │   ├── DatabaseIdentifierPolicy.cs（数据库名安全校验与标识符转义工具，统一防注入边界）
+│   │   │   ├── DatabaseConnectionOpenCoordinator.cs（数据库连接打开共享辅助，统一连接状态处理）
 │   │   │   ├── IDatabaseDialect.cs（数据库方言接口）
 │   │   │   ├── IShardingPhysicalTableProbe.cs（分表物理对象探测接口：支持物理表存在性与关键索引缺失探测（仅探测，不执行 DDL））
 │   │   │   ├── IBatchShardingPhysicalTableProbe.cs（批量分表物理表探测接口，支持缺失探测与按逻辑表枚举物理分表）
-│   │   │   ├── MySqlDialect.cs（MySQL 方言实现：自动调优 SQL + 物理分表存在性/枚举探测 + 关键索引缺失探测）
-│   │   │   └── SqlServerDialect.cs（SQL Server 方言实现：自动调优 SQL + 物理分表存在性/枚举探测 + 关键索引缺失探测）
+│   │   │   ├── MySqlDialect.cs（MySQL 方言实现：自动调优 + 分表探测 + 启动期数据库存在性探测/建库执行）
+│   │   │   └── SqlServerDialect.cs（SQL Server 方言实现：自动调优 + 分表探测 + 启动期数据库存在性探测/建库执行）
 │   │   ├── DesignTime（EF 设计时支持目录）
 │   │   │   ├── MySqlContextFactory.cs（统一设计时 DbContext 工厂，支持 --provider 切换 MySql/SqlServer）
 │   │   │   └── SqlServerContextFactory.cs（SQL Server 设计时 DbContext 构建器）
@@ -511,7 +516,10 @@
 - `Options/AuditReadOnlyApiOptions.cs`：审计只读 API 开关配置模型（`AuditReadOnlyApi:Enabled`）。
 - `Utilities/LocalDateTimeParsing.cs`：本地时间解析与 API 问题响应工厂共享工具。
 - `Middleware/WebRequestAuditLogOptions.cs`：Web 请求审计中间件配置模型。
-- `Middleware/WebRequestAuditLogMiddleware.cs`：Web 请求审计中间件实现。
+- `Middleware/WebRequestAuditLogMiddleware.cs`：Web 请求审计中间件实现（主请求零阻塞：仅负责采集与入队，不等待写库）。
+- `Middleware/WebRequestAuditBackgroundEntry.cs`：审计后台队列项值类型。
+- `Middleware/WebRequestAuditBackgroundQueue.cs`：审计有界后台队列（超限丢弃保护与丢弃计数日志）。
+- `Middleware/WebRequestAuditBackgroundWorkerHostedService.cs`：审计后台消费服务（单消费者写库）。
 - `Middleware/WebRequestAuditLogMiddlewareExtensions.cs`：中间件依赖注册与管线接线扩展。
 - `Middleware/ResponseCaptureTeeStream.cs`：响应双写采集流。
 - `Middleware/ResponseCaptureResult.cs`：响应正文采集结果值类型。
@@ -527,7 +535,7 @@
 - `AutoTuningLoggerObservability.cs`：自动调优观测默认日志实现。
 - `DatabaseAutoTuningHostedService.cs`：数据库自动调谐托管服务主流程。
 - `PendingRollbackAction.cs` / `TableCapacitySnapshot.cs` / `EvidenceContext.cs` / `PolicyDecision.cs`：自动调谐内部模型与决策类型。
-- `DatabaseInitializerHostedService.cs`：数据库初始化与迁移托管服务主流程（移除手工预建日期配置链路，统一自动建表语义）。
+- `DatabaseInitializerHostedService.cs`：数据库初始化与迁移托管服务主流程（迁移前执行自动建库检查，复用隔离器输出治理审计并衔接 FailFast/Degraded 失败策略）。
 - `ShardingGovernanceGuardException.cs`：分表治理守卫异常类型。
 - `DevelopmentBrowserLauncherHostedService.cs`：Development 浏览器启动隔离器。
 
@@ -555,11 +563,13 @@
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/DatabaseDialects/`：数据库方言抽象与实现目录
 - `DatabaseProviderExceptionHelper.cs`：数据库异常错误码提取与方言共享索引列归一化/索引名构造辅助类。
+- `DatabaseIdentifierPolicy.cs`：数据库名安全守卫（数据库名格式校验、MySQL/SQL Server 标识符转义）。
+- `DatabaseConnectionOpenCoordinator.cs`：数据库连接打开共享工具（统一处理 Open/Broken 状态）。
 - `IDatabaseDialect.cs`：数据库方言抽象接口。
 - `IShardingPhysicalTableProbe.cs`：分表物理对象探测抽象（最小职责：判断目标物理表是否存在 + 探测目标表缺失索引名集合；仅探测，不执行 DDL）。
 - `IBatchShardingPhysicalTableProbe.cs`：分表物理表批量探测抽象（返回缺失集合，并支持按逻辑表名前缀枚举已存在物理分表）。
-- `MySqlDialect.cs`：MySQL 方言实现（自动调优 SQL + INFORMATION_SCHEMA.TABLES 物理分表存在性/枚举探测 + INFORMATION_SCHEMA.STATISTICS 关键索引缺失探测）。
-- `SqlServerDialect.cs`：SQL Server 方言实现（自动调优 SQL + sys.tables/sys.schemas 物理分表存在性/枚举探测 + sys.indexes 关键索引缺失探测）。
+- `MySqlDialect.cs`：MySQL 方言实现（自动调优 SQL + 分表探测 + 启动期数据库存在性探测与建库执行）。
+- `SqlServerDialect.cs`：SQL Server 方言实现（自动调优 SQL + 分表探测 + 启动期数据库存在性探测与建库执行）。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/`：自动调谐核心目录
 - `IAutoTuningObservability.cs`：自动调优观测输出抽象接口。
@@ -648,14 +658,14 @@
 
 ## 本次更新内容
 
-- 新增 `AuditReadOnlyApi:Enabled` 显式配置，并引入 `AuditReadOnlyApiOptions` 统一绑定，`Program.cs` 仅在开关开启时映射 `/api/audit/web-requests` 与 `/api/audit/web-requests/{id}`。
-- 新增审计只读开关回归测试：覆盖 Enabled=true 可访问、Enabled=false 不映射（404）。
-- 删除“手工预建分表”配置/代码链路：移除 手工预建守卫与日期清单配置键 的 appsettings 配置和 `DatabaseInitializerHostedService` 读取/校验/日志/异常文案。
-- 清理并改造相关测试断言，从“手工预建必填”切换为“自动建表路径不依赖预建日期清单”。
-- 清空 `Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations` 历史迁移并重建基线迁移：`20260324094539_RebuildBaseline20260324` 与新的 `SortingHubDbContextModelSnapshot`。
-- 重构 `Zeye.Sorting.Hub.Host` 文件分层：路由扩展迁入 `Routing/`、参数模型迁入 `QueryParameters/`、配置模型迁入 `Options/`、时间工具迁入 `Utilities/`，并同步修正命名空间与 using。
-- 在 `.github/copilot-instructions.md` 新增硬规则：命名空间必须与目录层级一致，并补充新建/移动文件时同步修正 namespace 的执行说明。
-- 同步 README：更新 Host 文件树、迁移文件树、逐文件职责与本次更新内容。
+- 启动期数据库初始化新增“自动建库”能力：在 `DatabaseInitializerHostedService` 中于 `MigrateAsync` 前执行 Ensure Database Exists（MySQL/SQL Server 双分支），库存在则跳过，库不存在按方言自动创建后继续迁移。
+- 自动建库纳入危险动作隔离器：新增 `Persistence:DatabaseBootstrap:EnsureDatabaseExists` 配置（Enabled + Isolator: EnableGuard/AllowDangerousActionExecution/DryRun），并输出治理审计字段 `Decision/PlannedCount/ExecutedCount/Provider/DatabaseName/CompensationBoundary`。
+- 数据库方言扩展：`IDatabaseDialect` 新增数据库名提取、管理连接创建、存在性探测与建库执行契约；`MySqlDialect`/`SqlServerDialect` 实现对应逻辑。
+- 新增 `DatabaseIdentifierPolicy`，集中处理数据库名安全校验与标识符转义，避免 SQL 标识符拼接风险与重复实现。
+- 新增 `DatabaseConnectionOpenCoordinator`，收敛 MySQL/SQL Server 方言重复的连接打开逻辑，统一连接状态处理。
+- 补充测试覆盖：新增自动建库决策三态、Provider 连接键解析、方言数据库名提取/管理连接语义测试；补充中间件异步写审计时序断言。
+- 新要求落地：`WebRequestAuditLogMiddleware` 改为主请求零阻塞写审计（有界队列 + 后台消费者写入，不等待写库完成），并补充队列丢弃保护。
+- 同步 README：更新文件树、逐文件职责、“本次更新内容”与“可继续完善内容”。
 
 ## 更新记录与待完善事项
 
@@ -664,8 +674,8 @@
 
 ### 可继续完善内容
 
-- 当前环境未提供可访问的 MySQL 实例，`dotnet ef database update` 仅完成命令级执行验证，仍需在可连接数据库环境补充空库迁移落地验证记录。
-- 可继续补充 SQL Server 路径的空库迁移回归，形成 MySQL/SQL Server 双 Provider 的基线迁移验收矩阵。
+- 当前测试环境未直连真实 MySQL/SQL Server 实例，自动建库流程主要通过决策与方言连接语义单测覆盖；后续可在 CI 引入双数据库容器做端到端“空库自动创建 + 迁移接续”集成回归。
+- `WebRequestAuditLogMiddleware` 当前为“后台任务异步脱钩”模式，后续可升级为有界通道 + 后台批量写入服务，增加背压策略与丢弃审计指标。
 
 ## Parcel API 发布门禁 / 使用边界说明
 
