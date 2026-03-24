@@ -89,6 +89,8 @@ public sealed class InMemoryWebRequestAuditLogRepository : IWebRequestAuditLogRe
             await Task.Delay(AddDelayMilliseconds, cancellationToken);
         }
 
+        Interlocked.Increment(ref _writeCount);
+
         if (ShouldThrowException) {
             throw new InvalidOperationException("测试仓储抛出异常");
         }
@@ -97,7 +99,6 @@ public sealed class InMemoryWebRequestAuditLogRepository : IWebRequestAuditLogRe
             return RepositoryResult.Fail(_failureMessage, _failureCode);
         }
 
-        Interlocked.Increment(ref _writeCount);
         _logs.Enqueue(auditLog);
         return RepositoryResult.Success();
     }

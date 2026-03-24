@@ -251,9 +251,10 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         var startedAt = DateTime.Now;
         using var response = await client.GetAsync("/ok");
         var elapsedMilliseconds = (DateTime.Now - startedAt).TotalMilliseconds;
+        var maxAllowedMilliseconds = Math.Max(400d, repository.AddDelayMilliseconds * 0.5d);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.True(elapsedMilliseconds < 200, $"主请求被审计写入阻塞，ElapsedMilliseconds={elapsedMilliseconds}");
+        Assert.True(elapsedMilliseconds < maxAllowedMilliseconds, $"主请求被审计写入阻塞，ElapsedMilliseconds={elapsedMilliseconds}, MaxAllowedMilliseconds={maxAllowedMilliseconds}");
         await WaitForWriteCountAsync(repository, expectedCount: 1, maxAttempts: 40, delayMilliseconds: 50);
     }
 

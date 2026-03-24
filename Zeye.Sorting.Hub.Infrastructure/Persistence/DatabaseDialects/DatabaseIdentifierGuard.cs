@@ -26,7 +26,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
             }
 
             if (!SafeIdentifierRegex.IsMatch(normalized)) {
-                throw new InvalidOperationException($"数据库名不安全或不受支持：{normalized}");
+                throw new InvalidOperationException($"数据库名不安全或不受支持：{normalized}。要求：仅允许字母/数字/下划线，且必须以字母或下划线开头。");
             }
 
             return normalized;
