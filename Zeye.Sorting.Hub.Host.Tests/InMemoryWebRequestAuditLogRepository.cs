@@ -30,9 +30,14 @@ public sealed class InMemoryWebRequestAuditLogRepository : IWebRequestAuditLogRe
     private string _failureMessage = "测试仓储失败";
 
     /// <summary>
-    /// 写入行为。
+    /// 是否返回失败结果。
     /// </summary>
-    public RepositoryBehavior Behavior { get; set; } = RepositoryBehavior.Success;
+    public bool ShouldReturnFailure { get; set; }
+
+    /// <summary>
+    /// 是否抛出异常。
+    /// </summary>
+    public bool ShouldThrowException { get; set; }
 
     /// <summary>
     /// 获取当前写入次数。
@@ -74,11 +79,11 @@ public sealed class InMemoryWebRequestAuditLogRepository : IWebRequestAuditLogRe
         cancellationToken.ThrowIfCancellationRequested();
         Interlocked.Increment(ref _writeCount);
 
-        if (Behavior == RepositoryBehavior.ThrowException) {
+        if (ShouldThrowException) {
             throw new InvalidOperationException("测试仓储抛出异常");
         }
 
-        if (Behavior == RepositoryBehavior.ReturnFailure) {
+        if (ShouldReturnFailure) {
             return Task.FromResult(RepositoryResult.Fail(_failureMessage, _failureCode));
         }
 

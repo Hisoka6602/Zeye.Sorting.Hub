@@ -202,7 +202,7 @@ public sealed class WebRequestAuditLogMiddlewareTests {
     [Fact]
     public async Task Middleware_WhenAuditWriteFails_ShouldNotAffectMainResponse() {
         var repository = new InMemoryWebRequestAuditLogRepository {
-            Behavior = RepositoryBehavior.ThrowException
+            ShouldThrowException = true
         };
         await using var app = await BuildTestAppAsync(
             new WebRequestAuditLogOptions {

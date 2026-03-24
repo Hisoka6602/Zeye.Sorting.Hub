@@ -607,7 +607,6 @@
 - `WebRequestAuditLogRepositoryTests.cs`：Web 请求审计日志仓储测试，覆盖 DI 解析、冷热一对一落库与最小写入服务入口。
 - `WebRequestAuditLogMiddlewareTests.cs`：Web 请求审计中间件回归测试，覆盖开关/采样、正常与异常链路、请求响应体截断、审计写入失败隔离与真实仓储冷热落库。
 - `InMemoryWebRequestAuditLogRepository.cs`：Web 请求审计日志内存仓储测试替身，支持成功/失败/异常三种写入行为。
-- `RepositoryBehavior.cs`：审计仓储测试替身行为枚举。
 - `ParcelQueryServicesTests.cs`：Parcel 应用层查询服务测试（列表/详情/邻近查询映射与最小参数校验）；新增邻近查询锚点不存在异常场景；多重过滤条件联合成功路径（bagCode + workstationName + actualChuteId + status）；ExceptionType 筛选成功路径与非法值校验。
 - `ParcelRepositoryTests.cs`：Parcel 仓储第一阶段能力测试，覆盖分页过滤、详情与按 Id 邻近查询、新增/更新/删除、过期清理与批量新增；新增同一扫描时间稳定排序、锚点不存在、重复主键冲突语义回归，并验证危险清理动作的 blocked/dry-run/executed 三态。
 - `SelectiveMissingShardingPhysicalTableProbe.cs`：物理表探测测试桩，模拟指定分表缺失场景。
