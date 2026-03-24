@@ -184,7 +184,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <param name="configuration">应用配置。</param>
         public DatabaseInitializerHostedService(
             IServiceProvider serviceProvider,
-            object? legacyLogger,
+            object legacyLogger,
             IDatabaseDialect dialect,
             IShardingPhysicalTableProbe shardingPhysicalTableProbe,
             IHostEnvironment hostEnvironment,
