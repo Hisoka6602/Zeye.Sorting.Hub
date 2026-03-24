@@ -1,17 +1,18 @@
 using System;
 using System.Linq;
 using System.Data;
-using System.Data.Common;
+using MySqlConnector;
 using System.Threading;
+using System.Data.Common;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
-using MySqlConnector;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
 
     /// <summary>MySQL 方言</summary>
     public sealed class MySqlDialect : IDatabaseDialect, IBatchShardingPhysicalTableProbe {
+
         /// <summary>当前方言提供器名称。</summary>
         public string ProviderName => "MySQL";
 
@@ -306,13 +307,14 @@ WHERE TABLE_SCHEMA = COALESCE(NULLIF(@p0, ''), DATABASE())
 
             var normalizedSchemaName = string.IsNullOrWhiteSpace(schemaName) ? null : schemaName.Trim();
             var normalizedBaseTableName = baseTableName.Trim();
-            var likePattern = $"{normalizedBaseTableName}\\_%";
+            var escapedBaseTableName = EscapeLikeLiteralForMySql(normalizedBaseTableName);
+            var likePattern = $"{escapedBaseTableName}\\_%";
 
             const string sql = """
 SELECT TABLE_NAME
 FROM INFORMATION_SCHEMA.TABLES
 WHERE TABLE_SCHEMA = COALESCE(NULLIF(@p0, ''), DATABASE())
-  AND TABLE_NAME LIKE @p1 ESCAPE '\'
+  AND TABLE_NAME LIKE @p1 ESCAPE '\\'
 """;
             var tableNames = await dbContext.Database
                 .SqlQueryRaw<string>(sql, normalizedSchemaName ?? string.Empty, likePattern)
@@ -323,5 +325,17 @@ WHERE TABLE_SCHEMA = COALESCE(NULLIF(@p0, ''), DATABASE())
                 .ToArray();
         }
 
+        /// <summary>
+        /// 转义 LIKE 模式中的特殊字符（`%`、`_`、`\`），避免误匹配并降低原始 SQL 风险。
+        /// </summary>
+        /// <param name="value">待转义文本。</param>
+        /// <returns>可用于 MySQL LIKE 的字面量。</returns>
+        private static string EscapeLikeLiteralForMySql(string value) {
+            ArgumentNullException.ThrowIfNull(value);
+            return value
+                .Replace(@"\", @"\\", StringComparison.Ordinal)
+                .Replace("%", @"\%", StringComparison.Ordinal)
+                .Replace("_", @"\_", StringComparison.Ordinal);
+        }
     }
 }

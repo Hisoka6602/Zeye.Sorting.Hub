@@ -1,20 +1,22 @@
 using NLog;
+using NLog.Extensions.Logging;
+using Microsoft.OpenApi.Models;
+using Microsoft.AspNetCore.Mvc;
 using Zeye.Sorting.Hub.Host.Options;
 using Zeye.Sorting.Hub.Host.Routing;
-using Microsoft.OpenApi.Models;
-using NLog.Extensions.Logging;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Diagnostics;
-using Zeye.Sorting.Hub.Host.HostedServices;
 using Zeye.Sorting.Hub.Host.Swagger;
+using Microsoft.AspNetCore.Diagnostics;
+using Zeye.Sorting.Hub.Host.Middleware;
+using Microsoft.AspNetCore.Authentication;
+using Zeye.Sorting.Hub.Host.HostedServices;
+using Zeye.Sorting.Hub.Host.Authentication;
 using Zeye.Sorting.Hub.SharedKernel.Utilities;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels;
-using Zeye.Sorting.Hub.Application.Services.AuditLogs;
 using Zeye.Sorting.Hub.Domain.Options.LogCleanup;
 using Zeye.Sorting.Hub.Application.Services.Parcels;
+using Zeye.Sorting.Hub.Application.Services.AuditLogs;
 using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
-using Zeye.Sorting.Hub.Host.Middleware;
 
 // ──────────────────────────────────────────────────────────
 // 启动期引导日志：在 DI 容器就绪之前捕获启动异常
@@ -54,6 +56,9 @@ try {
     builder.Services.AddSortingHubPersistence(builder.Configuration);
     builder.Services.AddSingleton<IAutoTuningObservability, AutoTuningLoggerObservability>();
     builder.Services.AddProblemDetails();
+    builder.Services
+        .AddAuthentication(GuardedAuthenticationHandler.SchemeName)
+        .AddScheme<AuthenticationSchemeOptions, GuardedAuthenticationHandler>(GuardedAuthenticationHandler.SchemeName, static _ => { });
     builder.Services.AddAuthorization();
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSwaggerGen(options => {
@@ -137,6 +142,7 @@ try {
         app.UseHttpsRedirection();
     }
     app.UseRouting();
+    app.UseAuthentication();
     app.UseAuthorization();
     var isSwaggerEnabled = app.Environment.IsDevelopment() && hostingOptions.Swagger.Enabled;
     if (isSwaggerEnabled) {
@@ -168,7 +174,7 @@ try {
         ? (auditSection.Get<AuditReadOnlyApiOptions>() ?? new AuditReadOnlyApiOptions())
         : new AuditReadOnlyApiOptions();
     if (auditReadOnlyApiOptions.Enabled) {
-        app.MapAuditReadOnlyApis();
+        app.MapAuditReadOnlyApis(auditReadOnlyApiOptions.RequireAuthorization);
     }
 
     app.Run();

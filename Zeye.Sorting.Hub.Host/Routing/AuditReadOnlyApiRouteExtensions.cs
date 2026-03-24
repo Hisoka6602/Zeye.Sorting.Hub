@@ -1,9 +1,9 @@
-using Microsoft.AspNetCore.Mvc;
 using NLog;
+using Microsoft.AspNetCore.Mvc;
+using Zeye.Sorting.Hub.Host.Utilities;
+using Zeye.Sorting.Hub.Host.QueryParameters;
 using Zeye.Sorting.Hub.Application.Services.AuditLogs;
 using Zeye.Sorting.Hub.Contracts.Models.AuditLogs.WebRequests;
-using Zeye.Sorting.Hub.Host.QueryParameters;
-using Zeye.Sorting.Hub.Host.Utilities;
 
 namespace Zeye.Sorting.Hub.Host.Routing;
 
@@ -11,6 +11,7 @@ namespace Zeye.Sorting.Hub.Host.Routing;
 /// 审计日志只读 API 路由扩展。
 /// </summary>
 public static class AuditReadOnlyApiRouteExtensions {
+
     /// <summary>
     /// NLog 日志器。
     /// </summary>
@@ -21,23 +22,28 @@ public static class AuditReadOnlyApiRouteExtensions {
     /// </summary>
     /// <param name="routeBuilder">路由构建器。</param>
     /// <returns>路由构建器。</returns>
-    public static IEndpointRouteBuilder MapAuditReadOnlyApis(this IEndpointRouteBuilder routeBuilder) {
+    public static IEndpointRouteBuilder MapAuditReadOnlyApis(
+        this IEndpointRouteBuilder routeBuilder,
+        bool requireAuthorization = false) {
         var group = routeBuilder
             .MapGroup("/api/audit/web-requests")
-            .WithTags("Audit")
-            .RequireAuthorization();
+            .WithTags("Audit");
+
+        if (requireAuthorization) {
+            group = group.RequireAuthorization();
+        }
 
         group.MapGet(string.Empty, GetWebRequestAuditLogListAsync)
             .WithName("GetWebRequestAuditLogList")
             .WithSummary("分页查询 Web 请求审计日志列表")
-            .WithDescription("按页码、分页大小与可选过滤条件（startedAt 区间、statusCode、isSuccess、traceId、correlationId、requestPathKeyword）查询审计日志摘要列表。时间参数必须为本地时间字符串，不允许 UTC 或时区偏移。仅限已授权访问。")
+            .WithDescription("按页码、分页大小与可选过滤条件（startedAt 区间、statusCode、isSuccess、traceId、correlationId、requestPathKeyword）查询审计日志摘要列表。时间参数必须为本地时间字符串，不允许 UTC 或时区偏移。是否鉴权由 AuditReadOnlyApi:RequireAuthorization 决定。")
             .Produces<WebRequestAuditLogListResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest);
 
         group.MapGet("/{id:long}", GetWebRequestAuditLogByIdAsync)
             .WithName("GetWebRequestAuditLogById")
             .WithSummary("按 Id 查询 Web 请求审计日志详情")
-            .WithDescription("按审计日志主键查询热表字段与冷表详情字段；当资源不存在时返回 404。仅限已授权访问。")
+            .WithDescription("按审计日志主键查询热表字段与冷表详情字段；当资源不存在时返回 404。是否鉴权由 AuditReadOnlyApi:RequireAuthorization 决定。")
             .Produces<WebRequestAuditLogDetailResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status400BadRequest);
