@@ -36,6 +36,12 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private const string SqlServerProviderKey = "SqlServer";
         private const string DialectProviderNameMySql = "MySQL";
         private const string DialectProviderNameSqlServer = "SQLServer";
+        private static readonly IReadOnlyDictionary<string, string> ProviderConnectionStringKeyMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+            [MySqlProviderKey] = MySqlProviderKey,
+            [SqlServerProviderKey] = SqlServerProviderKey,
+            [DialectProviderNameMySql] = MySqlProviderKey,
+            [DialectProviderNameSqlServer] = SqlServerProviderKey
+        };
         private const string PersistenceProviderConfigKey = "Persistence:Provider";
         private const string EnsureDatabaseExistsEnabledConfigKey = "Persistence:DatabaseBootstrap:EnsureDatabaseExists:Enabled";
         private const string EnsureDatabaseExistsIsolatorEnableGuardConfigKey = "Persistence:DatabaseBootstrap:EnsureDatabaseExists:Isolator:EnableGuard";
@@ -439,25 +445,22 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <param name="dialectProviderName">方言 ProviderName。</param>
         /// <returns>连接字符串键名；不支持时返回 null。</returns>
         internal static string? ResolveProviderConnectionStringKey(string? configuredProvider, string dialectProviderName) {
-            if (MatchesProvider(configuredProvider, MySqlProviderKey) || MatchesProvider(dialectProviderName, DialectProviderNameMySql)) {
-                return MySqlProviderKey;
-            }
-
-            if (MatchesProvider(configuredProvider, SqlServerProviderKey) || MatchesProvider(dialectProviderName, DialectProviderNameSqlServer)) {
-                return SqlServerProviderKey;
-            }
-
-            return null;
+            var configuredProviderKey = ResolveProviderConnectionStringKeyCore(configuredProvider);
+            return configuredProviderKey ?? ResolveProviderConnectionStringKeyCore(dialectProviderName);
         }
 
         /// <summary>
-        /// 判断 Provider 标识是否命中。
+        /// 解析单个 Provider 文本对应的连接字符串键名。
         /// </summary>
-        /// <param name="raw">原始值。</param>
-        /// <param name="expected">期望值。</param>
-        /// <returns>命中返回 true。</returns>
-        private static bool MatchesProvider(string? raw, string expected) {
-            return string.Equals(raw?.Trim(), expected, StringComparison.OrdinalIgnoreCase);
+        /// <param name="providerRaw">Provider 原始值。</param>
+        /// <returns>映射后的连接字符串键名；未命中返回 null。</returns>
+        private static string? ResolveProviderConnectionStringKeyCore(string? providerRaw) {
+            var normalized = providerRaw?.Trim();
+            if (string.IsNullOrWhiteSpace(normalized)) {
+                return null;
+            }
+
+            return ProviderConnectionStringKeyMap.TryGetValue(normalized, out var mappedKey) ? mappedKey : null;
         }
 
         /// <summary>

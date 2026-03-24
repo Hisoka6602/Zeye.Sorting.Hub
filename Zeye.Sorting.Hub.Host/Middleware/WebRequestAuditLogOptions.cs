@@ -38,4 +38,9 @@ public sealed class WebRequestAuditLogOptions {
     /// 响应体最大采集长度（字符）。
     /// </summary>
     public int MaxResponseBodyLength { get; set; } = 4096;
+
+    /// <summary>
+    /// 审计写入后台队列容量（超过上限后触发丢弃保护）。
+    /// </summary>
+    public int BackgroundQueueCapacity { get; set; } = 1024;
 }

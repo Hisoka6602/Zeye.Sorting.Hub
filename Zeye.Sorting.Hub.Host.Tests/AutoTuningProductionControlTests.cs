@@ -819,7 +819,7 @@ public sealed class AutoTuningProductionControlTests {
 
         var exception = await Record.ExceptionAsync(() => service.StartAsync(CancellationToken.None));
         Assert.Null(exception);
-        Assert.Equal(6, logger.Messages.Count(message => message.Contains("数据库初始化重试中", StringComparison.Ordinal)));
+        Assert.DoesNotContain(logger.Messages, message => message.Contains("数据库初始化重试中", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -1146,6 +1146,7 @@ public sealed class AutoTuningProductionControlTests {
     /// </summary>
     [Fact]
     public void Dialect_ExtractDatabaseNameAndAdminConnection_ShouldFollowProviderSemantics() {
+        // 仅用于单元测试的本地示例连接字符串，不用于生产环境。
         var mySqlConnectionString = "Server=127.0.0.1;Port=3306;Database=zeye_sorting_hub;User Id=root;Password=admin;";
         var sqlServerConnectionString = "Server=127.0.0.1,1433;Database=zeye_sorting_hub;User Id=sa;Password=Admin@1234;TrustServerCertificate=True;Encrypt=False;";
 

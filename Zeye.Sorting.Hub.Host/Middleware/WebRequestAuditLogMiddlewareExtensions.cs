@@ -18,7 +18,11 @@ public static class WebRequestAuditLogMiddlewareExtensions {
             .Validate(static options => options.SampleRate >= 0D && options.SampleRate <= 1D, "SampleRate 必须在 0~1 之间")
             .Validate(static options => options.MaxRequestBodyLength >= 0, "MaxRequestBodyLength 不能小于 0")
             .Validate(static options => options.MaxResponseBodyLength >= 0, "MaxResponseBodyLength 不能小于 0")
+            .Validate(static options => options.BackgroundQueueCapacity > 0, "BackgroundQueueCapacity 必须大于 0")
             .ValidateOnStart();
+        var queueCapacity = configuration.GetValue<int?>($"{WebRequestAuditLogOptions.SectionName}:BackgroundQueueCapacity") ?? 1024;
+        services.AddSingleton(new WebRequestAuditBackgroundQueue(queueCapacity));
+        services.AddHostedService<WebRequestAuditBackgroundWorkerHostedService>();
 
         return services;
     }

@@ -184,6 +184,9 @@
 │   ├── Middleware（请求审计中间件目录）
 │   │   ├── ResponseCaptureResult.cs（响应采集结果值类型）
 │   │   ├── ResponseCaptureTeeStream.cs（响应双写有界采集流）
+│   │   ├── WebRequestAuditBackgroundEntry.cs（审计后台队列项值类型）
+│   │   ├── WebRequestAuditBackgroundQueue.cs（审计有界后台队列，含丢弃保护）
+│   │   ├── WebRequestAuditBackgroundWorkerHostedService.cs（审计后台消费者服务）
 │   │   ├── WebRequestAuditLogOptions.cs（Web 请求审计中间件配置模型）
 │   │   ├── WebRequestAuditLogMiddleware.cs（Web 请求审计中间件实现：主请求零阻塞，异步脱钩写审计）
 │   │   └── WebRequestAuditLogMiddlewareExtensions.cs（中间件注册与接线扩展）
@@ -254,6 +257,7 @@
 │   │   ├── DatabaseDialects（数据库方言目录）
 │   │   │   ├── DatabaseProviderExceptionHelper.cs（数据库异常错误码提取与方言共享索引构造辅助类）
 │   │   │   ├── DatabaseIdentifierGuard.cs（数据库名安全校验与标识符转义工具，统一防注入边界）
+│   │   │   ├── DatabaseConnectionOpenHelper.cs（数据库连接打开共享辅助，统一连接状态处理）
 │   │   │   ├── IDatabaseDialect.cs（数据库方言接口）
 │   │   │   ├── IShardingPhysicalTableProbe.cs（分表物理对象探测接口：支持物理表存在性与关键索引缺失探测（仅探测，不执行 DDL））
 │   │   │   ├── IBatchShardingPhysicalTableProbe.cs（批量分表物理表探测接口，支持缺失探测与按逻辑表枚举物理分表）
@@ -512,7 +516,10 @@
 - `Options/AuditReadOnlyApiOptions.cs`：审计只读 API 开关配置模型（`AuditReadOnlyApi:Enabled`）。
 - `Utilities/LocalDateTimeParsing.cs`：本地时间解析与 API 问题响应工厂共享工具。
 - `Middleware/WebRequestAuditLogOptions.cs`：Web 请求审计中间件配置模型。
-- `Middleware/WebRequestAuditLogMiddleware.cs`：Web 请求审计中间件实现（主请求零阻塞：审计写入改为后台异步脱钩执行）。
+- `Middleware/WebRequestAuditLogMiddleware.cs`：Web 请求审计中间件实现（主请求零阻塞：仅负责采集与入队，不等待写库）。
+- `Middleware/WebRequestAuditBackgroundEntry.cs`：审计后台队列项值类型。
+- `Middleware/WebRequestAuditBackgroundQueue.cs`：审计有界后台队列（超限丢弃保护与丢弃计数日志）。
+- `Middleware/WebRequestAuditBackgroundWorkerHostedService.cs`：审计后台消费服务（单消费者写库）。
 - `Middleware/WebRequestAuditLogMiddlewareExtensions.cs`：中间件依赖注册与管线接线扩展。
 - `Middleware/ResponseCaptureTeeStream.cs`：响应双写采集流。
 - `Middleware/ResponseCaptureResult.cs`：响应正文采集结果值类型。
@@ -557,6 +564,7 @@
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/DatabaseDialects/`：数据库方言抽象与实现目录
 - `DatabaseProviderExceptionHelper.cs`：数据库异常错误码提取与方言共享索引列归一化/索引名构造辅助类。
 - `DatabaseIdentifierGuard.cs`：数据库名安全守卫（数据库名格式校验、MySQL/SQL Server 标识符转义）。
+- `DatabaseConnectionOpenHelper.cs`：数据库连接打开共享工具（统一处理 Open/Broken 状态）。
 - `IDatabaseDialect.cs`：数据库方言抽象接口。
 - `IShardingPhysicalTableProbe.cs`：分表物理对象探测抽象（最小职责：判断目标物理表是否存在 + 探测目标表缺失索引名集合；仅探测，不执行 DDL）。
 - `IBatchShardingPhysicalTableProbe.cs`：分表物理表批量探测抽象（返回缺失集合，并支持按逻辑表名前缀枚举已存在物理分表）。
@@ -654,8 +662,9 @@
 - 自动建库纳入危险动作隔离器：新增 `Persistence:DatabaseBootstrap:EnsureDatabaseExists` 配置（Enabled + Isolator: EnableGuard/AllowDangerousActionExecution/DryRun），并输出治理审计字段 `Decision/PlannedCount/ExecutedCount/Provider/DatabaseName/CompensationBoundary`。
 - 数据库方言扩展：`IDatabaseDialect` 新增数据库名提取、管理连接创建、存在性探测与建库执行契约；`MySqlDialect`/`SqlServerDialect` 实现对应逻辑。
 - 新增 `DatabaseIdentifierGuard`，集中处理数据库名安全校验与标识符转义，避免 SQL 标识符拼接风险与重复实现。
+- 新增 `DatabaseConnectionOpenHelper`，收敛 MySQL/SQL Server 方言重复的连接打开逻辑，统一连接状态处理。
 - 补充测试覆盖：新增自动建库决策三态、Provider 连接键解析、方言数据库名提取/管理连接语义测试；补充中间件异步写审计时序断言。
-- 新要求落地：`WebRequestAuditLogMiddleware` 改为主请求零阻塞写审计（后台异步作用域写入，不等待写库完成），避免审计写入阻塞正常请求。
+- 新要求落地：`WebRequestAuditLogMiddleware` 改为主请求零阻塞写审计（有界队列 + 后台消费者写入，不等待写库完成），并补充队列丢弃保护。
 - 同步 README：更新文件树、逐文件职责、“本次更新内容”与“可继续完善内容”。
 
 ## 更新记录与待完善事项

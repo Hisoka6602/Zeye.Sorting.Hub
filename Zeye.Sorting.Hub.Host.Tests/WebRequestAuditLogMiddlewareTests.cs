@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using System.Diagnostics;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http;
@@ -191,6 +192,7 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.StartsWith("BBBB", responseText, StringComparison.Ordinal);
 
+        await WaitForWriteCountAsync(repository, expectedCount: 1, maxAttempts: 20, delayMilliseconds: 50);
         var log = Assert.Single(repository.Logs);
         Assert.True(log.IsRequestBodyTruncated);
         Assert.True(log.IsResponseBodyTruncated);
@@ -248,9 +250,9 @@ public sealed class WebRequestAuditLogMiddlewareTests {
             repository);
 
         using var client = app.GetTestClient();
-        var startedAt = DateTime.Now;
+        var stopwatch = Stopwatch.StartNew();
         using var response = await client.GetAsync("/ok");
-        var elapsedMilliseconds = (DateTime.Now - startedAt).TotalMilliseconds;
+        var elapsedMilliseconds = stopwatch.Elapsed.TotalMilliseconds;
         var maxAllowedMilliseconds = Math.Max(400d, repository.AddDelayMilliseconds * 0.5d);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -344,6 +346,8 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
         builder.Services.AddProblemDetails();
+        builder.Services.AddSingleton(new WebRequestAuditBackgroundQueue(Math.Max(1, options.BackgroundQueueCapacity)));
+        builder.Services.AddHostedService<WebRequestAuditBackgroundWorkerHostedService>();
         configureServices(builder.Services);
         builder.Services.Configure<WebRequestAuditLogOptions>(configured => CopyOptions(options, configured));
 

@@ -84,7 +84,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
             ArgumentNullException.ThrowIfNull(administrationConnection);
             var normalizedDatabaseName = DatabaseIdentifierGuard.NormalizeDatabaseName(databaseName, nameof(databaseName));
 
-            await EnsureConnectionOpenedAsync(administrationConnection, cancellationToken);
+            await DatabaseConnectionOpenHelper.EnsureOpenedAsync(administrationConnection, cancellationToken);
             await using var command = administrationConnection.CreateCommand();
             command.CommandText = """
 SELECT CASE WHEN EXISTS (
@@ -99,7 +99,21 @@ SELECT CASE WHEN EXISTS (
             databaseNameParameter.Value = normalizedDatabaseName;
             command.Parameters.Add(databaseNameParameter);
             var scalar = await command.ExecuteScalarAsync(cancellationToken);
-            return scalar is true || (scalar is bool value && value);
+            return scalar switch {
+                null => false,
+                DBNull => false,
+                true => true,
+                false => false,
+                byte b => b != 0,
+                sbyte sb => sb != 0,
+                short s => s != 0,
+                ushort us => us != 0,
+                int i => i != 0,
+                uint ui => ui != 0,
+                long l => l != 0,
+                ulong ul => ul != 0,
+                _ => false
+            };
         }
 
         /// <summary>
@@ -114,7 +128,7 @@ SELECT CASE WHEN EXISTS (
             var normalizedDatabaseName = DatabaseIdentifierGuard.NormalizeDatabaseName(databaseName, nameof(databaseName));
             var escapedDatabaseName = DatabaseIdentifierGuard.EscapeMySqlIdentifier(normalizedDatabaseName);
 
-            await EnsureConnectionOpenedAsync(administrationConnection, cancellationToken);
+            await DatabaseConnectionOpenHelper.EnsureOpenedAsync(administrationConnection, cancellationToken);
             await using var command = administrationConnection.CreateCommand();
             command.CommandText = $"CREATE DATABASE IF NOT EXISTS `{escapedDatabaseName}`";
             _ = await command.ExecuteNonQueryAsync(cancellationToken);
@@ -307,20 +321,6 @@ WHERE TABLE_SCHEMA = COALESCE(NULLIF(@p0, ''), DATABASE())
                 .Where(static tableName => !string.IsNullOrWhiteSpace(tableName))
                 .Distinct(StringComparer.Ordinal)
                 .ToArray();
-        }
-
-        /// <summary>
-        /// 确保连接处于打开状态。
-        /// </summary>
-        /// <param name="connection">数据库连接。</param>
-        /// <param name="cancellationToken">取消令牌。</param>
-        /// <returns>异步任务。</returns>
-        private static async Task EnsureConnectionOpenedAsync(DbConnection connection, CancellationToken cancellationToken) {
-            if (connection.State == ConnectionState.Open) {
-                return;
-            }
-
-            await connection.OpenAsync(cancellationToken);
         }
 
     }

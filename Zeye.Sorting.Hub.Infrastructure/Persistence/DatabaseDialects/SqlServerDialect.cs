@@ -105,7 +105,7 @@ WHERE s.name = @p0
             ArgumentNullException.ThrowIfNull(administrationConnection);
             var normalizedDatabaseName = DatabaseIdentifierGuard.NormalizeDatabaseName(databaseName, nameof(databaseName));
 
-            await EnsureConnectionOpenedAsync(administrationConnection, cancellationToken);
+            await DatabaseConnectionOpenHelper.EnsureOpenedAsync(administrationConnection, cancellationToken);
             await using var command = administrationConnection.CreateCommand();
             command.CommandText = "SELECT CASE WHEN DB_ID(@databaseName) IS NULL THEN CAST(0 AS bit) ELSE CAST(1 AS bit) END";
             var databaseNameParameter = command.CreateParameter();
@@ -128,7 +128,7 @@ WHERE s.name = @p0
             ArgumentNullException.ThrowIfNull(administrationConnection);
             var normalizedDatabaseName = DatabaseIdentifierGuard.NormalizeDatabaseName(databaseName, nameof(databaseName));
 
-            await EnsureConnectionOpenedAsync(administrationConnection, cancellationToken);
+            await DatabaseConnectionOpenHelper.EnsureOpenedAsync(administrationConnection, cancellationToken);
             await using var command = administrationConnection.CreateCommand();
             command.CommandText = """
 IF DB_ID(@databaseName) IS NULL
@@ -345,20 +345,6 @@ WHERE s.name = @p0
                 .Replace("%", "\\%", StringComparison.Ordinal)
                 .Replace("_", "\\_", StringComparison.Ordinal)
                 .Replace("[", "\\[", StringComparison.Ordinal);
-        }
-
-        /// <summary>
-        /// 确保连接处于打开状态。
-        /// </summary>
-        /// <param name="connection">数据库连接。</param>
-        /// <param name="cancellationToken">取消令牌。</param>
-        /// <returns>异步任务。</returns>
-        private static async Task EnsureConnectionOpenedAsync(DbConnection connection, CancellationToken cancellationToken) {
-            if (connection.State == ConnectionState.Open) {
-                return;
-            }
-
-            await connection.OpenAsync(cancellationToken);
         }
 
     }

@@ -172,6 +172,10 @@ public sealed class AuditReadOnlyApiTests {
         using var writeResponse = await client.GetAsync("/ok");
         Assert.Equal(HttpStatusCode.OK, writeResponse.StatusCode);
 
+        for (var attempt = 0; attempt < 20 && repository.WriteCount < 1; attempt++) {
+            await Task.Delay(50);
+        }
+
         var queryResponse = await client.GetAsync("/api/audit/web-requests?pageNumber=1&pageSize=10&requestPathKeyword=%2Fok");
         Assert.Equal(HttpStatusCode.OK, queryResponse.StatusCode);
         var payload = await queryResponse.Content.ReadFromJsonAsync<WebRequestAuditLogListResponse>();
@@ -222,6 +226,8 @@ public sealed class AuditReadOnlyApiTests {
         builder.Services.AddScoped<WriteWebRequestAuditLogCommandService>();
         builder.Services.AddScoped<GetWebRequestAuditLogPagedQueryService>();
         builder.Services.AddScoped<GetWebRequestAuditLogByIdQueryService>();
+        builder.Services.AddSingleton(new WebRequestAuditBackgroundQueue(256));
+        builder.Services.AddHostedService<WebRequestAuditBackgroundWorkerHostedService>();
         builder.Services.Configure<WebRequestAuditLogOptions>(options => {
             options.Enabled = true;
             options.SampleRate = 1;
