@@ -1,24 +1,24 @@
+using NLog;
 using Polly;
 using System;
 using System.Linq;
 using System.Text;
-using System.Globalization;
 using Polly.Retry;
+using EFCore.Sharding;
+using System.Globalization;
 using System.Threading.Tasks;
 using System.Collections.Generic;
-using EFCore.Sharding;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
-using NLog;
-using Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests;
+using Microsoft.EntityFrameworkCore;
 using Zeye.Sorting.Hub.Domain.Enums;
-using Zeye.Sorting.Hub.Domain.Repositories.Models.Results;
+using Zeye.Sorting.Hub.Domain.Enums.Sharding;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
-using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
-using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
+using Zeye.Sorting.Hub.Domain.Repositories.Models.Results;
 using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
-using Zeye.Sorting.Hub.Domain.Enums.Sharding;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
+using Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 
 namespace Zeye.Sorting.Hub.Host.HostedServices {
 
@@ -26,8 +26,10 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
     /// 数据库初始化后台服务：启动时迁移 + 可选方言初始化
     /// </summary>
     public sealed class DatabaseInitializerHostedService : IHostedService {
+
         /// <summary>配置项缺失时用于占位展示的默认文本（与中文日志语境保持一致）。</summary>
         private const string NotConfiguredPlaceholder = "未配置";
+
         private const string MigrationFailureStrategyConfigKey = "Persistence:Migration:FailureStrategy";
         private const string MigrationFailureStrategyProductionConfigKey = "Persistence:Migration:FailureStrategy:Production";
         private const string MigrationFailureStrategyNonProductionConfigKey = "Persistence:Migration:FailureStrategy:NonProduction";
@@ -36,12 +38,14 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private const string SqlServerProviderKey = "SqlServer";
         private const string DialectProviderNameMySql = "MySQL";
         private const string DialectProviderNameSqlServer = "SQLServer";
+
         private static readonly IReadOnlyDictionary<string, string> ProviderConnectionStringKeyMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
             [MySqlProviderKey] = MySqlProviderKey,
             [SqlServerProviderKey] = SqlServerProviderKey,
             [DialectProviderNameMySql] = MySqlProviderKey,
             [DialectProviderNameSqlServer] = SqlServerProviderKey
         };
+
         private const string PersistenceProviderConfigKey = "Persistence:Provider";
         private const string EnsureDatabaseExistsEnabledConfigKey = "Persistence:DatabaseBootstrap:EnsureDatabaseExists:Enabled";
         private const string EnsureDatabaseExistsIsolatorEnableGuardConfigKey = "Persistence:DatabaseBootstrap:EnsureDatabaseExists:Isolator:EnableGuard";
@@ -64,78 +68,111 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private const string WebRequestAuditLogRetentionIsolatorDryRunConfigKey = "Persistence:Sharding:Governance:WebRequestAuditLog:Retention:Isolator:DryRun";
         private const string ShardingCriticalIndexAuditEnabledConfigKey = "Persistence:Sharding:Governance:CriticalIndexAudit:Enabled";
         private const string ShardingCriticalIndexAuditBlockOnMissingConfigKey = "Persistence:Sharding:Governance:CriticalIndexAudit:BlockOnMissing";
+
         /// <summary>
         /// 字段：_serviceProvider。
         /// </summary>
         private readonly IServiceProvider _serviceProvider;
+
         /// <summary>
         /// 应用配置源。
         /// </summary>
         private readonly IConfiguration _configuration;
+
         /// <summary>
         /// NLog 记录器（用于规则化异常日志输出）。
         /// </summary>
         private static readonly Logger NLogLogger = LogManager.GetCurrentClassLogger();
+
         /// <summary>
         /// 字段：_dialect。
         /// </summary>
         private readonly IDatabaseDialect _dialect;
+
         /// <summary>当前宿主环境名称。</summary>
         private readonly string _environmentName;
+
         /// <summary>是否生产环境。</summary>
         private readonly bool _isProductionEnvironment;
+
         /// <summary>迁移失败策略。</summary>
         private readonly MigrationFailureMode _migrationFailureMode;
+
         /// <summary>启动时是否自动创建分表。</summary>
         private readonly bool _createShardingTableOnStarting;
+
         /// <summary>Parcel 关联哈希分片模数。</summary>
         private readonly int _parcelRelatedHashShardingMod;
+
         /// <summary>哈希扩容触发阈值（0~1）。</summary>
         private readonly decimal _hashShardingExpansionTriggerRatio;
+
         /// <summary>哈希扩容当前模数（结构化）。</summary>
         private readonly int _hashShardingExpansionCurrentMod;
+
         /// <summary>哈希扩容目标模数（结构化）。</summary>
         private readonly int _hashShardingExpansionTargetMod;
+
         /// <summary>哈希扩容阶段列表（结构化）。</summary>
         private readonly IReadOnlyList<string> _hashShardingExpansionStages;
+
         /// <summary>哈希扩容文本计划（兼容历史配置）。</summary>
         private readonly string _hashShardingLegacyExpansionPlan;
+
         /// <summary>分表预建窗口（小时）。</summary>
         private readonly int _shardingPrebuildWindowHours;
+
         /// <summary>分表治理 Runbook 标识（文档路径或链接）。</summary>
         private readonly string _shardingRunbook;
+
         /// <summary>是否启用 WebRequestAuditLog PerDay 治理守卫。</summary>
         private readonly bool _enableWebRequestAuditLogPerDayGuard;
+
         /// <summary>是否启用 WebRequestAuditLog 历史分表保留治理。</summary>
         private readonly bool _enableWebRequestAuditLogRetention;
+
         /// <summary>WebRequestAuditLog 历史分表保留数量（按逻辑表维度）。</summary>
         private readonly int _webRequestAuditLogRetentionKeepRecentShardCount;
+
         /// <summary>WebRequestAuditLog 历史分表保留治理守卫开关。</summary>
         private readonly bool _webRequestAuditLogRetentionEnableGuard;
+
         /// <summary>WebRequestAuditLog 历史分表保留治理是否允许执行危险动作。</summary>
         private readonly bool _webRequestAuditLogRetentionAllowDangerousActionExecution;
+
         /// <summary>WebRequestAuditLog 历史分表保留治理是否 dry-run。</summary>
         private readonly bool _webRequestAuditLogRetentionDryRun;
+
         /// <summary>是否启用“物理分表关键索引一致性审计”。</summary>
         private readonly bool _enableCriticalIndexAudit;
+
         /// <summary>关键索引缺失时是否阻断启动。</summary>
         private readonly bool _blockOnCriticalIndexMissing;
+
         /// <summary>自动调谐观测输出器。</summary>
         private readonly IAutoTuningObservability _observability;
+
         /// <summary>Parcel 分表策略决策快照。</summary>
         private readonly ParcelShardingStrategyDecision _parcelShardingStrategyDecision;
+
         /// <summary>Parcel 分表策略配置校验错误集合。</summary>
         private readonly IReadOnlyList<string> _parcelShardingStrategyValidationErrors;
+
         /// <summary>物理分表存在性探测器。</summary>
         private readonly IShardingPhysicalTableProbe _shardingPhysicalTableProbe;
+
         /// <summary>是否启用启动期自动建库检查。</summary>
         private readonly bool _ensureDatabaseExistsEnabled;
+
         /// <summary>自动建库隔离守卫开关。</summary>
         private readonly bool _ensureDatabaseExistsEnableGuard;
+
         /// <summary>自动建库是否允许执行危险动作。</summary>
         private readonly bool _ensureDatabaseExistsAllowDangerousActionExecution;
+
         /// <summary>自动建库是否启用 dry-run。</summary>
         private readonly bool _ensureDatabaseExistsDryRun;
+
         /// <summary>当前数据库 Provider 配置键。</summary>
         private readonly string? _databaseProviderKey;
 
@@ -225,11 +262,11 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 AuditShardingGovernance();
 
                 await _retryPolicy.ExecuteAsync(async (ct) => {
+                    await EnsureDatabaseExistsAsync(ct);
                     await ValidateShardingGovernanceGuardAsync(ct);
                     await using var scope = _serviceProvider.CreateAsyncScope();
                     var db = scope.ServiceProvider.GetRequiredService<SortingHubDbContext>();
 
-                    await EnsureDatabaseExistsAsync(ct);
                     NLogLogger.Info("开始执行数据库迁移，Provider={Provider}", _dialect.ProviderName);
                     await db.Database.MigrateAsync(ct);
                     NLogLogger.Info("数据库迁移完成，Provider={Provider}", _dialect.ProviderName);
@@ -552,7 +589,6 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// </remarks>
         private async Task AssertMigrationConsistencyAsync(
             SortingHubDbContext db, CancellationToken cancellationToken) {
-
             // 检查 1：MigrateAsync 之后不应再有待应用迁移
             var pending = (await db.Database.GetPendingMigrationsAsync(cancellationToken)).ToList();
             if (pending.Count > 0) {
@@ -1011,6 +1047,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// 避免硬编码实体清单导致治理探测与注册规则漂移。
         /// </remarks>
         private static readonly IReadOnlyList<Type> PerDayShardingEntityTypes = BuildPerDayShardingEntityTypes();
+
         /// <summary>
         /// WebRequestAuditLog 分表治理需要探测的实体类型清单。
         /// </summary>
@@ -1377,6 +1414,5 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private readonly record struct WebRequestAuditLogRetentionCandidates(
             int CandidateCount,
             IReadOnlyList<string> CandidatePhysicalTableNames);
-
     }
 }
