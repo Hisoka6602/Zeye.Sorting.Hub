@@ -9,7 +9,9 @@ using System.Collections.Generic;
 using EFCore.Sharding;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
+using Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests;
 using Zeye.Sorting.Hub.Domain.Enums;
+using Zeye.Sorting.Hub.Domain.Repositories.Models.Results;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
@@ -40,6 +42,12 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private const string ShardingRunbookConfigKey = "Persistence:Sharding:Governance:Runbook";
         private const string ShardingManualPrebuildGuardConfigKey = "Persistence:Sharding:Governance:EnableManualPrebuildGuard";
         private const string ShardingPrebuiltPerDayDatesConfigKey = "Persistence:Sharding:Governance:PrebuiltPerDayDates";
+        private const string WebRequestAuditLogPerDayGuardEnabledConfigKey = "Persistence:Sharding:Governance:WebRequestAuditLog:EnablePerDayGuard";
+        private const string WebRequestAuditLogRetentionEnabledConfigKey = "Persistence:Sharding:Governance:WebRequestAuditLog:Retention:Enabled";
+        private const string WebRequestAuditLogRetentionKeepRecentShardCountConfigKey = "Persistence:Sharding:Governance:WebRequestAuditLog:Retention:KeepRecentShardCount";
+        private const string WebRequestAuditLogRetentionIsolatorEnableGuardConfigKey = "Persistence:Sharding:Governance:WebRequestAuditLog:Retention:Isolator:EnableGuard";
+        private const string WebRequestAuditLogRetentionIsolatorAllowDangerousActionExecutionConfigKey = "Persistence:Sharding:Governance:WebRequestAuditLog:Retention:Isolator:AllowDangerousActionExecution";
+        private const string WebRequestAuditLogRetentionIsolatorDryRunConfigKey = "Persistence:Sharding:Governance:WebRequestAuditLog:Retention:Isolator:DryRun";
         private const string ShardingCriticalIndexAuditEnabledConfigKey = "Persistence:Sharding:Governance:CriticalIndexAudit:Enabled";
         private const string ShardingCriticalIndexAuditBlockOnMissingConfigKey = "Persistence:Sharding:Governance:CriticalIndexAudit:BlockOnMissing";
         /// <summary>
@@ -81,6 +89,18 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private readonly IReadOnlySet<DateTime> _prebuiltPerDayShardDates;
         /// <summary>日分表预建日期配置解析错误集合。</summary>
         private readonly IReadOnlyList<string> _prebuiltPerDayShardDateValidationErrors;
+        /// <summary>是否启用 WebRequestAuditLog PerDay 治理守卫。</summary>
+        private readonly bool _enableWebRequestAuditLogPerDayGuard;
+        /// <summary>是否启用 WebRequestAuditLog 历史分表保留治理。</summary>
+        private readonly bool _enableWebRequestAuditLogRetention;
+        /// <summary>WebRequestAuditLog 历史分表保留数量（按逻辑表维度）。</summary>
+        private readonly int _webRequestAuditLogRetentionKeepRecentShardCount;
+        /// <summary>WebRequestAuditLog 历史分表保留治理守卫开关。</summary>
+        private readonly bool _webRequestAuditLogRetentionEnableGuard;
+        /// <summary>WebRequestAuditLog 历史分表保留治理是否允许执行危险动作。</summary>
+        private readonly bool _webRequestAuditLogRetentionAllowDangerousActionExecution;
+        /// <summary>WebRequestAuditLog 历史分表保留治理是否 dry-run。</summary>
+        private readonly bool _webRequestAuditLogRetentionDryRun;
         /// <summary>是否启用“物理分表关键索引一致性审计”。</summary>
         private readonly bool _enableCriticalIndexAudit;
         /// <summary>关键索引缺失时是否阻断启动。</summary>
@@ -123,6 +143,12 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             var prebuiltPerDayShards = ResolvePrebuiltPerDayShardDates(configuration);
             _prebuiltPerDayShardDates = prebuiltPerDayShards.PrebuiltDates;
             _prebuiltPerDayShardDateValidationErrors = prebuiltPerDayShards.ValidationErrors;
+            _enableWebRequestAuditLogPerDayGuard = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, WebRequestAuditLogPerDayGuardEnabledConfigKey, true);
+            _enableWebRequestAuditLogRetention = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, WebRequestAuditLogRetentionEnabledConfigKey, true);
+            _webRequestAuditLogRetentionKeepRecentShardCount = ResolveWebRequestAuditLogRetentionKeepRecentShardCount(configuration);
+            _webRequestAuditLogRetentionEnableGuard = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, WebRequestAuditLogRetentionIsolatorEnableGuardConfigKey, true);
+            _webRequestAuditLogRetentionAllowDangerousActionExecution = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, WebRequestAuditLogRetentionIsolatorAllowDangerousActionExecutionConfigKey, false);
+            _webRequestAuditLogRetentionDryRun = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, WebRequestAuditLogRetentionIsolatorDryRunConfigKey, true);
             _enableCriticalIndexAudit = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, ShardingCriticalIndexAuditEnabledConfigKey, true);
             _blockOnCriticalIndexMissing = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, ShardingCriticalIndexAuditBlockOnMissingConfigKey, true);
             var parcelShardingStrategyEvaluation = ParcelShardingStrategyEvaluator.Evaluate(configuration);
@@ -552,6 +578,14 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 "分表关键索引一致性审计配置：Enabled={Enabled}, BlockOnMissing={BlockOnMissing}",
                 _enableCriticalIndexAudit,
                 _blockOnCriticalIndexMissing);
+            _logger.LogInformation(
+                "WebRequestAuditLog 治理配置：EnablePerDayGuard={EnablePerDayGuard}, RetentionEnabled={RetentionEnabled}, KeepRecentShardCount={KeepRecentShardCount}, RetentionEnableGuard={RetentionEnableGuard}, RetentionAllowDangerousActionExecution={RetentionAllowDangerousActionExecution}, RetentionDryRun={RetentionDryRun}",
+                _enableWebRequestAuditLogPerDayGuard,
+                _enableWebRequestAuditLogRetention,
+                _webRequestAuditLogRetentionKeepRecentShardCount,
+                _webRequestAuditLogRetentionEnableGuard,
+                _webRequestAuditLogRetentionAllowDangerousActionExecution,
+                _webRequestAuditLogRetentionDryRun);
 
             if (_parcelShardingStrategyDecision.Mode is ParcelShardingStrategyMode.Volume or ParcelShardingStrategyMode.Hybrid) {
                 _logger.LogInformation(
@@ -627,7 +661,11 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     $"分表治理守卫触发：生产环境要求使用结构化扩容计划，请至少配置 {HashShardingExpansionPlanStagesConfigKey}:0。");
             }
 
-            if (!ShouldEnforcePerDayPrebuildGuard(_parcelShardingStrategyDecision)) {
+            var governanceGroups = ResolvePerDayGovernanceGroups(
+                dbContext: null,
+                parcelShardingDecision: _parcelShardingStrategyDecision,
+                enableWebRequestAuditLogPerDayGuard: _enableWebRequestAuditLogPerDayGuard);
+            if (governanceGroups.Count == 0) {
                 return;
             }
 
@@ -638,13 +676,20 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 .ToArray();
             if (missingDates.Length > 0) {
                 throw new ShardingGovernanceGuardException(
-                    $"分表治理守卫触发：当前策略已生效为 PerDay，且 {CreateShardingTableOnStartingConfigKey}=false。请先完成目标日表预建并配置 {ShardingPrebuiltPerDayDatesConfigKey}，缺失日期：{string.Join(", ", missingDates)}。");
+                    $"分表治理守卫触发：当前治理组已启用 PerDay 预建校验（GovernanceGroups={string.Join(",", governanceGroups.Select(static group => group.GroupName))}），且 {CreateShardingTableOnStartingConfigKey}=false。请先完成目标日表预建并配置 {ShardingPrebuiltPerDayDatesConfigKey}，缺失日期：{string.Join(", ", missingDates)}。");
             }
 
             var missingPhysicalTables = new List<string>();
             await using var scope = _serviceProvider.CreateAsyncScope();
             var db = scope.ServiceProvider.GetRequiredService<SortingHubDbContext>();
-            var perDayShardingBaseTableNames = ResolvePerDayShardingBaseTableNames(db);
+            governanceGroups = ResolvePerDayGovernanceGroups(
+                dbContext: db,
+                parcelShardingDecision: _parcelShardingStrategyDecision,
+                enableWebRequestAuditLogPerDayGuard: _enableWebRequestAuditLogPerDayGuard);
+            var perDayShardingBaseTableNames = governanceGroups
+                .SelectMany(static group => group.BaseTableNames)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
             var expectedPhysicalTables = BuildExpectedPerDayPhysicalTableNames(requiredPrebuiltDates, perDayShardingBaseTableNames);
             var schemaName = ResolvePerDayPhysicalTableProbeSchemaName(_dialect.ProviderName);
             if (_shardingPhysicalTableProbe is IBatchShardingPhysicalTableProbe batchShardingPhysicalTableProbe) {
@@ -680,26 +725,57 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 return;
             }
 
-            var missingCriticalIndexes = await AuditPerDayShardCriticalIndexesAsync(db, expectedPhysicalTables, schemaName, cancellationToken);
+            var missingCriticalIndexes = await AuditPerDayShardCriticalIndexesAsync(
+                db,
+                expectedPhysicalTables,
+                schemaName,
+                _dialect.ProviderName,
+                cancellationToken);
             if (missingCriticalIndexes.Count == 0) {
+                if (!_enableWebRequestAuditLogRetention) {
+                    return;
+                }
+            }
+            else {
+                var summarizedMissing = missingCriticalIndexes
+                    .SelectMany(static pair => pair.Value.Select(indexName => $"{pair.Key}:{indexName}"))
+                    .ToArray();
+                _logger.LogError(
+                    "分表关键索引一致性审计发现缺失：MissingIndexEntries={MissingIndexEntries}",
+                    string.Join(", ", summarizedMissing));
+                if (_blockOnCriticalIndexMissing) {
+                    throw new ShardingGovernanceGuardException(
+                        $"分表治理守卫触发：物理分表关键索引一致性审计发现缺失索引。缺失项：{string.Join(", ", summarizedMissing)}。");
+                }
+
+                _logger.LogWarning(
+                    "分表关键索引一致性审计发现缺失，但当前配置仅审计不阻断：ConfigKey={ConfigKey}, MissingIndexEntries={MissingIndexEntries}",
+                    ShardingCriticalIndexAuditBlockOnMissingConfigKey,
+                    string.Join(", ", summarizedMissing));
+            }
+
+            if (!_enableWebRequestAuditLogRetention) {
                 return;
             }
 
-            var summarizedMissing = missingCriticalIndexes
-                .SelectMany(static pair => pair.Value.Select(indexName => $"{pair.Key}:{indexName}"))
-                .ToArray();
-            _logger.LogError(
-                "分表关键索引一致性审计发现缺失：MissingIndexEntries={MissingIndexEntries}",
-                string.Join(", ", summarizedMissing));
-            if (_blockOnCriticalIndexMissing) {
-                throw new ShardingGovernanceGuardException(
-                    $"分表治理守卫触发：物理分表关键索引一致性审计发现缺失索引。缺失项：{string.Join(", ", summarizedMissing)}。");
-            }
-
-            _logger.LogWarning(
-                "分表关键索引一致性审计发现缺失，但当前配置仅审计不阻断：ConfigKey={ConfigKey}, MissingIndexEntries={MissingIndexEntries}",
-                ShardingCriticalIndexAuditBlockOnMissingConfigKey,
-                string.Join(", ", summarizedMissing));
+            var webRequestAuditLogCandidateCount = EstimateWebRequestAuditLogRetentionCandidates(
+                requiredPrebuiltDates,
+                _webRequestAuditLogRetentionKeepRecentShardCount,
+                governanceGroups);
+            var webRequestAuditLogRetentionResult = EvaluateWebRequestAuditLogRetentionDecision(
+                candidateCount: webRequestAuditLogCandidateCount,
+                enableGuard: _webRequestAuditLogRetentionEnableGuard,
+                allowDangerousActionExecution: _webRequestAuditLogRetentionAllowDangerousActionExecution,
+                enableDryRun: _webRequestAuditLogRetentionDryRun);
+            _logger.LogInformation(
+                "WebRequestAuditLog 历史分表保留治理评估：ActionName={ActionName}, Decision={Decision}, PlannedCount={PlannedCount}, ExecutedCount={ExecutedCount}, IsDryRun={IsDryRun}, IsBlockedByGuard={IsBlockedByGuard}, KeepRecentShardCount={KeepRecentShardCount}",
+                webRequestAuditLogRetentionResult.ActionName,
+                webRequestAuditLogRetentionResult.Decision,
+                webRequestAuditLogRetentionResult.PlannedCount,
+                webRequestAuditLogRetentionResult.ExecutedCount,
+                webRequestAuditLogRetentionResult.IsDryRun,
+                webRequestAuditLogRetentionResult.IsBlockedByGuard,
+                _webRequestAuditLogRetentionKeepRecentShardCount);
         }
 
         /// <summary>
@@ -714,13 +790,24 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             SortingHubDbContext db,
             IReadOnlyList<string> physicalTableNames,
             string? schemaName,
+            string providerName,
             CancellationToken cancellationToken) {
             ArgumentNullException.ThrowIfNull(db);
             ArgumentNullException.ThrowIfNull(physicalTableNames);
-            var blockingCriticalIndexes = ResolveCriticalIndexesForProvider(_dialect.ProviderName);
-            var auditOnlyIndexes = ResolveAuditOnlyIndexesForProvider(_dialect.ProviderName);
+            var blockingCriticalIndexesByLogicalTable = ResolveCriticalIndexesByLogicalTableForProvider(providerName);
+            var auditOnlyIndexesByLogicalTable = ResolveAuditOnlyIndexesByLogicalTableForProvider(providerName);
             var missingIndexMap = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
             foreach (var physicalTableName in physicalTableNames) {
+                if (!TryResolveLogicalBaseTableNameFromPhysicalTableName(physicalTableName, out var logicalBaseTableName)) {
+                    continue;
+                }
+                if (!blockingCriticalIndexesByLogicalTable.TryGetValue(logicalBaseTableName, out var blockingCriticalIndexes)) {
+                    blockingCriticalIndexes = [];
+                }
+                if (!auditOnlyIndexesByLogicalTable.TryGetValue(logicalBaseTableName, out var auditOnlyIndexes)) {
+                    auditOnlyIndexes = [];
+                }
+
                 var missingBlockingIndexes = await _shardingPhysicalTableProbe.FindMissingIndexesAsync(
                     db,
                     schemaName,
@@ -756,11 +843,34 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <param name="providerName">数据库提供器名称。</param>
         /// <returns>可触发阻断的关键索引名集合。</returns>
         internal static IReadOnlyList<string> ResolveCriticalIndexesForProvider(string providerName) {
-            return new[] {
-                ParcelIndexNames.BagCodeScannedTime,
-                ParcelIndexNames.ActualChuteIdScannedTime,
-                ParcelIndexNames.TargetChuteIdScannedTime
+            return ResolveCriticalIndexesByLogicalTableForProvider(providerName)
+                .SelectMany(static pair => pair.Value)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+        }
+
+        /// <summary>
+        /// 解析当前 Provider 下“逻辑表 -> 阻断关键索引”映射。
+        /// </summary>
+        /// <param name="providerName">数据库提供器名称。</param>
+        /// <returns>阻断关键索引映射。</returns>
+        internal static IReadOnlyDictionary<string, IReadOnlyList<string>> ResolveCriticalIndexesByLogicalTableForProvider(string providerName) {
+            var mapping = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal) {
+                ["Parcels"] = [
+                    ParcelIndexNames.BagCodeScannedTime,
+                    ParcelIndexNames.ActualChuteIdScannedTime,
+                    ParcelIndexNames.TargetChuteIdScannedTime
+                ],
+                ["WebRequestAuditLogs"] = [
+                    WebRequestAuditLogIndexNames.StartedAt,
+                    WebRequestAuditLogIndexNames.StatusCodeStartedAt,
+                    WebRequestAuditLogIndexNames.IsSuccessStartedAt
+                ],
+                ["WebRequestAuditLogDetails"] = [
+                    "IX_WebRequestAuditLogDetails_StartedAt"
+                ]
             };
+            return mapping;
         }
 
         /// <summary>
@@ -769,11 +879,25 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <param name="providerName">数据库提供器名称。</param>
         /// <returns>仅审计索引名集合。</returns>
         internal static IReadOnlyList<string> ResolveAuditOnlyIndexesForProvider(string providerName) {
+            return ResolveAuditOnlyIndexesByLogicalTableForProvider(providerName)
+                .SelectMany(static pair => pair.Value)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+        }
+
+        /// <summary>
+        /// 解析当前 Provider 下“逻辑表 -> 仅审计索引”映射。
+        /// </summary>
+        /// <param name="providerName">数据库提供器名称。</param>
+        /// <returns>仅审计索引映射。</returns>
+        internal static IReadOnlyDictionary<string, IReadOnlyList<string>> ResolveAuditOnlyIndexesByLogicalTableForProvider(string providerName) {
             if (string.Equals(providerName, "MySQL", StringComparison.OrdinalIgnoreCase)) {
-                return new[] { ParcelIndexNames.BarCodesFullText };
+                return new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal) {
+                    ["Parcels"] = [ParcelIndexNames.BarCodesFullText]
+                };
             }
 
-            return Array.Empty<string>();
+            return new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
         }
 
         /// <summary>
@@ -862,6 +986,41 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         /// <summary>
+        /// 评估 WebRequestAuditLog 历史分表保留治理决策（仅决策与审计语义，不执行真实 DDL）。
+        /// </summary>
+        /// <param name="candidateCount">本次候选处理数量（候选删除数）。</param>
+        /// <param name="enableGuard">是否启用隔离守卫。</param>
+        /// <param name="allowDangerousActionExecution">是否允许执行危险动作。</param>
+        /// <param name="enableDryRun">是否开启 dry-run。</param>
+        /// <returns>危险动作决策结果。</returns>
+        internal static DangerousBatchActionResult EvaluateWebRequestAuditLogRetentionDecision(
+            int candidateCount,
+            bool enableGuard,
+            bool allowDangerousActionExecution,
+            bool enableDryRun) {
+            if (candidateCount < 0) {
+                throw new ArgumentOutOfRangeException(nameof(candidateCount), "候选处理数量不能为负数。");
+            }
+
+            var decision = ActionIsolationPolicy.Evaluate(
+                enableGuard,
+                allowDangerousActionExecution,
+                enableDryRun,
+                dangerousAction: true,
+                isRollback: false);
+            var executedCount = decision == ActionIsolationDecision.Execute ? candidateCount : 0;
+            return new DangerousBatchActionResult {
+                ActionName = "WebRequestAuditLogHistoryRetentionCleanup",
+                Decision = decision,
+                PlannedCount = candidateCount,
+                ExecutedCount = executedCount,
+                IsDryRun = decision == ActionIsolationDecision.DryRunOnly,
+                IsBlockedByGuard = decision == ActionIsolationDecision.BlockedByGuard,
+                CompensationBoundary = "物理分表删除暂无自动回滚脚本，回滚需依赖备份/归档恢复。"
+            };
+        }
+
+        /// <summary>
         /// PerDay 分表治理需要探测的实体类型清单（与分表注册同源）。
         /// </summary>
         /// <remarks>
@@ -869,6 +1028,10 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// 避免硬编码实体清单导致治理探测与注册规则漂移。
         /// </remarks>
         private static readonly IReadOnlyList<Type> PerDayShardingEntityTypes = BuildPerDayShardingEntityTypes();
+        /// <summary>
+        /// WebRequestAuditLog 分表治理需要探测的实体类型清单。
+        /// </summary>
+        private static readonly IReadOnlyList<Type> WebRequestAuditLogPerDayShardingEntityTypes = BuildWebRequestAuditLogPerDayShardingEntityTypes();
 
         /// <summary>
         /// 从分表注册同源规则动态构建 PerDay 探测实体类型清单。
@@ -877,6 +1040,160 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private static IReadOnlyList<Type> BuildPerDayShardingEntityTypes() {
             return PersistenceServiceCollectionExtensions.GetParcelPerDayShardingEntityTypes();
         }
+
+        /// <summary>
+        /// 从 WebRequestAuditLog 冷热模型构建 PerDay 探测实体类型清单。
+        /// </summary>
+        /// <returns>实体类型数组。</returns>
+        private static IReadOnlyList<Type> BuildWebRequestAuditLogPerDayShardingEntityTypes() {
+            return new[] { typeof(WebRequestAuditLog), typeof(WebRequestAuditLogDetail) };
+        }
+
+        /// <summary>
+        /// 解析 WebRequestAuditLog 历史分表保留数量配置。
+        /// </summary>
+        /// <param name="configuration">配置源。</param>
+        /// <returns>保留数量（必须为正整数）。</returns>
+        internal static int ResolveWebRequestAuditLogRetentionKeepRecentShardCount(IConfiguration configuration) {
+            ArgumentNullException.ThrowIfNull(configuration);
+            var raw = configuration[WebRequestAuditLogRetentionKeepRecentShardCountConfigKey];
+            if (string.IsNullOrWhiteSpace(raw)) {
+                return 7;
+            }
+
+            if (!int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) || value <= 0) {
+                throw new InvalidOperationException($"配置项 {WebRequestAuditLogRetentionKeepRecentShardCountConfigKey} 必须为大于 0 的整数，当前值：{raw}。");
+            }
+
+            return value;
+        }
+
+        /// <summary>
+        /// 解析当前启动上下文下启用的 PerDay 治理组。
+        /// </summary>
+        /// <param name="dbContext">数据库上下文；为空时仅返回组与实体，不解析物理表名。</param>
+        /// <param name="parcelShardingDecision">Parcel 分表决策。</param>
+        /// <param name="enableWebRequestAuditLogPerDayGuard">是否启用 WebRequestAuditLog 守卫。</param>
+        /// <returns>治理组清单。</returns>
+        internal static IReadOnlyList<PerDayGovernanceGroup> ResolvePerDayGovernanceGroups(
+            SortingHubDbContext? dbContext,
+            ParcelShardingStrategyDecision parcelShardingDecision,
+            bool enableWebRequestAuditLogPerDayGuard) {
+            var groups = new List<PerDayGovernanceGroup>();
+            if (ShouldEnforcePerDayPrebuildGuard(parcelShardingDecision)) {
+                var baseTableNames = dbContext is null
+                    ? Array.Empty<string>()
+                    : ResolvePerDayShardingBaseTableNamesByEntityTypes(dbContext, PerDayShardingEntityTypes);
+                groups.Add(new PerDayGovernanceGroup(
+                    GroupName: "Parcel",
+                    BaseTableNames: baseTableNames));
+            }
+
+            if (enableWebRequestAuditLogPerDayGuard) {
+                var baseTableNames = dbContext is null
+                    ? Array.Empty<string>()
+                    : ResolvePerDayShardingBaseTableNamesByEntityTypes(dbContext, WebRequestAuditLogPerDayShardingEntityTypes);
+                groups.Add(new PerDayGovernanceGroup(
+                    GroupName: "WebRequestAuditLog",
+                    BaseTableNames: baseTableNames));
+            }
+
+            return groups;
+        }
+
+        /// <summary>
+        /// 从 EF 模型按指定实体类型集合解析基础逻辑表名。
+        /// </summary>
+        /// <param name="dbContext">数据库上下文。</param>
+        /// <param name="entityTypes">实体类型集合。</param>
+        /// <returns>基础逻辑表名清单。</returns>
+        private static IReadOnlyList<string> ResolvePerDayShardingBaseTableNamesByEntityTypes(
+            SortingHubDbContext dbContext,
+            IReadOnlyList<Type> entityTypes) {
+            ArgumentNullException.ThrowIfNull(dbContext);
+            ArgumentNullException.ThrowIfNull(entityTypes);
+            var baseTableNames = new List<string>(entityTypes.Count);
+            foreach (var entityType in entityTypes) {
+                var mappedEntityTypes = dbContext.Model
+                    .GetEntityTypes()
+                    .Where(modelEntityType => modelEntityType.ClrType == entityType)
+                    .Select(modelEntityType => modelEntityType.GetTableName())
+                    .Where(static tableName => !string.IsNullOrWhiteSpace(tableName))
+                    .Cast<string>()
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray();
+                if (mappedEntityTypes.Length != 1) {
+                    throw new ShardingGovernanceGuardException(
+                        $"分表治理守卫触发：无法从 EF 模型唯一解析 PerDay 探测目标表，EntityType={entityType.Name}, MatchedCount={mappedEntityTypes.Length}。");
+                }
+
+                baseTableNames.Add(mappedEntityTypes[0]);
+            }
+
+            return baseTableNames;
+        }
+
+        /// <summary>
+        /// 从物理分表名中解析逻辑基础表名。
+        /// </summary>
+        /// <param name="physicalTableName">物理分表名。</param>
+        /// <param name="baseTableName">解析出的逻辑基础表名。</param>
+        /// <returns>成功解析返回 true。</returns>
+        internal static bool TryResolveLogicalBaseTableNameFromPhysicalTableName(string physicalTableName, out string baseTableName) {
+            baseTableName = string.Empty;
+            if (string.IsNullOrWhiteSpace(physicalTableName)) {
+                return false;
+            }
+
+            var separatorIndex = physicalTableName.LastIndexOf('_');
+            if (separatorIndex <= 0 || separatorIndex >= physicalTableName.Length - 1) {
+                return false;
+            }
+
+            var suffix = physicalTableName[(separatorIndex + 1)..];
+            if (suffix.Length != 8 || !suffix.All(char.IsDigit)) {
+                return false;
+            }
+
+            baseTableName = physicalTableName[..separatorIndex];
+            return !string.IsNullOrWhiteSpace(baseTableName);
+        }
+
+        /// <summary>
+        /// 估算 WebRequestAuditLog 历史分表保留候选数量（用于治理决策与审计）。
+        /// </summary>
+        /// <param name="requiredPrebuiltDates">预建窗口日期。</param>
+        /// <param name="keepRecentShardCount">保留分表数量。</param>
+        /// <param name="governanceGroups">治理组清单。</param>
+        /// <returns>候选数量。</returns>
+        internal static int EstimateWebRequestAuditLogRetentionCandidates(
+            IReadOnlyList<DateTime> requiredPrebuiltDates,
+            int keepRecentShardCount,
+            IReadOnlyList<PerDayGovernanceGroup> governanceGroups) {
+            ArgumentNullException.ThrowIfNull(requiredPrebuiltDates);
+            ArgumentNullException.ThrowIfNull(governanceGroups);
+            if (keepRecentShardCount <= 0) {
+                return 0;
+            }
+
+            var webRequestAuditLogGroup = governanceGroups.FirstOrDefault(static group =>
+                string.Equals(group.GroupName, "WebRequestAuditLog", StringComparison.Ordinal));
+            if (webRequestAuditLogGroup.GroupName is null || webRequestAuditLogGroup.BaseTableNames.Count == 0) {
+                return 0;
+            }
+
+            var candidateDateCount = Math.Max(0, requiredPrebuiltDates.Count - keepRecentShardCount);
+            return candidateDateCount * webRequestAuditLogGroup.BaseTableNames.Count;
+        }
+
+        /// <summary>
+        /// PerDay 治理组模型。
+        /// </summary>
+        /// <param name="GroupName">治理组名称。</param>
+        /// <param name="BaseTableNames">治理组逻辑表名清单。</param>
+        internal readonly record struct PerDayGovernanceGroup(
+            string GroupName,
+            IReadOnlyList<string> BaseTableNames);
 
     }
 }
