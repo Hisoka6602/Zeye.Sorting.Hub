@@ -53,6 +53,7 @@ try {
     builder.Services.AddSortingHubPersistence(builder.Configuration);
     builder.Services.AddSingleton<IAutoTuningObservability, AutoTuningLoggerObservability>();
     builder.Services.AddProblemDetails();
+    builder.Services.AddAuthorization();
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSwaggerGen(options => {
         var documentName = hostingOptions.GetSwaggerDocumentName();
@@ -134,6 +135,7 @@ try {
     if (hostingOptions.EnableHttpsRedirection) {
         app.UseHttpsRedirection();
     }
+    app.UseAuthorization();
     var isSwaggerEnabled = app.Environment.IsDevelopment() && hostingOptions.Swagger.Enabled;
     if (isSwaggerEnabled) {
         app.UseSwagger(options => {
@@ -158,8 +160,11 @@ try {
     app.MapParcelReadOnlyApis();
     // Parcel 管理端写接口：普通写操作 + 危险治理接口（cleanup-expired）分开治理。
     app.MapParcelAdminApis();
-    // 审计日志只读查询端点：查询热表摘要与冷热详情。
-    app.MapAuditReadOnlyApis();
+    // 审计日志只读查询端点：默认关闭，需显式开启配置后再接线。
+    var auditReadOnlyApiEnabled = builder.Configuration.GetValue("AuditReadOnlyApi:Enabled", false);
+    if (auditReadOnlyApiEnabled) {
+        app.MapAuditReadOnlyApis();
+    }
 
     app.Run();
 }

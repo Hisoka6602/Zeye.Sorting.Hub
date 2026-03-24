@@ -118,8 +118,9 @@ public sealed class SwaggerDocumentationTests {
             });
             options.SchemaFilter<EnumDescriptionSchemaFilter>();
         });
-        builder.Services.AddScoped<IWebRequestAuditLogRepository, InMemoryWebRequestAuditLogRepository>();
-        builder.Services.AddScoped<IWebRequestAuditLogQueryRepository, InMemoryWebRequestAuditLogRepository>();
+        builder.Services.AddSingleton<InMemoryWebRequestAuditLogRepository>();
+        builder.Services.AddSingleton<IWebRequestAuditLogRepository>(serviceProvider => serviceProvider.GetRequiredService<InMemoryWebRequestAuditLogRepository>());
+        builder.Services.AddSingleton<IWebRequestAuditLogQueryRepository>(serviceProvider => serviceProvider.GetRequiredService<InMemoryWebRequestAuditLogRepository>());
         builder.Services.AddScoped<GetWebRequestAuditLogPagedQueryService>();
         builder.Services.AddScoped<GetWebRequestAuditLogByIdQueryService>();
 

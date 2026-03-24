@@ -105,6 +105,14 @@ public sealed class InMemoryWebRequestAuditLogRepository : IWebRequestAuditLogRe
         WebRequestAuditLogQueryFilter filter,
         PageRequest pageRequest,
         CancellationToken cancellationToken) {
+        if (filter is null) {
+            throw new ArgumentNullException(nameof(filter));
+        }
+
+        if (pageRequest is null) {
+            throw new ArgumentNullException(nameof(pageRequest));
+        }
+
         cancellationToken.ThrowIfCancellationRequested();
         var filtered = _logs
             .Where(log => !filter.StartedAtStart.HasValue || log.StartedAt >= filter.StartedAtStart.Value)

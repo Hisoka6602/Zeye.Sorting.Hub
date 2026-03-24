@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -155,11 +156,19 @@ public sealed class AuditReadOnlyApiTests {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
         builder.Services.AddProblemDetails();
+        builder.Services.AddAuthorization();
         builder.Services.AddScoped<IWebRequestAuditLogRepository>(_ => repository);
         builder.Services.AddScoped<IWebRequestAuditLogQueryRepository>(_ => repository);
         builder.Services.AddScoped<GetWebRequestAuditLogPagedQueryService>();
         builder.Services.AddScoped<GetWebRequestAuditLogByIdQueryService>();
         var app = builder.Build();
+        app.Use(async (context, next) => {
+            context.User = new ClaimsPrincipal(new ClaimsIdentity(
+                [new Claim(ClaimTypes.Name, "audit-test-user")],
+                authenticationType: "TestAuth"));
+            await next();
+        });
+        app.UseAuthorization();
         app.MapAuditReadOnlyApis();
         await app.StartAsync();
         return app;
@@ -174,6 +183,7 @@ public sealed class AuditReadOnlyApiTests {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
         builder.Services.AddProblemDetails();
+        builder.Services.AddAuthorization();
         builder.Services.AddScoped<IWebRequestAuditLogRepository>(_ => repository);
         builder.Services.AddScoped<IWebRequestAuditLogQueryRepository>(_ => repository);
         builder.Services.AddScoped<WriteWebRequestAuditLogCommandService>();
@@ -189,6 +199,13 @@ public sealed class AuditReadOnlyApiTests {
         });
         var app = builder.Build();
         app.UseWebRequestAuditLogging();
+        app.Use(async (context, next) => {
+            context.User = new ClaimsPrincipal(new ClaimsIdentity(
+                [new Claim(ClaimTypes.Name, "audit-test-user")],
+                authenticationType: "TestAuth"));
+            await next();
+        });
+        app.UseAuthorization();
         app.MapGet("/ok", () => Results.Text("pong", "text/plain"));
         app.MapAuditReadOnlyApis();
         await app.StartAsync();

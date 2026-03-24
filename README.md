@@ -164,7 +164,7 @@
 │   ├── AuditReadOnlyApiRouteExtensions.cs（Web 请求审计日志只读 API 路由扩展：列表与详情查询）
 │   ├── Program.cs（应用入口与 Host 构建流程；运行地址/Swagger 路径由 appsettings 的 Hosting 配置驱动；接入 XML 注释与枚举中文说明增强）
 │   ├── HostingOptions.cs（Hosting 配置模型与 Swagger/浏览器自动打开地址拼装逻辑）
-│   ├── LocalDateTimeParsing.cs（本地时间解析与 API 响应工厂共享工具：TryParseLocalDateTime/TryParseOptionalLocalDateTime/CreateBadRequestProblem/CreateParcelMissingProblem，供所有路由扩展复用）
+│   ├── LocalDateTimeParsing.cs（本地时间解析与 API 响应工厂共享工具：TryParseLocalDateTime/TryParseOptionalLocalDateTime/CreateBadRequestProblem/CreateParcelMissingProblem/CreateNotFoundProblem，供所有路由扩展复用）
 │   ├── ParcelAdminApiRouteExtensions.cs（Parcel 管理端 API 路由扩展：POST/PUT/DELETE 普通写接口 + cleanup-expired 治理接口）
 │   ├── WebRequestAuditLogListQueryParameters.cs（Web 请求审计日志列表查询参数绑定模型）
 │   ├── Swagger（Swagger 扩展目录）
@@ -505,7 +505,7 @@
 - `HostingOptions.cs`：`Hosting` 主配置模型及地址/Swagger 拼装逻辑。
 - `SwaggerOptions.cs`：Swagger 子配置模型。
 - `BrowserAutoOpenOptions.cs`：开发期浏览器自动打开配置模型。
-- `LocalDateTimeParsing.cs`：本地时间解析与 API 响应工厂共享工具（`TryParseLocalDateTime`、`TryParseOptionalLocalDateTime`、`IsUtcKind`、`CreateBadRequestProblem`、`CreateParcelMissingProblem`），统一供各路由扩展类复用，避免重复实现（其中“包裹不存在”统一返回 404）。
+- `LocalDateTimeParsing.cs`：本地时间解析与 API 响应工厂共享工具（`TryParseLocalDateTime`、`TryParseOptionalLocalDateTime`、`CreateBadRequestProblem`、`CreateParcelMissingProblem`、`CreateNotFoundProblem`），统一供各路由扩展类复用，避免重复实现（其中“包裹不存在”统一返回 404）。
 - `ParcelAdminApiRouteExtensions.cs`：Parcel 管理端 API 路由扩展（`MapParcelAdminApis`），注册 `POST /api/admin/parcels`、`PUT /api/admin/parcels/{id}`、`DELETE /api/admin/parcels/{id}` 普通写接口及 `POST /api/admin/parcels/cleanup-expired` 危险治理接口，并补齐中文 Summary/Description；新增创建接口 `id` 参数校验与重复 Id 冲突映射（409）。
 - `Worker.cs`：后台轮询任务示例服务。
 - `Zeye.Sorting.Hub.Host.csproj`：Host 项目定义。
