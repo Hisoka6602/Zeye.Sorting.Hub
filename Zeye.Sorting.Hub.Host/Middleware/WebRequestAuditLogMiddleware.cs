@@ -297,7 +297,7 @@ public sealed class WebRequestAuditLogMiddleware {
         var knownLength = Math.Max(0L, request.ContentLength ?? 0L);
         var contentType = request.ContentType ?? string.Empty;
         var hasBody = request.ContentLength is > 0L;
-        if (!IsTextualRequestContentType(contentType)) {
+        if (!string.IsNullOrWhiteSpace(contentType) && !IsTextualRequestContentType(contentType)) {
             return new CapturedBody(hasBody ? BinaryPayloadOmittedPlaceholder : string.Empty, hasBody, false, knownLength);
         }
 
@@ -527,7 +527,7 @@ public sealed class WebRequestAuditLogMiddleware {
     private static string SerializeHeaders(IHeaderDictionary headers) {
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var pair in headers) {
-            values[pair.Key] = pair.Value.ToString();
+            values[pair.Key] = SanitizeHeaderValueForAudit(pair.Key, pair.Value.ToString());
         }
 
         return JsonSerializer.Serialize(values, JsonSerializerOptions);
@@ -652,6 +652,31 @@ public sealed class WebRequestAuditLogMiddleware {
                && !headerName.Equals("Set-Cookie", StringComparison.OrdinalIgnoreCase)
                && !headerName.Equals("X-Api-Key", StringComparison.OrdinalIgnoreCase)
                && !headerName.Equals("Connection", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// 对写入审计明细的 Header 值进行脱敏。
+    /// </summary>
+    /// <param name="headerName">Header 名称。</param>
+    /// <param name="headerValue">Header 值。</param>
+    /// <returns>脱敏后的 Header 值。</returns>
+    private static string SanitizeHeaderValueForAudit(string headerName, string headerValue) {
+        var safeHeaderValue = headerValue ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(headerName) || string.IsNullOrWhiteSpace(safeHeaderValue)) {
+            return safeHeaderValue;
+        }
+
+        if (headerName.Equals("Authorization", StringComparison.OrdinalIgnoreCase)) {
+            return MaskAuthorizationHeader(safeHeaderValue);
+        }
+
+        if (headerName.Equals("Cookie", StringComparison.OrdinalIgnoreCase)
+            || headerName.Equals("Set-Cookie", StringComparison.OrdinalIgnoreCase)
+            || headerName.Equals("X-Api-Key", StringComparison.OrdinalIgnoreCase)) {
+            return AuthorizationMaskedPlaceholder;
+        }
+
+        return safeHeaderValue;
     }
 
     /// <summary>

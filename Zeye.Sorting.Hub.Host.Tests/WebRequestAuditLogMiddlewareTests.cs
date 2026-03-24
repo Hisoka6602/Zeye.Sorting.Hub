@@ -141,6 +141,11 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         Assert.Contains("result", log.Detail.ResponseBody, StringComparison.Ordinal);
         Assert.False(string.IsNullOrWhiteSpace(log.Detail.RequestUrl));
         Assert.Equal("middleware-tests/1.0", log.Detail.UserAgent);
+        Assert.NotNull(log.Detail.RequestHeadersJson);
+        Assert.Contains("\"Authorization\":\"Bearer", log.Detail.RequestHeadersJson, StringComparison.Ordinal);
+        Assert.DoesNotContain("abcdefghijklmnopqrstuvwxyz9876543210", log.Detail.RequestHeadersJson, StringComparison.Ordinal);
+        Assert.Contains("\"Cookie\":\"***\"", log.Detail.RequestHeadersJson, StringComparison.Ordinal);
+        Assert.Contains("\"X-Api-Key\":\"***\"", log.Detail.RequestHeadersJson, StringComparison.Ordinal);
 
         var curl = log.Detail.CurlCommand;
         Assert.Contains("curl -X", curl, StringComparison.Ordinal);
@@ -258,6 +263,36 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         Assert.True(log.HasRequestBody);
         Assert.Equal("[binary payload omitted]", log.Detail?.RequestBody);
         Assert.Contains("--data-raw '[binary payload omitted]'", log.Detail?.CurlCommand ?? string.Empty, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// 验证场景：Content-Type 为空且正文为文本时，仍按文本采集请求体。
+    /// </summary>
+    [Fact]
+    public async Task Middleware_WithEmptyContentType_ShouldCaptureJsonBodyAsText() {
+        var repository = new InMemoryWebRequestAuditLogRepository();
+        await using var app = await BuildTestAppAsync(
+            new WebRequestAuditLogOptions {
+                Enabled = true,
+                SampleRate = 1,
+                IncludeRequestBody = true,
+                IncludeResponseBody = true,
+                MaxRequestBodyLength = 1024,
+                MaxResponseBodyLength = 1024
+            },
+            repository);
+
+        using var client = app.GetTestClient();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/echo");
+        request.Content = new ByteArrayContent(Encoding.UTF8.GetBytes("{\"noType\":true}"));
+        request.Content.Headers.ContentType = null;
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        await WaitForWriteCountAsync(repository, expectedCount: 1, maxAttempts: 20, delayMilliseconds: 50);
+        var log = Assert.Single(repository.Logs);
+        Assert.True(log.Detail is not null);
+        Assert.Equal("{\"noType\":true}", log.Detail!.RequestBody);
     }
 
     /// <summary>
