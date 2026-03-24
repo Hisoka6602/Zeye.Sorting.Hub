@@ -31,6 +31,21 @@ public sealed class WebRequestAuditLogMiddleware {
     private const string AuthorizationMaskedPlaceholder = "***";
 
     /// <summary>
+    /// Authorization 脱敏最小凭证长度。
+    /// </summary>
+    private const int MinCredentialLengthForPartialMask = 10;
+
+    /// <summary>
+    /// Authorization 脱敏保留前缀长度。
+    /// </summary>
+    private const int CredentialPrefixLength = 6;
+
+    /// <summary>
+    /// Authorization 脱敏保留后缀长度。
+    /// </summary>
+    private const int CredentialSuffixLength = 4;
+
+    /// <summary>
     /// NLog 日志器。
     /// </summary>
     private static readonly NLog.ILogger NLogLogger = LogManager.GetCurrentClassLogger();
@@ -281,13 +296,12 @@ public sealed class WebRequestAuditLogMiddleware {
 
         var knownLength = Math.Max(0L, request.ContentLength ?? 0L);
         var contentType = request.ContentType ?? string.Empty;
+        var hasBody = request.ContentLength is > 0L;
         if (!IsTextualRequestContentType(contentType)) {
-            var hasBody = request.ContentLength is > 0L;
             return new CapturedBody(hasBody ? BinaryPayloadOmittedPlaceholder : string.Empty, hasBody, false, knownLength);
         }
 
         if (maxLength <= 0) {
-            var hasBody = request.ContentLength is > 0L;
             var bodySize = request.ContentLength ?? 0L;
             return new CapturedBody(string.Empty, hasBody, hasBody, bodySize);
         }
@@ -316,14 +330,11 @@ public sealed class WebRequestAuditLogMiddleware {
         catch (IOException ex) {
             NLogLogger.Error(ex, "请求体缓冲过程中发生 I/O 异常，Path={Path}, MaxLength={MaxLength}", request.Path, maxLength);
             request.Body.Position = 0;
-            var knownLength = request.ContentLength ?? 0L;
-            var hasBody = request.ContentLength is > 0L;
             return new CapturedBody(string.Empty, hasBody, hasBody, knownLength);
         }
         catch (Exception ex) {
             NLogLogger.Error(ex, "请求体缓冲过程中发生异常，Path={Path}, MaxLength={MaxLength}", request.Path, maxLength);
             request.Body.Position = 0;
-            var hasBody = request.ContentLength is > 0L;
             return new CapturedBody(string.Empty, hasBody, hasBody, knownLength);
         }
     }
@@ -540,7 +551,7 @@ public sealed class WebRequestAuditLogMiddleware {
     /// 构建 Curl 回放命令。
     /// </summary>
     /// <param name="request">请求对象。</param>
-    /// <param name="requestBody">请求体文本。</param>
+    /// <param name="requestBodyCapture">请求体采集结果。</param>
     /// <returns>Curl 命令。</returns>
     private static string BuildCurlCommand(HttpRequest request, CapturedBody requestBodyCapture) {
         var builder = new StringBuilder();
@@ -594,20 +605,31 @@ public sealed class WebRequestAuditLogMiddleware {
     /// <returns>适宜文本采集返回 true。</returns>
     private static bool IsTextualRequestContentType(string contentType) {
         if (string.IsNullOrWhiteSpace(contentType)) {
-            return true;
-        }
-
-        var normalized = contentType.ToLowerInvariant();
-        if (normalized.Contains("multipart/form-data", StringComparison.Ordinal)
-            || normalized.Contains("application/octet-stream", StringComparison.Ordinal)) {
             return false;
         }
 
-        return normalized.StartsWith("text/", StringComparison.Ordinal)
-               || normalized.Contains("application/json", StringComparison.Ordinal)
-               || normalized.Contains("application/xml", StringComparison.Ordinal)
-               || normalized.Contains("application/x-www-form-urlencoded", StringComparison.Ordinal)
-               || normalized.Contains("application/javascript", StringComparison.Ordinal);
+        var normalized = contentType.ToLowerInvariant();
+        var mediaType = ExtractMediaType(normalized);
+        if (mediaType == "multipart/form-data"
+            || mediaType == "application/octet-stream") {
+            return false;
+        }
+
+        return mediaType.StartsWith("text/", StringComparison.Ordinal)
+               || mediaType == "application/json"
+               || mediaType == "application/xml"
+               || mediaType == "application/x-www-form-urlencoded"
+               || mediaType == "application/javascript";
+    }
+
+    /// <summary>
+    /// 提取 Content-Type 主类型（去除分号参数）。
+    /// </summary>
+    /// <param name="contentType">原始 Content-Type。</param>
+    /// <returns>主类型文本。</returns>
+    private static string ExtractMediaType(string contentType) {
+        var separatorIndex = contentType.IndexOf(';', StringComparison.Ordinal);
+        return separatorIndex >= 0 ? contentType[..separatorIndex].Trim() : contentType.Trim();
     }
 
     /// <summary>
@@ -666,12 +688,12 @@ public sealed class WebRequestAuditLogMiddleware {
         }
 
         var credential = string.Join(' ', parts.Skip(1));
-        if (credential.Length <= 10) {
+        if (credential.Length <= MinCredentialLengthForPartialMask) {
             return $"{scheme} {AuthorizationMaskedPlaceholder}";
         }
 
-        var prefix = credential[..6];
-        var suffix = credential[^4..];
+        var prefix = credential[..CredentialPrefixLength];
+        var suffix = credential[^CredentialSuffixLength..];
         return $"{scheme} {prefix}***{suffix}";
     }
 

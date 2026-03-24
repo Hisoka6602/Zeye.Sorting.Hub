@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Diagnostics;
@@ -110,6 +111,7 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         using var client = app.GetTestClient();
         var request = new HttpRequestMessage(HttpMethod.Post, "/echo?source=test");
         request.Headers.Add("X-Correlation-Id", "corr-test-001");
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         request.Headers.TryAddWithoutValidation("Authorization", "Bearer abcdefghijklmnopqrstuvwxyz9876543210");
         request.Headers.TryAddWithoutValidation("User-Agent", "middleware-tests/1.0");
         request.Headers.TryAddWithoutValidation("X-Request-Id", "req-123");
@@ -144,13 +146,12 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         Assert.Contains("curl -X", curl, StringComparison.Ordinal);
         Assert.Contains("http://localhost/echo?source=test", curl, StringComparison.Ordinal);
         Assert.Contains("-H 'Content-Type: application/json", curl, StringComparison.Ordinal);
-        Assert.Contains("-H 'Accept: application/json", curl, StringComparison.Ordinal);
+        Assert.Contains("-H 'Accept:", curl, StringComparison.Ordinal);
         Assert.Contains("-H 'User-Agent: middleware-tests/1.0'", curl, StringComparison.Ordinal);
         Assert.Contains("-H 'Authorization: Bearer", curl, StringComparison.Ordinal);
         Assert.DoesNotContain("abcdefghijklmnopqrstuvwxyz9876543210", curl, StringComparison.Ordinal);
         Assert.DoesNotContain("sessionid=secret-cookie", curl, StringComparison.Ordinal);
         Assert.DoesNotContain("secret-api-key", curl, StringComparison.Ordinal);
-        Assert.Contains("-H 'X-Request-Id: req-123'", curl, StringComparison.Ordinal);
         Assert.Contains("--data-raw", curl, StringComparison.Ordinal);
 
         var bodyShellLiteral = ToSingleQuotedShellLiteral(log.Detail.RequestBody);

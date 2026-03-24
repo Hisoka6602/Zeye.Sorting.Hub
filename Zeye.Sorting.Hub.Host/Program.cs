@@ -44,6 +44,11 @@ try {
     // ──────────────────────────────────────────────────────
     builder.Logging.ClearProviders();
     builder.Logging.AddNLog();
+    var enableQuerySqlLogging = builder.Configuration.GetValue<bool>("Persistence:SqlLogging:EnableQuerySqlLogging");
+    if (!enableQuerySqlLogging) {
+        builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", Microsoft.Extensions.Logging.LogLevel.None);
+    }
+
     using var startupLoggerFactory = LoggerFactory.Create(logging => logging.AddNLog());
     var startupLogger = startupLoggerFactory.CreateLogger("Startup");
     builder.Services.Configure<LogCleanupSettings>(
