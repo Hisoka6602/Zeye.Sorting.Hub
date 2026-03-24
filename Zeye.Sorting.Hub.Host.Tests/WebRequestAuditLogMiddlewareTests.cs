@@ -3,7 +3,6 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.TestHost;
@@ -66,6 +65,7 @@ public sealed class WebRequestAuditLogMiddlewareTests {
             using var client = app.GetTestClient();
             using var response = await client.GetAsync("/ok");
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            await Task.Delay(100);
             Assert.Equal(0, repository.WriteCount);
         }
 
@@ -84,7 +84,7 @@ public sealed class WebRequestAuditLogMiddlewareTests {
             using var client = app.GetTestClient();
             using var response = await client.GetAsync("/ok");
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-            Assert.Equal(1, repository.WriteCount);
+            await WaitForWriteCountAsync(repository, expectedCount: 1, maxAttempts: 20, delayMilliseconds: 50);
         }
     }
 
@@ -152,7 +152,8 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         var responseText = await response.Content.ReadAsStringAsync();
 
         Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
-        Assert.Contains("服务器内部错误", responseText, StringComparison.Ordinal);
+        using var problemJson = JsonDocument.Parse(responseText);
+        Assert.Equal("服务器内部错误", problemJson.RootElement.GetProperty("title").GetString());
         var log = Assert.Single(repository.Logs);
         Assert.True(log.HasException);
         Assert.True(log.Detail is not null);
@@ -250,8 +251,7 @@ public sealed class WebRequestAuditLogMiddlewareTests {
             using var response = await client.SendAsync(request);
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-            await using var db = new SortingHubDbContext(options);
-            var hot = await db.Set<WebRequestAuditLog>().Include(x => x.Detail).SingleAsync();
+            var hot = await WaitForPersistedAuditLogAsync(options, maxAttempts: 20, delayMilliseconds: 100);
             Assert.Equal("POST", hot.RequestMethod);
             Assert.Equal(StatusCodes.Status200OK, hot.StatusCode);
             Assert.NotNull(hot.Detail);
@@ -269,22 +269,15 @@ public sealed class WebRequestAuditLogMiddlewareTests {
     /// <param name="options">中间件配置。</param>
     /// <param name="repository">内存仓储。</param>
     /// <returns>已启动应用。</returns>
-    private static async Task<WebApplication> BuildTestAppAsync(
+    private static Task<WebApplication> BuildTestAppAsync(
         WebRequestAuditLogOptions options,
         InMemoryWebRequestAuditLogRepository repository) {
-        var builder = WebApplication.CreateBuilder();
-        builder.WebHost.UseTestServer();
-        builder.Services.AddProblemDetails();
-        builder.Services.AddScoped<IWebRequestAuditLogRepository>(_ => repository);
-        builder.Services.AddScoped<WriteWebRequestAuditLogCommandService>();
-        builder.Services.Configure<WebRequestAuditLogOptions>(configured => CopyOptions(options, configured));
-
-        var app = builder.Build();
-        ConfigureErrorHandling(app);
-        app.UseWebRequestAuditLogging();
-        ConfigureEndpoints(app);
-        await app.StartAsync();
-        return app;
+        return BuildAppAsync(
+            options,
+            services => {
+                services.AddScoped<IWebRequestAuditLogRepository>(_ => repository);
+                services.AddScoped<WriteWebRequestAuditLogCommandService>();
+            });
     }
 
     /// <summary>
@@ -293,16 +286,32 @@ public sealed class WebRequestAuditLogMiddlewareTests {
     /// <param name="middlewareOptions">中间件配置。</param>
     /// <param name="contextFactory">DbContext 工厂。</param>
     /// <returns>已启动应用。</returns>
-    private static async Task<WebApplication> BuildTestAppWithRealRepositoryAsync(
+    private static Task<WebApplication> BuildTestAppWithRealRepositoryAsync(
         WebRequestAuditLogOptions middlewareOptions,
         IDbContextFactory<SortingHubDbContext> contextFactory) {
+        return BuildAppAsync(
+            middlewareOptions,
+            services => {
+                services.AddSingleton(contextFactory);
+                services.AddScoped<IWebRequestAuditLogRepository, WebRequestAuditLogRepository>();
+                services.AddScoped<WriteWebRequestAuditLogCommandService>();
+            });
+    }
+
+    /// <summary>
+    /// 构建测试应用通用流程。
+    /// </summary>
+    /// <param name="options">中间件配置。</param>
+    /// <param name="configureServices">服务注册动作。</param>
+    /// <returns>已启动应用。</returns>
+    private static async Task<WebApplication> BuildAppAsync(
+        WebRequestAuditLogOptions options,
+        Action<IServiceCollection> configureServices) {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
         builder.Services.AddProblemDetails();
-        builder.Services.AddSingleton(contextFactory);
-        builder.Services.AddScoped<IWebRequestAuditLogRepository, WebRequestAuditLogRepository>();
-        builder.Services.AddScoped<WriteWebRequestAuditLogCommandService>();
-        builder.Services.Configure<WebRequestAuditLogOptions>(configured => CopyOptions(middlewareOptions, configured));
+        configureServices(builder.Services);
+        builder.Services.Configure<WebRequestAuditLogOptions>(configured => CopyOptions(options, configured));
 
         var app = builder.Build();
         ConfigureErrorHandling(app);
@@ -330,7 +339,7 @@ public sealed class WebRequestAuditLogMiddlewareTests {
             context.Response.ContentType = "text/plain";
             await context.Response.WriteAsync(new string('B', 256));
         });
-        app.MapGet("/throw", () => throw new InvalidOperationException("middleware-test-exception"));
+        app.MapGet("/throw", (HttpContext _) => throw new InvalidOperationException("middleware-test-exception"));
     }
 
     /// <summary>
@@ -338,21 +347,19 @@ public sealed class WebRequestAuditLogMiddlewareTests {
     /// </summary>
     /// <param name="app">应用对象。</param>
     private static void ConfigureErrorHandling(WebApplication app) {
-        app.UseExceptionHandler(exceptionHandlerApp => {
-            exceptionHandlerApp.Run(async context => {
-                var exceptionFeature = context.Features.Get<IExceptionHandlerFeature>();
-                var exception = exceptionFeature?.Error;
-                if (context.Response.HasStarted) {
-                    return;
+        app.Use(async (context, next) => {
+            try {
+                await next(context);
+            }
+            catch (Exception exception) {
+                if (!context.Response.HasStarted) {
+                    context.Response.Clear();
+                    context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+                    context.Response.ContentType = "application/problem+json";
+                    var payload = JsonSerializer.Serialize(new { title = "服务器内部错误", detail = exception.Message });
+                    await context.Response.WriteAsync(payload);
                 }
-
-                context.Response.Clear();
-                context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-                await Results.Problem(
-                    title: "服务器内部错误",
-                    detail: exception?.Message ?? "请求处理失败",
-                    statusCode: StatusCodes.Status500InternalServerError).ExecuteAsync(context);
-            });
+            }
         });
     }
 
@@ -368,6 +375,55 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         target.IncludeResponseBody = source.IncludeResponseBody;
         target.MaxRequestBodyLength = source.MaxRequestBodyLength;
         target.MaxResponseBodyLength = source.MaxResponseBodyLength;
+    }
+
+    /// <summary>
+    /// 等待审计日志落库并返回热冷聚合。
+    /// </summary>
+    /// <param name="options">DbContext 选项。</param>
+    /// <param name="maxAttempts">最大重试次数。</param>
+    /// <param name="delayMilliseconds">重试间隔毫秒。</param>
+    /// <returns>审计日志聚合。</returns>
+    private static async Task<WebRequestAuditLog> WaitForPersistedAuditLogAsync(
+        DbContextOptions<SortingHubDbContext> options,
+        int maxAttempts,
+        int delayMilliseconds) {
+        for (var attempt = 0; attempt < maxAttempts; attempt++) {
+            await using var db = new SortingHubDbContext(options);
+            var hot = await db.Set<WebRequestAuditLog>()
+                .Include(x => x.Detail)
+                .SingleOrDefaultAsync();
+            if (hot is not null) {
+                return hot;
+            }
+
+            await Task.Delay(delayMilliseconds);
+        }
+
+        throw new InvalidOperationException("等待审计日志落库超时");
+    }
+
+    /// <summary>
+    /// 等待写入次数达到预期值。
+    /// </summary>
+    /// <param name="repository">内存仓储。</param>
+    /// <param name="expectedCount">期望写入次数。</param>
+    /// <param name="maxAttempts">最大重试次数。</param>
+    /// <param name="delayMilliseconds">重试间隔毫秒。</param>
+    private static async Task WaitForWriteCountAsync(
+        InMemoryWebRequestAuditLogRepository repository,
+        int expectedCount,
+        int maxAttempts,
+        int delayMilliseconds) {
+        for (var attempt = 0; attempt < maxAttempts; attempt++) {
+            if (repository.WriteCount >= expectedCount) {
+                return;
+            }
+
+            await Task.Delay(delayMilliseconds);
+        }
+
+        Assert.Equal(expectedCount, repository.WriteCount);
     }
 
     /// <summary>

@@ -17,7 +17,7 @@ public sealed class WebRequestAuditLogMiddleware {
     /// <summary>
     /// NLog 日志器。
     /// </summary>
-    private static readonly ILogger NLogLogger = LogManager.GetCurrentClassLogger();
+    private static readonly NLog.ILogger NLogLogger = LogManager.GetCurrentClassLogger();
 
     /// <summary>
     /// 下一个中间件委托。
@@ -131,7 +131,7 @@ public sealed class WebRequestAuditLogMiddleware {
                     Detail = detail
                 };
 
-                var result = await writeService.WriteAsync(log, context.RequestAborted);
+                var result = await writeService.WriteAsync(log, CancellationToken.None);
                 if (!result.IsSuccess) {
                     NLogLogger.Error("写入 Web 请求审计日志返回失败，TraceId={TraceId}, CorrelationId={CorrelationId}, ErrorCode={ErrorCode}, ErrorMessage={ErrorMessage}",
                         traceId,
@@ -160,9 +160,11 @@ public sealed class WebRequestAuditLogMiddleware {
             if (responseCaptureStream is not null) {
                 try {
                     responseBodyCapture = await CaptureResponseBodyAsync(responseCaptureStream, _options.MaxResponseBodyLength);
-                    responseCaptureStream.Position = 0;
-                    await responseCaptureStream.CopyToAsync(originalResponseBody);
-                    await originalResponseBody.FlushAsync();
+                    if (capturedException is null) {
+                        responseCaptureStream.Position = 0;
+                        await responseCaptureStream.CopyToAsync(originalResponseBody);
+                        await originalResponseBody.FlushAsync();
+                    }
                 }
                 finally {
                     context.Response.Body = originalResponseBody;
