@@ -240,7 +240,7 @@ WHERE s.name = @p0
 
             var normalizedSchemaName = string.IsNullOrWhiteSpace(schemaName) ? "dbo" : schemaName.Trim();
             var normalizedBaseTableName = baseTableName.Trim();
-            var likePattern = $"{EscapeSqlServerLikePattern(normalizedBaseTableName)}[_]%";
+            var likePattern = $"{EscapeSqlServerLikePattern(normalizedBaseTableName)}\\_%";
 
             const string sql = """
 SELECT t.name
@@ -262,7 +262,7 @@ WHERE s.name = @p0
         /// 转义 SQL Server LIKE 模式中的通配符与转义符本身。
         /// </summary>
         /// <param name="pattern">原始模式文本。</param>
-        /// <returns>可安全用于 LIKE + ESCAPE '\\' 的文本。</returns>
+        /// <returns>可安全用于 LIKE + ESCAPE '\' 的文本。</returns>
         private static string EscapeSqlServerLikePattern(string pattern) {
             return pattern
                 .Replace("\\", "\\\\", StringComparison.Ordinal)
