@@ -6,7 +6,7 @@ using System.Globalization;
 using Polly.Retry;
 using System.Threading.Tasks;
 using System.Collections.Generic;
-using HostLogger = Microsoft.Extensions.Logging.ILogger;
+using HostLogger = Microsoft.Extensions.Logging.ILogger<Zeye.Sorting.Hub.Host.HostedServices.DatabaseInitializerHostedService>;
 using EFCore.Sharding;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
