@@ -880,7 +880,7 @@ public sealed class AutoTuningProductionControlTests {
 
         var exception = await Record.ExceptionAsync(() => InvokeShardingGovernanceGuardAsync(service));
         Assert.Null(exception);
-        Assert.True(probe.FindMissingTablesCallCount > 0 || probe.CallCount > 0);
+        Assert.True(probe.FindMissingTablesCallCount > 0);
     }
 
     /// <summary>
@@ -1191,7 +1191,7 @@ public sealed class AutoTuningProductionControlTests {
 
         var exception = await Record.ExceptionAsync(() => InvokeShardingGovernanceGuardAsync(service));
         Assert.Null(exception);
-        Assert.True(probe.FindMissingTablesCallCount > 0 || probe.CallCount > 0);
+        Assert.True(probe.FindMissingTablesCallCount > 0);
     }
 
     /// <summary>
@@ -1347,6 +1347,58 @@ public sealed class AutoTuningProductionControlTests {
 
         Assert.Equal(4, candidatesWhenKeep2);
         Assert.Equal(0, candidatesWhenKeep5);
+    }
+
+    /// <summary>
+    /// 验证场景：WebRequestAuditLogRetention_MetadataCandidatesAndDryRun_ShouldUseRealPhysicalMetadataAndEmitObservability。
+    /// </summary>
+    [Fact]
+    public async Task WebRequestAuditLogRetention_MetadataCandidatesAndDryRun_ShouldUseRealPhysicalMetadataAndEmitObservability() {
+        var requiredDates = DatabaseInitializerHostedService
+            .BuildRequiredPerDayShardDates(DateTime.Now, 24)
+            .Select(static requiredDate => requiredDate.ToString("yyyy-MM-dd"))
+            .ToArray();
+        var configuration = BuildPerDayGovernanceConfiguration(
+            createShardingTableOnStarting: false,
+            enableManualPrebuildGuard: true,
+            timeGranularity: "PerMonth",
+            prebuildWindowHours: 24,
+            prebuiltDates: requiredDates,
+            enableWebRequestAuditLogPerDayGuard: true);
+        var overrideValues = new Dictionary<string, string?> {
+            ["Persistence:Sharding:Governance:WebRequestAuditLog:Retention:KeepRecentShardCount"] = "2",
+            ["Persistence:Sharding:Governance:WebRequestAuditLog:Retention:Isolator:EnableGuard"] = "false",
+            ["Persistence:Sharding:Governance:WebRequestAuditLog:Retention:Isolator:DryRun"] = "true"
+        };
+        var mergedConfiguration = new ConfigurationBuilder()
+            .AddConfiguration(configuration)
+            .AddInMemoryCollection(overrideValues)
+            .Build();
+        var observability = new TestObservability();
+        var serviceProvider = new ServiceCollection()
+            .AddSingleton(CreateTestingDbContext())
+            .AddSingleton<IAutoTuningObservability>(observability)
+            .BuildServiceProvider();
+        var probe = new AlwaysExistsShardingPhysicalTableProbe();
+        var service = new DatabaseInitializerHostedService(
+            serviceProvider,
+            new TestLogger<DatabaseInitializerHostedService>(),
+            new TestSqlServerDialect(),
+            probe,
+            new TestHostEnvironment("Development"),
+            mergedConfiguration);
+
+        var exception = await Record.ExceptionAsync(() => InvokeShardingGovernanceGuardAsync(service));
+        Assert.Null(exception);
+        Assert.True(probe.ListPhysicalTablesCallCount > 0);
+        Assert.Contains(observability.Metrics, metricName => string.Equals(metricName, "web_request_audit_log.retention.executed_count", StringComparison.Ordinal));
+        var executedMetric = Assert.Single(
+            observability.MetricEntries,
+            static entry => string.Equals(entry.Name, "web_request_audit_log.retention.executed_count", StringComparison.Ordinal));
+        Assert.Equal(0d, executedMetric.Value);
+        Assert.Contains(
+            observability.EventEntries,
+            entry => string.Equals(entry.Name, "web_request_audit_log.retention.skipped", StringComparison.Ordinal));
     }
 
     /// <summary>

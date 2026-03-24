@@ -1244,8 +1244,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             ArgumentNullException.ThrowIfNull(governanceGroups);
             var webRequestAuditLogGroup = governanceGroups.FirstOrDefault(static group =>
                 string.Equals(group.GroupName, "WebRequestAuditLog", StringComparison.Ordinal));
-            if (string.IsNullOrWhiteSpace(webRequestAuditLogGroup.GroupName)
-                || webRequestAuditLogGroup.BaseTableNames is null
+            if (webRequestAuditLogGroup.BaseTableNames is null
                 || webRequestAuditLogGroup.BaseTableNames.Count == 0) {
                 return new WebRequestAuditLogRetentionCandidates(0, Array.Empty<string>());
             }
@@ -1293,10 +1292,29 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 baseTableName,
                 cancellationToken);
             return physicalTables
-                .Where(tableName => TryResolveLogicalBaseTableNameFromPhysicalTableName(tableName, out var resolvedBaseName)
-                                    && string.Equals(resolvedBaseName, baseTableName, StringComparison.Ordinal))
+                .Where(tableName => IsPerDayShardOfBaseTable(tableName, baseTableName))
                 .OrderBy(static tableName => tableName, StringComparer.Ordinal)
                 .ToArray();
+        }
+
+        /// <summary>
+        /// 判断物理表是否属于指定逻辑基础表的 PerDay 分表。
+        /// </summary>
+        /// <param name="physicalTableName">物理表名。</param>
+        /// <param name="baseTableName">逻辑基础表名。</param>
+        /// <returns>属于指定逻辑表返回 true。</returns>
+        private static bool IsPerDayShardOfBaseTable(string physicalTableName, string baseTableName) {
+            if (string.IsNullOrWhiteSpace(physicalTableName) || string.IsNullOrWhiteSpace(baseTableName)) {
+                return false;
+            }
+
+            var requiredPrefix = $"{baseTableName}_";
+            if (!physicalTableName.StartsWith(requiredPrefix, StringComparison.Ordinal)) {
+                return false;
+            }
+
+            var suffix = physicalTableName[requiredPrefix.Length..];
+            return suffix.Length == 8 && suffix.All(char.IsDigit);
         }
 
         /// <summary>
