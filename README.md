@@ -23,6 +23,9 @@
 ├── Zeye.Sorting.Hub.Application（应用层）
 │   ├── Services（应用服务目录）
 │   │   ├── AuditLogs（审计日志应用服务目录）
+│   │   │   ├── GetWebRequestAuditLogByIdQueryService.cs（Web 请求审计日志详情查询应用服务）
+│   │   │   ├── GetWebRequestAuditLogPagedQueryService.cs（Web 请求审计日志分页查询应用服务）
+│   │   │   ├── WebRequestAuditLogContractMapper.cs（Web 请求审计日志读模型到 Contracts 映射器）
 │   │   │   └── WriteWebRequestAuditLogCommandService.cs（Web 请求审计日志最小写入应用服务入口）
 │   │   └── Parcels（Parcel 查询应用服务目录）
 │   │       ├── CleanupExpiredParcelsCommandService.cs（过期包裹清理应用服务（治理型，调用仓储隔离器，不可绕过））
@@ -43,6 +46,12 @@
 │   │       ├── ParcelExceptionType.cs（包裹异常类型对外合同枚举：与 Domain.ParcelExceptionType 数值一一对应，供 API 客户端按语义筛选）
 │   │       └── ParcelUpdateOperation.cs（Parcel 更新操作类型枚举：MarkCompleted/MarkSortingException/UpdateRequestStatus）
 │   ├── Models（对外合同模型目录）
+│   │   ├── AuditLogs（审计日志合同目录）
+│   │   │   └── WebRequests（Web 请求审计日志合同目录）
+│   │   │       ├── WebRequestAuditLogDetailResponse.cs（Web 请求审计日志详情响应合同）
+│   │   │       ├── WebRequestAuditLogListItemResponse.cs（Web 请求审计日志列表项响应合同）
+│   │   │       ├── WebRequestAuditLogListRequest.cs（Web 请求审计日志列表查询请求合同）
+│   │   │       └── WebRequestAuditLogListResponse.cs（Web 请求审计日志列表分页响应合同）
 │   │   └── Parcels（Parcel 合同目录）
 │   │       ├── Admin（管理端写接口合同目录）
 │   │       │   ├── ParcelCleanupExpiredRequest.cs（过期清理治理接口请求合同）
@@ -126,15 +135,19 @@
 │   │   └── AuditableEntity.cs（可审计实体基类）
 │   ├── Repositories（领域仓储契约目录）
 │   │   ├── IParcelRepository.cs（包裹仓储接口，含过期清理危险动作治理结果契约）
+│   │   ├── IWebRequestAuditLogQueryRepository.cs（Web 请求审计日志只读查询仓储契约）
 │   │   ├── IWebRequestAuditLogRepository.cs（Web 请求审计日志仓储写入契约）
-│   │   └── Models（Parcel 仓储查询与分页模型目录）
+│   │   └── Models（仓储查询与分页模型目录）
 │   │       ├── Filters（查询过滤模型目录）
-│   │       │   └── ParcelQueryFilter.cs（Parcel 查询过滤模型）
+│   │       │   ├── ParcelQueryFilter.cs（Parcel 查询过滤模型）
+│   │       │   └── WebRequestAuditLogQueryFilter.cs（Web 请求审计日志查询过滤模型）
 │   │       ├── Paging（通用分页模型目录）
 │   │       │   ├── PageRequest.cs（通用分页请求模型）
 │   │       │   └── PageResult.cs（通用分页结果模型）
 │   │       ├── ReadModels（查询读模型目录）
-│   │       │   └── ParcelSummaryReadModel.cs（Parcel 列表摘要读模型）
+│   │       │   ├── ParcelSummaryReadModel.cs（Parcel 列表摘要读模型）
+│   │       │   ├── WebRequestAuditLogDetailReadModel.cs（Web 请求审计日志详情读模型）
+│   │       │   └── WebRequestAuditLogSummaryReadModel.cs（Web 请求审计日志列表摘要读模型）
 │   │       ├── Results（仓储结果模型目录）
 │   │       │   └── RepositoryResult.cs（仓储统一结果模型，含泛型版本与危险批量动作结果模型）
 │   │       └── Validation（查询校验模型目录）
@@ -148,10 +161,12 @@
 │   │   ├── DatabaseAutoTuningHostedService.cs（数据库自动调谐托管服务（闭环阶段流转、执行隔离、自动验证标准化输出与回滚审计；分表命中/跨表占比/热点倾斜改为全量慢 SQL 口径，并在自动索引建议前做覆盖/重复/低价值过滤））
 │   │   ├── DatabaseInitializerHostedService.cs（数据库初始化与迁移托管服务（含分表治理基线、Runbook 审计、PerDay 手工预建窗口守卫；Parcel 与 WebRequestAuditLog 分组独立触发守卫；新增 WebRequestAuditLog 历史分表保留治理审计与关键索引按逻辑表分发））
 │   │   └── DevelopmentBrowserLauncherHostedService.cs（Development 启动浏览器隔离器：仅 Development + 配置开启 + 交互式/本机/非容器/非CI 场景生效；在 ApplicationStarted 后再打开 Swagger，异常由 SafeExecutor 隔离）
+│   ├── AuditReadOnlyApiRouteExtensions.cs（Web 请求审计日志只读 API 路由扩展：列表与详情查询）
 │   ├── Program.cs（应用入口与 Host 构建流程；运行地址/Swagger 路径由 appsettings 的 Hosting 配置驱动；接入 XML 注释与枚举中文说明增强）
 │   ├── HostingOptions.cs（Hosting 配置模型与 Swagger/浏览器自动打开地址拼装逻辑）
-│   ├── LocalDateTimeParsing.cs（本地时间解析与 API 响应工厂共享工具：TryParseLocalDateTime/TryParseOptionalLocalDateTime/CreateBadRequestProblem/CreateParcelMissingProblem，供所有路由扩展复用）
+│   ├── LocalDateTimeParsing.cs（本地时间解析与 API 响应工厂共享工具：TryParseLocalDateTime/TryParseOptionalLocalDateTime/CreateBadRequestProblem/CreateParcelMissingProblem/CreateNotFoundProblem，供所有路由扩展复用）
 │   ├── ParcelAdminApiRouteExtensions.cs（Parcel 管理端 API 路由扩展：POST/PUT/DELETE 普通写接口 + cleanup-expired 治理接口）
+│   ├── WebRequestAuditLogListQueryParameters.cs（Web 请求审计日志列表查询参数绑定模型）
 │   ├── Swagger（Swagger 扩展目录）
 │   │   └── EnumDescriptionSchemaFilter.cs（枚举 Schema 中文增强：真实 enum 与 Contracts 中枚举数值 int 字段均显示“数值=枚举名（中文描述）”）
 │   ├── Properties（运行调试属性目录）
@@ -178,6 +193,7 @@
 │   ├── ObservabilityEntry.cs（自动调优观测记录模型）
 │   ├── HostingOptionsTests.cs（Hosting 配置拼装测试：监听地址拆分、Swagger 地址拼装、显式地址优先级与无效监听地址兜底）
 │   ├── ParcelAdminApiTests.cs（Parcel 管理端写接口测试：新增/更新状态/删除成功路径 + cleanup-expired 三态 + 参数非法校验）
+│   ├── AuditReadOnlyApiTests.cs（Web 请求审计日志只读 API 端点测试：分页、过滤、参数校验、404 与写读联动）
 │   ├── ParcelReadOnlyApiTests.cs（Parcel 只读 API 端点测试：列表/详情/404/邻近参数异常）
 │   ├── ParcelQueryServicesTests.cs（Parcel 应用层查询服务测试：列表/详情/邻近查询映射与最小校验；多重过滤条件联合成功路径；ExceptionType 筛选覆盖）
 │   ├── ParcelRepositoryTests.cs（Parcel 仓储第一阶段能力测试：分页过滤、详情与邻近查询、写操作与过期清理；含阻断/dry-run/显式放开的危险动作治理回归）
@@ -251,7 +267,7 @@
 │   │   ├── MemoryCacheRepositoryBase.cs（带内存缓存失效的仓储基类，使用 NLog 日志）
 │   │   ├── ParcelRepository.cs（Parcel 仓储第一阶段实现，使用静态 NLog logger，无需 MEL ILogger 构造注入；BarCodeKeyword 检索按 Provider 分支：MySQL 走 FULLTEXT Boolean，其他 Provider 回退 Contains）
 │   │   ├── RepositoryBase.cs（通用仓储基类，接受 NLog.ILogger 构造参数，由派生类传入确保日志来源类名正确）
-│   │   └── WebRequestAuditLogRepository.cs（Web 请求审计日志仓储实现：热表+冷表同事务写入）
+│   │   └── WebRequestAuditLogRepository.cs（Web 请求审计日志仓储实现：热表+冷表写入与只读查询）
 │   └── Zeye.Sorting.Hub.Infrastructure.csproj（Infrastructure 项目定义）
 ├── Zeye.Sorting.Hub.Realtime（实时通信子域，占位工程）
 │   └── Zeye.Sorting.Hub.Realtime.csproj（Realtime 项目定义）
@@ -315,6 +331,9 @@
 - `Guard.cs`：基础参数边界守卫工具；提供 `ThrowIfZeroOrNegative`（Id 正数校验，有 long/int 两个重载）和 `ThrowIfNegative`（可选数量非负校验），统一记录 Warn 日志并抛出 `ArgumentOutOfRangeException`。
 
 #### `Zeye.Sorting.Hub.Application/Services/AuditLogs/`：审计日志应用服务目录
+- `GetWebRequestAuditLogPagedQueryService.cs`：Web 请求审计日志分页查询应用服务（参数校验、过滤映射、分页结果映射）。
+- `GetWebRequestAuditLogByIdQueryService.cs`：按 Id 查询 Web 请求审计日志详情应用服务（Id 校验、读模型映射）。
+- `WebRequestAuditLogContractMapper.cs`：Web 请求审计日志读模型到 Contracts 响应映射器（列表项/详情）。
 - `WriteWebRequestAuditLogCommandService.cs`：Web 请求审计日志最小写入应用服务入口，负责将聚合写入委托给仓储。
 
 #### `Zeye.Sorting.Hub.Application/Services/Parcels/`：Parcel 应用服务目录（查询 + 管理端写命令）
@@ -337,6 +356,12 @@
 - `ParcelDetailResponse.cs`：Parcel 详情响应合同（继承列表项扁平字段，并包含所有联表值对象内容）。
 - `ParcelAdjacentRequest.cs`：Parcel 邻近查询请求合同。
 - `ParcelAdjacentResponse.cs`：Parcel 邻近查询响应合同。
+
+#### `Zeye.Sorting.Hub.Contracts/Models/AuditLogs/WebRequests/`：Web 请求审计日志查询合同目录
+- `WebRequestAuditLogListRequest.cs`：Web 请求审计日志列表查询请求合同（分页 + 可选过滤条件）。
+- `WebRequestAuditLogListItemResponse.cs`：Web 请求审计日志列表项响应合同（高频展示字段）。
+- `WebRequestAuditLogListResponse.cs`：Web 请求审计日志列表分页响应合同。
+- `WebRequestAuditLogDetailResponse.cs`：Web 请求审计日志详情响应合同（热表字段 + 冷表详情字段）。
 
 #### `Zeye.Sorting.Hub.Contracts/Models/Parcels/ValueObjects/`：Parcel 值对象响应合同目录
 - `ApiRequestInfoResponse.cs`：外部接口请求记录响应合同。
@@ -438,12 +463,14 @@
 
 #### `Zeye.Sorting.Hub.Domain/Repositories/`：领域仓储契约目录
 - `IParcelRepository.cs`：包裹仓储接口（第一阶段可落地契约：基础读写、分页查询、按 Id 邻近查询、过期清理危险动作治理结果返回；同时定义 `MaxAdjacentCountPerSide = 200` 常量，为 Application 层与 Infrastructure 层提供唯一权威数字来源，禁止各自硬编码）。
+- `IWebRequestAuditLogQueryRepository.cs`：Web 请求审计日志只读查询仓储契约（分页列表与按 Id 详情）。
 - `IWebRequestAuditLogRepository.cs`：Web 请求审计日志仓储最小写入契约（`AddAsync`）。
 
 ##### `Zeye.Sorting.Hub.Domain/Repositories/Models/`：Parcel 仓储查询模型目录
 
 ###### `Zeye.Sorting.Hub.Domain/Repositories/Models/Filters/`：查询过滤模型目录
 - `ParcelQueryFilter.cs`：Parcel 第一阶段列表过滤参数模型（BagCode、WorkstationName、Status、Chute、扫码时间范围等），并通过特性限制时间跨度默认不超过 3 个月。
+- `WebRequestAuditLogQueryFilter.cs`：Web 请求审计日志列表过滤参数模型（startedAt 区间、statusCode、isSuccess、traceId、correlationId、requestPathKeyword）。
 
 ###### `Zeye.Sorting.Hub.Domain/Repositories/Models/Paging/`：通用分页模型目录
 - `PageRequest.cs`：通用分页请求参数（含页码/页大小归一化）。
@@ -451,6 +478,8 @@
 
 ###### `Zeye.Sorting.Hub.Domain/Repositories/Models/ReadModels/`：查询读模型目录
 - `ParcelSummaryReadModel.cs`：Parcel 列表摘要读模型（包含 Parcel 全部扁平化字段，用于分页列表）。
+- `WebRequestAuditLogSummaryReadModel.cs`：Web 请求审计日志列表摘要读模型（高频查询字段）。
+- `WebRequestAuditLogDetailReadModel.cs`：Web 请求审计日志详情读模型（热表字段 + 冷表详情字段）。
 
 ###### `Zeye.Sorting.Hub.Domain/Repositories/Models/Results/`：仓储结果模型目录
 - `RepositoryResult.cs`：非泛型仓储结果模型。
@@ -462,19 +491,21 @@
 - `MaxTimeRangeAttribute.cs`：时间范围校验特性（限制起止时间跨度，默认不超过 3 个月）。
 
 ### `Zeye.Sorting.Hub.Host/`：宿主层（程序入口、后台服务、启动配置）
-- `Program.cs`：应用入口与 Host 构建流程（注册 `WriteWebRequestAuditLogCommandService`、绑定 `WebRequestAuditLog` 配置并接入 `WebRequestAuditLogMiddleware`）。
+- `Program.cs`：应用入口与 Host 构建流程（注册 Parcel 与 WebRequestAuditLog 读写应用服务，绑定 `WebRequestAuditLog` 配置并接入 `WebRequestAuditLogMiddleware`）。
+- `AuditReadOnlyApiRouteExtensions.cs`：Web 请求审计日志只读路由扩展（`GET /api/audit/web-requests`、`GET /api/audit/web-requests/{id}`）。
 - `Middleware/WebRequestAuditLogOptions.cs`：Web 请求审计中间件配置模型（Enabled、SampleRate、请求/响应体采集与截断长度）。
 - `Middleware/WebRequestAuditLogMiddleware.cs`：Web 请求审计中间件实现，覆盖请求开始/结束/异常全生命周期采集，并通过应用服务写入热冷模型。
 - `Middleware/WebRequestAuditLogMiddlewareExtensions.cs`：中间件依赖注册与管线接线扩展（Options 绑定校验 + UseMiddleware）。
 - `Middleware/ResponseCaptureTeeStream.cs`：响应双写采集流，主响应实时透传并在有界缓冲中截断采集正文，避免全量内存缓冲。
 - `Middleware/ResponseCaptureResult.cs`：响应正文采集结果值类型，承载正文内容/是否存在/是否截断/总字节数。
 - `ParcelReadOnlyApiRouteExtensions.cs`：Parcel 只读路由注册与处理逻辑。
+- `WebRequestAuditLogListQueryParameters.cs`：Web 请求审计日志列表查询参数模型（AsParameters 绑定）。
 - `ParcelListQueryParameters.cs`：只读列表查询参数模型。
 - `ParcelAdjacentQueryParameters.cs`：只读邻近查询参数模型。
 - `HostingOptions.cs`：`Hosting` 主配置模型及地址/Swagger 拼装逻辑。
 - `SwaggerOptions.cs`：Swagger 子配置模型。
 - `BrowserAutoOpenOptions.cs`：开发期浏览器自动打开配置模型。
-- `LocalDateTimeParsing.cs`：本地时间解析与 API 响应工厂共享工具（`TryParseLocalDateTime`、`TryParseOptionalLocalDateTime`、`IsUtcKind`、`CreateBadRequestProblem`、`CreateParcelMissingProblem`），统一供各路由扩展类复用，避免重复实现（其中“包裹不存在”统一返回 404）。
+- `LocalDateTimeParsing.cs`：本地时间解析与 API 响应工厂共享工具（`TryParseLocalDateTime`、`TryParseOptionalLocalDateTime`、`CreateBadRequestProblem`、`CreateParcelMissingProblem`、`CreateNotFoundProblem`），统一供各路由扩展类复用，避免重复实现（其中“包裹不存在”统一返回 404）。
 - `ParcelAdminApiRouteExtensions.cs`：Parcel 管理端 API 路由扩展（`MapParcelAdminApis`），注册 `POST /api/admin/parcels`、`PUT /api/admin/parcels/{id}`、`DELETE /api/admin/parcels/{id}` 普通写接口及 `POST /api/admin/parcels/cleanup-expired` 危险治理接口，并补齐中文 Summary/Description；新增创建接口 `id` 参数校验与重复 Id 冲突映射（409）。
 - `Worker.cs`：后台轮询任务示例服务。
 - `Zeye.Sorting.Hub.Host.csproj`：Host 项目定义。
@@ -573,7 +604,7 @@
 - `RepositoryBase.cs`：通用仓储基类（增删改查 + 自动持久化实现）；接受 `NLog.ILogger` 构造参数，由派生类传入，确保日志来源类名为实际仓储类而非基类名。
 - `MemoryCacheRepositoryBase.cs`：带内存缓存失效逻辑的仓储基类，继承 `RepositoryBase`，同样使用 NLog 日志。
 - `ParcelRepository.cs`：Parcel 仓储第一阶段实现（复用 `RepositoryBase`、`IDbContextFactory`，使用静态 `NLog.ILogger`，已移除 MEL `ILogger<ParcelRepository>` 构造依赖；提供基础读写、分页查询、按 Id 邻近查询与过期清理；条码检索按 Provider 分支（MySQL FULLTEXT Boolean、其他 Provider Contains）；过期清理纳入隔离器开关 + dry-run + 审计 + 补偿边界声明）。
-- `WebRequestAuditLogRepository.cs`：Web 请求审计日志仓储实现，负责热表与冷表详情同事务写入。
+- `WebRequestAuditLogRepository.cs`：Web 请求审计日志仓储实现，负责热表与冷表详情同事务写入，以及分页列表/按 Id 详情只读查询。
 
 ### `Zeye.Sorting.Hub.Realtime/`：实时通信子域（当前为占位工程）
 - `Zeye.Sorting.Hub.Realtime.csproj`：Realtime 项目定义。
@@ -605,6 +636,7 @@
 - `ObservabilityEntry.cs`：自动调优观测记录模型，承载名称/值/标签快照。
 - `ParcelAdminApiTests.cs`：Parcel 管理端写接口测试，覆盖新增成功路径、创建请求 `id<=0` 返回 400、重复 Id 返回 409、UTC 时间拒绝、更新状态成功路径 + 不存在 404 + 非法操作码 400、删除成功路径 + 不存在 404、cleanup-expired blocked/dry-run/execute 三态 + UTC 时间与非法参数拒绝。
 - `ParcelReadOnlyApiTests.cs`：Parcel 只读 API 端点测试，覆盖列表查询、详情查询、详情不存在返回 404、`/api/parcels/adjacent` 按 `id` 查询的 400/404/稳定排序回归。
+- `AuditReadOnlyApiTests.cs`：Web 请求审计日志只读 API 端点测试，覆盖默认分页、过滤组合、非法分页 400、非法时间格式 400、详情 200/404、中间件写读联动。
 - `SortingHubTestDbContextFactory.cs`：Host.Tests 通用 InMemory `DbContextFactory`，供查询服务测试与仓储测试复用。
 - `WebRequestAuditLogRepositoryTests.cs`：Web 请求审计日志仓储测试，覆盖 DI 解析、冷热一对一落库与最小写入服务入口。
 - `WebRequestAuditLogMiddlewareTests.cs`：Web 请求审计中间件回归测试，覆盖开关/采样、正常与异常链路、请求响应体截断、审计写入失败隔离与真实仓储冷热落库。
@@ -613,7 +645,7 @@
 - `ParcelRepositoryTests.cs`：Parcel 仓储第一阶段能力测试，覆盖分页过滤、详情与按 Id 邻近查询、新增/更新/删除、过期清理与批量新增；新增同一扫描时间稳定排序、锚点不存在、重复主键冲突语义回归，并验证危险清理动作的 blocked/dry-run/executed 三态。
 - `SelectiveMissingShardingPhysicalTableProbe.cs`：物理表探测测试桩，模拟指定分表缺失场景。
 - `HostingOptionsTests.cs`：Hosting 配置单元测试，覆盖监听地址分号拆分去重、`0.0.0.0` 归一化为 `localhost` 的 Swagger 地址拼装、`BrowserAutoOpen:Url` 显式配置优先级与无效监听地址返回 null 的兜底行为。
-- `SwaggerDocumentationTests.cs`：Swagger 文档增强回归测试，覆盖管理端更新请求与值对象响应中的枚举型 int 字段，验证均输出“数值 + 枚举名 + 中文描述”。
+- `SwaggerDocumentationTests.cs`：Swagger 文档增强回归测试，覆盖管理端更新请求、值对象响应枚举字段与审计日志只读端点声明。
 - `TestDialect.cs`：通用数据库方言测试桩，提供默认 ProviderName 测试分支。
 - `TestHostEnvironment.cs`：`IHostEnvironment` 测试桩，注入环境名与最小内容根配置。
 - `TestLogger.cs`：通用泛型日志测试桩，收集日志消息供断言。
@@ -624,6 +656,13 @@
 
 ## 本次更新内容
 
+- 完成“WebRequestAuditLog 查询端点闭环”：新增 Contracts 查询模型、Application 查询服务、Domain 查询契约、Infrastructure 查询实现、Host 审计只读路由与 Program 接线。
+- 新增审计查询端点：
+  - `GET /api/audit/web-requests`（分页 + 过滤：pageNumber/pageSize/startedAtStart/startedAtEnd/statusCode/isSuccess/traceId/correlationId/requestPathKeyword）
+  - `GET /api/audit/web-requests/{id}`（按 Id 返回热表 + 冷表详情）
+- 审计查询路由统一复用本地时间解析 `LocalDateTimeParsing`，拒绝 UTC/offset 时间入参；统一 400/404 ProblemDetails 返回。
+- 扩展 `WebRequestAuditLogRepository`：新增 `AsNoTracking` 分页查询、按 Id `Include(Detail)` 详情查询，默认按 `StartedAt DESC, Id DESC` 排序。
+- 新增 `AuditReadOnlyApiTests` 与 Swagger 回归测试断言，覆盖分页过滤、参数非法 400、详情 200/404、文档声明与中间件写读联动场景。
 - 新增并接入 `WebRequestAuditLogMiddleware` 闭环：请求进入采集 `StartedAt/TraceId/CorrelationId/Method/Scheme/Host/Port/Path/RouteTemplate`，响应完成采集 `StatusCode/EndedAt/DurationMs/IsSuccess`，异常路径补齐 `HasException/ExceptionType/ErrorMessage/ExceptionStackTrace`。
 - 按审查意见完成中间件性能整改：请求体有界缓冲与超限短路、响应体改为双写有界采集并保持主流实时写出、`HasBody` 与正文采集解耦、异常链路统一通过 `IExceptionHandlerFeature` 关联。
 - 调整宿主管线顺序：`UseWebRequestAuditLogging` 前移至 `UseExceptionHandler` 之前，确保异常响应与异常特征可被同一审计上下文采集。
@@ -663,27 +702,9 @@
 
 ### 可继续完善内容
 
-- 可继续评估审计日志异步批量写入通道，在保持“失败不影响主请求”前提下进一步降低高并发下写放大。
-- 可继续增强链路追踪字段（如上游网关标准头）与可观测标签体系，提升跨服务调用关联效率。
-- 后续可补充真实 MySQL / SQL Server 集成用例，验证 WebRequestAuditLog 历史分表保留在真实数据库中的物理表枚举与删除执行链路。
-- 后续可在 WebRequestAuditLog 写入入口接入真实 HTTP 请求上下文采集（中间件/管道），并增加端到端压测基线。
-- 后续可将当前“人工审查范围”规则逐步转为自动化校验项（例如注释覆盖率、命名规范、重复代码检测），进一步提升 CI 门禁覆盖度。
-- 后续可考虑为测试替身目录增加更细分命名分组（如 `Fakes/Probes/Logging` 子目录），在保持单类型单文件前提下进一步提升可导航性。
-- 后续可补充真实 MySQL / SQL Server 集成用例，分别覆盖 `GetAdjacentByIdAsync` 的同一扫描时间稳定排序与重复主键冲突语义，验证跨 Provider 一致性。
-- 后续可在管理端创建接口补充显式的 `CreateConflictProblem` 响应工厂，进一步统一 409 问题详情输出格式。
-- 后续可在 SQL Server 场景下补充“主键非自增”历史库平滑切换 runbook（数据校验、灰度、回退步骤）。
-- 后续可补充 `20260323045038_UseExternalProvidedParcelId` 在真实 SQL Server 实例上的端到端迁移验证（`dotnet ef database update` + 回滚验证），确保历史库升级链路与注解元数据在实机环境完全一致。
-- 后续需为 SQL Server 补充专项迁移（建新表 + 数据回填 + 外键/索引重建）以真正落地 “Parcels.Id 非自增” 结构变更，当前迁移仅保证 SQL Server 路径可安全执行且不失败。
-- 后续可补充 Swagger 鉴权策略（如文档访问令牌、角色分级可见性）并统一与 API 鉴权体系联动。
-- 后续可细化非开发环境文档暴露治理（例如内网白名单、按环境开关、发布审批审计）。
-- 后续可完善反向代理与子路径部署适配（例如 `PathBase`、网关前缀下 Swagger JSON/UI 地址自动拼装），并评估自动打开地址的反向代理本机回环兼容策略。
-- 后续可补充 OpenAPI 示例值与示例请求体（含典型成功/失败样例），提升调用方接入效率。
-- 后续可为 SQL Server 路径配置 Full-Text Catalog 并改写为 `EF.Functions.Contains()`，彻底消除 SQL Server 侧的 LIKE '%xxx%' 限制。
-- 后续可补充真实 MySQL / SQL Server 集成测试，验证在大数据量下“Provider 差异语义（MySQL FULLTEXT Boolean / 其他 Contains）”的性能与执行计划稳定性。
-- 后续可在“条码检索语义差异”场景评估按关键字长度/模式的可观测分级策略（开关 + 审计），在召回率与性能之间建立可运营平衡。
-- 后续可补齐 WebRequestAuditLog 的分表治理接线（StartedAt 时间分表、历史物理表保留隔离器、关键索引审计接入）与对应迁移验证。
-- 当前 WebRequestAuditLog 历史分表保留治理仍为“决策+审计”模式，后续可按发布窗口引入真实物理删除执行链路（仍需保持开关、dry-run、审计与回滚资产）。
-- 后续可对 WebRequestAuditLog 保留策略接入真实分表统计（按数据库实际分表元数据计算候选），替代当前基于预建窗口的候选估算口径。
+- 可继续补充真实 MySQL / SQL Server 集成测试，验证审计日志查询在大数据量下的执行计划与索引命中稳定性。
+- 可继续评估审计日志异步批量写入通道，在保持“失败不影响主请求”前提下进一步降低高并发写放大。
+- 可继续完善审计日志查询端点鉴权与限流策略，按角色分层开放只读范围并增强访问审计。
 
 ## Parcel API 发布门禁 / 使用边界说明
 

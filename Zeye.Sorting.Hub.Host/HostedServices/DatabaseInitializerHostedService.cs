@@ -6,7 +6,6 @@ using System.Globalization;
 using Polly.Retry;
 using System.Threading.Tasks;
 using System.Collections.Generic;
-using HostLogger = Microsoft.Extensions.Logging.ILogger;
 using EFCore.Sharding;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
@@ -56,10 +55,6 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// 字段：_serviceProvider。
         /// </summary>
         private readonly IServiceProvider _serviceProvider;
-        /// <summary>
-        /// 宿主日志桥接器（用于结构化运行态日志）。
-        /// </summary>
-        private readonly HostLogger _logger;
         /// <summary>
         /// NLog 记录器（用于规则化异常日志输出）。
         /// </summary>
@@ -130,13 +125,11 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
         public DatabaseInitializerHostedService(
             IServiceProvider serviceProvider,
-            HostLogger logger,
             IDatabaseDialect dialect,
             IShardingPhysicalTableProbe shardingPhysicalTableProbe,
             IHostEnvironment hostEnvironment,
             IConfiguration configuration) {
             _serviceProvider = serviceProvider;
-            _logger = logger;
             _dialect = dialect;
             _environmentName = hostEnvironment.EnvironmentName;
             _isProductionEnvironment = hostEnvironment.IsProduction();
@@ -174,10 +167,30 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     retryCount: 6,
                     sleepDurationProvider: attempt => TimeSpan.FromSeconds(Math.Min(30, 2 * attempt)),
                     onRetry: (ex, ts, attempt, _) => {
-                        _logger.LogWarning(ex,
+                        NLogLogger.Warn(ex,
                             "数据库初始化重试中，Attempt={Attempt}, DelaySeconds={DelaySeconds}, Provider={Provider}",
                             attempt, ts.TotalSeconds, _dialect.ProviderName);
                     });
+        }
+
+        /// <summary>
+        /// 兼容历史测试调用的构造函数（第二参数仅用于签名兼容，不参与日志输出）。
+        /// </summary>
+        /// <param name="serviceProvider">服务提供器。</param>
+        /// <param name="legacyLogger">历史日志参数（占位）。</param>
+        /// <param name="dialect">数据库方言。</param>
+        /// <param name="shardingPhysicalTableProbe">物理分表探测器。</param>
+        /// <param name="hostEnvironment">宿主环境。</param>
+        /// <param name="configuration">应用配置。</param>
+        public DatabaseInitializerHostedService(
+            IServiceProvider serviceProvider,
+            object legacyLogger,
+            IDatabaseDialect dialect,
+            IShardingPhysicalTableProbe shardingPhysicalTableProbe,
+            IHostEnvironment hostEnvironment,
+            IConfiguration configuration)
+            : this(serviceProvider, dialect, shardingPhysicalTableProbe, hostEnvironment, configuration) {
+            ArgumentNullException.ThrowIfNull(legacyLogger);
         }
 
         /// <summary>
@@ -192,9 +205,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     await using var scope = _serviceProvider.CreateAsyncScope();
                     var db = scope.ServiceProvider.GetRequiredService<SortingHubDbContext>();
 
-                    _logger.LogInformation("开始执行数据库迁移，Provider={Provider}", _dialect.ProviderName);
+                    NLogLogger.Info("开始执行数据库迁移，Provider={Provider}", _dialect.ProviderName);
                     await db.Database.MigrateAsync(ct);
-                    _logger.LogInformation("数据库迁移完成，Provider={Provider}", _dialect.ProviderName);
+                    NLogLogger.Info("数据库迁移完成，Provider={Provider}", _dialect.ProviderName);
 
                     await AssertMigrationConsistencyAsync(db, ct);
 
@@ -220,16 +233,12 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                         "[数据库初始化] 分表治理守卫触发，启动被阻断。Provider={Provider}, Environment={Environment}",
                         _dialect.ProviderName,
                         _environmentName);
-                    _logger.LogCritical(ex,
-                        "[数据库初始化] 分表治理守卫触发，启动被阻断。Provider={Provider}, Environment={Environment}",
-                        _dialect.ProviderName,
-                        _environmentName);
                     throw;
                 }
 
                 // 重试耗尽或不可恢复异常：按配置决定是否阻断启动。
                 if (_migrationFailureMode == MigrationFailureMode.FailFast) {
-                    _logger.LogCritical(ex,
+                    NLogLogger.Fatal(ex,
                         "[数据库初始化] 所有重试均失败，数据库连接不可用，且当前环境迁移策略为 FailFast，应用将终止启动。" +
                         "请检查连接字符串与数据库服务状态，Provider={Provider}, Environment={Environment}, ConfigKey={ConfigKey}",
                         _dialect.ProviderName,
@@ -245,12 +254,6 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 //   - 应尽快修复数据库连接问题并重启应用以恢复正常
                 //   - 请监控 logs/database-*.log 文件中的 Critical/Error 日志
                 NLogLogger.Fatal(ex,
-                    "[数据库初始化] 所有重试均失败，数据库连接不可用，服务将以降级模式运行。" +
-                    "请检查连接字符串与数据库服务状态，Provider={Provider}, Environment={Environment}, Strategy={Strategy}",
-                    _dialect.ProviderName,
-                    _environmentName,
-                    _migrationFailureMode);
-                _logger.LogCritical(ex,
                     "[数据库初始化] 所有重试均失败，数据库连接不可用，服务将以降级模式运行。" +
                     "请检查连接字符串与数据库服务状态，Provider={Provider}, Environment={Environment}, Strategy={Strategy}",
                     _dialect.ProviderName,
@@ -479,7 +482,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 //   - 迁移文件在部署时被意外删除（History 表有记录但文件不存在）
                 //   - 并发部署竞争导致 History 记录异常
                 // 不抛出异常，以免阻止应用启动；但需运维人员关注 Critical 日志并排查原因。
-                _logger.LogCritical(
+                NLogLogger.Fatal(
                     "[CodeFirst 守卫] MigrateAsync 完成后仍存在 {PendingCount} 个未应用迁移，" +
                     "可能是并发写入或迁移文件缺失导致的不一致状态。" +
                     "未应用迁移：{PendingMigrations}，Provider={Provider}",
@@ -519,13 +522,13 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 sb.AppendLine();
                 sb.Append("请通过 'dotnet ef migrations add' 生成新迁移以对齐模型，切勿直接修改数据库结构，以维护 CodeFirst 原则。");
 
-                _logger.LogCritical(
+                NLogLogger.Fatal(
                     "{Message} Provider={Provider}",
                     sb.ToString(),
                     _dialect.ProviderName);
             }
             else {
-                _logger.LogInformation(
+                NLogLogger.Info(
                     "[CodeFirst 守卫] 迁移一致性验证通过：共 {Count} 个迁移均已应用，Provider={Provider}",
                     appliedMigrations.Count,
                     _dialect.ProviderName);
@@ -536,14 +539,14 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             // 可发现手工修改实体类/配置后忘记执行 dotnet ef migrations add 的情况，
             // 这是 EF Core 8 所不具备的能力——EF Core 9 首次提供此 API。
             if (db.Database.HasPendingModelChanges()) {
-                _logger.LogCritical(
+                NLogLogger.Fatal(
                     "[CodeFirst 守卫] 检测到代码模型存在尚未生成迁移的变更（HasPendingModelChanges=true）。" +
                     "当前实体模型与最新迁移快照不一致，请执行 'dotnet ef migrations add <名称>' 生成新迁移，" +
                     "以维护 CodeFirst 原则。Provider={Provider}",
                     _dialect.ProviderName);
             }
             else {
-                _logger.LogInformation(
+                NLogLogger.Info(
                     "[CodeFirst 守卫] 模型变更检测通过（HasPendingModelChanges=false）：代码模型与迁移快照完全一致，Provider={Provider}",
                     _dialect.ProviderName);
             }
@@ -571,7 +574,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 _hashShardingLegacyExpansionPlan,
                 NotConfiguredPlaceholder);
 
-            _logger.LogInformation(
+            NLogLogger.Info(
                 "分表治理基线：Provider={Provider}, Environment={Environment}, MigrationFailureMode={MigrationFailureMode}, CreateShardingTableOnStarting={CreateShardingTableOnStarting}, ParcelRelatedHashShardingMod={ParcelRelatedHashShardingMod}, ExpansionTriggerRatio={ExpansionTriggerRatio:F2}, ExpansionPlan={ExpansionPlan}",
                 _dialect.ProviderName,
                 _environmentName,
@@ -581,7 +584,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 _hashShardingExpansionTriggerRatio,
                 expansionPlanSummary);
 
-            _logger.LogInformation(
+            NLogLogger.Info(
                 "Parcel 分表策略决策：Mode={ParcelShardingMode}, EffectiveDateMode={ParcelEffectiveDateMode}, ThresholdAction={ThresholdAction}, ThresholdReached={ThresholdReached}, ObservationSource={ObservationSource}, DecisionReason={DecisionReason}",
                 _parcelShardingStrategyDecision.Mode,
                 _parcelShardingStrategyDecision.EffectiveDateMode,
@@ -589,18 +592,18 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 _parcelShardingStrategyDecision.ThresholdReached,
                 _parcelShardingStrategyDecision.VolumeObservation.Source,
                 _parcelShardingStrategyDecision.Reason);
-            _logger.LogInformation(
+            NLogLogger.Info(
                 "Parcel finer-granularity 扩展规划：ShouldPlanExtension={ShouldPlanExtension}, SuggestedMode={SuggestedMode}, Lifecycle={Lifecycle}, RequiresPrebuildGuard={RequiresPrebuildGuard}, PlanReason={PlanReason}",
                 _parcelShardingStrategyDecision.FinerGranularityExtensionPlan.ShouldPlanExtension,
                 _parcelShardingStrategyDecision.FinerGranularityExtensionPlan.SuggestedMode,
                 _parcelShardingStrategyDecision.FinerGranularityExtensionPlan.Lifecycle,
                 _parcelShardingStrategyDecision.FinerGranularityExtensionPlan.RequiresPrebuildGuard,
                 _parcelShardingStrategyDecision.FinerGranularityExtensionPlan.Reason);
-            _logger.LogInformation(
+            NLogLogger.Info(
                 "分表关键索引一致性审计配置：Enabled={Enabled}, BlockOnMissing={BlockOnMissing}",
                 _enableCriticalIndexAudit,
                 _blockOnCriticalIndexMissing);
-            _logger.LogInformation(
+            NLogLogger.Info(
                 "WebRequestAuditLog 治理配置：EnablePerDayGuard={EnablePerDayGuard}, RetentionEnabled={RetentionEnabled}, KeepRecentShardCount={KeepRecentShardCount}, RetentionEnableGuard={RetentionEnableGuard}, RetentionAllowDangerousActionExecution={RetentionAllowDangerousActionExecution}, RetentionDryRun={RetentionDryRun}",
                 _enableWebRequestAuditLogPerDayGuard,
                 _enableWebRequestAuditLogRetention,
@@ -610,24 +613,24 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 _webRequestAuditLogRetentionDryRun);
 
             if (_parcelShardingStrategyDecision.Mode is ParcelShardingStrategyMode.Volume or ParcelShardingStrategyMode.Hybrid) {
-                _logger.LogInformation(
+                NLogLogger.Info(
                     "Volume/Hybrid 语义说明：当前实现为“容量阈值驱动的时间粒度治理”，不是独立的按数据量物理分表引擎。");
             }
 
             if (_parcelShardingStrategyValidationErrors.Count > 0) {
-                _logger.LogError(
+                NLogLogger.Error(
                     "检测到 Parcel 分表策略配置校验失败：{ValidationErrors}",
                     string.Join(" | ", _parcelShardingStrategyValidationErrors));
             }
 
             if (_prebuiltPerDayShardDateValidationErrors.Count > 0) {
-                _logger.LogError(
+                NLogLogger.Error(
                     "检测到日分表预建日期配置校验失败：{ValidationErrors}",
                     string.Join(" | ", _prebuiltPerDayShardDateValidationErrors));
             }
 
             if (!_createShardingTableOnStarting) {
-                _logger.LogWarning(
+                NLogLogger.Warn(
                     "分表自动创建已关闭，必须依赖外部预建流程：Provider={Provider}, PrebuildWindowHours={PrebuildWindowHours}, Runbook={Runbook}, EnableManualPrebuildGuard={EnableManualPrebuildGuard}, PrebuiltPerDayDatesCount={PrebuiltPerDayDatesCount}",
                     _dialect.ProviderName,
                     _shardingPrebuildWindowHours,
@@ -637,7 +640,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
 
             if (string.Equals(_shardingRunbook, NotConfiguredPlaceholder, StringComparison.Ordinal)) {
-                _logger.LogWarning(
+                NLogLogger.Warn(
                     "分表治理 Runbook 未配置：请补充配置项 {RunbookKey}，并在发布前完成预建窗口演练。",
                     ShardingRunbookConfigKey);
             }
@@ -741,7 +744,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
 
             if (!_enableCriticalIndexAudit) {
-                _logger.LogInformation(
+                NLogLogger.Info(
                     "分表关键索引一致性审计已关闭：ConfigKey={ConfigKey}",
                     ShardingCriticalIndexAuditEnabledConfigKey);
             }
@@ -761,7 +764,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     var summarizedMissing = missingCriticalIndexes
                         .SelectMany(static pair => pair.Value.Select(indexName => $"{pair.Key}:{indexName}"))
                         .ToArray();
-                    _logger.LogError(
+                    NLogLogger.Error(
                         "分表关键索引一致性审计发现缺失：MissingIndexEntries={MissingIndexEntries}",
                         string.Join(", ", summarizedMissing));
                     if (_blockOnCriticalIndexMissing) {
@@ -769,7 +772,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                             $"分表治理守卫触发：物理分表关键索引一致性审计发现缺失索引。缺失项：{string.Join(", ", summarizedMissing)}。");
                     }
 
-                    _logger.LogWarning(
+                    NLogLogger.Warn(
                         "分表关键索引一致性审计发现缺失，但当前配置仅审计不阻断：ConfigKey={ConfigKey}, MissingIndexEntries={MissingIndexEntries}",
                         ShardingCriticalIndexAuditBlockOnMissingConfigKey,
                         string.Join(", ", summarizedMissing));
@@ -805,7 +808,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 IsBlockedByGuard = webRequestAuditLogRetentionResult.IsBlockedByGuard,
                 CompensationBoundary = webRequestAuditLogRetentionResult.CompensationBoundary
             };
-            _logger.LogInformation(
+            NLogLogger.Info(
                 "WebRequestAuditLog 历史分表保留治理评估：ActionName={ActionName}, Decision={Decision}, PlannedCount={PlannedCount}, ExecutedCount={ExecutedCount}, IsDryRun={IsDryRun}, IsBlockedByGuard={IsBlockedByGuard}, KeepRecentShardCount={KeepRecentShardCount}, CompensationBoundary={CompensationBoundary}",
                 webRequestAuditLogRetentionResult.ActionName,
                 webRequestAuditLogRetentionResult.Decision,
@@ -860,7 +863,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     auditOnlyIndexes,
                     cancellationToken);
                 if (missingAuditOnlyIndexes.Count > 0) {
-                    _logger.LogWarning(
+                    NLogLogger.Warn(
                         "分表关键索引一致性审计（仅审计项）发现缺失：PhysicalTable={PhysicalTable}, MissingIndexes={MissingIndexes}",
                         physicalTableName,
                         string.Join(", ", missingAuditOnlyIndexes));

@@ -4,8 +4,11 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.OpenApi.Models;
+using Zeye.Sorting.Hub.Application.Services.AuditLogs;
+using Zeye.Sorting.Hub.Domain.Repositories;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.Admin;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.ValueObjects;
+using Zeye.Sorting.Hub.Host;
 using Zeye.Sorting.Hub.Host.Swagger;
 
 namespace Zeye.Sorting.Hub.Host.Tests;
@@ -97,5 +100,41 @@ public sealed class SwaggerDocumentationTests {
         Assert.Contains("\"VideoInfoResponse\"", swaggerJson, StringComparison.Ordinal);
         Assert.Contains("\"nodeType\"", swaggerJson, StringComparison.Ordinal);
         Assert.Contains("可选值：0 = Scan（扫码）", swaggerJson, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// 验证场景：Swagger 文档包含审计日志只读端点与响应声明。
+    /// </summary>
+    [Fact]
+    public async Task SwaggerJson_ShouldContainAuditReadOnlyEndpoints_AndResponses() {
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseTestServer();
+        builder.Services.AddProblemDetails();
+        builder.Services.AddEndpointsApiExplorer();
+        builder.Services.AddSwaggerGen(options => {
+            options.SwaggerDoc(ApiVersion, new OpenApiInfo {
+                Title = "test",
+                Version = ApiVersion
+            });
+            options.SchemaFilter<EnumDescriptionSchemaFilter>();
+        });
+        builder.Services.AddSingleton<InMemoryWebRequestAuditLogRepository>();
+        builder.Services.AddSingleton<IWebRequestAuditLogRepository>(serviceProvider => serviceProvider.GetRequiredService<InMemoryWebRequestAuditLogRepository>());
+        builder.Services.AddSingleton<IWebRequestAuditLogQueryRepository>(serviceProvider => serviceProvider.GetRequiredService<InMemoryWebRequestAuditLogRepository>());
+        builder.Services.AddScoped<GetWebRequestAuditLogPagedQueryService>();
+        builder.Services.AddScoped<GetWebRequestAuditLogByIdQueryService>();
+
+        await using var app = builder.Build();
+        app.UseSwagger();
+        app.MapAuditReadOnlyApis();
+        await app.StartAsync();
+
+        using var client = app.GetTestClient();
+        var swaggerJson = await client.GetStringAsync("/swagger/v1/swagger.json");
+
+        Assert.Contains("\"/api/audit/web-requests\"", swaggerJson, StringComparison.Ordinal);
+        Assert.Contains("\"/api/audit/web-requests/{id}\"", swaggerJson, StringComparison.Ordinal);
+        Assert.Contains("\"WebRequestAuditLogListResponse\"", swaggerJson, StringComparison.Ordinal);
+        Assert.Contains("\"WebRequestAuditLogDetailResponse\"", swaggerJson, StringComparison.Ordinal);
     }
 }

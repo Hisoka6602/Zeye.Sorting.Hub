@@ -89,4 +89,17 @@ internal static class LocalDateTimeParsing {
             detail: $"未找到 Id 为 {id} 的包裹。",
             statusCode: StatusCodes.Status404NotFound);
     }
+
+    /// <summary>
+    /// 创建统一的 404 ProblemDetails 响应（供所有 API 路由扩展共用）。
+    /// </summary>
+    /// <param name="title">问题标题。</param>
+    /// <param name="detail">问题详情。</param>
+    /// <returns>统一 404 错误响应。</returns>
+    internal static IResult CreateNotFoundProblem(string title, string detail) {
+        return Results.Problem(
+            title: title,
+            detail: detail,
+            statusCode: StatusCodes.Status404NotFound);
+    }
 }
