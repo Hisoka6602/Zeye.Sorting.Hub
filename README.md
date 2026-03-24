@@ -462,7 +462,10 @@
 - `MaxTimeRangeAttribute.cs`：时间范围校验特性（限制起止时间跨度，默认不超过 3 个月）。
 
 ### `Zeye.Sorting.Hub.Host/`：宿主层（程序入口、后台服务、启动配置）
-- `Program.cs`：应用入口与 Host 构建流程（新增 `WriteWebRequestAuditLogCommandService` 注册）。
+- `Program.cs`：应用入口与 Host 构建流程（注册 `WriteWebRequestAuditLogCommandService`、绑定 `WebRequestAuditLog` 配置并接入 `WebRequestAuditLogMiddleware`）。
+- `Middleware/WebRequestAuditLogOptions.cs`：Web 请求审计中间件配置模型（Enabled、SampleRate、请求/响应体采集与截断长度）。
+- `Middleware/WebRequestAuditLogMiddleware.cs`：Web 请求审计中间件实现，覆盖请求开始/结束/异常全生命周期采集，并通过应用服务写入热冷模型。
+- `Middleware/WebRequestAuditLogMiddlewareExtensions.cs`：中间件依赖注册与管线接线扩展（Options 绑定校验 + UseMiddleware）。
 - `ParcelReadOnlyApiRouteExtensions.cs`：Parcel 只读路由注册与处理逻辑。
 - `ParcelListQueryParameters.cs`：只读列表查询参数模型。
 - `ParcelAdjacentQueryParameters.cs`：只读邻近查询参数模型。
@@ -474,7 +477,7 @@
 - `Worker.cs`：后台轮询任务示例服务。
 - `Zeye.Sorting.Hub.Host.csproj`：Host 项目定义。
 - `nlog.config`：NLog 日志配置，双路落盘（`logs/app-*.log` 全量 + `logs/database-*.log` 数据库专属），低开销设计（异步队列 + keepFileOpen + optimizeBufferReuse），保留 30 天。
-- `appsettings.json`：默认运行配置（新增 `Hosting` 段用于驱动监听地址、Swagger 路径与 Development 浏览器自动打开；并包含连接字符串、迁移失败策略分环境配置、分表治理守卫、Time/Volume/Hybrid 双策略配置、结构化容量观测入口 Observation、PerDay 预建日期清单、WebRequestAuditLog 独立守卫与历史分表保留隔离器、仓储危险动作隔离开关、结构化扩容计划、日志级别与自动调优参数）。
+- `appsettings.json`：默认运行配置（新增 `Hosting` 段用于驱动监听地址、Swagger 路径与 Development 浏览器自动打开；并包含连接字符串、迁移失败策略分环境配置、分表治理守卫、Time/Volume/Hybrid 双策略配置、结构化容量观测入口 Observation、PerDay 预建日期清单、WebRequestAuditLog 独立守卫与历史分表保留隔离器、Web 请求审计中间件采集配置、仓储危险动作隔离开关、结构化扩容计划、日志级别与自动调优参数）。
 - `appsettings.Development.json`：开发环境配置覆盖文件。
 
 #### `Zeye.Sorting.Hub.Host/Swagger/`：Swagger 扩展目录
@@ -602,6 +605,9 @@
 - `ParcelReadOnlyApiTests.cs`：Parcel 只读 API 端点测试，覆盖列表查询、详情查询、详情不存在返回 404、`/api/parcels/adjacent` 按 `id` 查询的 400/404/稳定排序回归。
 - `SortingHubTestDbContextFactory.cs`：Host.Tests 通用 InMemory `DbContextFactory`，供查询服务测试与仓储测试复用。
 - `WebRequestAuditLogRepositoryTests.cs`：Web 请求审计日志仓储测试，覆盖 DI 解析、冷热一对一落库与最小写入服务入口。
+- `WebRequestAuditLogMiddlewareTests.cs`：Web 请求审计中间件回归测试，覆盖开关/采样、正常与异常链路、请求响应体截断、审计写入失败隔离与真实仓储冷热落库。
+- `InMemoryWebRequestAuditLogRepository.cs`：Web 请求审计日志内存仓储测试替身，支持成功/失败/异常三种写入行为。
+- `RepositoryBehavior.cs`：审计仓储测试替身行为枚举。
 - `ParcelQueryServicesTests.cs`：Parcel 应用层查询服务测试（列表/详情/邻近查询映射与最小参数校验）；新增邻近查询锚点不存在异常场景；多重过滤条件联合成功路径（bagCode + workstationName + actualChuteId + status）；ExceptionType 筛选成功路径与非法值校验。
 - `ParcelRepositoryTests.cs`：Parcel 仓储第一阶段能力测试，覆盖分页过滤、详情与按 Id 邻近查询、新增/更新/删除、过期清理与批量新增；新增同一扫描时间稳定排序、锚点不存在、重复主键冲突语义回归，并验证危险清理动作的 blocked/dry-run/executed 三态。
 - `SelectiveMissingShardingPhysicalTableProbe.cs`：物理表探测测试桩，模拟指定分表缺失场景。
@@ -617,6 +623,11 @@
 
 ## 本次更新内容
 
+- 新增并接入 `WebRequestAuditLogMiddleware` 闭环：请求进入采集 `StartedAt/TraceId/CorrelationId/Method/Scheme/Host/Port/Path/RouteTemplate`，响应完成采集 `StatusCode/EndedAt/DurationMs/IsSuccess`，异常路径补齐 `HasException/ExceptionType/ErrorMessage/ExceptionStackTrace`。
+- 中间件写入严格复用 `WriteWebRequestAuditLogCommandService`，按 `WebRequestAuditLog + WebRequestAuditLogDetail` 一对一映射落库，不绕过应用服务直连数据库。
+- 新增 `WebRequestAuditLog` 配置项并完成 Program 绑定与中间件接线，支持 `Enabled`、`SampleRate`、`IncludeRequestBody/IncludeResponseBody`、`MaxRequestBodyLength/MaxResponseBodyLength`。
+- 完成请求体与响应体超长截断与标记（`IsRequestBodyTruncated` / `IsResponseBodyTruncated`），并保证审计写入失败仅记录 NLog，不影响主请求状态码与响应体。
+- 新增 `WebRequestAuditLogMiddlewareTests` 覆盖验收清单全部必测项，同时保留并兼容现有仓储/迁移/分表治理回归测试。
 - 完成 WebRequestAuditLog 持久化写入闭环：新增 `WebRequestAuditLogRepository` 并在 `AddSortingHubPersistence` 注册 `IWebRequestAuditLogRepository`，补齐最小应用写入入口 `WriteWebRequestAuditLogCommandService`。
 - 完成 WebRequestAuditLog 分表自治接线：在 EFCore.Sharding 注册链路为 `WebRequestAuditLog/WebRequestAuditLogDetail` 按 `StartedAt` 接入 PerDay 分表，并将 `DatabaseInitializerHostedService` 治理实体来源切换为分表注册同源来源。
 - 完成 WebRequestAuditLog 历史分表保留真实执行链路：新增基于真实分表元数据的候选计算（按 `KeepRecentShardCount` 保留最近 N 个），仅在 `Decision=Execute` 时执行删除，保留 Guard/DryRun 语义并输出 PlannedCount/ExecutedCount/Decision/CompensationBoundary 审计与观测事件。
@@ -648,6 +659,8 @@
 
 ### 可继续完善内容
 
+- 可继续评估审计日志异步批量写入通道，在保持“失败不影响主请求”前提下进一步降低高并发下写放大。
+- 可继续增强链路追踪字段（如上游网关标准头）与可观测标签体系，提升跨服务调用关联效率。
 - 后续可补充真实 MySQL / SQL Server 集成用例，验证 WebRequestAuditLog 历史分表保留在真实数据库中的物理表枚举与删除执行链路。
 - 后续可在 WebRequestAuditLog 写入入口接入真实 HTTP 请求上下文采集（中间件/管道），并增加端到端压测基线。
 - 后续可将当前“人工审查范围”规则逐步转为自动化校验项（例如注释覆盖率、命名规范、重复代码检测），进一步提升 CI 门禁覆盖度。
