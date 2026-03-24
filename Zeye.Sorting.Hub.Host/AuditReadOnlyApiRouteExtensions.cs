@@ -12,7 +12,7 @@ public static class AuditReadOnlyApiRouteExtensions {
     /// <summary>
     /// NLog 日志器。
     /// </summary>
-    private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
+    private static readonly Logger NLogLogger = LogManager.GetCurrentClassLogger();
 
     /// <summary>
     /// 注册审计日志只读 API。
@@ -75,7 +75,7 @@ public static class AuditReadOnlyApiRouteExtensions {
             return Results.Ok(response);
         }
         catch (ArgumentException exception) {
-            Logger.Warn(exception, "Web 请求审计日志列表查询参数校验失败。");
+            NLogLogger.Warn(exception, "Web 请求审计日志列表查询参数校验失败。");
             return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", exception.Message);
         }
     }
@@ -98,7 +98,7 @@ public static class AuditReadOnlyApiRouteExtensions {
                 : Results.Ok(response);
         }
         catch (ArgumentException exception) {
-            Logger.Warn(exception, "Web 请求审计日志详情查询参数校验失败，Id={AuditLogId}", id);
+            NLogLogger.Warn(exception, "Web 请求审计日志详情查询参数校验失败，Id={AuditLogId}", id);
             return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", exception.Message);
         }
     }

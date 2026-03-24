@@ -14,7 +14,7 @@ public sealed class GetWebRequestAuditLogPagedQueryService {
     /// <summary>
     /// NLog 日志器。
     /// </summary>
-    private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
+    private static readonly ILogger NLogLogger = LogManager.GetCurrentClassLogger();
 
     /// <summary>
     /// 审计日志查询仓储。
@@ -70,7 +70,7 @@ public sealed class GetWebRequestAuditLogPagedQueryService {
             };
         }
         catch (Exception exception) {
-            Logger.Error(
+            NLogLogger.Error(
                 exception,
                 "分页查询 Web 请求审计日志失败，PageNumber={PageNumber}, PageSize={PageSize}, StartedAtStart={StartedAtStart}, StartedAtEnd={StartedAtEnd}, StatusCode={StatusCode}, IsSuccess={IsSuccess}, TraceId={TraceId}, CorrelationId={CorrelationId}, RequestPathKeyword={RequestPathKeyword}",
                 request.PageNumber,
@@ -95,7 +95,7 @@ public sealed class GetWebRequestAuditLogPagedQueryService {
         Guard.ThrowIfZeroOrNegative(request.PageSize, nameof(request.PageSize), "页大小必须大于 0。", "分页查询 Web 请求审计日志");
 
         if (request.StartedAtStart.HasValue && request.StartedAtEnd.HasValue && request.StartedAtEnd.Value < request.StartedAtStart.Value) {
-            Logger.Warn(
+            NLogLogger.Warn(
                 "分页查询 Web 请求审计日志参数非法，StartedAtStart={StartedAtStart}, StartedAtEnd={StartedAtEnd}",
                 request.StartedAtStart,
                 request.StartedAtEnd);
@@ -103,7 +103,7 @@ public sealed class GetWebRequestAuditLogPagedQueryService {
         }
 
         if (request.StatusCode.HasValue && request.StatusCode.Value <= 0) {
-            Logger.Warn("分页查询 Web 请求审计日志参数非法，StatusCode={StatusCode}", request.StatusCode);
+            NLogLogger.Warn("分页查询 Web 请求审计日志参数非法，StatusCode={StatusCode}", request.StatusCode);
             throw new ArgumentOutOfRangeException(nameof(request.StatusCode), "statusCode 必须大于 0。");
         }
     }

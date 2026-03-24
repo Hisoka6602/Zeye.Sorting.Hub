@@ -12,7 +12,7 @@ public sealed class GetWebRequestAuditLogByIdQueryService {
     /// <summary>
     /// NLog 日志器。
     /// </summary>
-    private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
+    private static readonly ILogger NLogLogger = LogManager.GetCurrentClassLogger();
 
     /// <summary>
     /// 审计日志查询仓储。
@@ -41,7 +41,7 @@ public sealed class GetWebRequestAuditLogByIdQueryService {
             return readModel is null ? null : WebRequestAuditLogContractMapper.ToDetail(readModel);
         }
         catch (Exception exception) {
-            Logger.Error(exception, "按 Id 查询 Web 请求审计日志详情失败，Id={AuditLogId}", id);
+            NLogLogger.Error(exception, "按 Id 查询 Web 请求审计日志详情失败，Id={AuditLogId}", id);
             throw;
         }
     }
