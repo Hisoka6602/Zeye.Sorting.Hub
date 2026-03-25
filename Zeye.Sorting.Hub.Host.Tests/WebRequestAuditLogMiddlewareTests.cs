@@ -11,7 +11,6 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using Zeye.Sorting.Hub.Application.Services.AuditLogs;
 using Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests;
 using Zeye.Sorting.Hub.Domain.Repositories;
@@ -304,7 +303,7 @@ public sealed class WebRequestAuditLogMiddlewareTests {
                 context.Response.ContentType = "text/plain";
                 await context.Response.WriteAsync("ok");
             },
-            Options.Create(new WebRequestAuditLogOptions {
+            Microsoft.Extensions.Options.Options.Create(new WebRequestAuditLogOptions {
                 Enabled = true,
                 SampleRate = 1,
                 IncludeRequestBody = true,

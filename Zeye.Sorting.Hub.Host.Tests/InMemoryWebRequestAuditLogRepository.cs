@@ -168,7 +168,7 @@ public sealed class InMemoryWebRequestAuditLogRepository : IWebRequestAuditLogRe
         }
 
         return Task.FromResult<WebRequestAuditLogDetailReadModel?>(new WebRequestAuditLogDetailReadModel {
-            WebRequestAuditLogId = log.Detail?.WebRequestAuditLogId ?? log.Id,
+            WebRequestAuditLogId = log.Detail?.WebRequestAuditLogId ?? 0L,
             Id = log.Id,
             TraceId = log.TraceId,
             CorrelationId = log.CorrelationId,

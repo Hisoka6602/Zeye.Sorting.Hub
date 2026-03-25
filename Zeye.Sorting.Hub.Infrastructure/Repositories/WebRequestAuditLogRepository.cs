@@ -149,7 +149,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
 
                 var detail = entity.Detail;
                 return new WebRequestAuditLogDetailReadModel {
-                    WebRequestAuditLogId = detail?.WebRequestAuditLogId ?? entity.Id,
+                    WebRequestAuditLogId = detail?.WebRequestAuditLogId ?? 0L,
                     Id = entity.Id,
                     TraceId = entity.TraceId,
                     CorrelationId = entity.CorrelationId,

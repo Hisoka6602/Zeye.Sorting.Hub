@@ -534,7 +534,7 @@ public sealed class WebRequestAuditLogMiddleware {
     private static string BuildCurlCommand(HttpRequest request, CapturedBody requestBodyCapture) {
         var builder = new StringBuilder();
         var method = string.IsNullOrWhiteSpace(request.Method) ? "GET" : request.Method;
-        builder.Append("curl -X ").Append(ShellEscapeSingleQuoted(method)).Append(' ');
+        builder.Append("curl -X ").Append(method).Append(' ');
         builder.Append(ShellEscapeSingleQuoted(BuildRequestUrl(request)));
 
         if (!string.IsNullOrWhiteSpace(request.ContentType)) {
