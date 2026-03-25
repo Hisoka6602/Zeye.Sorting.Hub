@@ -17,7 +17,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         /// <summary>
         /// NLog 静态日志器实例，用于记录会话初始化执行异常。
         /// </summary>
-        private static readonly ILogger NLogLogger = LogManager.GetCurrentClassLogger();
+        private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
 
         /// <summary>连接打开后同步执行会话初始化 SQL。</summary>
         public override void ConnectionOpened(DbConnection connection, ConnectionEndEventData eventData) {
@@ -46,7 +46,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                     command.ExecuteNonQuery();
                 }
                 catch (Exception ex) {
-                    NLogLogger.Warn(ex, "MySQL 会话初始化 SQL 执行失败，已降级忽略，Sql={Sql}", sql);
+                    Logger.Warn(ex, "MySQL 会话初始化 SQL 执行失败，已降级忽略，Sql={Sql}", sql);
                 }
             }
         }
@@ -60,7 +60,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                     await command.ExecuteNonQueryAsync(cancellationToken);
                 }
                 catch (Exception ex) {
-                    NLogLogger.Warn(ex, "MySQL 会话初始化 SQL 执行失败，已降级忽略，Sql={Sql}", sql);
+                    Logger.Warn(ex, "MySQL 会话初始化 SQL 执行失败，已降级忽略，Sql={Sql}", sql);
                 }
             }
         }

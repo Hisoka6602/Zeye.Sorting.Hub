@@ -165,6 +165,9 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         // 建议仅暴露只读集合，并通过方法维护一致性
         // ------------------------------
 
+        /// <summary>
+        /// 条码明细内部存储集合，由聚合根负责维护一致性。
+        /// </summary>
         private readonly List<BarCodeInfo> _barCodeInfos = new();
         /// <summary>
         /// 条码明细集合（只读视图）

@@ -10,7 +10,7 @@ public sealed class LoggingOnlyExecutionPlanRegressionProbe : IProviderAwareExec
     /// <summary>
     /// NLog 静态日志器实例，用于输出执行计划探针评估结果。
     /// </summary>
-    private static readonly ILogger NLogLogger = LogManager.GetCurrentClassLogger();
+    private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
 
     /// <summary>
     /// 字段：_observability。
@@ -59,7 +59,7 @@ public sealed class LoggingOnlyExecutionPlanRegressionProbe : IProviderAwareExec
                 ["available"] = snapshot.IsAvailable ? "true" : "false",
                 ["unavailable_reason"] = snapshot.UnavailableReason
             });
-        NLogLogger.Info(
+        Logger.Info(
             "执行计划回退探针评估：Provider={Provider}, Fingerprint={Fingerprint}, IsAvailable={IsAvailable}, IsRegressed={IsRegressed}, UnavailableReason={UnavailableReason}, Summary={Summary}",
             normalizedProvider,
             normalizedFingerprint,
