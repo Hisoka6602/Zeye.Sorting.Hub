@@ -9,15 +9,15 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
     /// </summary>
     public class LogCleanupService : BackgroundService {
         /// <summary>
-        /// 字段：_logger。
+        /// 日志记录器实例，用于输出日志清理服务执行状态。
         /// </summary>
         private readonly ILogger<LogCleanupService> _logger;
         /// <summary>
-        /// 字段：_safeExecutor。
+        /// 安全执行器实例，用于隔离并捕获日志清理过程中的异常。
         /// </summary>
         private readonly SafeExecutor _safeExecutor;
         /// <summary>
-        /// 字段：_settings。
+        /// 日志清理配置实例，包含开关、保留天数与检查间隔参数。
         /// </summary>
         private readonly LogCleanupSettings _settings;
 

@@ -8,7 +8,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 /// </summary>
 public sealed class LoggingOnlyExecutionPlanRegressionProbe : IProviderAwareExecutionPlanRegressionProbe {
     /// <summary>
-    /// 字段：_logger。
+    /// 日志记录器实例，用于输出执行计划探针评估结果。
     /// </summary>
     private readonly ILogger<LoggingOnlyExecutionPlanRegressionProbe> _logger;
 
