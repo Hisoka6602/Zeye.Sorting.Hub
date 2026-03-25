@@ -225,6 +225,7 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         Assert.True(log.Detail is not null);
         // 请求体超限短路时仅标记截断，不采集正文内容。
         Assert.Equal(0, log.Detail!.RequestBody.Length);
+        Assert.DoesNotContain("--data-raw", log.Detail.CurlCommand, StringComparison.Ordinal);
         Assert.Equal(16, log.Detail.ResponseBody.Length);
     }
 

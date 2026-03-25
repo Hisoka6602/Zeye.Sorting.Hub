@@ -569,8 +569,10 @@ public sealed class WebRequestAuditLogMiddleware {
             builder.Append(" -H ").Append(ShellEscapeSingleQuoted($"{header.Key}: {value}"));
         }
 
-        if (requestBodyCapture.HasBody) {
-            builder.Append(" --data-raw ").Append(ShellEscapeSingleQuoted(requestBodyCapture.Content ?? string.Empty));
+        if (requestBodyCapture.HasBody
+            && !requestBodyCapture.IsTruncated
+            && !string.IsNullOrEmpty(requestBodyCapture.Content)) {
+            builder.Append(" --data-raw ").Append(ShellEscapeSingleQuoted(requestBodyCapture.Content));
         }
 
         return builder.ToString();
