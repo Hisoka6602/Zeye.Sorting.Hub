@@ -662,8 +662,9 @@
 
 - 补齐 `LoggingOnlyExecutionPlanRegressionProbe` 中 `NormalizeParameter`、`BuildSnapshot` 方法的 XML 注释，并为复杂分支补充步骤说明。
 - 补齐 `AutoTuningVerificationResultBuilder` 中 `BuildVerdict`、`CalculateLockWaitDelta`、`BuildPercentMetric` 方法的 XML 注释，并为复杂逻辑补充步骤说明。
-- 补齐以下字段 XML 注释：`AutoTuningLoggerObservability._logger`、`LogCleanupService._logger`、`LogCleanupService._settings`、`MySqlSessionBootstrapConnectionInterceptor.SessionSql`、`LoggingOnlyExecutionPlanRegressionProbe._logger`、`SlowQueryCommandInterceptor._pipeline`。
-- 本次改动仅涉及注释与 README 文本说明，未引入 UTC 相关 API，未新增文件或删除文件。
+- 补齐以下字段 XML 注释：`AutoTuningLoggerObservability.Logger`、`LogCleanupService.Logger`、`LogCleanupService._settings`、`MySqlSessionBootstrapConnectionInterceptor.SessionSql`、`LoggingOnlyExecutionPlanRegressionProbe.Logger`、`SlowQueryCommandInterceptor._pipeline`，并补齐 `Parcel._barCodeInfos` 字段注释遗漏。
+- 修复命中文件日志实现：将 `AutoTuningLoggerObservability`、`LogCleanupService`、`MySqlSessionBootstrapConnectionInterceptor`、`LoggingOnlyExecutionPlanRegressionProbe` 中本次修改涉及的日志调用统一为 NLog 静态日志器写法，保持行为一致。
+- 本次改动涉及注释修复、日志实现对齐与 README 文本同步；未引入 UTC 相关 API，未新增文件或删除文件。
 
 ## 后续可完善点
 

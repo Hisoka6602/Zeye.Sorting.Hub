@@ -47,7 +47,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 Microsoft.Extensions.Logging.LogLevel.Warning => NLog.LogLevel.Warn,
                 Microsoft.Extensions.Logging.LogLevel.Error => NLog.LogLevel.Error,
                 Microsoft.Extensions.Logging.LogLevel.Critical => NLog.LogLevel.Fatal,
-                _ => NLog.LogLevel.Info
+                Microsoft.Extensions.Logging.LogLevel.None => NLog.LogLevel.Off,
+                _ => NLog.LogLevel.Off
             };
         }
     }
