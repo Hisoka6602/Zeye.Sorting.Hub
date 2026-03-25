@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+using NLog;
 using Zeye.Sorting.Hub.Domain.Enums;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
@@ -8,9 +8,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 /// </summary>
 public sealed class LoggingOnlyExecutionPlanRegressionProbe : IProviderAwareExecutionPlanRegressionProbe {
     /// <summary>
-    /// 日志记录器实例，用于输出执行计划探针评估结果。
+    /// NLog 静态日志器实例，用于输出执行计划探针评估结果。
     /// </summary>
-    private readonly ILogger<LoggingOnlyExecutionPlanRegressionProbe> _logger;
+    private static readonly ILogger NLogLogger = LogManager.GetCurrentClassLogger();
 
     /// <summary>
     /// 字段：_observability。
@@ -21,9 +21,7 @@ public sealed class LoggingOnlyExecutionPlanRegressionProbe : IProviderAwareExec
     /// 初始化 logging-only 探针。
     /// </summary>
     public LoggingOnlyExecutionPlanRegressionProbe(
-        ILogger<LoggingOnlyExecutionPlanRegressionProbe> logger,
         IAutoTuningObservability observability) {
-        _logger = logger;
         _observability = observability;
     }
 
@@ -53,7 +51,7 @@ public sealed class LoggingOnlyExecutionPlanRegressionProbe : IProviderAwareExec
             });
         _observability.EmitEvent(
             "autotuning.plan_probe.result",
-            snapshot.IsAvailable ? LogLevel.Information : LogLevel.Warning,
+            snapshot.IsAvailable ? Microsoft.Extensions.Logging.LogLevel.Information : Microsoft.Extensions.Logging.LogLevel.Warning,
             snapshot.Summary,
             new Dictionary<string, string> {
                 ["provider"] = normalizedProvider,
@@ -61,7 +59,7 @@ public sealed class LoggingOnlyExecutionPlanRegressionProbe : IProviderAwareExec
                 ["available"] = snapshot.IsAvailable ? "true" : "false",
                 ["unavailable_reason"] = snapshot.UnavailableReason
             });
-        _logger.LogInformation(
+        NLogLogger.Info(
             "执行计划回退探针评估：Provider={Provider}, Fingerprint={Fingerprint}, IsAvailable={IsAvailable}, IsRegressed={IsRegressed}, UnavailableReason={UnavailableReason}, Summary={Summary}",
             normalizedProvider,
             normalizedFingerprint,

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using NLog;
 using Zeye.Sorting.Hub.SharedKernel.Utilities;
 using Zeye.Sorting.Hub.Domain.Options.LogCleanup;
 
@@ -9,9 +10,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
     /// </summary>
     public class LogCleanupService : BackgroundService {
         /// <summary>
-        /// 日志记录器实例，用于输出日志清理服务执行状态。
+        /// NLog 静态日志器实例，用于输出日志清理服务执行状态。
         /// </summary>
-        private readonly ILogger<LogCleanupService> _logger;
+        private static readonly ILogger NLogLogger = LogManager.GetCurrentClassLogger();
         /// <summary>
         /// 安全执行器实例，用于隔离并捕获日志清理过程中的异常。
         /// </summary>
@@ -22,10 +23,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private readonly LogCleanupSettings _settings;
 
         public LogCleanupService(
-            ILogger<LogCleanupService> logger,
             SafeExecutor safeExecutor,
             IOptions<LogCleanupSettings> settings) {
-            _logger = logger;
             _safeExecutor = safeExecutor;
             _settings = settings.Value;
         }
@@ -35,11 +34,11 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// </summary>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
             if (!_settings.Enabled) {
-                _logger.LogInformation("日志清理服务已禁用");
+                NLogLogger.Info("日志清理服务已禁用");
                 return;
             }
 
-            _logger.LogInformation("日志清理服务已启动，保留天数: {RetentionDays}天，检查间隔: {CheckIntervalHours}小时",
+            NLogLogger.Info("日志清理服务已启动，保留天数: {RetentionDays}天，检查间隔: {CheckIntervalHours}小时",
                 _settings.RetentionDays, _settings.CheckIntervalHours);
 
             // 首次启动时立即执行一次清理
@@ -57,7 +56,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 }
                 catch (OperationCanceledException) {
                     // 服务正在停止，正常退出
-                    _logger.LogInformation("日志清理服务正在停止");
+                    NLogLogger.Info("日志清理服务正在停止");
                     break;
                 }
             }
@@ -75,12 +74,12 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
 
             if (!Directory.Exists(logDirectory)) {
-                _logger.LogWarning("日志目录不存在: {LogDirectory}", logDirectory);
+                NLogLogger.Warn("日志目录不存在: {LogDirectory}", logDirectory);
                 return;
             }
 
             var cutoffDate = DateTime.Now.AddDays(-_settings.RetentionDays);
-            _logger.LogInformation("开始清理日志，删除 {CutoffDate} 之前的日志文件", cutoffDate);
+            NLogLogger.Info("开始清理日志，删除 {CutoffDate} 之前的日志文件", cutoffDate);
 
             var deletedCount = 0;
             var failedCount = 0;
@@ -98,7 +97,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 failedCount += failed2;
             }
 
-            _logger.LogInformation("日志清理完成，删除文件数: {DeletedCount}，失败数: {FailedCount}",
+            NLogLogger.Info("日志清理完成，删除文件数: {DeletedCount}，失败数: {FailedCount}",
                 deletedCount, failedCount);
         }
 
@@ -111,7 +110,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     try {
                         var fileInfo = new FileInfo(file);
                         if (fileInfo.LastWriteTime < cutoffDate) {
-                            _logger.LogInformation("删除旧日志文件: {FileName}, 最后修改时间: {LastWriteTime}",
+                            NLogLogger.Info("删除旧日志文件: {FileName}, 最后修改时间: {LastWriteTime}",
                                 fileInfo.Name, fileInfo.LastWriteTime);
 
                             fileInfo.Delete();
@@ -119,13 +118,13 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                         }
                     }
                     catch (Exception ex) {
-                        _logger.LogWarning(ex, "删除日志文件失败: {FileName}", file);
+                        NLogLogger.Warn(ex, "删除日志文件失败: {FileName}", file);
                         failedCount++;
                     }
                 }
             }
             catch (Exception ex) {
-                _logger.LogError(ex, "扫描日志目录失败: {Directory}", directory);
+                NLogLogger.Error(ex, "扫描日志目录失败: {Directory}", directory);
             }
 
             return (deletedCount, failedCount);

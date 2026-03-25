@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+using NLog;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 
 namespace Zeye.Sorting.Hub.Host.HostedServices {
@@ -8,24 +8,25 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <summary>
         /// 日志记录器实例，用于输出自动调优观测指标与事件。
         /// </summary>
-        private readonly ILogger<AutoTuningLoggerObservability> _logger;
+        private readonly ILogger _logger;
 
-        public AutoTuningLoggerObservability(ILogger<AutoTuningLoggerObservability> logger) {
-            _logger = logger;
+        public AutoTuningLoggerObservability() {
+            _logger = LogManager.GetCurrentClassLogger();
         }
 
         /// <summary>
         /// 执行逻辑：EmitMetric。
         /// </summary>
         public void EmitMetric(string name, double value, IReadOnlyDictionary<string, string>? tags = null) {
-            _logger.LogDebug("AutoTuningMetric: Name={Name}, Value={Value}, Tags={Tags}", name, value, FormatTags(tags));
+            _logger.Debug("AutoTuningMetric: Name={Name}, Value={Value}, Tags={Tags}", name, value, FormatTags(tags));
         }
 
         /// <summary>
         /// 执行逻辑：EmitEvent。
         /// </summary>
-        public void EmitEvent(string name, LogLevel level, string message, IReadOnlyDictionary<string, string>? tags = null) {
-            _logger.Log(level, "AutoTuningEvent: Name={Name}, Message={Message}, Tags={Tags}", name, message, FormatTags(tags));
+        public void EmitEvent(string name, Microsoft.Extensions.Logging.LogLevel level, string message, IReadOnlyDictionary<string, string>? tags = null) {
+            var eventLevel = ConvertLogLevel(level);
+            _logger.Log(eventLevel, "AutoTuningEvent: Name={Name}, Message={Message}, Tags={Tags}", name, message, FormatTags(tags));
         }
 
         /// <summary>
@@ -37,6 +38,21 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
 
             return string.Join(", ", tags.Select(static pair => $"{pair.Key}={pair.Value}"));
+        }
+
+        /// <summary>
+        /// 执行逻辑：ConvertLogLevel。
+        /// </summary>
+        private static LogLevel ConvertLogLevel(Microsoft.Extensions.Logging.LogLevel level) {
+            return level switch {
+                Microsoft.Extensions.Logging.LogLevel.Trace => LogLevel.Trace,
+                Microsoft.Extensions.Logging.LogLevel.Debug => LogLevel.Debug,
+                Microsoft.Extensions.Logging.LogLevel.Information => LogLevel.Info,
+                Microsoft.Extensions.Logging.LogLevel.Warning => LogLevel.Warn,
+                Microsoft.Extensions.Logging.LogLevel.Error => LogLevel.Error,
+                Microsoft.Extensions.Logging.LogLevel.Critical => LogLevel.Fatal,
+                _ => LogLevel.Info
+            };
         }
     }
 }
