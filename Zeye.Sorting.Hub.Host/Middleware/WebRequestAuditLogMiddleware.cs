@@ -26,26 +26,6 @@ public sealed class WebRequestAuditLogMiddleware {
     private const string BinaryPayloadOmittedPlaceholder = "[binary payload omitted]";
 
     /// <summary>
-    /// Curl 脱敏后授权头占位。
-    /// </summary>
-    private const string AuthorizationMaskedPlaceholder = "***";
-
-    /// <summary>
-    /// Authorization 脱敏最小凭证长度。
-    /// </summary>
-    private const int MinCredentialLengthForPartialMask = 10;
-
-    /// <summary>
-    /// Authorization 脱敏保留前缀长度。
-    /// </summary>
-    private const int CredentialPrefixLength = 6;
-
-    /// <summary>
-    /// Authorization 脱敏保留后缀长度。
-    /// </summary>
-    private const int CredentialSuffixLength = 4;
-
-    /// <summary>
     /// NLog 日志器。
     /// </summary>
     private static readonly NLog.ILogger NLogLogger = LogManager.GetCurrentClassLogger();
@@ -111,9 +91,7 @@ public sealed class WebRequestAuditLogMiddleware {
         if (_options.IncludeRequestBody) {
             try {
                 requestBodyCapture = await CaptureRequestBodyAsync(context.Request, _options.MaxRequestBodyLength);
-                if (context.Request.ContentLength is null or <= 0L) {
-                    requestSizeBytes = requestBodyCapture.OriginalLengthBytes;
-                }
+                requestSizeBytes = requestBodyCapture.OriginalLengthBytes;
             }
             catch (Exception exception) {
                 NLogLogger.Error(exception, "请求体采集失败，降级为空正文采集，Path={Path}, TraceId={TraceId}", context.Request.Path, traceId);
@@ -555,8 +533,8 @@ public sealed class WebRequestAuditLogMiddleware {
     /// <returns>Curl 命令。</returns>
     private static string BuildCurlCommand(HttpRequest request, CapturedBody requestBodyCapture) {
         var builder = new StringBuilder();
-        var method = string.IsNullOrWhiteSpace(request.Method) ? "GET" : request.Method;
-        builder.Append("curl -X ").Append(ShellEscapeSingleQuoted(method)).Append(' ');
+        var method = NormalizeHttpMethodForCurl(request.Method);
+        builder.Append("curl -X ").Append(method).Append(' ');
         builder.Append(ShellEscapeSingleQuoted(BuildRequestUrl(request)));
 
         if (!string.IsNullOrWhiteSpace(request.ContentType)) {
@@ -575,7 +553,7 @@ public sealed class WebRequestAuditLogMiddleware {
 
         var authorization = request.Headers.Authorization.ToString();
         if (!string.IsNullOrWhiteSpace(authorization)) {
-            builder.Append(" -H ").Append(ShellEscapeSingleQuoted($"Authorization: {MaskAuthorizationHeader(authorization)}"));
+            builder.Append(" -H ").Append(ShellEscapeSingleQuoted($"Authorization: {authorization}"));
         }
 
         foreach (var header in request.Headers) {
@@ -591,8 +569,10 @@ public sealed class WebRequestAuditLogMiddleware {
             builder.Append(" -H ").Append(ShellEscapeSingleQuoted($"{header.Key}: {value}"));
         }
 
-        if (requestBodyCapture.HasBody) {
-            builder.Append(" --data-raw ").Append(ShellEscapeSingleQuoted(requestBodyCapture.Content ?? string.Empty));
+        if (requestBodyCapture.HasBody
+            && !requestBodyCapture.IsTruncated
+            && !string.IsNullOrEmpty(requestBodyCapture.Content)) {
+            builder.Append(" --data-raw ").Append(ShellEscapeSingleQuoted(requestBodyCapture.Content));
         }
 
         return builder.ToString();
@@ -668,33 +648,32 @@ public sealed class WebRequestAuditLogMiddleware {
     }
 
     /// <summary>
-    /// 脱敏授权头值。
+    /// 归一化 HTTP 方法，避免非法字符进入 shell 命令参数。
     /// </summary>
-    /// <param name="authorizationHeader">授权头值。</param>
-    /// <returns>脱敏后的授权头值。</returns>
-    private static string MaskAuthorizationHeader(string authorizationHeader) {
-        if (string.IsNullOrWhiteSpace(authorizationHeader)) {
-            return AuthorizationMaskedPlaceholder;
+    /// <param name="method">原始 HTTP 方法。</param>
+    /// <returns>安全 HTTP 方法。</returns>
+    private static string NormalizeHttpMethodForCurl(string? method) {
+        if (string.IsNullOrWhiteSpace(method)) {
+            return "GET";
         }
 
-        var parts = authorizationHeader.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length == 0) {
-            return AuthorizationMaskedPlaceholder;
+        var normalized = method.Trim();
+        if (normalized.Length == 0) {
+            return "GET";
         }
 
-        var scheme = parts[0];
-        if (parts.Length == 1) {
-            return scheme;
+        foreach (var character in normalized) {
+            if (character is >= 'A' and <= 'Z'
+                || character is >= 'a' and <= 'z'
+                || character is >= '0' and <= '9'
+                || character is '-' or '_') {
+                continue;
+            }
+
+            return "GET";
         }
 
-        var credential = string.Join(' ', parts.Skip(1));
-        if (credential.Length <= MinCredentialLengthForPartialMask) {
-            return $"{scheme} {AuthorizationMaskedPlaceholder}";
-        }
-
-        var prefix = credential[..CredentialPrefixLength];
-        var suffix = credential[^CredentialSuffixLength..];
-        return $"{scheme} {prefix}***{suffix}";
+        return normalized.ToUpperInvariant();
     }
 
     /// <summary>

@@ -5,6 +5,11 @@ namespace Zeye.Sorting.Hub.Contracts.Models.AuditLogs.WebRequests;
 /// </summary>
 public sealed record WebRequestAuditLogDetailResponse {
     /// <summary>
+    /// 审计日志详情主键兼外键。
+    /// </summary>
+    public required long WebRequestAuditLogId { get; init; }
+
+    /// <summary>
     /// 审计日志主键。
     /// </summary>
     public required long Id { get; init; }

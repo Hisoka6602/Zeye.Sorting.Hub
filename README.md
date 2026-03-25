@@ -146,7 +146,7 @@
 │   │       │   └── PageResult.cs（通用分页结果模型）
 │   │       ├── ReadModels（查询读模型目录）
 │   │       │   ├── ParcelSummaryReadModel.cs（Parcel 列表摘要读模型）
-│   │       │   ├── WebRequestAuditLogDetailReadModel.cs（Web 请求审计日志详情读模型）
+│   │       │   ├── WebRequestAuditLogDetailReadModel.cs（Web 请求审计日志详情读模型，含 WebRequestAuditLogId 外键镜像字段）
 │   │       │   └── WebRequestAuditLogSummaryReadModel.cs（Web 请求审计日志列表摘要读模型）
 │   │       ├── Results（仓储结果模型目录）
 │   │       │   └── RepositoryResult.cs（仓储统一结果模型，含泛型版本与危险批量动作结果模型）
@@ -188,7 +188,7 @@
 │   │   ├── WebRequestAuditBackgroundQueue.cs（审计有界后台队列，含丢弃保护）
 │   │   ├── WebRequestAuditBackgroundWorkerHostedService.cs（审计后台消费者服务）
 │   │   ├── WebRequestAuditLogOptions.cs（Web 请求审计中间件配置模型）
-│   │   ├── WebRequestAuditLogMiddleware.cs（Web 请求审计中间件实现：主请求零阻塞，异步脱钩写审计）
+│   │   ├── WebRequestAuditLogMiddleware.cs（Web 请求审计中间件实现：主请求零阻塞，异步脱钩写审计，补齐 Body 与 Curl 采集）
 │   │   └── WebRequestAuditLogMiddlewareExtensions.cs（中间件注册与接线扩展）
 │   ├── Swagger（Swagger 扩展目录）
 │   │   └── EnumDescriptionSchemaFilter.cs（枚举 Schema 中文增强）
@@ -198,7 +198,7 @@
 │   ├── Zeye.Sorting.Hub.Host.csproj（Host 项目定义）
 │   ├── nlog.config（NLog 日志配置）
 │   ├── appsettings.Development.json（开发环境配置）
-│   └── appsettings.json（默认运行配置，含 AuditReadOnlyApi:Enabled 显式开关）
+│   └── appsettings.json（默认运行配置，含 WebRequestAuditLog Body 采集开关与 AuditReadOnlyApi:Enabled）
 ├── Zeye.Sorting.Hub.Host.Tests（自动调优行为测试工程）
 │   ├── AutoTuningProductionControlTests.cs（自动调优生产可控能力测试：dry-run/隔离器/告警恢复/普通与严重回归/探针双路径/闭环链路；含分表策略评估与 PerDay 预建守卫联动测试；新增 WebRequestAuditLog 治理解耦/保留治理三态/逻辑表索引分发/配置错误键指向回归；配置键拼装参数化覆盖（Theory））
 │   ├── AlwaysExistsShardingPhysicalTableProbe.cs（物理表探测测试桩：始终存在场景，支撑分表守卫探测调用断言）
@@ -216,7 +216,7 @@
 │   ├── ObservabilityEntry.cs（自动调优观测记录模型）
 │   ├── HostingOptionsTests.cs（Hosting 配置拼装测试：监听地址拆分、Swagger 地址拼装、显式地址优先级与无效监听地址兜底）
 │   ├── ParcelAdminApiTests.cs（Parcel 管理端写接口测试：新增/更新状态/删除成功路径 + cleanup-expired 三态 + 参数非法校验）
-│   ├── AuditReadOnlyApiTests.cs（Web 请求审计日志只读 API 端点测试：分页、过滤、参数校验、404 与写读联动）
+│   ├── AuditReadOnlyApiTests.cs（Web 请求审计日志只读 API 端点测试：分页、过滤、参数校验、详情全字段、写读联动）
 │   ├── ParcelReadOnlyApiTests.cs（Parcel 只读 API 端点测试：列表/详情/404/邻近参数异常）
 │   ├── ParcelQueryServicesTests.cs（Parcel 应用层查询服务测试：列表/详情/邻近查询映射与最小校验；多重过滤条件联合成功路径；ExceptionType 筛选覆盖）
 │   ├── ParcelRepositoryTests.cs（Parcel 仓储第一阶段能力测试：分页过滤、详情与邻近查询、写操作与过期清理；含阻断/dry-run/显式放开的危险动作治理回归）
@@ -229,6 +229,7 @@
 │   ├── TestMySqlDialect.cs（MySQL ProviderName 方言测试桩）
 │   ├── TestObservability.cs（自动调优观测测试桩：收集指标与事件）
 │   ├── TestSqlServerDialect.cs（SQL Server ProviderName 方言测试桩）
+│   ├── ThrowOnReadStream.cs（读取即抛异常的请求体流测试桩）
 │   └── Zeye.Sorting.Hub.Host.Tests.csproj（xUnit 测试项目定义）
 ├── Zeye.Sorting.Hub.Infrastructure（基础设施层）
 │   ├── DependencyInjection（依赖注入扩展目录）
@@ -491,7 +492,7 @@
 ###### `Zeye.Sorting.Hub.Domain/Repositories/Models/ReadModels/`：查询读模型目录
 - `ParcelSummaryReadModel.cs`：Parcel 列表摘要读模型（包含 Parcel 全部扁平化字段，用于分页列表）。
 - `WebRequestAuditLogSummaryReadModel.cs`：Web 请求审计日志列表摘要读模型（高频查询字段）。
-- `WebRequestAuditLogDetailReadModel.cs`：Web 请求审计日志详情读模型（热表字段 + 冷表详情字段）。
+- `WebRequestAuditLogDetailReadModel.cs`：Web 请求审计日志详情读模型（热表字段 + 冷表详情字段，含 `WebRequestAuditLogId` 外键镜像字段）。
 
 ###### `Zeye.Sorting.Hub.Domain/Repositories/Models/Results/`：仓储结果模型目录
 - `RepositoryResult.cs`：非泛型仓储结果模型。
@@ -516,7 +517,7 @@
 - `Options/AuditReadOnlyApiOptions.cs`：审计只读 API 开关配置模型（`AuditReadOnlyApi:Enabled`）。
 - `Utilities/LocalDateTimeParsing.cs`：本地时间解析与 API 问题响应工厂共享工具。
 - `Middleware/WebRequestAuditLogOptions.cs`：Web 请求审计中间件配置模型。
-- `Middleware/WebRequestAuditLogMiddleware.cs`：Web 请求审计中间件实现（主请求零阻塞：仅负责采集与入队，不等待写库）。
+- `Middleware/WebRequestAuditLogMiddleware.cs`：Web 请求审计中间件实现（主请求零阻塞：仅负责采集与入队，不等待写库；补齐 Request/Response Body 采集与可回放 Curl 拼装）。
 - `Middleware/WebRequestAuditBackgroundEntry.cs`：审计后台队列项值类型。
 - `Middleware/WebRequestAuditBackgroundQueue.cs`：审计有界后台队列（超限丢弃保护与丢弃计数日志）。
 - `Middleware/WebRequestAuditBackgroundWorkerHostedService.cs`：审计后台消费服务（单消费者写库）。
@@ -525,7 +526,7 @@
 - `Middleware/ResponseCaptureResult.cs`：响应正文采集结果值类型。
 - `Zeye.Sorting.Hub.Host.csproj`：Host 项目定义。
 - `nlog.config`：NLog 日志配置。
-- `appsettings.json`：默认运行配置（新增 `AuditReadOnlyApi:Enabled` 显式开关；移除手工预建配置键）。
+- `appsettings.json`：默认运行配置（含 `WebRequestAuditLog.IncludeRequestBody/IncludeResponseBody` 当前目标值说明；新增 `AuditReadOnlyApi:Enabled` 显式开关）。
 - `appsettings.Development.json`：开发环境配置覆盖文件。
 
 #### `Zeye.Sorting.Hub.Host/Swagger/`：Swagger 扩展目录
@@ -638,10 +639,10 @@
 - `ObservabilityEntry.cs`：自动调优观测记录模型，承载名称/值/标签快照。
 - `ParcelAdminApiTests.cs`：Parcel 管理端写接口测试，覆盖新增成功路径、创建请求 `id<=0` 返回 400、重复 Id 返回 409、UTC 时间拒绝、更新状态成功路径 + 不存在 404 + 非法操作码 400、删除成功路径 + 不存在 404、cleanup-expired blocked/dry-run/execute 三态 + UTC 时间与非法参数拒绝。
 - `ParcelReadOnlyApiTests.cs`：Parcel 只读 API 端点测试，覆盖列表查询、详情查询、详情不存在返回 404、`/api/parcels/adjacent` 按 `id` 查询的 400/404/稳定排序回归。
-- `AuditReadOnlyApiTests.cs`：Web 请求审计日志只读 API 端点测试，覆盖默认分页、过滤组合、非法分页 400、非法时间格式 400、详情 200/404、中间件写读联动。
+- `AuditReadOnlyApiTests.cs`：Web 请求审计日志只读 API 端点测试，覆盖默认分页、过滤组合、非法分页 400、非法时间格式 400、详情 200/404 全字段断言、中间件写读联动。
 - `SortingHubTestDbContextFactory.cs`：Host.Tests 通用 InMemory `DbContextFactory`，供查询服务测试与仓储测试复用。
 - `WebRequestAuditLogRepositoryTests.cs`：Web 请求审计日志仓储测试，覆盖 DI 解析、冷热一对一落库与最小写入服务入口。
-- `WebRequestAuditLogMiddlewareTests.cs`：Web 请求审计中间件回归测试，覆盖开关/采样、正常与异常链路、请求响应体截断、审计写入失败隔离与真实仓储冷热落库。
+- `WebRequestAuditLogMiddlewareTests.cs`：Web 请求审计中间件回归测试，覆盖开关/采样、正常与异常链路、请求响应体截断、采集异常隔离、Curl 可回放断言与真实仓储冷热落库。
 - `InMemoryWebRequestAuditLogRepository.cs`：Web 请求审计日志内存仓储测试替身，支持成功/失败/异常三种写入行为。
 - `ParcelQueryServicesTests.cs`：Parcel 应用层查询服务测试（列表/详情/邻近查询映射与最小参数校验）；新增邻近查询锚点不存在异常场景；多重过滤条件联合成功路径（bagCode + workstationName + actualChuteId + status）；ExceptionType 筛选成功路径与非法值校验。
 - `ParcelRepositoryTests.cs`：Parcel 仓储第一阶段能力测试，覆盖分页过滤、详情与按 Id 邻近查询、新增/更新/删除、过期清理与批量新增；新增同一扫描时间稳定排序、锚点不存在、重复主键冲突语义回归，并验证危险清理动作的 blocked/dry-run/executed 三态。
@@ -654,6 +655,7 @@
 - `TestMySqlDialect.cs`：MySQL ProviderName 方言测试桩。
 - `TestObservability.cs`：自动调优观测测试桩，收集指标与事件输出。
 - `TestSqlServerDialect.cs`：SQL Server ProviderName 方言测试桩。
+- `ThrowOnReadStream.cs`：读取即抛异常的请求体流测试桩，用于验证中间件请求体采集异常隔离不影响主链路。
 
 
 ## 本次更新内容
@@ -665,9 +667,9 @@
 - 新增 `DatabaseConnectionOpenCoordinator`，收敛 MySQL/SQL Server 方言重复的连接打开逻辑，统一连接状态处理。
 - 补充测试覆盖：新增自动建库决策三态、Provider 连接键解析、方言数据库名提取/管理连接语义测试；补充中间件异步写审计时序断言。
 - 新要求落地：`WebRequestAuditLogMiddleware` 改为主请求零阻塞写审计（有界队列 + 后台消费者写入，不等待写库完成），并补充队列丢弃保护。
-- 审计详情接口修复：`GET /api/audit/web-requests/{id}` 现已覆盖热表 + 冷表全字段返回，补齐 Domain 读模型、Infrastructure 查询映射、Application 合同映射与 Contracts 响应字段。
-- 中间件采集修复：补齐 `RequestBody` / `ResponseBody` 采集链路，针对 `multipart/form-data` 与二进制正文采用占位文本记录，采集异常统一失败隔离并降级，不影响主请求链路。
-- `CurlCommand` 可回放修复：统一使用详情同源 `requestBodyCapture` 生成命令，补齐 method/url/关键头/`--data-raw`，并对 `Authorization` 脱敏、`Cookie`/`Set-Cookie`/`X-Api-Key` 屏蔽、单引号安全转义。
+- 审计详情接口修复：`GET /api/audit/web-requests/{id}` 对齐实体字段全集，补齐 `WebRequestAuditLogId` 并完成 ReadModel/Repository/Contracts/Application 全链路 1:1 映射与默认值回退。
+- 中间件采集修复：补齐 `RequestBody` / `ResponseBody` 采集链路，保持 `EnableBuffering`+回卷与响应 tee 流 finally 恢复；采集或序列化失败统一隔离降级，不影响主请求链路。
+- `CurlCommand` 可回放修复：统一使用详情同源 `requestBodyCapture` 生成命令，补齐 `-X {METHOD}`、完整 URL、关键头、`--data-raw` 与 shell 单引号转义，保持可直接回放。
 - 新增 SQL 日志开关：`Persistence:SqlLogging:EnableQuerySqlLogging`（默认 `false`），默认关闭 EF 查询 SQL 日志输出，避免查询 SQL 被记录到日志。
 - 同步 README：更新文件树、逐文件职责、“本次更新内容”与“可继续完善内容”。
 
@@ -680,7 +682,7 @@
 
 - 当前测试环境未直连真实 MySQL/SQL Server 实例，自动建库流程主要通过决策与方言连接语义单测覆盖；后续可在 CI 引入双数据库容器做端到端“空库自动创建 + 迁移接续”集成回归。
 - `WebRequestAuditLogMiddleware` 当前为“后台任务异步脱钩”模式，后续可升级为有界通道 + 后台批量写入服务，增加背压策略与丢弃审计指标。
-- 审计 body 脱敏策略可继续细化：按字段级规则（如手机号、证件号、Token）对 JSON 正文进行结构化脱敏，并提供按路由白名单/黑名单的采集策略。
+- 审计大包体治理可继续细化：在保留当前截断标记基础上增加内容摘要/采样观测指标，降低存储压力并保持问题定位能力。
 - `CurlCommand` 可继续工具化：增加一键回放脚本生成与失败重试诊断输出，提升线上问题复现效率。
 - 超大包体采样策略可继续优化：在保留当前截断标记基础上增加按比例采样与摘要哈希，兼顾可观测性与存储成本。
 
