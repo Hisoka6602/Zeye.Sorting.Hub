@@ -2158,8 +2158,7 @@ public sealed class AutoTuningProductionControlTests {
     [Fact]
     public void PlanRegressionProbe_SupportsUnavailableAndAvailablePaths() {
         var observability = new TestObservability();
-        var logger = new TestLogger<LoggingOnlyExecutionPlanRegressionProbe>();
-        var probe = new LoggingOnlyExecutionPlanRegressionProbe(logger, observability);
+        var probe = new LoggingOnlyExecutionPlanRegressionProbe(observability);
 
         var unavailable = probe.Evaluate("MySql", "plan-probe-permission-denied");
         Assert.False(unavailable.IsAvailable);
@@ -2177,8 +2176,7 @@ public sealed class AutoTuningProductionControlTests {
     [Fact]
     public void PlanRegressionProbe_ProviderAwareExtension_ShouldKeepLoggingOnlyCompatibility() {
         var observability = new TestObservability();
-        var logger = new TestLogger<LoggingOnlyExecutionPlanRegressionProbe>();
-        var probe = new LoggingOnlyExecutionPlanRegressionProbe(logger, observability);
+        var probe = new LoggingOnlyExecutionPlanRegressionProbe(observability);
         var providerAwareProbe = Assert.IsAssignableFrom<IProviderAwareExecutionPlanRegressionProbe>(probe);
 
         var snapshot = providerAwareProbe.Evaluate(new ExecutionPlanProbeRequest("SqlServer", "custom-fingerprint"));

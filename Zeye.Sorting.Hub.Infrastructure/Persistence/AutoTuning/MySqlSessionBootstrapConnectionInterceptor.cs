@@ -1,25 +1,23 @@
 using System.Data.Common;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.Extensions.Logging;
 using MySqlConnector;
+using NLog;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
 
     /// <summary>MySQL 连接打开时会话级参数初始化拦截器</summary>
     public sealed class MySqlSessionBootstrapConnectionInterceptor : DbConnectionInterceptor {
+        /// <summary>
+        /// MySQL 会话级参数初始化 SQL 语句集合。
+        /// </summary>
         private static readonly string[] SessionSql = {
             "SET SESSION optimizer_switch='index_merge=on,index_condition_pushdown=on,derived_merge=on'"
         };
 
         /// <summary>
-        /// 字段：_logger。
+        /// NLog 静态日志器实例，用于记录会话初始化执行异常。
         /// </summary>
-        private readonly ILogger<MySqlSessionBootstrapConnectionInterceptor> _logger;
-
-        /// <summary>初始化 MySQL 会话级参数拦截器。</summary>
-        public MySqlSessionBootstrapConnectionInterceptor(ILogger<MySqlSessionBootstrapConnectionInterceptor> logger) {
-            _logger = logger;
-        }
+        private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
 
         /// <summary>连接打开后同步执行会话初始化 SQL。</summary>
         public override void ConnectionOpened(DbConnection connection, ConnectionEndEventData eventData) {
@@ -48,7 +46,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                     command.ExecuteNonQuery();
                 }
                 catch (Exception ex) {
-                    _logger.LogWarning(ex, "MySQL 会话初始化 SQL 执行失败，已降级忽略，Sql={Sql}", sql);
+                    Logger.Warn(ex, "MySQL 会话初始化 SQL 执行失败，已降级忽略，Sql={Sql}", sql);
                 }
             }
         }
@@ -62,7 +60,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                     await command.ExecuteNonQueryAsync(cancellationToken);
                 }
                 catch (Exception ex) {
-                    _logger.LogWarning(ex, "MySQL 会话初始化 SQL 执行失败，已降级忽略，Sql={Sql}", sql);
+                    Logger.Warn(ex, "MySQL 会话初始化 SQL 执行失败，已降级忽略，Sql={Sql}", sql);
                 }
             }
         }

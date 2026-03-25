@@ -60,6 +60,12 @@ public static class AutoTuningVerificationResultBuilder {
             ]);
     }
 
+    /// <summary>
+    /// 生成验证结论：严重回归优先，其次普通回归，其他场景为通过。
+    /// </summary>
+    /// <param name="regressed">是否回归。</param>
+    /// <param name="severeRegressed">是否严重回归。</param>
+    /// <returns>验证结论标识。</returns>
     private static string BuildVerdict(bool regressed, bool severeRegressed) {
         if (severeRegressed) {
             return "severe-regressed";
@@ -72,6 +78,13 @@ public static class AutoTuningVerificationResultBuilder {
         return "pass";
     }
 
+    /// <summary>
+    /// 计算锁等待增量值，不可用或样本缺失时返回 unavailable。
+    /// </summary>
+    /// <param name="lockWaitBaseline">基线锁等待值。</param>
+    /// <param name="lockWaitCurrent">当前锁等待值。</param>
+    /// <param name="lockWaitUnavailable">锁等待指标是否不可用。</param>
+    /// <returns>锁等待增量文本。</returns>
     private static string CalculateLockWaitDelta(int? lockWaitBaseline, int? lockWaitCurrent, bool lockWaitUnavailable) {
         if (lockWaitUnavailable || !lockWaitBaseline.HasValue || !lockWaitCurrent.HasValue) {
             return "unavailable";
@@ -80,6 +93,16 @@ public static class AutoTuningVerificationResultBuilder {
         return (lockWaitCurrent.Value - lockWaitBaseline.Value).ToString();
     }
 
+    /// <summary>
+    /// 构建百分比指标差异项。
+    /// 步骤说明：
+    /// 1. 根据增幅是否大于 0 判定状态为 regressed 或 pass；
+    /// 2. 统一按两位小数格式化 Current 与 Delta；
+    /// 3. 生成稳定或增长原因说明。
+    /// </summary>
+    /// <param name="name">指标名称。</param>
+    /// <param name="increasePercent">指标增幅百分比。</param>
+    /// <returns>结构化百分比指标差异项。</returns>
     private static AutoTuningVerificationMetricDiff BuildPercentMetric(string name, decimal increasePercent) {
         return new AutoTuningVerificationMetricDiff(
             Name: name,
