@@ -229,6 +229,7 @@
 │   ├── TestMySqlDialect.cs（MySQL ProviderName 方言测试桩）
 │   ├── TestObservability.cs（自动调优观测测试桩：收集指标与事件）
 │   ├── TestSqlServerDialect.cs（SQL Server ProviderName 方言测试桩）
+│   ├── ThrowOnReadStream.cs（读取即抛异常的请求体流测试桩）
 │   └── Zeye.Sorting.Hub.Host.Tests.csproj（xUnit 测试项目定义）
 ├── Zeye.Sorting.Hub.Infrastructure（基础设施层）
 │   ├── DependencyInjection（依赖注入扩展目录）
@@ -654,6 +655,7 @@
 - `TestMySqlDialect.cs`：MySQL ProviderName 方言测试桩。
 - `TestObservability.cs`：自动调优观测测试桩，收集指标与事件输出。
 - `TestSqlServerDialect.cs`：SQL Server ProviderName 方言测试桩。
+- `ThrowOnReadStream.cs`：读取即抛异常的请求体流测试桩，用于验证中间件请求体采集异常隔离不影响主链路。
 
 
 ## 本次更新内容
