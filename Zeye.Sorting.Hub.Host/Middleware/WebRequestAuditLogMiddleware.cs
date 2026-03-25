@@ -533,7 +533,7 @@ public sealed class WebRequestAuditLogMiddleware {
     /// <returns>Curl 命令。</returns>
     private static string BuildCurlCommand(HttpRequest request, CapturedBody requestBodyCapture) {
         var builder = new StringBuilder();
-        var method = string.IsNullOrWhiteSpace(request.Method) ? "GET" : request.Method;
+        var method = NormalizeHttpMethodForCurl(request.Method);
         builder.Append("curl -X ").Append(method).Append(' ');
         builder.Append(ShellEscapeSingleQuoted(BuildRequestUrl(request)));
 
@@ -643,6 +643,35 @@ public sealed class WebRequestAuditLogMiddleware {
         }
 
         return $"'{value.Replace("'", "'\"'\"'", StringComparison.Ordinal)}'";
+    }
+
+    /// <summary>
+    /// 归一化 HTTP 方法，避免非法字符进入 shell 命令参数。
+    /// </summary>
+    /// <param name="method">原始 HTTP 方法。</param>
+    /// <returns>安全 HTTP 方法。</returns>
+    private static string NormalizeHttpMethodForCurl(string? method) {
+        if (string.IsNullOrWhiteSpace(method)) {
+            return "GET";
+        }
+
+        var normalized = method.Trim();
+        if (normalized.Length == 0) {
+            return "GET";
+        }
+
+        foreach (var character in normalized) {
+            if (character is >= 'A' and <= 'Z'
+                || character is >= 'a' and <= 'z'
+                || character is >= '0' and <= '9'
+                || character is '-' or '_') {
+                continue;
+            }
+
+            return "GET";
+        }
+
+        return normalized.ToUpperInvariant();
     }
 
     /// <summary>

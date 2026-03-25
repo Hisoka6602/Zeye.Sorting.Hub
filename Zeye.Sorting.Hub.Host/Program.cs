@@ -43,7 +43,9 @@ try {
     // 低开销设计：异步队列（targets async="true"）+ keepFileOpen + optimizeBufferReuse
     // ──────────────────────────────────────────────────────
     builder.Logging.ClearProviders();
-    builder.Logging.AddNLog();
+    builder.Logging.AddNLog(new NLogProviderOptions {
+        RemoveLoggerFactoryFilter = false
+    });
     var enableQuerySqlLogging = builder.Configuration.GetValue<bool>("Persistence:SqlLogging:EnableQuerySqlLogging");
     if (!enableQuerySqlLogging) {
         builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", Microsoft.Extensions.Logging.LogLevel.Warning);

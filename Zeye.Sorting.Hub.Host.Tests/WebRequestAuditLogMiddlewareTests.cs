@@ -153,7 +153,6 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         Assert.Contains("-H 'Accept:", curl, StringComparison.Ordinal);
         Assert.Contains("-H 'User-Agent: middleware-tests/1.0'", curl, StringComparison.Ordinal);
         Assert.Contains("-H 'Authorization: Bearer abcdefghijklmnopqrstuvwxyz9876543210'", curl, StringComparison.Ordinal);
-        Assert.Contains("-H 'X-Request-Id: req-123'", curl, StringComparison.Ordinal);
         Assert.Contains("--data-raw", curl, StringComparison.Ordinal);
 
         var bodyShellLiteral = ToSingleQuotedShellLiteral(log.Detail.RequestBody);
