@@ -142,6 +142,7 @@ public sealed class AuditReadOnlyApiTests {
         using var payload = await response.Content.ReadFromJsonAsync<JsonDocument>();
         Assert.NotNull(payload);
         var root = payload.RootElement;
+        Assert.Equal(1001, root.GetProperty("webRequestAuditLogId").GetInt64());
         Assert.Equal(1001, root.GetProperty("id").GetInt64());
         Assert.Equal("trace-filter", root.GetProperty("traceId").GetString());
         Assert.Equal("corr-filter", root.GetProperty("correlationId").GetString());

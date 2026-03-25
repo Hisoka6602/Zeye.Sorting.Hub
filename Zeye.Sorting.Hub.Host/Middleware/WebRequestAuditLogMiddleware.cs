@@ -26,26 +26,6 @@ public sealed class WebRequestAuditLogMiddleware {
     private const string BinaryPayloadOmittedPlaceholder = "[binary payload omitted]";
 
     /// <summary>
-    /// Curl 脱敏后授权头占位。
-    /// </summary>
-    private const string AuthorizationMaskedPlaceholder = "***";
-
-    /// <summary>
-    /// Authorization 脱敏最小凭证长度。
-    /// </summary>
-    private const int MinCredentialLengthForPartialMask = 10;
-
-    /// <summary>
-    /// Authorization 脱敏保留前缀长度。
-    /// </summary>
-    private const int CredentialPrefixLength = 6;
-
-    /// <summary>
-    /// Authorization 脱敏保留后缀长度。
-    /// </summary>
-    private const int CredentialSuffixLength = 4;
-
-    /// <summary>
     /// NLog 日志器。
     /// </summary>
     private static readonly NLog.ILogger NLogLogger = LogManager.GetCurrentClassLogger();
@@ -111,9 +91,7 @@ public sealed class WebRequestAuditLogMiddleware {
         if (_options.IncludeRequestBody) {
             try {
                 requestBodyCapture = await CaptureRequestBodyAsync(context.Request, _options.MaxRequestBodyLength);
-                if (context.Request.ContentLength is null or <= 0L) {
-                    requestSizeBytes = requestBodyCapture.OriginalLengthBytes;
-                }
+                requestSizeBytes = requestBodyCapture.OriginalLengthBytes;
             }
             catch (Exception exception) {
                 NLogLogger.Error(exception, "请求体采集失败，降级为空正文采集，Path={Path}, TraceId={TraceId}", context.Request.Path, traceId);
@@ -575,7 +553,7 @@ public sealed class WebRequestAuditLogMiddleware {
 
         var authorization = request.Headers.Authorization.ToString();
         if (!string.IsNullOrWhiteSpace(authorization)) {
-            builder.Append(" -H ").Append(ShellEscapeSingleQuoted($"Authorization: {MaskAuthorizationHeader(authorization)}"));
+            builder.Append(" -H ").Append(ShellEscapeSingleQuoted($"Authorization: {authorization}"));
         }
 
         foreach (var header in request.Headers) {
@@ -665,36 +643,6 @@ public sealed class WebRequestAuditLogMiddleware {
         }
 
         return $"'{value.Replace("'", "'\"'\"'", StringComparison.Ordinal)}'";
-    }
-
-    /// <summary>
-    /// 脱敏授权头值。
-    /// </summary>
-    /// <param name="authorizationHeader">授权头值。</param>
-    /// <returns>脱敏后的授权头值。</returns>
-    private static string MaskAuthorizationHeader(string authorizationHeader) {
-        if (string.IsNullOrWhiteSpace(authorizationHeader)) {
-            return AuthorizationMaskedPlaceholder;
-        }
-
-        var parts = authorizationHeader.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length == 0) {
-            return AuthorizationMaskedPlaceholder;
-        }
-
-        var scheme = parts[0];
-        if (parts.Length == 1) {
-            return scheme;
-        }
-
-        var credential = string.Join(' ', parts.Skip(1));
-        if (credential.Length <= MinCredentialLengthForPartialMask) {
-            return $"{scheme} {AuthorizationMaskedPlaceholder}";
-        }
-
-        var prefix = credential[..CredentialPrefixLength];
-        var suffix = credential[^CredentialSuffixLength..];
-        return $"{scheme} {prefix}***{suffix}";
     }
 
     /// <summary>

@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Zeye.Sorting.Hub.Application.Services.AuditLogs;
 using Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests;
 using Zeye.Sorting.Hub.Domain.Repositories;
@@ -147,15 +148,13 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         Assert.Contains("\"X-Api-Key\":\"secret-api-key\"", log.Detail.RequestHeadersJson, StringComparison.Ordinal);
 
         var curl = log.Detail.CurlCommand;
-        Assert.Contains("curl -X", curl, StringComparison.Ordinal);
+        Assert.Contains("curl -X POST", curl, StringComparison.Ordinal);
         Assert.Contains("http://localhost/echo?source=test", curl, StringComparison.Ordinal);
         Assert.Contains("-H 'Content-Type: application/json", curl, StringComparison.Ordinal);
         Assert.Contains("-H 'Accept:", curl, StringComparison.Ordinal);
         Assert.Contains("-H 'User-Agent: middleware-tests/1.0'", curl, StringComparison.Ordinal);
-        Assert.Contains("-H 'Authorization: Bearer", curl, StringComparison.Ordinal);
-        Assert.DoesNotContain("abcdefghijklmnopqrstuvwxyz9876543210", curl, StringComparison.Ordinal);
-        Assert.DoesNotContain("sessionid=secret-cookie", curl, StringComparison.Ordinal);
-        Assert.DoesNotContain("secret-api-key", curl, StringComparison.Ordinal);
+        Assert.Contains("-H 'Authorization: Bearer abcdefghijklmnopqrstuvwxyz9876543210'", curl, StringComparison.Ordinal);
+        Assert.Contains("-H 'X-Request-Id: req-123'", curl, StringComparison.Ordinal);
         Assert.Contains("--data-raw", curl, StringComparison.Ordinal);
 
         var bodyShellLiteral = ToSingleQuotedShellLiteral(log.Detail.RequestBody);
@@ -292,6 +291,43 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         var log = Assert.Single(repository.Logs);
         Assert.True(log.Detail is not null);
         Assert.Equal("{\"noType\":true}", log.Detail!.RequestBody);
+    }
+
+    /// <summary>
+    /// 验证场景：请求体采集异常时主请求仍成功，且审计降级写入。
+    /// </summary>
+    [Fact]
+    public async Task Middleware_WhenRequestBodyCaptureThrows_ShouldKeepMainRequestSuccessful() {
+        var middleware = new WebRequestAuditLogMiddleware(
+            async context => {
+                context.Response.StatusCode = StatusCodes.Status200OK;
+                context.Response.ContentType = "text/plain";
+                await context.Response.WriteAsync("ok");
+            },
+            Options.Create(new WebRequestAuditLogOptions {
+                Enabled = true,
+                SampleRate = 1,
+                IncludeRequestBody = true,
+                IncludeResponseBody = true,
+                MaxRequestBodyLength = 1024,
+                MaxResponseBodyLength = 1024,
+                BackgroundQueueCapacity = 16
+            }),
+            new WebRequestAuditBackgroundQueue(16));
+
+        var context = new DefaultHttpContext();
+        context.Request.Method = HttpMethods.Post;
+        context.Request.Scheme = "http";
+        context.Request.Host = new HostString("localhost");
+        context.Request.Path = "/manual-capture-fault";
+        context.Request.ContentType = "application/json";
+        context.Request.ContentLength = 20;
+        context.Request.Body = new ThrowOnReadStream();
+        context.Response.Body = new MemoryStream();
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
     }
 
     /// <summary>
@@ -577,5 +613,50 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         }
 
         return $"'{value.Replace("'", "'\"'\"'", StringComparison.Ordinal)}'";
+    }
+
+    /// <summary>
+    /// 读取时抛出异常的请求体流测试桩。
+    /// </summary>
+    private sealed class ThrowOnReadStream : Stream {
+        /// <inheritdoc />
+        public override bool CanRead => true;
+
+        /// <inheritdoc />
+        public override bool CanSeek => true;
+
+        /// <inheritdoc />
+        public override bool CanWrite => false;
+
+        /// <inheritdoc />
+        public override long Length => 20;
+
+        /// <inheritdoc />
+        public override long Position { get; set; }
+
+        /// <inheritdoc />
+        public override void Flush() {
+        }
+
+        /// <inheritdoc />
+        public override int Read(byte[] buffer, int offset, int count) {
+            throw new IOException("test-read-fault");
+        }
+
+        /// <inheritdoc />
+        public override long Seek(long offset, SeekOrigin origin) {
+            Position = offset;
+            return Position;
+        }
+
+        /// <inheritdoc />
+        public override void SetLength(long value) {
+            throw new NotSupportedException();
+        }
+
+        /// <inheritdoc />
+        public override void Write(byte[] buffer, int offset, int count) {
+            throw new NotSupportedException();
+        }
     }
 }

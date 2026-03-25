@@ -33,6 +33,7 @@ internal static class WebRequestAuditLogContractMapper {
     /// <returns>详情合同。</returns>
     internal static WebRequestAuditLogDetailResponse ToDetail(WebRequestAuditLogDetailReadModel readModel) {
         return new WebRequestAuditLogDetailResponse {
+            WebRequestAuditLogId = readModel.WebRequestAuditLogId,
             Id = readModel.Id,
             TraceId = readModel.TraceId,
             CorrelationId = readModel.CorrelationId,

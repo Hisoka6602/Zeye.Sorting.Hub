@@ -7,6 +7,11 @@ namespace Zeye.Sorting.Hub.Domain.Repositories.Models.ReadModels;
 /// </summary>
 public sealed record WebRequestAuditLogDetailReadModel {
     /// <summary>
+    /// 审计日志详情主键兼外键。
+    /// </summary>
+    public required long WebRequestAuditLogId { get; init; }
+
+    /// <summary>
     /// 审计日志主键。
     /// </summary>
     public required long Id { get; init; }
