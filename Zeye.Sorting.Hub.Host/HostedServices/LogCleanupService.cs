@@ -8,11 +8,17 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
     /// 日志清理服务 - 自动清理超过指定天数的日志文件
     /// </summary>
     public class LogCleanupService : BackgroundService {
+        /// <summary>
+        /// 字段：_logger。
+        /// </summary>
         private readonly ILogger<LogCleanupService> _logger;
         /// <summary>
         /// 字段：_safeExecutor。
         /// </summary>
         private readonly SafeExecutor _safeExecutor;
+        /// <summary>
+        /// 字段：_settings。
+        /// </summary>
         private readonly LogCleanupSettings _settings;
 
         public LogCleanupService(

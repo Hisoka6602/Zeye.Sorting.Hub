@@ -5,6 +5,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
 
     /// <summary>EF Core 命令拦截器：采集慢查询样本</summary>
     public sealed class SlowQueryCommandInterceptor : DbCommandInterceptor {
+        /// <summary>
+        /// 字段：_pipeline。
+        /// </summary>
         private readonly SlowQueryAutoTuningPipeline _pipeline;
 
         /// <summary>初始化慢查询采集拦截器。</summary>

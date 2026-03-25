@@ -7,6 +7,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
 
     /// <summary>MySQL 连接打开时会话级参数初始化拦截器</summary>
     public sealed class MySqlSessionBootstrapConnectionInterceptor : DbConnectionInterceptor {
+        /// <summary>
+        /// 字段：SessionSql。
+        /// </summary>
         private static readonly string[] SessionSql = {
             "SET SESSION optimizer_switch='index_merge=on,index_condition_pushdown=on,derived_merge=on'"
         };

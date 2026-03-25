@@ -5,6 +5,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
     /// <summary>自动调优观测默认日志实现（可被 Prometheus/Otel 实现替换）。</summary>
     public sealed class AutoTuningLoggerObservability : IAutoTuningObservability {
+        /// <summary>
+        /// 字段：_logger。
+        /// </summary>
         private readonly ILogger<AutoTuningLoggerObservability> _logger;
 
         public AutoTuningLoggerObservability(ILogger<AutoTuningLoggerObservability> logger) {

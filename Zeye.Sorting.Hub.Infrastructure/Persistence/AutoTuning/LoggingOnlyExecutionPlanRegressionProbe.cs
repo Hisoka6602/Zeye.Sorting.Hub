@@ -7,6 +7,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 /// 默认执行计划探针：结构化输出 unavailable/available 状态，并发出观测指标。
 /// </summary>
 public sealed class LoggingOnlyExecutionPlanRegressionProbe : IProviderAwareExecutionPlanRegressionProbe {
+    /// <summary>
+    /// 字段：_logger。
+    /// </summary>
     private readonly ILogger<LoggingOnlyExecutionPlanRegressionProbe> _logger;
 
     /// <summary>
@@ -69,10 +72,25 @@ public sealed class LoggingOnlyExecutionPlanRegressionProbe : IProviderAwareExec
         return snapshot;
     }
 
+    /// <summary>
+    /// 规范化探针输入参数：空值回退为 unknown，非空值执行首尾空白裁剪。
+    /// </summary>
+    /// <param name="value">原始参数值。</param>
+    /// <returns>可用于日志与标签输出的规范化参数。</returns>
     private static string NormalizeParameter(string? value) {
         return string.IsNullOrWhiteSpace(value) ? "unknown" : value.Trim();
     }
 
+    /// <summary>
+    /// 构建执行计划回退快照。
+    /// 步骤说明：
+    /// 1. 优先匹配“查询失败/权限不足”等不可用场景并返回 unavailable；
+    /// 2. 再匹配“可用且回归/可用且通过”场景并返回 available；
+    /// 3. 最后统一回退为“方言不支持”不可用场景。
+    /// </summary>
+    /// <param name="providerName">数据库提供程序名称。</param>
+    /// <param name="sqlFingerprint">SQL 指纹。</param>
+    /// <returns>执行计划回退快照。</returns>
     private static PlanRegressionSnapshot BuildSnapshot(string providerName, string sqlFingerprint) {
         if (string.Equals(sqlFingerprint, "plan-probe-query-failed", StringComparison.OrdinalIgnoreCase)) {
             return new PlanRegressionSnapshot(

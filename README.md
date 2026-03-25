@@ -660,31 +660,15 @@
 
 ## 本次更新内容
 
-- 启动期数据库初始化新增“自动建库”能力：在 `DatabaseInitializerHostedService` 中于 `MigrateAsync` 前执行 Ensure Database Exists（MySQL/SQL Server 双分支），库存在则跳过，库不存在按方言自动创建后继续迁移。
-- 自动建库纳入危险动作隔离器：新增 `Persistence:DatabaseBootstrap:EnsureDatabaseExists` 配置（Enabled + Isolator: EnableGuard/AllowDangerousActionExecution/DryRun），并输出治理审计字段 `Decision/PlannedCount/ExecutedCount/Provider/DatabaseName/CompensationBoundary`。
-- 数据库方言扩展：`IDatabaseDialect` 新增数据库名提取、管理连接创建、存在性探测与建库执行契约；`MySqlDialect`/`SqlServerDialect` 实现对应逻辑。
-- 新增 `DatabaseIdentifierPolicy`，集中处理数据库名安全校验与标识符转义，避免 SQL 标识符拼接风险与重复实现。
-- 新增 `DatabaseConnectionOpenCoordinator`，收敛 MySQL/SQL Server 方言重复的连接打开逻辑，统一连接状态处理。
-- 补充测试覆盖：新增自动建库决策三态、Provider 连接键解析、方言数据库名提取/管理连接语义测试；补充中间件异步写审计时序断言。
-- 新要求落地：`WebRequestAuditLogMiddleware` 改为主请求零阻塞写审计（有界队列 + 后台消费者写入，不等待写库完成），并补充队列丢弃保护。
-- 审计详情接口修复：`GET /api/audit/web-requests/{id}` 对齐实体字段全集，补齐 `WebRequestAuditLogId` 并完成 ReadModel/Repository/Contracts/Application 全链路 1:1 映射与默认值回退。
-- 中间件采集修复：补齐 `RequestBody` / `ResponseBody` 采集链路，保持 `EnableBuffering`+回卷与响应 tee 流 finally 恢复；采集或序列化失败统一隔离降级，不影响主请求链路。
-- `CurlCommand` 可回放修复：统一使用详情同源 `requestBodyCapture` 生成命令，补齐 `-X {METHOD}`、完整 URL、关键头、`--data-raw` 与 shell 单引号转义，保持可直接回放。
-- 新增 SQL 日志开关：`Persistence:SqlLogging:EnableQuerySqlLogging`（默认 `false`），默认关闭 EF 查询 SQL 日志输出，避免查询 SQL 被记录到日志。
-- 同步 README：更新文件树、逐文件职责、“本次更新内容”与“可继续完善内容”。
+- 补齐 `LoggingOnlyExecutionPlanRegressionProbe` 中 `NormalizeParameter`、`BuildSnapshot` 方法的 XML 注释，并为复杂分支补充步骤说明。
+- 补齐 `AutoTuningVerificationResultBuilder` 中 `BuildVerdict`、`CalculateLockWaitDelta`、`BuildPercentMetric` 方法的 XML 注释，并为复杂逻辑补充步骤说明。
+- 补齐以下字段 XML 注释：`AutoTuningLoggerObservability._logger`、`LogCleanupService._logger`、`LogCleanupService._settings`、`MySqlSessionBootstrapConnectionInterceptor.SessionSql`、`LoggingOnlyExecutionPlanRegressionProbe._logger`、`SlowQueryCommandInterceptor._pipeline`。
+- 本次改动仅涉及注释与 README 文本说明，未引入 UTC 相关 API，未新增文件或删除文件。
 
-## 更新记录与待完善事项
+## 后续可完善点
 
-- 更新记录（CHANGELOG）详见：[更新记录.md](更新记录.md)
-- 待完善事项（BACKLOG）详见：[待完善事项.md](待完善事项.md)
-
-### 可继续完善内容
-
-- 当前测试环境未直连真实 MySQL/SQL Server 实例，自动建库流程主要通过决策与方言连接语义单测覆盖；后续可在 CI 引入双数据库容器做端到端“空库自动创建 + 迁移接续”集成回归。
-- `WebRequestAuditLogMiddleware` 当前为“后台任务异步脱钩”模式，后续可升级为有界通道 + 后台批量写入服务，增加背压策略与丢弃审计指标。
-- 审计大包体治理可继续细化：在保留当前截断标记基础上增加内容摘要/采样观测指标，降低存储压力并保持问题定位能力。
-- `CurlCommand` 可继续工具化：增加一键回放脚本生成与失败重试诊断输出，提升线上问题复现效率。
-- 超大包体采样策略可继续优化：在保留当前截断标记基础上增加按比例采样与摘要哈希，兼顾可观测性与存储成本。
+- 可持续按同一规范巡检其他目录的私有字段与私有方法注释完整性，降低规则 5/14 的重复告警概率。
+- 可在 CI 增补更细粒度的注释规则检测，提前阻断新增代码遗漏 XML 注释的情况。
 
 ## Parcel API 发布门禁 / 使用边界说明
 
