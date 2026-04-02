@@ -218,7 +218,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// </summary>
         /// <param name="configuration">应用配置。</param>
         /// <param name="connectionString">MySQL 连接字符串。</param>
-        /// <param name="logger">可选日志记录器（仅用于测试中捕获告警）。</param>
+        /// <param name="warnCallback">可选告警回调（仅用于测试中捕获告警消息）。</param>
         /// <returns>可用于 EF Core UseMySql 的服务端版本对象。</returns>
         /// <remarks>
         /// 处理策略：
@@ -226,7 +226,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// 2) 若配置缺失或非法，尝试 <c>ServerVersion.AutoDetect</c>；
         /// 3) 若探测失败，回退到 MySQL 8.0.0。
         /// </remarks>
-        internal static ServerVersion ResolveMySqlServerVersion(IConfiguration configuration, string connectionString, Microsoft.Extensions.Logging.ILogger? logger = null) {
+        internal static ServerVersion ResolveMySqlServerVersion(IConfiguration configuration, string connectionString, Action<string>? warnCallback = null) {
             var configuredVersion = configuration["Persistence:MySql:ServerVersion"];
             if (!string.IsNullOrWhiteSpace(configuredVersion)) {
                 if (Version.TryParse(configuredVersion, out var parsedVersion) && parsedVersion.Major >= 5) {
@@ -234,10 +234,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 }
 
                 LogResolveWarning(
-                    logger,
-                    exception: null,
+                    warnCallback,
                     "配置项 Persistence:MySql:ServerVersion 非法或不受支持（要求 Major>=5），将回退到自动探测，Value={ConfiguredServerVersion}",
-                    configuredVersion);
+                    $"配置项 Persistence:MySql:ServerVersion 非法或不受支持（要求 Major>=5），将回退到自动探测，Value={configuredVersion}");
             }
 
             try {
@@ -245,37 +244,21 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             }
             catch (Exception ex) {
                 NLogLogger.Warn(ex, "MySQL ServerVersion 自动探测失败，将回退到默认版本 8.0.0");
-                if (logger is not null) {
-                    Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger, "MySQL ServerVersion 自动探测失败，将回退到默认版本 8.0.0");
-                }
+                warnCallback?.Invoke("MySQL ServerVersion 自动探测失败，将回退到默认版本 8.0.0");
                 return new MySqlServerVersion(new Version(8, 0, 0));
             }
         }
 
         /// <summary>
-        /// 统一记录 MySQL ServerVersion 解析告警。
+        /// 统一记录 MySQL ServerVersion 解析告警（NLog 输出并触发可选回调）。
+        /// 回调接收可读消息文本（非 NLog 命名参数模板），确保调用方可直接用于断言。
         /// </summary>
-        /// <param name="logger">日志器。</param>
-        /// <param name="exception">异常对象。</param>
-        /// <param name="messageTemplate">消息模板。</param>
-        /// <param name="args">模板参数。</param>
-        private static void LogResolveWarning(Microsoft.Extensions.Logging.ILogger? logger, Exception? exception, string messageTemplate, params object[] args) {
-            if (logger is not null) {
-                if (exception is null) {
-                    Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger, messageTemplate, args);
-                }
-                else {
-                    Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger, exception, messageTemplate, args);
-                }
-                return;
-            }
-
-            if (exception is null) {
-                NLogLogger.Warn(messageTemplate, args);
-            }
-            else {
-                NLogLogger.Warn(exception, messageTemplate, args);
-            }
+        /// <param name="warnCallback">可选告警回调。</param>
+        /// <param name="nlogTemplate">NLog 消息模板（含命名参数占位符）。</param>
+        /// <param name="callbackMessage">传递给回调的可读消息文本。</param>
+        private static void LogResolveWarning(Action<string>? warnCallback, string nlogTemplate, string callbackMessage) {
+            NLogLogger.Warn(nlogTemplate, callbackMessage);
+            warnCallback?.Invoke(callbackMessage);
         }
 
         /// <summary>

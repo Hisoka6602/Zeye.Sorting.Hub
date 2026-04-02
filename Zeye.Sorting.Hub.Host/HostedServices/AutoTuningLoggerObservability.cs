@@ -18,15 +18,14 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         /// <summary>
-        /// 执行逻辑：EmitEvent。
+        /// 将 NLog 日志级别事件写入 NLog 日志器。
         /// </summary>
-        public void EmitEvent(string name, Microsoft.Extensions.Logging.LogLevel level, string message, IReadOnlyDictionary<string, string>? tags = null) {
-            var eventLevel = ConvertLogLevel(level);
-            Logger.Log(eventLevel, "AutoTuningEvent: Name={Name}, Message={Message}, Tags={Tags}", name, message, FormatTags(tags));
+        public void EmitEvent(string name, NLog.LogLevel level, string message, IReadOnlyDictionary<string, string>? tags = null) {
+            Logger.Log(level, "AutoTuningEvent: Name={Name}, Message={Message}, Tags={Tags}", name, message, FormatTags(tags));
         }
 
         /// <summary>
-        /// 执行逻辑：FormatTags。
+        /// 将标签字典格式化为可读字符串。
         /// </summary>
         private static string FormatTags(IReadOnlyDictionary<string, string>? tags) {
             if (tags is null || tags.Count == 0) {
@@ -34,22 +33,6 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
 
             return string.Join(", ", tags.Select(static pair => $"{pair.Key}={pair.Value}"));
-        }
-
-        /// <summary>
-        /// 将 Microsoft.Extensions.Logging.LogLevel 枚举转换为 NLog.LogLevel 枚举。
-        /// </summary>
-        private static NLog.LogLevel ConvertLogLevel(Microsoft.Extensions.Logging.LogLevel level) {
-            return level switch {
-                Microsoft.Extensions.Logging.LogLevel.Trace => NLog.LogLevel.Trace,
-                Microsoft.Extensions.Logging.LogLevel.Debug => NLog.LogLevel.Debug,
-                Microsoft.Extensions.Logging.LogLevel.Information => NLog.LogLevel.Info,
-                Microsoft.Extensions.Logging.LogLevel.Warning => NLog.LogLevel.Warn,
-                Microsoft.Extensions.Logging.LogLevel.Error => NLog.LogLevel.Error,
-                Microsoft.Extensions.Logging.LogLevel.Critical => NLog.LogLevel.Fatal,
-                Microsoft.Extensions.Logging.LogLevel.None => NLog.LogLevel.Off,
-                _ => NLog.LogLevel.Off
-            };
         }
     }
 }

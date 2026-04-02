@@ -203,7 +203,6 @@
 │   ├── AutoTuningProductionControlTests.cs（自动调优生产可控能力测试：dry-run/隔离器/告警恢复/普通与严重回归/探针双路径/闭环链路；含分表策略评估与 PerDay 预建守卫联动测试；新增 WebRequestAuditLog 治理解耦/保留治理三态/逻辑表索引分发/配置错误键指向回归；配置键拼装参数化覆盖（Theory））
 │   ├── AlwaysExistsShardingPhysicalTableProbe.cs（物理表探测测试桩：始终存在场景，支撑分表守卫探测调用断言）
 │   ├── BatchSelectiveMissingShardingPhysicalTableProbe.cs（批量物理表探测测试桩：选择性缺失与 schema 透传断言）
-│   ├── CaptureWarningLogger.cs（Warning 日志捕获测试桩：收集告警消息供断言）
 │   ├── CountingPlanProbe.cs（执行计划探针测试桩：记录调用次数）
 │   ├── DomainEventArgsTests.cs（领域事件载荷单元测试：验证 ParcelScannedEventArgs/ParcelChuteAssignedEventArgs 业务字段赋值与值语义）
 │   ├── EmptyServiceScope.cs（最小服务作用域测试桩）
@@ -533,8 +532,8 @@
 - `EnumDescriptionSchemaFilter.cs`：枚举 Schema 中文增强过滤器。
 
 #### `Zeye.Sorting.Hub.Host/HostedServices/`：启动/常驻托管服务目录
-- `AutoTuningLoggerObservability.cs`：自动调优观测默认日志实现。
-- `DatabaseAutoTuningHostedService.cs`：数据库自动调谐托管服务主流程。
+- `AutoTuningLoggerObservability.cs`：自动调优观测默认日志实现（已移除 `ConvertLogLevel` 转换方法，直接接收 `NLog.LogLevel`）。
+- `DatabaseAutoTuningHostedService.cs`：数据库自动调谐托管服务主流程（已移除 `ILogger<>` 注入，改为静态 `NLog.Logger`）。
 - `PendingRollbackAction.cs` / `TableCapacitySnapshot.cs` / `EvidenceContext.cs` / `PolicyDecision.cs`：自动调谐内部模型与决策类型。
 - `DatabaseInitializerHostedService.cs`：数据库初始化与迁移托管服务主流程（迁移前执行自动建库检查，复用隔离器输出治理审计并衔接 FailFast/Degraded 失败策略）。
 - `ShardingGovernanceGuardException.cs`：分表治理守卫异常类型。
@@ -573,8 +572,8 @@
 - `SqlServerDialect.cs`：SQL Server 方言实现（自动调优 SQL + 分表探测 + 启动期数据库存在性探测与建库执行）。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/`：自动调谐核心目录
-- `IAutoTuningObservability.cs`：自动调优观测输出抽象接口。
-- `NullAutoTuningObservability.cs`：观测空实现，未注入观测器时保持兼容。
+- `IAutoTuningObservability.cs`：自动调优观测输出抽象接口（`EmitEvent` 参数已改为 `NLog.LogLevel`，移除 MEL 依赖）。
+- `NullAutoTuningObservability.cs`：观测空实现，未注入观测器时保持兼容（已同步更新为 `NLog.LogLevel`）。
 - `ActionIsolationPolicy.cs`：危险动作隔离策略引擎。
 - `AutoRollbackDecisionEngine.cs`：自动回滚判定引擎。
 - `AutoTuningClosedLoopTracker.cs`：闭环阶段跟踪器。
@@ -592,9 +591,7 @@
 - `ParcelShardingStrategyEvaluator.cs`：Parcel 分表策略评估器（分表模式/时间粒度/容量阈值/阈值动作配置解析，结构化校验，容量观测输入统一收敛为 Observation 对象，输出含 finer-granularity 扩展规划的统一决策结果，复用于注册入口与启动审计守卫）。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/DesignTime/`：EF 设计时支持目录
-- `MySqlContextFactory.cs`：MySQL 设计时 DbContext 工厂。
-- `DesignTimeConsoleLogger.cs`：设计时日志输出器。
-- `NoopScope.cs`：设计时日志空作用域。
+- `MySqlContextFactory.cs`：MySQL 设计时 DbContext 工厂（告警输出改为 `Action<string>` 回调写入 `Console.Error`，已移除 MEL `ILogger` 依赖）。
 - `SqlServerContextFactory.cs`：SQL Server 设计时 DbContext 构建器（由统一设计时工厂按 provider 分发调用），连接字符串 key 使用 `ConfiguredProviderNames.SqlServer`，提供 SQL Server 连接字符串搜索与 `DbContextOptions` 组装能力。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/`：EF Core 迁移文件目录
@@ -626,7 +623,6 @@
 - `AutoTuningProductionControlTests.cs`：覆盖 dry-run、危险动作隔离、告警防抖与恢复、普通/严重回归、unavailable 指标处理、执行计划探针 available/unavailable 双路径、闭环链路与分表覆盖守卫校验、迁移失败策略分环境解析、结构化扩容计划解析、Time/Volume/Hybrid 分表策略评估、PerDay 预建守卫（配置+物理探测）与分表观测口径/自动索引过滤规则回归；新增 WebRequestAuditLog 治理解耦与历史保留治理语义回归；含配置键拼装参数化（Theory）覆盖。
 - `AlwaysExistsShardingPhysicalTableProbe.cs`：物理表探测测试桩，始终返回存在并记录调用次数。
 - `BatchSelectiveMissingShardingPhysicalTableProbe.cs`：批量物理表探测测试桩，支持选择性缺失结果与 schema 透传断言。
-- `CaptureWarningLogger.cs`：Warning 日志捕获测试桩，收集告警消息用于断言版本解析与回退路径。
 - `CountingPlanProbe.cs`：执行计划探针测试桩，记录探针调用次数并返回固定快照。
 - `DomainEventArgsTests.cs`：领域事件载荷单元测试，验证 `ParcelScannedEventArgs`/`ParcelChuteAssignedEventArgs` 业务字段赋值、值语义相等与不等、本地时间约束。
 - `EmptyServiceScope.cs`：最小服务作用域测试桩，提供基础 `ServiceProvider`。

@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+using NLog;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 
 namespace Zeye.Sorting.Hub.Host.Tests;

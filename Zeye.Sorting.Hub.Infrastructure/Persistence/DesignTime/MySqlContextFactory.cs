@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
 using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
@@ -65,7 +64,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
             var serverVersion = DependencyInjection.PersistenceServiceCollectionExtensions.ResolveMySqlServerVersion(
                 config,
                 normalizedConnectionString,
-                DesignTimeConsoleLogger.Instance);
+                msg => Console.Error.WriteLine($"[Warning] {msg}"));
             var options = new DbContextOptionsBuilder<SortingHubDbContext>()
                 .UseMySql(normalizedConnectionString, serverVersion)
                 .Options;
