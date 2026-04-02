@@ -29,6 +29,11 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 
 public sealed class AutoTuningProductionControlTests {
     private const double DoublePrecisionTolerance = 0.0001d;
+
+    /// <summary>
+    /// NLog 全局配置切换互斥锁：防止并行测试对全局 <see cref="NLog.LogManager.Configuration"/> 的竞争写入。
+    /// </summary>
+    private static readonly object NLogConfigLock = new();
     /// <summary>
     /// 验证场景：ParcelStatus_ShouldOnlyContainThreeValues。
     /// </summary>
@@ -2222,7 +2227,11 @@ public sealed class AutoTuningProductionControlTests {
         var memoryTarget = new NLog.Targets.MemoryTarget { Name = "test-memory", Layout = "${message}" };
         var loggingConfig = new NLog.Config.LoggingConfiguration();
         loggingConfig.AddRuleForAllLevels(memoryTarget);
-        NLog.LogManager.Configuration = loggingConfig;
+        NLog.Config.LoggingConfiguration? previousConfig;
+        lock (NLogConfigLock) {
+            previousConfig = NLog.LogManager.Configuration;
+            NLog.LogManager.Configuration = loggingConfig;
+        }
         try {
         var observability = new TestObservability();
         var configuration = new ConfigurationBuilder()
@@ -2311,10 +2320,11 @@ public sealed class AutoTuningProductionControlTests {
             && entry.Tags.ContainsKey("evidence_id")
             && entry.Tags.ContainsKey("correlation_id"));
         } finally {
-            NLog.LogManager.Configuration = null;
+            lock (NLogConfigLock) {
+                NLog.LogManager.Configuration = previousConfig;
+            }
         }
     }
-
     /// <summary>
     /// 验证场景：Validation_WhenPlanProbeDisabledOrSampleRateZero_MarksUnavailableWithoutInvokingProbe。
     /// </summary>
@@ -2323,7 +2333,11 @@ public sealed class AutoTuningProductionControlTests {
         var memoryTarget = new NLog.Targets.MemoryTarget { Name = "test-memory", Layout = "${message}" };
         var loggingConfig = new NLog.Config.LoggingConfiguration();
         loggingConfig.AddRuleForAllLevels(memoryTarget);
-        NLog.LogManager.Configuration = loggingConfig;
+        NLog.Config.LoggingConfiguration? previousConfig;
+        lock (NLogConfigLock) {
+            previousConfig = NLog.LogManager.Configuration;
+            NLog.LogManager.Configuration = loggingConfig;
+        }
         try {
         var observability = new TestObservability();
         var probe = new CountingPlanProbe();
@@ -2380,12 +2394,11 @@ public sealed class AutoTuningProductionControlTests {
         Assert.Equal(0, probe.CallCount);
         Assert.Contains(memoryTarget.Logs, message => message.Contains("plan-probe-sampling-skipped"));
         } finally {
-            NLog.LogManager.Configuration = null;
+            lock (NLogConfigLock) {
+                NLog.LogManager.Configuration = previousConfig;
+            }
         }
     }
-
-    /// <summary>
-    /// 验证场景：WhenPlanProbeSampleRateInvalid_FallsBackToDefaultAndInvokesProbe。
     /// </summary>
     [Fact]
     public async Task WhenPlanProbeSampleRateInvalid_FallsBackToDefaultAndInvokesProbe() {

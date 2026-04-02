@@ -236,7 +236,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 LogResolveWarning(
                     warnCallback,
                     "配置项 Persistence:MySql:ServerVersion 非法或不受支持（要求 Major>=5），将回退到自动探测，Value={ConfiguredServerVersion}",
-                    $"配置项 Persistence:MySql:ServerVersion 非法或不受支持（要求 Major>=5），将回退到自动探测，Value={configuredVersion}");
+                    configuredVersion);
             }
 
             try {
@@ -250,15 +250,14 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         }
 
         /// <summary>
-        /// 统一记录 MySQL ServerVersion 解析告警（NLog 输出并触发可选回调）。
-        /// 回调接收可读消息文本（非 NLog 命名参数模板），确保调用方可直接用于断言。
+        /// 统一记录 MySQL ServerVersion 解析告警（NLog 结构化输出，可选回调接收格式化后的消息文本）。
         /// </summary>
-        /// <param name="warnCallback">可选告警回调。</param>
+        /// <param name="warnCallback">可选告警回调，接收格式化后的可读消息（用于测试断言）。</param>
         /// <param name="nlogTemplate">NLog 消息模板（含命名参数占位符）。</param>
-        /// <param name="callbackMessage">传递给回调的可读消息文本。</param>
-        private static void LogResolveWarning(Action<string>? warnCallback, string nlogTemplate, string callbackMessage) {
-            NLogLogger.Warn(nlogTemplate, callbackMessage);
-            warnCallback?.Invoke(callbackMessage);
+        /// <param name="nlogArg">填入 NLog 模板占位符的参数值，同时用于格式化回调消息。</param>
+        private static void LogResolveWarning(Action<string>? warnCallback, string nlogTemplate, string nlogArg) {
+            NLogLogger.Warn(nlogTemplate, nlogArg);
+            warnCallback?.Invoke($"{nlogTemplate[..nlogTemplate.IndexOf('{', StringComparison.Ordinal)]}{nlogArg}");
         }
 
         /// <summary>
