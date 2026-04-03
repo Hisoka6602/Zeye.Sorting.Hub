@@ -1,5 +1,4 @@
 using System.Reflection;
-using Microsoft.Extensions.Options;
 using Zeye.Sorting.Hub.Domain.Options.LogCleanup;
 using Zeye.Sorting.Hub.Host.HostedServices;
 using Zeye.Sorting.Hub.SharedKernel.Utilities;
@@ -30,7 +29,7 @@ public sealed class LogCleanupServiceTests {
             File.SetLastWriteTime(nestedExpiredLog, DateTime.Now.AddDays(-5));
             File.SetLastWriteTime(nestedRecentLog, DateTime.Now);
 
-            var settings = Options.Create(new LogCleanupSettings {
+            var settings = Microsoft.Extensions.Options.Options.Create(new LogCleanupSettings {
                 Enabled = true,
                 RetentionDays = 2,
                 CheckIntervalHours = 1,
