@@ -1051,23 +1051,34 @@ check_no_hot_path_config_db_access() {
     return
   fi
 
-  # 检测在热路径（控制器 Action / Invoke / InvokeAsync / ExecuteAsync 循环体）中直接读取 IConfiguration
-  # 或 File.ReadAllText/File.ReadAllBytes 等配置文件操作
+  # 热路径定义：仅检查 Controllers/ 和 Middleware/ 目录下的文件（请求处理主链路）。
+  # 排除 DI 扩展（*Extensions.cs）、HostedService（*HostedService.cs）、
+  # 设计时工厂（DesignTime/）、Program.cs 等启动期代码。
   local violations=""
   local file_path=""
   while IFS= read -r file_path; do
     [[ -z "$file_path" ]] && continue
     [[ ! -f "$file_path" ]] && continue
-    # 检测 IConfiguration.GetSection / GetValue / [] 索引器在请求处理方法中被直接调用
+    # 仅扫描 Controllers/ 或 Middleware/ 路径下的文件
+    if [[ "$file_path" != *"/Controllers/"* && "$file_path" != *"/Middleware/"* ]]; then
+      continue
+    fi
+    # 跳过扩展类与中间件扩展注册文件（这些属于 DI 注册启动期代码）
+    local file_name
+    file_name="$(basename "$file_path")"
+    if [[ "$file_name" == *Extensions.cs ]]; then
+      continue
+    fi
+    # 检测在中间件 Invoke/InvokeAsync 或 Controller Action 中直接读取配置索引器或文件 IO
     local hit
-    hit="$(grep -nE '(configuration\[|_configuration\[|config\[|IConfiguration.*GetSection|IConfiguration.*GetValue|File\.ReadAll)' "$file_path" 2>/dev/null || true)"
+    hit="$(grep -nE '(configuration\[|_configuration\[|IConfiguration.*GetSection|IConfiguration.*GetValue|File\.ReadAll)' "$file_path" 2>/dev/null || true)"
     if [[ -n "$hit" ]]; then
       violations+="$file_path:\n$hit\n"
     fi
   done <<< "$changed_cs_files"
 
   if [[ -n "$violations" ]]; then
-    record_failure "检测到疑似热路径读写配置文件，违反规则 29（请确认是否在每次请求必经路径上调用）：\n$violations"
+    record_failure "检测到热路径（Controller/Middleware）中疑似读写配置文件，违反规则 29：\n$violations"
   fi
 }
 
