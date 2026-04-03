@@ -210,6 +210,7 @@
 │   ├── FakeParcelRepository.cs（Parcel 只读/管理端 API 复用仓储测试替身）
 │   ├── FixedPlanProbe.cs（执行计划探针测试桩：固定返回可用快照）
 │   ├── LocalTimeTestConstraintHelper.cs（测试层本地时间语义约束工具类：提供 CreateLocalTime/AssertIsLocalTime/AssertNotUtc，防止测试引入 UTC 语义）
+│   ├── LogCleanupServiceTests.cs（日志清理服务测试：验证目录栈递归扫描所有子目录 *.log 并仅删除过期文件）
 │   ├── MissingIndexShardingPhysicalTableProbe.cs（索引缺失探测测试桩：按表返回缺失索引）
 │   ├── NullScope.cs（通用测试日志空作用域单例）
 │   ├── ObservabilityEntry.cs（自动调优观测记录模型）
@@ -630,6 +631,7 @@
 - `FakeParcelRepository.cs`：Parcel 仓储测试替身，提供只读/写入/过期清理三态结果用于 API 回归测试。
 - `FixedPlanProbe.cs`：执行计划探针测试桩，固定返回“探针可用且无回归”。
 - `LocalTimeTestConstraintHelper.cs`：测试层本地时间语义约束工具类，提供 `CreateLocalTime`/`AssertIsLocalTime`/`AssertNotUtc` 方法，防止测试代码引入 UTC 语义。
+- `LogCleanupServiceTests.cs`：日志清理服务回归测试，验证目录栈递归扫描子目录日志并仅清理超过保留天数的旧日志文件。
 - `MissingIndexShardingPhysicalTableProbe.cs`：关键索引缺失探测测试桩，按物理表返回缺失索引。
 - `NullScope.cs`：通用测试日志空作用域单例。
 - `ObservabilityEntry.cs`：自动调优观测记录模型，承载名称/值/标签快照。
@@ -656,16 +658,15 @@
 
 ## 本次更新内容
 
-- 补齐 `LoggingOnlyExecutionPlanRegressionProbe` 中 `NormalizeParameter`、`BuildSnapshot` 方法的 XML 注释，并为复杂分支补充步骤说明。
-- 补齐 `AutoTuningVerificationResultBuilder` 中 `BuildVerdict`、`CalculateLockWaitDelta`、`BuildPercentMetric` 方法的 XML 注释，并为复杂逻辑补充步骤说明。
-- 补齐以下字段 XML 注释：`AutoTuningLoggerObservability.Logger`、`LogCleanupService.Logger`、`LogCleanupService._settings`、`MySqlSessionBootstrapConnectionInterceptor.SessionSql`、`LoggingOnlyExecutionPlanRegressionProbe.Logger`、`SlowQueryCommandInterceptor._pipeline`，并补齐 `Parcel._barCodeInfos` 字段注释遗漏。
-- 修复命中文件日志实现：将 `AutoTuningLoggerObservability`、`LogCleanupService`、`MySqlSessionBootstrapConnectionInterceptor`、`LoggingOnlyExecutionPlanRegressionProbe` 中本次修改涉及的日志调用统一为 NLog 静态日志器写法，保持行为一致。
-- 本次改动涉及注释修复、日志实现对齐与 README 文本同步；未引入 UTC 相关 API，未新增文件或删除文件。
+- 日志清理服务由顶层扫描调整为目录栈递归扫描：覆盖日志根目录及全部子目录 `*.log` 清理，不再遗漏深层目录日志文件。
+- 日志清理取消与异常日志定位修正为“当前实际扫描目录”，删除失败日志补充“文件绝对路径 + 实际目录”定位信息，便于排障。
+- 新增 `LogCleanupServiceTests` 回归测试，验证递归扫描行为与过期删除边界（仅删除过期日志，保留最近日志）。
+- 同步更新 README 文件树与“各层级与各文件作用说明（逐项）”章节，确保新增测试文件职责与仓库结构一致。
 
 ## 后续可完善点
 
-- 可持续按同一规范巡检其他目录的私有字段与私有方法注释完整性，降低规则 5/14 的重复告警概率。
-- 可在 CI 增补更细粒度的注释规则检测，提前阻断新增代码遗漏 XML 注释的情况。
+- 可为日志清理服务补充“扫描目录无权限/文件被占用”场景测试，进一步验证失败计数与日志观测一致性。
+- 可扩展递归扫描的可观测指标（扫描目录数、扫描文件数、跳过数），便于大规模日志目录治理调优。
 
 ## Parcel API 发布门禁 / 使用边界说明
 

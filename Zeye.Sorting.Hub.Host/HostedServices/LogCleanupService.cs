@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Options;
 using NLog;
-using Zeye.Sorting.Hub.SharedKernel.Utilities;
 using Zeye.Sorting.Hub.Domain.Options.LogCleanup;
+using Zeye.Sorting.Hub.SharedKernel.Utilities;
 
 namespace Zeye.Sorting.Hub.Host.HostedServices {
 
@@ -43,7 +43,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
             // 首次启动时立即执行一次清理
             _safeExecutor.Execute(
-                CleanupOldLogs,
+                () => CleanupOldLogs(stoppingToken),
                 "首次日志清理");
 
             while (!stoppingToken.IsCancellationRequested) {
@@ -51,12 +51,12 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     await Task.Delay(TimeSpan.FromHours(_settings.CheckIntervalHours), stoppingToken);
 
                     _safeExecutor.Execute(
-                        CleanupOldLogs,
+                        () => CleanupOldLogs(stoppingToken),
                         "定期日志清理");
                 }
                 catch (OperationCanceledException) {
                     // 服务正在停止，正常退出
-                    Logger.Info("日志清理服务正在停止");
+                    Logger.Info("日志清理服务正在停止，日志目录: {LogDirectory}", ResolveLogDirectoryPath());
                     break;
                 }
             }
@@ -65,13 +65,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <summary>
         /// 执行逻辑：CleanupOldLogs。
         /// </summary>
-        private void CleanupOldLogs() {
-            var logDirectory = _settings.LogDirectory;
-
-            // 如果是相对路径，转换为绝对路径
-            if (!Path.IsPathRooted(logDirectory)) {
-                logDirectory = Path.Combine(AppContext.BaseDirectory, logDirectory);
-            }
+        internal void CleanupOldLogs(CancellationToken cancellationToken) {
+            var logDirectory = ResolveLogDirectoryPath();
 
             if (!Directory.Exists(logDirectory)) {
                 Logger.Warn("日志目录不存在: {LogDirectory}", logDirectory);
@@ -84,47 +79,73 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             var deletedCount = 0;
             var failedCount = 0;
 
-            // 清理日志目录中的旧文件
-            var (deleted1, failed1) = CleanupDirectory(logDirectory, cutoffDate);
-            deletedCount += deleted1;
-            failedCount += failed1;
-
-            // 清理归档目录中的旧文件
-            var archiveDirectory = Path.Combine(logDirectory, "archives");
-            if (Directory.Exists(archiveDirectory)) {
-                var (deleted2, failed2) = CleanupDirectory(archiveDirectory, cutoffDate);
-                deletedCount += deleted2;
-                failedCount += failed2;
-            }
+            // 使用目录栈递归扫描日志根目录及其所有子目录
+            var (deleted, failed) = CleanupDirectoryRecursively(logDirectory, cutoffDate, cancellationToken);
+            deletedCount += deleted;
+            failedCount += failed;
 
             Logger.Info("日志清理完成，删除文件数: {DeletedCount}，失败数: {FailedCount}",
                 deletedCount, failedCount);
         }
 
-        private (int DeletedCount, int FailedCount) CleanupDirectory(string directory, DateTime cutoffDate) {
+        /// <summary>
+        /// 将日志目录配置解析为绝对路径。
+        /// </summary>
+        /// <returns>日志目录绝对路径。</returns>
+        private string ResolveLogDirectoryPath() {
+            if (Path.IsPathRooted(_settings.LogDirectory)) {
+                return _settings.LogDirectory;
+            }
+
+            return Path.Combine(AppContext.BaseDirectory, _settings.LogDirectory);
+        }
+
+        /// <summary>
+        /// 使用目录栈递归扫描目录树并清理过期日志。
+        /// </summary>
+        /// <param name="rootDirectory">日志根目录。</param>
+        /// <param name="cutoffDate">清理截止时间。</param>
+        /// <param name="cancellationToken">取消令牌。</param>
+        /// <returns>删除/失败统计。</returns>
+        private (int DeletedCount, int FailedCount) CleanupDirectoryRecursively(string rootDirectory, DateTime cutoffDate, CancellationToken cancellationToken) {
             var deletedCount = 0;
             var failedCount = 0;
+            var directoryStack = new Stack<string>();
+            directoryStack.Push(rootDirectory);
 
-            try {
-                foreach (var file in Directory.EnumerateFiles(directory, "*.log")) {
-                    try {
-                        var fileInfo = new FileInfo(file);
-                        if (fileInfo.LastWriteTime < cutoffDate) {
-                            Logger.Info("删除旧日志文件: {FileName}, 最后修改时间: {LastWriteTime}",
-                                fileInfo.Name, fileInfo.LastWriteTime);
+            while (directoryStack.Count > 0) {
+                var currentDirectory = directoryStack.Pop();
+                if (cancellationToken.IsCancellationRequested) {
+                    Logger.Info("日志清理扫描已取消，当前位置: {CurrentDirectory}", currentDirectory);
+                    break;
+                }
 
-                            fileInfo.Delete();
-                            deletedCount++;
+                try {
+                    foreach (var file in Directory.EnumerateFiles(currentDirectory, "*.log", SearchOption.TopDirectoryOnly)) {
+                        try {
+                            var fileInfo = new FileInfo(file);
+                            if (fileInfo.LastWriteTime < cutoffDate) {
+                                Logger.Info("删除旧日志文件: {FileName}, 所在目录: {Directory}, 最后修改时间: {LastWriteTime}",
+                                    fileInfo.Name, currentDirectory, fileInfo.LastWriteTime);
+
+                                fileInfo.Delete();
+                                deletedCount++;
+                            }
+                        }
+                        catch (Exception ex) {
+                            Logger.Warn(ex, "删除日志文件失败: {FilePath}, 所在目录: {Directory}", file, currentDirectory);
+                            failedCount++;
                         }
                     }
-                    catch (Exception ex) {
-                        Logger.Warn(ex, "删除日志文件失败: {FileName}", file);
-                        failedCount++;
+
+                    foreach (var subDirectory in Directory.EnumerateDirectories(currentDirectory, "*", SearchOption.TopDirectoryOnly)) {
+                        directoryStack.Push(subDirectory);
                     }
                 }
-            }
-            catch (Exception ex) {
-                Logger.Error(ex, "扫描日志目录失败: {Directory}", directory);
+                catch (Exception ex) {
+                    Logger.Error(ex, "扫描日志目录失败: {CurrentDirectory}", currentDirectory);
+                    failedCount++;
+                }
             }
 
             return (deletedCount, failedCount);
