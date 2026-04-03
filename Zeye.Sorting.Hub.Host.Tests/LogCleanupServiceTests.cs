@@ -17,7 +17,7 @@ public sealed class LogCleanupServiceTests {
     /// 验证场景：清理任务会递归扫描子目录并删除过期日志。
     /// </summary>
     [Fact]
-    public async Task CleanupOldLogs_ShouldDeleteExpiredLogs_InAllSubDirectories() {
+    public void CleanupOldLogs_ShouldDeleteExpiredLogs_InAllSubDirectories() {
         var rootDirectory = CreateTempDirectory();
         try {
             var nestedDirectory = Directory.CreateDirectory(Path.Combine(rootDirectory, "nested", "deep")).FullName;
@@ -39,11 +39,8 @@ public sealed class LogCleanupServiceTests {
                 CheckIntervalHours = 1,
                 LogDirectory = rootDirectory
             });
-            var service = new TestableLogCleanupService(new SafeExecutor(), settings);
-            using var cancellationTokenSource = new CancellationTokenSource();
-            var executeTask = service.ExecuteForTestAsync(cancellationTokenSource.Token);
-            cancellationTokenSource.Cancel();
-            await executeTask;
+            var service = new LogCleanupService(new SafeExecutor(), settings);
+            service.CleanupOldLogs(CancellationToken.None);
 
             Assert.False(File.Exists(rootExpiredLog));
             Assert.False(File.Exists(nestedExpiredLog));
@@ -51,29 +48,6 @@ public sealed class LogCleanupServiceTests {
         }
         finally {
             Directory.Delete(rootDirectory, recursive: true);
-        }
-    }
-
-    /// <summary>
-    /// 可测试的日志清理服务包装类型。
-    /// </summary>
-    private sealed class TestableLogCleanupService : LogCleanupService {
-        /// <summary>
-        /// 初始化可测试日志清理服务。
-        /// </summary>
-        /// <param name="safeExecutor">安全执行器。</param>
-        /// <param name="settings">日志清理配置。</param>
-        public TestableLogCleanupService(SafeExecutor safeExecutor, Microsoft.Extensions.Options.IOptions<LogCleanupSettings> settings)
-            : base(safeExecutor, settings) {
-        }
-
-        /// <summary>
-        /// 执行服务主流程供测试使用。
-        /// </summary>
-        /// <param name="cancellationToken">取消令牌。</param>
-        /// <returns>异步任务。</returns>
-        public Task ExecuteForTestAsync(CancellationToken cancellationToken) {
-            return ExecuteAsync(cancellationToken);
         }
     }
 

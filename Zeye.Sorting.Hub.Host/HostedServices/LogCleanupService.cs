@@ -65,7 +65,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <summary>
         /// 执行逻辑：CleanupOldLogs。
         /// </summary>
-        private void CleanupOldLogs(CancellationToken cancellationToken) {
+        internal void CleanupOldLogs(CancellationToken cancellationToken) {
             var logDirectory = ResolveLogDirectoryPath();
 
             if (!Directory.Exists(logDirectory)) {
