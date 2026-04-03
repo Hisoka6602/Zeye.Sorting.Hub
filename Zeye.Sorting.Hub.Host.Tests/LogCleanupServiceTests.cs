@@ -10,6 +10,11 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 /// </summary>
 public sealed class LogCleanupServiceTests {
     /// <summary>
+    /// 临时目录前缀。
+    /// </summary>
+    private const string TempDirectoryPrefix = "zeye-log-cleanup-tests";
+
+    /// <summary>
     /// 验证场景：清理任务会递归扫描子目录并删除过期日志。
     /// </summary>
     [Fact]
@@ -67,7 +72,7 @@ public sealed class LogCleanupServiceTests {
     private static string CreateTempDirectory() {
         var tempDirectory = Path.Combine(
             Path.GetTempPath(),
-            "zeye-log-cleanup-tests",
+            TempDirectoryPrefix,
             Guid.NewGuid().ToString("N"));
         return Directory.CreateDirectory(tempDirectory).FullName;
     }
