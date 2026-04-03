@@ -2,7 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
+using NLog;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
@@ -221,7 +221,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             foreach (var notification in alerts) {
                 _observability.EmitEvent(
                     "autotuning.alert.notification",
-                    notification.IsRecovery ? LogLevel.Information : LogLevel.Warning,
+                    notification.IsRecovery ? LogLevel.Info : LogLevel.Warn,
                     notification.Message,
                     new Dictionary<string, string> {
                         ["fingerprint"] = notification.SqlFingerprint,

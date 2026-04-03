@@ -6,7 +6,7 @@ set -euo pipefail
 FAILURES=0
 
 # Copilot 限制规则快照哈希；规则变更后运行脚本内 compute_rules_hash 对应逻辑重新计算并更新此值。
-COPILOT_RULES_SHA256="6a9aab29c6f452e3bbdf2839a552e9c8a35439eb86c11ae0050cc2a957172c77"
+COPILOT_RULES_SHA256="9350b799b04537e6b6a17acb212af3a936203db92ac4daf0d293e779cb14d521"
 
 # PR diff 缓存，避免重复计算。
 PR_DIFF_READY=0
@@ -1022,7 +1022,109 @@ run_rule_by_text() {
     return
   fi
 
+  if [[ "$normalized_text" == *"禁止在热路径读写配置文件"* || "$normalized_text" == *"禁止在热路径"* ]]; then
+    check_no_hot_path_config_db_access
+    return
+  fi
+
+  if [[ "$normalized_text" == *"配置项的注释都需要写明"* || "$normalized_text" == *"枚举类型需要列出所有枚举项"* ]]; then
+    check_config_comment_range_annotation
+    return
+  fi
+
   record_failure "发现未映射的 Copilot 规则，请同步更新 CI 校验逻辑（规则 ${rule_number}: ${rule_text}）。"
+}
+
+# 检查热路径内是否有直接的配置文件读写或 DbContext 操作（增量校验）。
+# 热路径识别：每次请求必经的控制器 Action / 中间件 / 后台循环体中。
+check_no_hot_path_config_db_access() {
+  log_step "执行规则校验：禁止在热路径读写配置文件和数据库"
+
+  if ! is_pull_request_context; then
+    log_step "当前不是 pull_request 上下文，跳过规则 29 的增量校验"
+    return
+  fi
+
+  local changed_cs_files
+  changed_cs_files="$(get_pr_changed_files_by_suffix "cs")"
+  if [[ -z "$changed_cs_files" ]]; then
+    return
+  fi
+
+  # 热路径定义：仅检查 Controllers/ 和 Middleware/ 目录下的文件（请求处理主链路）。
+  # 排除 DI 扩展（*Extensions.cs）、HostedService（*HostedService.cs）、
+  # 设计时工厂（DesignTime/）、Program.cs 等启动期代码。
+  local violations=""
+  local file_path=""
+  while IFS= read -r file_path; do
+    [[ -z "$file_path" ]] && continue
+    [[ ! -f "$file_path" ]] && continue
+    # 仅扫描 Controllers/ 或 Middleware/ 路径下的文件
+    if [[ "$file_path" != *"/Controllers/"* && "$file_path" != *"/Middleware/"* ]]; then
+      continue
+    fi
+    # 跳过扩展类与中间件扩展注册文件（这些属于 DI 注册启动期代码）
+    local file_name
+    file_name="$(basename "$file_path")"
+    if [[ "$file_name" == *Extensions.cs ]]; then
+      continue
+    fi
+    # 检测在中间件 Invoke/InvokeAsync 或 Controller Action 中直接读取配置索引器或文件 IO
+    local hit
+    hit="$(grep -nE '(configuration\[|_configuration\[|IConfiguration.*GetSection|IConfiguration.*GetValue|File\.ReadAll)' "$file_path" 2>/dev/null || true)"
+    if [[ -n "$hit" ]]; then
+      violations+="$file_path:\n$hit\n"
+    fi
+  done <<< "$changed_cs_files"
+
+  if [[ -n "$violations" ]]; then
+    record_failure "检测到热路径（Controller/Middleware）中疑似读写配置文件，违反规则 29：\n$violations"
+  fi
+}
+
+# 检查配置项字段注释是否包含可填写范围说明（增量校验）。
+check_config_comment_range_annotation() {
+  log_step "执行规则校验：配置项注释范围说明"
+
+  if ! is_pull_request_context; then
+    log_step "当前不是 pull_request 上下文，跳过规则 30 的增量校验"
+    return
+  fi
+
+  local changed_cs_files
+  changed_cs_files="$(get_pr_changed_files_by_suffix "cs")"
+  if [[ -z "$changed_cs_files" ]]; then
+    return
+  fi
+
+  # 检测以 Options / Config / Configuration 结尾的 POCO 类文件中
+  # 是否存在无注释的公共属性（缺少 /// <summary> 或 // 注释）
+  local violations=""
+  local file_path=""
+  while IFS= read -r file_path; do
+    [[ -z "$file_path" ]] && continue
+    [[ ! -f "$file_path" ]] && continue
+    # 只检查 Options/Config/Configuration 结尾的配置类文件
+    local file_name
+    file_name="$(basename "$file_path" .cs)"
+    if [[ "$file_name" != *Options && "$file_name" != *Config && "$file_name" != *Configuration ]]; then
+      continue
+    fi
+    # 检查 public 属性前是否有 summary 注释
+    local prev_line=""
+    while IFS= read -r line; do
+      if [[ "$line" =~ ^[[:space:]]*(public)[[:space:]]+(.*)[[:space:]]+(get|set|init|\{) ]]; then
+        if [[ "$prev_line" != *"///"* && "$prev_line" != *"//"* ]]; then
+          violations+="$file_path: 公共属性缺少注释（范围说明）: $line\n"
+        fi
+      fi
+      prev_line="$line"
+    done < "$file_path"
+  done <<< "$changed_cs_files"
+
+  if [[ -n "$violations" ]]; then
+    record_failure "检测到配置类公共属性缺少注释（需说明可填写范围），违反规则 30：\n$violations"
+  fi
 }
 
 # 检查命名空间与目录层级一致（增量）。

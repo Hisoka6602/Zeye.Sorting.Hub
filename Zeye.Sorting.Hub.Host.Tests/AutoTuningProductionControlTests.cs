@@ -29,6 +29,11 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 
 public sealed class AutoTuningProductionControlTests {
     private const double DoublePrecisionTolerance = 0.0001d;
+
+    /// <summary>
+    /// NLog 全局配置切换互斥锁：防止并行测试对全局 <see cref="NLog.LogManager.Configuration"/> 的竞争写入。
+    /// </summary>
+    private static readonly object NLogConfigLock = new();
     /// <summary>
     /// 验证场景：ParcelStatus_ShouldOnlyContainThreeValues。
     /// </summary>
@@ -1857,12 +1862,12 @@ public sealed class AutoTuningProductionControlTests {
                 ["Persistence:MySql:ServerVersion"] = "8.0.36"
             })
             .Build();
-        var logger = new CaptureWarningLogger();
+        var warningMessages = new List<string>();
 
         var resolved = PersistenceServiceCollectionExtensions.ResolveMySqlServerVersion(
             configuration,
             "server=127.0.0.1;port=3306;database=zeye_sorting_hub;uid=root;pwd=Admin@1234;SslMode=None;",
-            logger);
+            warningMessages.Add);
 
         Assert.IsType<MySqlServerVersion>(resolved);
         Assert.Equal(new Version(8, 0, 36), resolved.Version);
@@ -1878,15 +1883,15 @@ public sealed class AutoTuningProductionControlTests {
                 ["Persistence:MySql:ServerVersion"] = "invalid-version"
             })
             .Build();
-        var logger = new CaptureWarningLogger();
+        var warningMessages = new List<string>();
 
         var resolved = PersistenceServiceCollectionExtensions.ResolveMySqlServerVersion(
             configuration,
             "invalid-connection-string",
-            logger);
+            warningMessages.Add);
 
         Assert.Equal(new Version(8, 0, 0), resolved.Version);
-        Assert.Contains(logger.WarningMessages, static message => message.Contains("非法或不受支持", StringComparison.Ordinal));
+        Assert.Contains(warningMessages, static message => message.Contains("非法或不受支持", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -1897,15 +1902,15 @@ public sealed class AutoTuningProductionControlTests {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>())
             .Build();
-        var logger = new CaptureWarningLogger();
+        var warningMessages = new List<string>();
 
         var resolved = PersistenceServiceCollectionExtensions.ResolveMySqlServerVersion(
             configuration,
             "invalid-connection-string",
-            logger);
+            warningMessages.Add);
 
         Assert.Equal(new Version(8, 0, 0), resolved.Version);
-        Assert.Contains(logger.WarningMessages, static message => message.Contains("自动探测失败", StringComparison.Ordinal));
+        Assert.Contains(warningMessages, static message => message.Contains("自动探测失败", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -1918,15 +1923,15 @@ public sealed class AutoTuningProductionControlTests {
                 ["Persistence:MySql:ServerVersion"] = "4.1.0"
             })
             .Build();
-        var logger = new CaptureWarningLogger();
+        var warningMessages = new List<string>();
 
         var resolved = PersistenceServiceCollectionExtensions.ResolveMySqlServerVersion(
             configuration,
             "invalid-connection-string",
-            logger);
+            warningMessages.Add);
 
         Assert.Equal(new Version(8, 0, 0), resolved.Version);
-        Assert.Contains(logger.WarningMessages, static message => message.Contains("Major>=5", StringComparison.Ordinal));
+        Assert.Contains(warningMessages, static message => message.Contains("Major>=5", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -2219,7 +2224,15 @@ public sealed class AutoTuningProductionControlTests {
     /// </summary>
     [Fact]
     public async Task ClosedLoopFlow_TriggersMonitorExecuteVerifyRollback_WithAuditAndRollbackTrigger() {
-        var logger = new TestLogger<DatabaseAutoTuningHostedService>();
+        var memoryTarget = new NLog.Targets.MemoryTarget { Name = "test-memory", Layout = "${message}" };
+        var loggingConfig = new NLog.Config.LoggingConfiguration();
+        loggingConfig.AddRuleForAllLevels(memoryTarget);
+        NLog.Config.LoggingConfiguration? previousConfig;
+        lock (NLogConfigLock) {
+            previousConfig = NLog.LogManager.Configuration;
+            NLog.LogManager.Configuration = loggingConfig;
+        }
+        try {
         var observability = new TestObservability();
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
@@ -2244,7 +2257,6 @@ public sealed class AutoTuningProductionControlTests {
             .Build();
         var pipeline = new SlowQueryAutoTuningPipeline(configuration, observability);
         var service = new DatabaseAutoTuningHostedService(
-            logger,
             observability,
             new FixedPlanProbe(),
             new EmptyServiceScopeFactory(),
@@ -2293,11 +2305,11 @@ public sealed class AutoTuningProductionControlTests {
         var validateTask = (Task)validate.Invoke(service, [result, metricsByFingerprint, CancellationToken.None])!;
         await validateTask;
 
-        Assert.Contains(logger.Messages, message => message.Contains("闭环自治阶段迁移") && message.Contains("CurrentStage=Execute"));
-        Assert.Contains(logger.Messages, message => message.Contains("闭环自治阶段迁移") && message.Contains("CurrentStage=Verify"));
-        Assert.Contains(logger.Messages, message => message.Contains("自动调优变更审计"));
-        Assert.Contains(logger.Messages, message => message.Contains("闭环自治自动验证触发回滚"));
-        Assert.Contains(logger.Messages, message => message.Contains("rollback-triggered"));
+        Assert.Contains(memoryTarget.Logs, message => message.Contains("闭环自治阶段迁移") && message.Contains("CurrentStage=Execute"));
+        Assert.Contains(memoryTarget.Logs, message => message.Contains("闭环自治阶段迁移") && message.Contains("CurrentStage=Verify"));
+        Assert.Contains(memoryTarget.Logs, message => message.Contains("自动调优变更审计"));
+        Assert.Contains(memoryTarget.Logs, message => message.Contains("闭环自治自动验证触发回滚"));
+        Assert.Contains(memoryTarget.Logs, message => message.Contains("rollback-triggered"));
         Assert.Contains(observability.EventEntries, entry =>
             entry.Name == "autotuning.closed_loop.stage_transition"
             && entry.Tags.TryGetValue("evidence_id", out var evidenceId)
@@ -2307,14 +2319,26 @@ public sealed class AutoTuningProductionControlTests {
             entry.Name == "autotuning.validation.rollback_triggered"
             && entry.Tags.ContainsKey("evidence_id")
             && entry.Tags.ContainsKey("correlation_id"));
+        } finally {
+            lock (NLogConfigLock) {
+                NLog.LogManager.Configuration = previousConfig;
+            }
+        }
     }
-
     /// <summary>
     /// 验证场景：Validation_WhenPlanProbeDisabledOrSampleRateZero_MarksUnavailableWithoutInvokingProbe。
     /// </summary>
     [Fact]
     public async Task Validation_WhenPlanProbeDisabledOrSampleRateZero_MarksUnavailableWithoutInvokingProbe() {
-        var logger = new TestLogger<DatabaseAutoTuningHostedService>();
+        var memoryTarget = new NLog.Targets.MemoryTarget { Name = "test-memory", Layout = "${message}" };
+        var loggingConfig = new NLog.Config.LoggingConfiguration();
+        loggingConfig.AddRuleForAllLevels(memoryTarget);
+        NLog.Config.LoggingConfiguration? previousConfig;
+        lock (NLogConfigLock) {
+            previousConfig = NLog.LogManager.Configuration;
+            NLog.LogManager.Configuration = loggingConfig;
+        }
+        try {
         var observability = new TestObservability();
         var probe = new CountingPlanProbe();
         var configuration = new ConfigurationBuilder()
@@ -2329,7 +2353,6 @@ public sealed class AutoTuningProductionControlTests {
             .Build();
         var pipeline = new SlowQueryAutoTuningPipeline(configuration, observability);
         var service = new DatabaseAutoTuningHostedService(
-            logger,
             observability,
             probe,
             new EmptyServiceScopeFactory(),
@@ -2369,11 +2392,13 @@ public sealed class AutoTuningProductionControlTests {
         await validateTask;
 
         Assert.Equal(0, probe.CallCount);
-        Assert.Contains(logger.Messages, message => message.Contains("plan-probe-sampling-skipped"));
+        Assert.Contains(memoryTarget.Logs, message => message.Contains("plan-probe-sampling-skipped"));
+        } finally {
+            lock (NLogConfigLock) {
+                NLog.LogManager.Configuration = previousConfig;
+            }
+        }
     }
-
-    /// <summary>
-    /// 验证场景：WhenPlanProbeSampleRateInvalid_FallsBackToDefaultAndInvokesProbe。
     /// </summary>
     [Fact]
     public async Task WhenPlanProbeSampleRateInvalid_FallsBackToDefaultAndInvokesProbe() {

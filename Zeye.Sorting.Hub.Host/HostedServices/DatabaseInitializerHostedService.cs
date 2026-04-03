@@ -552,7 +552,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// </summary>
         /// <remarks>
         /// <para>
-        /// EF Core 的 <see cref="DatabaseFacade.MigrateAsync"/> 仅依赖 <c>__EFMigrationsHistory</c> 表来判断
+        /// EF Core 的 <c>MigrateAsync</c> 仅依赖 <c>__EFMigrationsHistory</c> 表来判断
         /// 哪些迁移已应用，因此存在以下风险场景：
         /// </para>
         /// <list type="bullet">
@@ -842,6 +842,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <param name="db">数据库上下文。</param>
         /// <param name="physicalTableNames">待审计物理表名集合。</param>
         /// <param name="schemaName">探测 schema。</param>
+        /// <param name="providerName">数据库提供器名称。</param>
         /// <param name="cancellationToken">取消令牌。</param>
         /// <returns>缺失索引映射（Key=物理表名，Value=缺失索引名集合）。</returns>
         private async Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> AuditPerDayShardCriticalIndexesAsync(
@@ -1327,7 +1328,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 _observability.EmitMetric("web_request_audit_log.retention.executed_count", 0d, tags);
                 _observability.EmitEvent(
                     name: "web_request_audit_log.retention.skipped",
-                    level: Microsoft.Extensions.Logging.LogLevel.Information,
+                    level: NLog.LogLevel.Info,
                     message: $"WebRequestAuditLog 历史分表保留未执行，Decision={retentionDecision.Decision}",
                     tags: tags);
                 return 0;
@@ -1353,7 +1354,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                         retentionDecision.CompensationBoundary);
                     _observability.EmitEvent(
                         name: "web_request_audit_log.retention.failed",
-                        level: Microsoft.Extensions.Logging.LogLevel.Error,
+                        level: NLog.LogLevel.Error,
                         message: $"WebRequestAuditLog 历史分表删除失败，PhysicalTable={physicalTableName}",
                         tags: new Dictionary<string, string>(tags, StringComparer.Ordinal) {
                             ["physical_table"] = physicalTableName
@@ -1365,7 +1366,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _observability.EmitMetric("web_request_audit_log.retention.executed_count", executedCount, tags);
             _observability.EmitEvent(
                 name: "web_request_audit_log.retention.executed",
-                level: Microsoft.Extensions.Logging.LogLevel.Information,
+                level: NLog.LogLevel.Info,
                 message: $"WebRequestAuditLog 历史分表保留执行完成，ExecutedCount={executedCount}",
                 tags: tags);
             return executedCount;

@@ -51,7 +51,7 @@ public sealed class LoggingOnlyExecutionPlanRegressionProbe : IProviderAwareExec
             });
         _observability.EmitEvent(
             "autotuning.plan_probe.result",
-            snapshot.IsAvailable ? Microsoft.Extensions.Logging.LogLevel.Information : Microsoft.Extensions.Logging.LogLevel.Warning,
+            snapshot.IsAvailable ? NLog.LogLevel.Info : NLog.LogLevel.Warn,
             snapshot.Summary,
             new Dictionary<string, string> {
                 ["provider"] = normalizedProvider,

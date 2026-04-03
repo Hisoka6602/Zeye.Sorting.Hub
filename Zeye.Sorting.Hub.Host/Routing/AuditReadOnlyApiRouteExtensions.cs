@@ -21,6 +21,7 @@ public static class AuditReadOnlyApiRouteExtensions {
     /// 注册审计日志只读 API。
     /// </summary>
     /// <param name="routeBuilder">路由构建器。</param>
+    /// <param name="requireAuthorization">是否启用鉴权；由 AuditReadOnlyApi:RequireAuthorization 决定。</param>
     /// <returns>路由构建器。</returns>
     public static IEndpointRouteBuilder MapAuditReadOnlyApis(
         this IEndpointRouteBuilder routeBuilder,
