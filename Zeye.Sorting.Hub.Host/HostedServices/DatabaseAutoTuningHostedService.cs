@@ -512,7 +512,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                         EmitDailyReport(result);
                     }
                     if (result.ShouldEmitMonthlyReport) {
-                        EmitMonthlyReport(result);
+                        await EmitMonthlyReportAsync(result);
                     }
                     continue;
                 }
@@ -567,7 +567,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 }
 
                 if (result.ShouldEmitMonthlyReport) {
-                    EmitMonthlyReport(result);
+                    await EmitMonthlyReportAsync(result);
                 }
             }
         }
@@ -614,7 +614,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// 输出月度巡检报告，覆盖稳定性、治理动作成功率、告警总量与回滚次数。
         /// 输出完成后重置本月累计计数器。
         /// </summary>
-        private void EmitMonthlyReport(SlowQueryAnalysisResult result) {
+        private async Task EmitMonthlyReportAsync(SlowQueryAnalysisResult result) {
             // 无动作尝试时成功率默认为 100%（无失败即满分，符合无操作无风险语义）
             const double FullSuccessRatePercent = 100d;
             var analysisSuccessRate = _monthlyActionsAttempted > 0
@@ -649,7 +649,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
             // 月报文件归档：当 MonthlyReportArchivePath 已配置时写入文件，供季度/年度复盘使用
             if (!string.IsNullOrWhiteSpace(_monthlyReportArchivePath)) {
-                ArchiveMonthlyReportToFile(result, analysisSuccessRate);
+                await ArchiveMonthlyReportToFileAsync(result, analysisSuccessRate);
             }
 
             // 重置本月累计计数器
@@ -662,12 +662,12 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         /// <summary>
-        /// 将月度巡检报告写入归档目录文件，文件名格式：monthly-report-{yyyy-MM}.txt。
+        /// 将月度巡检报告异步写入归档目录文件，文件名格式：monthly-report-{yyyy-MM}.txt。
         /// 写入失败时记录告警日志，不影响主流程。
         /// </summary>
         /// <param name="result">分析结果（含生成时间与慢查询 Top 快照）。</param>
         /// <param name="actionSuccessRate">动作成功率（百分比）。</param>
-        private void ArchiveMonthlyReportToFile(SlowQueryAnalysisResult result, double actionSuccessRate) {
+        private async Task ArchiveMonthlyReportToFileAsync(SlowQueryAnalysisResult result, double actionSuccessRate) {
             try {
                 // 步骤 1：解析归档目录为绝对路径
                 var archiveDir = Path.IsPathRooted(_monthlyReportArchivePath)
@@ -684,8 +684,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 // 步骤 4：构建报告内容
                 var content = BuildMonthlyReportContent(result, actionSuccessRate);
 
-                // 步骤 5：写入文件（追加模式，同月多次输出时保留全量记录）
-                File.AppendAllText(filePath, content);
+                // 步骤 5：异步追加写入文件（同月多次输出时保留全量记录，避免阻塞后台服务主循环）
+                await File.AppendAllTextAsync(filePath, content);
                 NLogLogger.Info(
                     "月度巡检报告已归档：Provider={Provider}, FilePath={FilePath}",
                     _dialect.ProviderName,
