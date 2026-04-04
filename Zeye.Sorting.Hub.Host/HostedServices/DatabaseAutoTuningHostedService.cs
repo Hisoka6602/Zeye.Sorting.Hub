@@ -512,7 +512,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                         EmitDailyReport(result);
                     }
                     if (result.ShouldEmitMonthlyReport) {
-                        await EmitMonthlyReportAsync(result);
+                        await EmitMonthlyReportAsync(result, stoppingToken);
                     }
                     continue;
                 }
@@ -567,7 +567,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 }
 
                 if (result.ShouldEmitMonthlyReport) {
-                    await EmitMonthlyReportAsync(result);
+                    await EmitMonthlyReportAsync(result, stoppingToken);
                 }
             }
         }
@@ -614,7 +614,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// 输出月度巡检报告，覆盖稳定性、治理动作成功率、告警总量与回滚次数。
         /// 输出完成后重置本月累计计数器。
         /// </summary>
-        private async Task EmitMonthlyReportAsync(SlowQueryAnalysisResult result) {
+        /// <param name="result">分析结果。</param>
+        /// <param name="cancellationToken">取消令牌，用于归档写文件时的优雅停止。</param>
+        private async Task EmitMonthlyReportAsync(SlowQueryAnalysisResult result, CancellationToken cancellationToken) {
             // 无动作尝试时成功率默认为 100%（无失败即满分，符合无操作无风险语义）
             const double FullSuccessRatePercent = 100d;
             var analysisSuccessRate = _monthlyActionsAttempted > 0
@@ -649,7 +651,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
             // 月报文件归档：当 MonthlyReportArchivePath 已配置时写入文件，供季度/年度复盘使用
             if (!string.IsNullOrWhiteSpace(_monthlyReportArchivePath)) {
-                await ArchiveMonthlyReportToFileAsync(result, analysisSuccessRate);
+                await ArchiveMonthlyReportToFileAsync(result, analysisSuccessRate, cancellationToken);
             }
 
             // 重置本月累计计数器
@@ -667,7 +669,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// </summary>
         /// <param name="result">分析结果（含生成时间与慢查询 Top 快照）。</param>
         /// <param name="actionSuccessRate">动作成功率（百分比）。</param>
-        private async Task ArchiveMonthlyReportToFileAsync(SlowQueryAnalysisResult result, double actionSuccessRate) {
+        /// <param name="cancellationToken">取消令牌，透传给文件写入以支持宿主停止时优雅中断。</param>
+        private async Task ArchiveMonthlyReportToFileAsync(SlowQueryAnalysisResult result, double actionSuccessRate, CancellationToken cancellationToken) {
             try {
                 // 步骤 1：解析归档目录为绝对路径
                 var archiveDir = Path.IsPathRooted(_monthlyReportArchivePath)
@@ -684,8 +687,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 // 步骤 4：构建报告内容
                 var content = BuildMonthlyReportContent(result, actionSuccessRate);
 
-                // 步骤 5：异步追加写入文件（同月多次输出时保留全量记录，避免阻塞后台服务主循环）
-                await File.AppendAllTextAsync(filePath, content);
+                // 步骤 5：异步追加写入文件（同月多次输出时保留全量记录；透传 cancellationToken 以支持宿主停止时及时中断）
+                await File.AppendAllTextAsync(filePath, content, cancellationToken);
                 NLogLogger.Info(
                     "月度巡检报告已归档：Provider={Provider}, FilePath={FilePath}",
                     _dialect.ProviderName,
@@ -1063,35 +1066,48 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             CancellationToken cancellationToken) {
             var dangerous = IsDangerousAction(actionSql);
 
-            // 灰度切换保护：当 GradualSwitchDryRunCycles > 0 且尚未走完保护周期时，强制 dry-run。
-            // 保护期满后自动晋升为真实执行，并输出可观测性事件。
+            // 灰度切换保护：以"分析周期"（_analysisCycleCounter）为粒度判断是否处于 dry-run 保护阶段，
+            // 确保同一分析周期内所有动作行为一致（不会出现部分 dry-run、部分真实执行的混合状态）。
             var effectiveDryRun = _enableActionDryRun;
             if (!isRollback && _gradualSwitchDryRunCycles > 0) {
-                if (_gradualSwitchElapsedCycles < _gradualSwitchDryRunCycles) {
-                    _gradualSwitchElapsedCycles++;
+                // 步骤 1：以当前分析周期编号为基准，判断是否仍在保护期内。
+                var currentAnalysisCycle = _analysisCycleCounter;
+                if (currentAnalysisCycle <= _gradualSwitchDryRunCycles) {
                     effectiveDryRun = true;
-                    NLogLogger.Info(
-                        "灰度切换干跑保护中：Provider={Provider}, ActionId={ActionId}, ElapsedCycles={ElapsedCycles}, RequiredCycles={RequiredCycles}",
-                        _dialect.ProviderName,
-                        actionId,
-                        _gradualSwitchElapsedCycles,
-                        _gradualSwitchDryRunCycles);
+
+                    // 步骤 2：仅在进入新分析周期时同步一次已记录的保护周期数，输出一次日志，避免同周期内重复输出。
+                    if (_gradualSwitchElapsedCycles != currentAnalysisCycle) {
+                        _gradualSwitchElapsedCycles = currentAnalysisCycle;
+                        NLogLogger.Info(
+                            "灰度切换干跑保护中：Provider={Provider}, ActionId={ActionId}, ElapsedCycles={ElapsedCycles}, RequiredCycles={RequiredCycles}",
+                            _dialect.ProviderName,
+                            actionId,
+                            _gradualSwitchElapsedCycles,
+                            _gradualSwitchDryRunCycles);
+                    }
                 }
-                else if (_gradualSwitchElapsedCycles == _gradualSwitchDryRunCycles) {
-                    // 首次晋升：输出可观测性事件，标识灰度保护期已满
-                    _gradualSwitchElapsedCycles++;
+                else if (_gradualSwitchElapsedCycles <= _gradualSwitchDryRunCycles) {
+                    // 步骤 3：首次跨过保护期时仅发一次晋升事件，避免重复触发。
+                    // 仅在全局 DryRun=false 时才表示真正进入真实执行模式；否则说明灰度保护结束但仍受 DryRun 配置影响。
+                    _gradualSwitchElapsedCycles = _gradualSwitchDryRunCycles + 1;
+                    var promotionMessage = _enableActionDryRun
+                        ? $"灰度切换保护阶段已满，但全局 DryRun=true，动作仍不会真实执行：Provider={_dialect.ProviderName}, GradualSwitchDryRunCycles={_gradualSwitchDryRunCycles}"
+                        : $"灰度切换已完成干跑保护阶段，晋升为真实执行：Provider={_dialect.ProviderName}, GradualSwitchDryRunCycles={_gradualSwitchDryRunCycles}";
                     _observability.EmitEvent(
                         "autotuning.gradual_switch.promoted",
                         NLog.LogLevel.Info,
-                        $"灰度切换已完成干跑保护阶段，晋升为真实执行：Provider={_dialect.ProviderName}, GradualSwitchDryRunCycles={_gradualSwitchDryRunCycles}",
+                        promotionMessage,
                         new Dictionary<string, string> {
                             ["provider"] = _dialect.ProviderName,
-                            ["gradual_switch_dry_run_cycles"] = _gradualSwitchDryRunCycles.ToString()
+                            ["gradual_switch_dry_run_cycles"] = _gradualSwitchDryRunCycles.ToString(),
+                            ["global_dry_run"] = _enableActionDryRun.ToString().ToLowerInvariant()
                         });
                     NLogLogger.Info(
-                        "灰度切换晋升：Provider={Provider}, DryRunCycles={DryRunCycles}，保护阶段已满，后续动作将进入真实执行模式。",
+                        "灰度切换晋升：Provider={Provider}, DryRunCycles={DryRunCycles}, GlobalDryRun={GlobalDryRun}，保护阶段已满，{ExecutionMode}。",
                         _dialect.ProviderName,
-                        _gradualSwitchDryRunCycles);
+                        _gradualSwitchDryRunCycles,
+                        _enableActionDryRun,
+                        _enableActionDryRun ? "全局 DryRun=true 仍阻止真实执行" : "后续动作将进入真实执行模式");
                 }
             }
 

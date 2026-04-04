@@ -227,11 +227,14 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 newSettings.CheckIntervalHours,
                 newSettings.LogDirectory);
 
-            // 记录到历史存储器（支持回滚查询）
-            _changeHistory.Record(prev, newSettings, changedFields);
+            // 记录到历史存储器（传入 record with {} 拷贝，确保历史条目为真正不可变快照）
+            _changeHistory.Record(
+                prev is null ? null : prev with { },
+                newSettings with { },
+                changedFields);
 
-            // 更新前值快照
-            _previousSettings = newSettings;
+            // 更新前值快照（保存当前值副本，供下次变更对比使用）
+            _previousSettings = newSettings with { };
         }
 
         /// <summary>

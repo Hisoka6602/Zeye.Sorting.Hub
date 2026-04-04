@@ -1,6 +1,5 @@
 using Zeye.Sorting.Hub.Domain.Options.LogCleanup;
 using Zeye.Sorting.Hub.Host.HostedServices;
-using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.SharedKernel.Utilities;
 
 namespace Zeye.Sorting.Hub.Host.Tests;
@@ -94,6 +93,48 @@ public sealed class ConfigChangeHistoryStoreTests {
     }
 
     /// <summary>
+    /// 验证场景：容量超出上限时 clamp 到 MaxCapacity，低于 1 时 clamp 到 1。
+    /// </summary>
+    [Theory]
+    [InlineData(0, 1)]
+    [InlineData(-5, 1)]
+    [InlineData(101, ConfigChangeHistoryStore<LogCleanupSettings>.MaxCapacity)]
+    [InlineData(1000, ConfigChangeHistoryStore<LogCleanupSettings>.MaxCapacity)]
+    public void Constructor_CapacityOutOfRange_IsClamped(int inputCapacity, int expectedCapacity) {
+        var store = new ConfigChangeHistoryStore<LogCleanupSettings>(inputCapacity);
+        Assert.Equal(expectedCapacity, store.Capacity);
+    }
+
+    /// <summary>
+    /// 验证场景：Record 传入值为 record with {} 副本后，后续修改原始对象不影响历史条目（LogCleanupService 行为验证）。
+    /// </summary>
+    [Fact]
+    public void LogCleanupService_OnSettingsChanged_SnapshotIsIsolatedFromLaterChanges() {
+        var v1 = new LogCleanupSettings { RetentionDays = 2, Enabled = true };
+        var v2 = new LogCleanupSettings { RetentionDays = 7, Enabled = true };
+        var v3 = new LogCleanupSettings { RetentionDays = 30, Enabled = true };
+
+        var settingsMonitor = new TestOptionsMonitor<LogCleanupSettings>(v1);
+        var changeHistory = new ConfigChangeHistoryStore<LogCleanupSettings>();
+        _ = new LogCleanupService(
+            new SafeExecutor(),
+            settingsMonitor,
+            new TestObservability(),
+            changeHistory);
+
+        settingsMonitor.Update(v2);
+        settingsMonitor.Update(v3);
+
+        // 第一次变更的快照 PreviousValue 应仍为 v1 的值，第二次变更不影响第一次快照
+        var history = changeHistory.GetHistory();
+        Assert.Equal(2, history.Count);
+        Assert.Equal(2, history[0].PreviousValue!.RetentionDays);
+        Assert.Equal(7, history[0].CurrentValue.RetentionDays);
+        Assert.Equal(7, history[1].PreviousValue!.RetentionDays);
+        Assert.Equal(30, history[1].CurrentValue.RetentionDays);
+    }
+
+    /// <summary>
     /// 验证场景：LogCleanupService 在配置变更时触发快照记录，历史中可查到前后值。
     /// </summary>
     [Fact]
@@ -106,7 +147,7 @@ public sealed class ConfigChangeHistoryStoreTests {
         _ = new LogCleanupService(
             new SafeExecutor(),
             settingsMonitor,
-            new NullAutoTuningObservability(),
+            new TestObservability(),
             changeHistory);
 
         // 触发热加载变更

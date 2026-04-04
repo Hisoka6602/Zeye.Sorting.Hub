@@ -28,6 +28,11 @@ public sealed class ConfigChangeHistoryStore<T> where T : class {
     public const int DefaultCapacity = 10;
 
     /// <summary>
+    /// 容量上限，防止异常大数组分配。
+    /// </summary>
+    public const int MaxCapacity = 100;
+
+    /// <summary>
     /// 读写互斥锁，保护 <see cref="_buffer"/> 和 <see cref="_sequence"/> 的一致性。
     /// </summary>
     private readonly object _lock = new();
@@ -60,10 +65,16 @@ public sealed class ConfigChangeHistoryStore<T> where T : class {
     /// <summary>
     /// 初始化 <see cref="ConfigChangeHistoryStore{T}"/>。
     /// </summary>
-    /// <param name="capacity">保留的历史条目数量，默认 10。可填写范围：1~100。</param>
+    /// <param name="capacity">
+    /// 保留的历史条目数量，默认 10。
+    /// 可填写范围：1~100（超出上限时 clamp 到 100，低于下限时 clamp 到 1）。
+    /// </param>
     public ConfigChangeHistoryStore(int capacity = DefaultCapacity) {
         if (capacity < 1) {
-            capacity = DefaultCapacity;
+            capacity = 1;
+        }
+        else if (capacity > MaxCapacity) {
+            capacity = MaxCapacity;
         }
 
         Capacity = capacity;
@@ -72,9 +83,13 @@ public sealed class ConfigChangeHistoryStore<T> where T : class {
 
     /// <summary>
     /// 记录一次配置变更快照。
+    /// <para>
+    /// 注意：存储器直接保存传入的对象引用，不做深拷贝。
+    /// 调用方必须传入不可变对象（如 <c>record</c> 的 <c>with {}</c> 副本），确保历史条目不会被后续变更意外污染。
+    /// </para>
     /// </summary>
-    /// <param name="previousValue">变更前配置值（首次调用时可传 null）。</param>
-    /// <param name="currentValue">变更后配置值。</param>
+    /// <param name="previousValue">变更前配置快照（必须为不可变副本；首次调用时可传 null）。</param>
+    /// <param name="currentValue">变更后配置快照（必须为不可变副本）。</param>
     /// <param name="changedFields">变更字段摘要描述（如 "RetentionDays: 2→5"）。</param>
     public void Record(T? previousValue, T currentValue, string changedFields) {
         lock (_lock) {

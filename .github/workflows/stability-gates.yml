@@ -61,7 +61,8 @@ jobs:
 
           check_key() {
             local key="$1"
-            if grep -q "\"${key}\"" "$CONFIG"; then
+            # 排除行注释（// ...），仅匹配真实键值对 "key": ... 形式，避免注释残留导致假阳性
+            if grep -v '^\s*//' "$CONFIG" | grep -q "\"${key}\"\s*:"; then
               echo "✅  ${key}"
             else
               echo "❌  缺失配置项：${key}"
