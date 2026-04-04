@@ -41,7 +41,7 @@ public sealed class LogCleanupServiceTests {
                 CheckIntervalHours = 1,
                 LogDirectory = rootDirectory
             });
-            var service = new LogCleanupService(new SafeExecutor(), settingsMonitor, new NullAutoTuningObservability());
+            var service = new LogCleanupService(new SafeExecutor(), settingsMonitor, new NullAutoTuningObservability(), new ConfigChangeHistoryStore<LogCleanupSettings>());
             service.CleanupOldLogs(CancellationToken.None);
 
             Assert.False(File.Exists(rootExpiredLog));
