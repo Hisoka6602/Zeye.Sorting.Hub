@@ -18,6 +18,7 @@
 ├── 待完善事项.md（待完善事项列表，仅记录代码中尚未实现的可完善点）
 ├── 更新记录.md（更新记录，按时间倒序记录每次 PR 更新内容）
 ├── README.md（仓库总览、结构清单与维护规范）
+├── 长期运行优化与热更新支持清单.md（面向一年无人值守运行的优化与热更新治理清单）
 ├── Zeye.Sorting.Hub.Analytics（分析与报表子域，占位工程）
 │   └── Zeye.Sorting.Hub.Analytics.csproj（Analytics 项目定义）
 ├── Zeye.Sorting.Hub.Application（应用层）
@@ -323,6 +324,7 @@
 - `EFCore9升级计划.md`：EF Core 8 → 9 升级记录（**已完成**：EF Core 9.0.14、Pomelo 9.0.0、EFCore.Sharding 9.0.10），包含已升级包清单、版本对照表、`HasPendingModelChanges()` 集成说明及核查清单。
 - `新数据库提供程序接入指南.md`：新数据库提供器接入指南（MySQL / SQL Server 切换、设计时工厂、方言扩展点）。
 - `数据库读写压力测试计划.md`：针对 MySQL + EFCore.Sharding 分表架构的数据库读写压力测试计划，覆盖纯写入、纯读取、混合读写、长时稳定性 4 大场景，含梯度加压方案、通过/失败验收矩阵、监控采集命令与结果记录模板。
+- `长期运行优化与热更新支持清单.md`：面向一年无人值守运行的长期治理清单，覆盖稳定运行底座、热更新、热替换、阶段化落地与年度验收门禁。
 
 ### `.github/`：Copilot 仓库级指令目录
 - `copilot-instructions.md`：Copilot 自定义指令，硬性要求禁止 UTC 时间 API，统一使用本地时间语义。
