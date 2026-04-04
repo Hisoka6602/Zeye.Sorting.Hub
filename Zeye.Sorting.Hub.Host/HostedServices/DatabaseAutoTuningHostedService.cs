@@ -1686,13 +1686,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 var isBlockedByShardingGate = shardingBlockedFingerprints.Contains(candidate.SqlFingerprint);
                 var shouldFilterIndex = isCoveredByExisting || isSemanticDuplicate || isLowValue || isBlockedByShardingGate;
                 if (shouldFilterIndex) {
-                    var blockReason = isCoveredByExisting
-                        ? "covered-by-existing-index"
-                        : isSemanticDuplicate
-                            ? "semantic-duplicate"
-                            : isBlockedByShardingGate
-                                ? "sharding-governance-gate"
-                                : "low-value-index";
+                    var blockReason = GetIndexBlockReason(isCoveredByExisting, isSemanticDuplicate, isBlockedByShardingGate);
                     NLogLogger.Info(
                         "自动索引建议已过滤：Provider={Provider}, Fingerprint={Fingerprint}, Table={Table}, Reason={Reason}",
                         _dialect.ProviderName,
@@ -1840,6 +1834,14 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 && metric.P99Milliseconds < _configuredAlertP99Milliseconds
                 && metric.TimeoutRatePercent <= 0m
                 && metric.ErrorRatePercent <= 0m;
+        }
+
+        /// <summary>根据过滤原因标志获取索引建议过滤原因字符串。</summary>
+        private static string GetIndexBlockReason(bool isCoveredByExisting, bool isSemanticDuplicate, bool isBlockedByShardingGate) {
+            if (isCoveredByExisting) return "covered-by-existing-index";
+            if (isSemanticDuplicate) return "semantic-duplicate";
+            if (isBlockedByShardingGate) return "sharding-governance-gate";
+            return "low-value-index";
         }
 
         /// <summary>判断候选索引是否已被模型静态索引覆盖或语义重复。</summary>

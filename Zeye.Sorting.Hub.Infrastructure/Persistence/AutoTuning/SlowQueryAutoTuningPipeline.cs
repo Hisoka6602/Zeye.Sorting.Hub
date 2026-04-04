@@ -588,7 +588,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
 
         /// <summary>计算下一次年度运行看板触发日期（每年指定月 1 日，与 DailyReportLocalTime 同时输出）。</summary>
         private DateTime BuildNextAnnualDashboardDate(DateTime now) {
-            // 步骤 1：构建当年目标月 1 日候选值
+            // 步骤 1：构建当年目标触发时间（指定月 1 日 + 日报时点）
             var thisYear = new DateTime(now.Year, _annualDashboardMonth, 1, 0, 0, 0, DateTimeKind.Local).Add(_dailyReportTime);
             if (thisYear > now) {
                 return thisYear;
