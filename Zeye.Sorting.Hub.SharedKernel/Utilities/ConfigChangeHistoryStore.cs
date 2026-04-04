@@ -67,18 +67,11 @@ public sealed class ConfigChangeHistoryStore<T> where T : class {
     /// </summary>
     /// <param name="capacity">
     /// 保留的历史条目数量，默认 10。
-    /// 可填写范围：1~100（超出上限时 clamp 到 100，低于下限时 clamp 到 1）。
+    /// 可填写范围：1~100（超出范围时 clamp 到最近边界）。
     /// </param>
     public ConfigChangeHistoryStore(int capacity = DefaultCapacity) {
-        if (capacity < 1) {
-            capacity = 1;
-        }
-        else if (capacity > MaxCapacity) {
-            capacity = MaxCapacity;
-        }
-
-        Capacity = capacity;
-        _buffer = new ConfigChangeEntry<T>?[capacity];
+        Capacity = Math.Clamp(capacity, 1, MaxCapacity);
+        _buffer = new ConfigChangeEntry<T>?[Capacity];
     }
 
     /// <summary>

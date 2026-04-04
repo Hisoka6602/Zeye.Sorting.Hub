@@ -1068,9 +1068,10 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
             // 灰度切换保护：以"分析周期"（_analysisCycleCounter）为粒度判断是否处于 dry-run 保护阶段，
             // 确保同一分析周期内所有动作行为一致（不会出现部分 dry-run、部分真实执行的混合状态）。
+            // 保护期区间为分析周期 1~GradualSwitchDryRunCycles（含边界），第 N+1 周期开始晋升。
             var effectiveDryRun = _enableActionDryRun;
             if (!isRollback && _gradualSwitchDryRunCycles > 0) {
-                // 步骤 1：以当前分析周期编号为基准，判断是否仍在保护期内。
+                // 步骤 1：以当前分析周期编号为基准，判断是否仍在保护期内（含边界：周期 ≤ N 均为 dry-run）。
                 var currentAnalysisCycle = _analysisCycleCounter;
                 if (currentAnalysisCycle <= _gradualSwitchDryRunCycles) {
                     effectiveDryRun = true;
@@ -1086,28 +1087,31 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                             _gradualSwitchDryRunCycles);
                     }
                 }
-                else if (_gradualSwitchElapsedCycles <= _gradualSwitchDryRunCycles) {
-                    // 步骤 3：首次跨过保护期时仅发一次晋升事件，避免重复触发。
+                else {
+                    // 步骤 3：已超过保护期（currentAnalysisCycle > GradualSwitchDryRunCycles），与前一分支互斥。
+                    // 首次跨过时仅发一次晋升事件（通过 _gradualSwitchElapsedCycles 幂等判断），避免重复触发。
                     // 仅在全局 DryRun=false 时才表示真正进入真实执行模式；否则说明灰度保护结束但仍受 DryRun 配置影响。
-                    _gradualSwitchElapsedCycles = _gradualSwitchDryRunCycles + 1;
-                    var promotionMessage = _enableActionDryRun
-                        ? $"灰度切换保护阶段已满，但全局 DryRun=true，动作仍不会真实执行：Provider={_dialect.ProviderName}, GradualSwitchDryRunCycles={_gradualSwitchDryRunCycles}"
-                        : $"灰度切换已完成干跑保护阶段，晋升为真实执行：Provider={_dialect.ProviderName}, GradualSwitchDryRunCycles={_gradualSwitchDryRunCycles}";
-                    _observability.EmitEvent(
-                        "autotuning.gradual_switch.promoted",
-                        NLog.LogLevel.Info,
-                        promotionMessage,
-                        new Dictionary<string, string> {
-                            ["provider"] = _dialect.ProviderName,
-                            ["gradual_switch_dry_run_cycles"] = _gradualSwitchDryRunCycles.ToString(),
-                            ["global_dry_run"] = _enableActionDryRun.ToString().ToLowerInvariant()
-                        });
-                    NLogLogger.Info(
-                        "灰度切换晋升：Provider={Provider}, DryRunCycles={DryRunCycles}, GlobalDryRun={GlobalDryRun}，保护阶段已满，{ExecutionMode}。",
-                        _dialect.ProviderName,
-                        _gradualSwitchDryRunCycles,
-                        _enableActionDryRun,
-                        _enableActionDryRun ? "全局 DryRun=true 仍阻止真实执行" : "后续动作将进入真实执行模式");
+                    if (_gradualSwitchElapsedCycles <= _gradualSwitchDryRunCycles) {
+                        _gradualSwitchElapsedCycles = _gradualSwitchDryRunCycles + 1;
+                        var promotionMessage = _enableActionDryRun
+                            ? $"灰度切换保护阶段已满，但全局 DryRun=true，动作仍不会真实执行：Provider={_dialect.ProviderName}, GradualSwitchDryRunCycles={_gradualSwitchDryRunCycles}"
+                            : $"灰度切换已完成干跑保护阶段，晋升为真实执行：Provider={_dialect.ProviderName}, GradualSwitchDryRunCycles={_gradualSwitchDryRunCycles}";
+                        _observability.EmitEvent(
+                            "autotuning.gradual_switch.promoted",
+                            NLog.LogLevel.Info,
+                            promotionMessage,
+                            new Dictionary<string, string> {
+                                ["provider"] = _dialect.ProviderName,
+                                ["gradual_switch_dry_run_cycles"] = _gradualSwitchDryRunCycles.ToString(),
+                                ["global_dry_run"] = _enableActionDryRun.ToString().ToLowerInvariant()
+                            });
+                        NLogLogger.Info(
+                            "灰度切换晋升：Provider={Provider}, DryRunCycles={DryRunCycles}, GlobalDryRun={GlobalDryRun}，保护阶段已满，{ExecutionMode}。",
+                            _dialect.ProviderName,
+                            _gradualSwitchDryRunCycles,
+                            _enableActionDryRun,
+                            _enableActionDryRun ? "全局 DryRun=true 仍阻止真实执行" : "后续动作将进入真实执行模式");
+                    }
                 }
             }
 

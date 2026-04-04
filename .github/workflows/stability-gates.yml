@@ -59,10 +59,14 @@ jobs:
           CONFIG="Zeye.Sorting.Hub.Host/appsettings.json"
           FAIL=0
 
+          # 步骤 1：将 JSONC（含 // 行注释）转换为标准 JSON，供 jq 可靠解析
+          # 仅过滤以 // 开头的纯注释行，不破坏值字符串中包含 // 的内容
+          CLEAN_JSON=$(grep -v '^\s*//' "$CONFIG")
+
           check_key() {
             local key="$1"
-            # 排除行注释（// ...），仅匹配真实键值对 "key": ... 形式，避免注释残留导致假阳性
-            if grep -v '^\s*//' "$CONFIG" | grep -q "\"${key}\"\s*:"; then
+            # 使用 jq any() 在合法 JSON 中递归查找指定键，彻底避免注释假阳性
+            if echo "$CLEAN_JSON" | jq -e "any(.. | objects; has(\"${key}\"))" > /dev/null 2>&1; then
               echo "✅  ${key}"
             else
               echo "❌  缺失配置项：${key}"
