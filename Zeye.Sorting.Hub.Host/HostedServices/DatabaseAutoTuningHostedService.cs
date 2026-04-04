@@ -357,6 +357,18 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// </summary>
         private readonly string _monthlyReportArchivePath;
         /// <summary>
+        /// 年度运行看板归档目录路径。非空时，每次输出年度看板同步将内容写入文件存档，
+        /// 格式：{AnnualDashboardArchivePath}/annual-dashboard-{yyyy}.txt。
+        /// 为空或空白时跳过文件归档，仅输出日志。
+        /// </summary>
+        private readonly string _annualDashboardArchivePath;
+        /// <summary>
+        /// 分表治理策略切换命中率门禁阈值（0.0 表示禁用门禁）。
+        /// 当 sharding hit rate 低于此值时，阻断影响分表查询的自动索引动作并记录告警。
+        /// 可填写范围：0.0~1.0，0.0 = 不启用，默认值 0.0。
+        /// </summary>
+        private readonly double _shardingGovernanceHitRateThreshold;
+        /// <summary>
         /// 表级热度计数（用于策略评估）。
         /// </summary>
         private readonly Dictionary<string, int> _tableHeatByTable = new(StringComparer.OrdinalIgnoreCase);
@@ -408,6 +420,30 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// 月报周期：累计告警次数。
         /// </summary>
         private int _monthlyAlertCount;
+        /// <summary>
+        /// 年度看板周期：累计分析周期数。
+        /// </summary>
+        private int _annualAnalysisCycles;
+        /// <summary>
+        /// 年度看板周期：累计已尝试执行的自动调优动作数。
+        /// </summary>
+        private int _annualActionsAttempted;
+        /// <summary>
+        /// 年度看板周期：累计成功执行的自动调优动作数。
+        /// </summary>
+        private int _annualActionsSucceeded;
+        /// <summary>
+        /// 年度看板周期：累计执行失败的自动调优动作数。
+        /// </summary>
+        private int _annualActionsFailed;
+        /// <summary>
+        /// 年度看板周期：累计触发回滚的次数。
+        /// </summary>
+        private int _annualRollbackCount;
+        /// <summary>
+        /// 年度看板周期：累计告警次数。
+        /// </summary>
+        private int _annualAlertCount;
 
         /// <summary>初始化数据库自动调谐后台服务及其运行策略参数。</summary>
         public DatabaseAutoTuningHostedService(
@@ -473,6 +509,10 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _planProbeSampleRate = AutoTuningConfigurationHelper.GetDecimalClampedOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutonomousKey("Validation:PlanProbe:SampleRate"), 1m, 0m, 1m);
             _resourceThresholds = resourceThresholdsOptions.Value;
             _monthlyReportArchivePath = configuration[AutoTuningConfigurationHelper.BuildAutoTuningKey("MonthlyReportArchivePath")] ?? string.Empty;
+            _annualDashboardArchivePath = configuration[AutoTuningConfigurationHelper.BuildAutoTuningKey("AnnualDashboardArchivePath")] ?? string.Empty;
+            _shardingGovernanceHitRateThreshold = (double)Math.Clamp(
+                AutoTuningConfigurationHelper.GetNonNegativeDecimalOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("ShardingGovernanceHitRateThreshold"), 0m),
+                0m, 1m);
         }
 
         /// <summary>
@@ -513,6 +553,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     }
                     if (result.ShouldEmitMonthlyReport) {
                         await EmitMonthlyReportAsync(result, stoppingToken);
+                    }
+                    if (result.ShouldEmitAnnualDashboard) {
+                        await EmitAnnualDashboardAsync(result, stoppingToken);
                     }
                     continue;
                 }
@@ -562,12 +605,20 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 _monthlyAnalysisCycles++;
                 _monthlyAlertCount += result.Alerts.Count;
 
+                // 累计年度看板统计
+                _annualAnalysisCycles++;
+                _annualAlertCount += result.Alerts.Count;
+
                 if (result.ShouldEmitDailyReport) {
                     EmitDailyReport(result);
                 }
 
                 if (result.ShouldEmitMonthlyReport) {
                     await EmitMonthlyReportAsync(result, stoppingToken);
+                }
+
+                if (result.ShouldEmitAnnualDashboard) {
+                    await EmitAnnualDashboardAsync(result, stoppingToken);
                 }
             }
         }
@@ -725,6 +776,130 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             sb.AppendLine($"活跃热点表数：{_tableHeatByTable.Count(static pair => pair.Value > 0)}");
             if (result.Metrics.Count > 0) {
                 sb.AppendLine($"慢 SQL Top 快照数：{result.Metrics.Count}");
+            }
+            sb.AppendLine("========================================");
+            sb.AppendLine();
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// 输出年度运行看板，覆盖稳定性、容量、告警质量、治理动作成功率与回滚成功率。
+        /// 输出完成后重置本年累计计数器。
+        /// </summary>
+        /// <param name="result">分析结果。</param>
+        /// <param name="cancellationToken">取消令牌，用于归档写文件时的优雅停止。</param>
+        private async Task EmitAnnualDashboardAsync(SlowQueryAnalysisResult result, CancellationToken cancellationToken) {
+            const double FullSuccessRatePercent = 100d;
+            var annualSuccessRate = _annualActionsAttempted > 0
+                ? (double)_annualActionsSucceeded / _annualActionsAttempted * 100
+                : FullSuccessRatePercent;
+            var pendingRollbackCount = _pendingRollbackByFingerprint.Count;
+            var activeHotTables = _tableHeatByTable.Count(static pair => pair.Value > 0);
+
+            NLogLogger.Info(
+                "年度运行看板：Provider={Provider}, GeneratedTime={GeneratedTime}, AnalysisCycles={AnalysisCycles}, ActionsAttempted={ActionsAttempted}, ActionsSucceeded={ActionsSucceeded}, ActionsFailed={ActionsFailed}, ActionSuccessRate={ActionSuccessRate:F1}%, RollbackCount={RollbackCount}, AlertCount={AlertCount}, ActiveHotTables={ActiveHotTables}, PendingRollbacks={PendingRollbacks}",
+                _dialect.ProviderName,
+                result.GeneratedTime,
+                _annualAnalysisCycles,
+                _annualActionsAttempted,
+                _annualActionsSucceeded,
+                _annualActionsFailed,
+                annualSuccessRate,
+                _annualRollbackCount,
+                _annualAlertCount,
+                activeHotTables,
+                pendingRollbackCount);
+
+            // 输出年度可观测性指标
+            _observability.EmitMetric("autotuning.annual.analysis_cycles", _annualAnalysisCycles);
+            _observability.EmitMetric("autotuning.annual.actions_attempted", _annualActionsAttempted);
+            _observability.EmitMetric("autotuning.annual.actions_succeeded", _annualActionsSucceeded);
+            _observability.EmitMetric("autotuning.annual.actions_failed", _annualActionsFailed);
+            _observability.EmitMetric("autotuning.annual.action_success_rate", annualSuccessRate);
+            _observability.EmitMetric("autotuning.annual.rollback_count", _annualRollbackCount);
+            _observability.EmitMetric("autotuning.annual.alert_count", _annualAlertCount);
+            _observability.EmitMetric("autotuning.annual.active_hot_tables", activeHotTables);
+
+            // 年度看板文件归档
+            if (!string.IsNullOrWhiteSpace(_annualDashboardArchivePath)) {
+                await ArchiveAnnualDashboardToFileAsync(result, annualSuccessRate, cancellationToken);
+            }
+
+            // 重置本年累计计数器
+            _annualAnalysisCycles = 0;
+            _annualActionsAttempted = 0;
+            _annualActionsSucceeded = 0;
+            _annualActionsFailed = 0;
+            _annualRollbackCount = 0;
+            _annualAlertCount = 0;
+        }
+
+        /// <summary>
+        /// 将年度运行看板异步写入归档目录文件，文件名格式：annual-dashboard-{yyyy}.txt。
+        /// 写入失败时记录告警日志，不影响主流程。
+        /// </summary>
+        /// <param name="result">分析结果（含生成时间）。</param>
+        /// <param name="actionSuccessRate">动作成功率（百分比）。</param>
+        /// <param name="cancellationToken">取消令牌，透传给文件写入以支持宿主停止时优雅中断。</param>
+        private async Task ArchiveAnnualDashboardToFileAsync(SlowQueryAnalysisResult result, double actionSuccessRate, CancellationToken cancellationToken) {
+            try {
+                // 步骤 1：解析归档目录为绝对路径
+                var archiveDir = Path.IsPathRooted(_annualDashboardArchivePath)
+                    ? _annualDashboardArchivePath
+                    : Path.Combine(AppContext.BaseDirectory, _annualDashboardArchivePath);
+
+                // 步骤 2：确保目录存在
+                Directory.CreateDirectory(archiveDir);
+
+                // 步骤 3：构建归档文件路径（按年唯一）
+                var fileName = $"annual-dashboard-{result.GeneratedTime:yyyy}.txt";
+                var filePath = Path.Combine(archiveDir, fileName);
+
+                // 步骤 4：构建内容并异步追加写入（透传 cancellationToken 以支持宿主停止时及时中断）
+                var content = BuildAnnualDashboardContent(result, actionSuccessRate);
+                await File.AppendAllTextAsync(filePath, content, cancellationToken);
+                NLogLogger.Info(
+                    "年度运行看板已归档：Provider={Provider}, FilePath={FilePath}",
+                    _dialect.ProviderName,
+                    filePath);
+            }
+            catch (Exception ex) {
+                NLogLogger.Warn(ex,
+                    "年度运行看板归档失败（不影响主流程）：Provider={Provider}, ArchivePath={ArchivePath}",
+                    _dialect.ProviderName,
+                    _annualDashboardArchivePath);
+            }
+        }
+
+        /// <summary>
+        /// 构建年度运行看板文本内容，覆盖稳定性、容量、告警质量、治理动作成功率与回滚成功率。
+        /// </summary>
+        /// <param name="result">分析结果（含生成时间与慢查询 Top 快照）。</param>
+        /// <param name="actionSuccessRate">年度动作成功率（百分比）。</param>
+        /// <returns>年度看板文本。</returns>
+        private string BuildAnnualDashboardContent(SlowQueryAnalysisResult result, double actionSuccessRate) {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("========================================");
+            sb.AppendLine($"年度运行看板");
+            sb.AppendLine($"生成时间：{result.GeneratedTime:yyyy-MM-dd HH:mm:ss}");
+            sb.AppendLine($"数据库提供者：{_dialect.ProviderName}");
+            sb.AppendLine("----------------------------------------");
+            sb.AppendLine("【稳定性】");
+            sb.AppendLine($"  年度分析周期数：{_annualAnalysisCycles}");
+            sb.AppendLine($"  年度尝试执行动作数：{_annualActionsAttempted}");
+            sb.AppendLine($"  年度成功执行动作数：{_annualActionsSucceeded}");
+            sb.AppendLine($"  年度失败执行动作数：{_annualActionsFailed}");
+            sb.AppendLine("【容量】");
+            sb.AppendLine($"  当前活跃热点表数：{_tableHeatByTable.Count(static pair => pair.Value > 0)}");
+            sb.AppendLine($"  待回滚动作数（未消费）：{_pendingRollbackByFingerprint.Count}");
+            sb.AppendLine("【告警质量】");
+            sb.AppendLine($"  年度累计告警次数：{_annualAlertCount}");
+            sb.AppendLine("【治理动作成功率】");
+            sb.AppendLine($"  年度动作成功率：{actionSuccessRate:F1}%");
+            sb.AppendLine("【回滚成功率】");
+            sb.AppendLine($"  年度回滚次数：{_annualRollbackCount}");
+            if (result.Metrics.Count > 0) {
+                sb.AppendLine($"  慢 SQL Top 快照数（本次窗口）：{result.Metrics.Count}");
             }
             sb.AppendLine("========================================");
             sb.AppendLine();
@@ -1085,6 +1260,20 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                             actionId,
                             _gradualSwitchElapsedCycles,
                             _gradualSwitchDryRunCycles);
+                        // 热切换保护期内：输出可观测性事件，确保可追踪、可中止、可回滚。
+                        _observability.EmitEvent(
+                            "autotuning.gradual_switch.active",
+                            NLog.LogLevel.Info,
+                            $"危险策略处于灰度切换保护期，当前动作强制 dry-run：Provider={_dialect.ProviderName}, ActionId={actionId}, ElapsedCycles={_gradualSwitchElapsedCycles}, RequiredCycles={_gradualSwitchDryRunCycles}",
+                            new Dictionary<string, string> {
+                                ["provider"] = _dialect.ProviderName,
+                                ["action_id"] = actionId,
+                                ["elapsed_cycles"] = _gradualSwitchElapsedCycles.ToString(),
+                                ["required_cycles"] = _gradualSwitchDryRunCycles.ToString(),
+                                ["observable"] = "true",
+                                ["abortable"] = "true",
+                                ["rollback_ready"] = "true"
+                            });
                     }
                 }
                 else {
@@ -1149,6 +1338,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             EmitAuditLog(actionId, candidate, actionSql, rollbackSql, executed: executed, dryRun: false, reason: reason);
             if (!isRollback) {
                 _monthlyActionsAttempted++;
+                _annualActionsAttempted++;
             }
             if (executed) {
                 _observability.EmitMetric("autotuning.action.executed", 1d, new Dictionary<string, string> {
@@ -1157,13 +1347,16 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 });
                 if (isRollback) {
                     _monthlyRollbackCount++;
+                    _annualRollbackCount++;
                 }
                 else {
                     _monthlyActionsSucceeded++;
+                    _annualActionsSucceeded++;
                 }
             }
             else if (!isRollback) {
                 _monthlyActionsFailed++;
+                _annualActionsFailed++;
             }
 
             return executed;
@@ -1474,6 +1667,10 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             CancellationToken cancellationToken) {
             await EnsureModelIndexColumnsLoadedAsync(cancellationToken);
             var metricsByFingerprint = result.Metrics.ToDictionary(static metric => metric.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
+
+            // 步骤 1：执行分表治理策略切换门禁，计算当前 sharding hit rate 并阻断不满足条件的候选。
+            var shardingBlockedFingerprints = ValidateShardingStrategyGate(result.Metrics);
+
             var blockedCreateIndexActions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var emittedSignatures = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var filteredCandidates = new List<SlowQueryTuningCandidate>(result.TuningCandidates.Count);
@@ -1486,13 +1683,16 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 var isCoveredByExisting = indexColumns.Length > 0 && IsCoveredByModelIndex(tableKey, indexColumns);
                 var isSemanticDuplicate = !string.IsNullOrWhiteSpace(indexSignature) && !emittedSignatures.Add(indexSignature);
                 var isLowValue = IsLowValueIndexCandidate(metric);
-                var shouldFilterIndex = isCoveredByExisting || isSemanticDuplicate || isLowValue;
+                var isBlockedByShardingGate = shardingBlockedFingerprints.Contains(candidate.SqlFingerprint);
+                var shouldFilterIndex = isCoveredByExisting || isSemanticDuplicate || isLowValue || isBlockedByShardingGate;
                 if (shouldFilterIndex) {
                     var blockReason = isCoveredByExisting
                         ? "covered-by-existing-index"
                         : isSemanticDuplicate
                             ? "semantic-duplicate"
-                            : "low-value-index";
+                            : isBlockedByShardingGate
+                                ? "sharding-governance-gate"
+                                : "low-value-index";
                     NLogLogger.Info(
                         "自动索引建议已过滤：Provider={Provider}, Fingerprint={Fingerprint}, Table={Table}, Reason={Reason}",
                         _dialect.ProviderName,
@@ -1531,6 +1731,65 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 SuggestionInsights = filteredInsights,
                 ReadOnlySuggestions = filteredInsights.Select(static insight => insight.SuggestionSql).ToList()
             };
+        }
+
+        /// <summary>
+        /// 分表治理策略切换门禁：计算当前分析窗口的 sharding hit rate，
+        /// 若低于配置阈值则阻断所有分表相关候选的自动动作，并通过 ShardingGovernanceGuardException 记录告警。
+        /// 门禁阈值为 0.0 时禁用，不进行任何拦截。
+        /// </summary>
+        /// <param name="metrics">当前分析窗口的慢查询指标列表。</param>
+        /// <returns>需要阻断的候选 SQL 指纹集合（匹配到分表查询且 hit rate 不达标）。</returns>
+        private HashSet<string> ValidateShardingStrategyGate(IReadOnlyList<SlowQueryMetric> metrics) {
+            // 门禁未启用（阈值为 0）则返回空集合，不阻断任何候选
+            if (_shardingGovernanceHitRateThreshold <= 0d || metrics.Count == 0) {
+                return [];
+            }
+
+            // 步骤 1：计算当前 sharding hit rate
+            var totalCalls = metrics.Sum(static m => m.CallCount);
+            if (totalCalls <= 0) {
+                return [];
+            }
+
+            var shardingHitCalls = metrics.Sum(static m => IsShardingHitQuery(m.SampleSql) ? m.CallCount : 0);
+            var hitRate = Math.Clamp((double)shardingHitCalls / totalCalls, 0d, 1d);
+
+            // 步骤 2：hit rate 满足阈值则不拦截
+            if (hitRate >= _shardingGovernanceHitRateThreshold) {
+                return [];
+            }
+
+            // 步骤 3：hit rate 不足，收集所有分表相关的候选 fingerprint，记录告警
+            var blocked = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var metric in metrics) {
+                if (IsShardingHitQuery(metric.SampleSql)) {
+                    blocked.Add(metric.SqlFingerprint);
+                }
+            }
+
+            if (blocked.Count > 0) {
+                var guardEx = new ShardingGovernanceGuardException(
+                    $"分表治理策略切换门禁阻断：Provider={_dialect.ProviderName}, HitRate={hitRate:P1}, Threshold={_shardingGovernanceHitRateThreshold:P1}, BlockedCount={blocked.Count}，命中率低于阈值，暂停分表相关自动动作。");
+                NLogLogger.Warn(guardEx,
+                    "分表治理策略切换门禁触发：Provider={Provider}, HitRate={HitRate:F3}, Threshold={Threshold:F3}, BlockedCandidates={BlockedCount}",
+                    _dialect.ProviderName,
+                    hitRate,
+                    _shardingGovernanceHitRateThreshold,
+                    blocked.Count);
+                _observability.EmitEvent(
+                    "autotuning.sharding.governance_gate_blocked",
+                    NLog.LogLevel.Warn,
+                    guardEx.Message,
+                    new Dictionary<string, string> {
+                        ["provider"] = _dialect.ProviderName,
+                        ["hit_rate"] = hitRate.ToString("F3", CultureInfo.InvariantCulture),
+                        ["threshold"] = _shardingGovernanceHitRateThreshold.ToString("F3", CultureInfo.InvariantCulture),
+                        ["blocked_count"] = blocked.Count.ToString()
+                    });
+            }
+
+            return blocked;
         }
 
         /// <summary>按需加载模型静态索引列信息。</summary>
