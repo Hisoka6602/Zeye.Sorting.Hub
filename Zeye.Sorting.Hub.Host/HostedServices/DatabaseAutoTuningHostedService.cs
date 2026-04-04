@@ -6,7 +6,9 @@ using System.Text.RegularExpressions;
 using NLog;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.Extensions.Options;
 using Zeye.Sorting.Hub.Domain.Enums;
+using Zeye.Sorting.Hub.Host.Options;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
@@ -335,6 +337,10 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// </summary>
         private readonly decimal _planProbeSampleRate;
         /// <summary>
+        /// 资源阈值配置选项（连接池上限、内存告警阈值），用于 AuditBaseline 启动期审计。
+        /// </summary>
+        private readonly ResourceThresholdsOptions _resourceThresholds;
+        /// <summary>
         /// 表级热度计数（用于策略评估）。
         /// </summary>
         private readonly Dictionary<string, int> _tableHeatByTable = new(StringComparer.OrdinalIgnoreCase);
@@ -362,6 +368,30 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// 闭环阶段追踪器，用于审计阶段迁移链路。
         /// </summary>
         private readonly AutoTuningClosedLoopTracker _closedLoopTracker = new();
+        /// <summary>
+        /// 月报周期：累计慢查询采样窗口次数。
+        /// </summary>
+        private int _monthlyAnalysisCycles;
+        /// <summary>
+        /// 月报周期：累计已尝试执行的自动调优动作数。
+        /// </summary>
+        private int _monthlyActionsAttempted;
+        /// <summary>
+        /// 月报周期：累计成功执行的自动调优动作数。
+        /// </summary>
+        private int _monthlyActionsSucceeded;
+        /// <summary>
+        /// 月报周期：累计执行失败的自动调优动作数。
+        /// </summary>
+        private int _monthlyActionsFailed;
+        /// <summary>
+        /// 月报周期：累计触发回滚的次数。
+        /// </summary>
+        private int _monthlyRollbackCount;
+        /// <summary>
+        /// 月报周期：累计告警次数。
+        /// </summary>
+        private int _monthlyAlertCount;
 
         /// <summary>初始化数据库自动调谐后台服务及其运行策略参数。</summary>
         public DatabaseAutoTuningHostedService(
@@ -370,7 +400,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             IServiceScopeFactory scopeFactory,
             IDatabaseDialect dialect,
             SlowQueryAutoTuningPipeline pipeline,
-            IConfiguration configuration) {
+            IConfiguration configuration,
+            IOptions<ResourceThresholdsOptions> resourceThresholdsOptions) {
             _observability = observability;
             _planRegressionProbe = planRegressionProbe;
             _scopeFactory = scopeFactory;
@@ -423,6 +454,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _pauseActionCyclesOnRegression = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutonomousKey("Validation:PauseActionCyclesOnRegression"), 2);
             _enablePlanProbe = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutonomousKey("Validation:PlanProbe:Enable"), true);
             _planProbeSampleRate = AutoTuningConfigurationHelper.GetDecimalClampedOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutonomousKey("Validation:PlanProbe:SampleRate"), 1m, 0m, 1m);
+            _resourceThresholds = resourceThresholdsOptions.Value;
         }
 
         /// <summary>
@@ -444,7 +476,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             IDatabaseDialect dialect,
             SlowQueryAutoTuningPipeline pipeline,
             IConfiguration configuration)
-            : this(observability, planRegressionProbe, scopeFactory, dialect, pipeline, configuration) {
+            : this(observability, planRegressionProbe, scopeFactory, dialect, pipeline, configuration, Microsoft.Extensions.Options.Options.Create(new ResourceThresholdsOptions())) {
             ArgumentNullException.ThrowIfNull(legacyLogger);
         }
 
@@ -460,6 +492,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 if (result.Metrics.Count == 0) {
                     if (result.ShouldEmitDailyReport) {
                         EmitDailyReport(result);
+                    }
+                    if (result.ShouldEmitMonthlyReport) {
+                        EmitMonthlyReport(result);
                     }
                     continue;
                 }
@@ -505,8 +540,16 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 await ValidateAutonomousActionsAsync(result, metricsByFingerprint, stoppingToken);
                 PruneTrackingState();
 
+                // 累计月报统计
+                _monthlyAnalysisCycles++;
+                _monthlyAlertCount += result.Alerts.Count;
+
                 if (result.ShouldEmitDailyReport) {
                     EmitDailyReport(result);
+                }
+
+                if (result.ShouldEmitMonthlyReport) {
+                    EmitMonthlyReport(result);
                 }
             }
         }
@@ -549,7 +592,53 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
         }
 
-        /// <summary>执行自动调优动作及其后置维护动作。</summary>
+        /// <summary>
+        /// 输出月度巡检报告，覆盖稳定性、治理动作成功率、告警总量与回滚次数。
+        /// 输出完成后重置本月累计计数器。
+        /// </summary>
+        private void EmitMonthlyReport(SlowQueryAnalysisResult result) {
+            // 无动作尝试时成功率默认为 100%（无失败即满分，符合无操作无风险语义）
+            const double FullSuccessRatePercent = 100d;
+            var analysisSuccessRate = _monthlyActionsAttempted > 0
+                ? (double)_monthlyActionsSucceeded / _monthlyActionsAttempted * 100
+                : FullSuccessRatePercent;
+            NLogLogger.Info(
+                "月度巡检报告：Provider={Provider}, GeneratedTime={GeneratedTime}, AnalysisCycles={AnalysisCycles}, ActionsAttempted={ActionsAttempted}, ActionsSucceeded={ActionsSucceeded}, ActionsFailed={ActionsFailed}, ActionSuccessRate={ActionSuccessRate:F1}%, RollbackCount={RollbackCount}, AlertCount={AlertCount}, ActiveHotTables={ActiveHotTables}",
+                _dialect.ProviderName,
+                result.GeneratedTime,
+                _monthlyAnalysisCycles,
+                _monthlyActionsAttempted,
+                _monthlyActionsSucceeded,
+                _monthlyActionsFailed,
+                analysisSuccessRate,
+                _monthlyRollbackCount,
+                _monthlyAlertCount,
+                _tableHeatByTable.Count(static pair => pair.Value > 0));
+
+            if (result.Metrics.Count > 0) {
+                NLogLogger.Info(
+                    "月度巡检报告 - 慢 SQL Top（本次快照）：Provider={Provider}, TopCount={TopCount}",
+                    _dialect.ProviderName,
+                    result.Metrics.Count);
+            }
+
+            // 输出月报可观测性指标
+            _observability.EmitMetric("autotuning.monthly.actions_attempted", _monthlyActionsAttempted);
+            _observability.EmitMetric("autotuning.monthly.actions_succeeded", _monthlyActionsSucceeded);
+            _observability.EmitMetric("autotuning.monthly.actions_failed", _monthlyActionsFailed);
+            _observability.EmitMetric("autotuning.monthly.rollback_count", _monthlyRollbackCount);
+            _observability.EmitMetric("autotuning.monthly.alert_count", _monthlyAlertCount);
+
+            // 重置本月累计计数器
+            _monthlyAnalysisCycles = 0;
+            _monthlyActionsAttempted = 0;
+            _monthlyActionsSucceeded = 0;
+            _monthlyActionsFailed = 0;
+            _monthlyRollbackCount = 0;
+            _monthlyAlertCount = 0;
+        }
+
+
         private async Task ExecuteAutoTuningActionsAsync(
             SlowQueryAnalysisResult result,
             IReadOnlyDictionary<string, SlowQueryMetric> metricsByFingerprint,
@@ -915,11 +1004,23 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
             var executed = await TryExecuteSqlAsync(actionSql, candidate.SqlFingerprint, isRollback, cancellationToken);
             EmitAuditLog(actionId, candidate, actionSql, rollbackSql, executed: executed, dryRun: false, reason: reason);
+            if (!isRollback) {
+                _monthlyActionsAttempted++;
+            }
             if (executed) {
                 _observability.EmitMetric("autotuning.action.executed", 1d, new Dictionary<string, string> {
                     ["provider"] = _dialect.ProviderName,
                     ["is_rollback"] = isRollback ? "true" : "false"
                 });
+                if (isRollback) {
+                    _monthlyRollbackCount++;
+                }
+                else {
+                    _monthlyActionsSucceeded++;
+                }
+            }
+            else if (!isRollback) {
+                _monthlyActionsFailed++;
             }
 
             return executed;
@@ -1716,6 +1817,24 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             AuditBaselineItem("AlertP99Milliseconds", _configuredAlertP99Milliseconds, 500);
             AuditBaselineItem("AlertTimeoutRatePercent", (double)_configuredAlertTimeoutRatePercent, 1d);
             AuditBaselineItem("AlertDeadlockCount", _configuredAlertDeadlockCount, 1);
+
+            // 资源阈值边界审计：记录配置的连接池与内存告警阈值，超出推荐上限时告警
+            NLogLogger.Info(
+                "资源阈值配置审计：MaxConnectionPoolSize={MaxConnectionPoolSize}（推荐 ≤ 200），MemoryWarningThresholdMB={MemoryWarningThresholdMB}（推荐 ≥ 512）",
+                _resourceThresholds.MaxConnectionPoolSize,
+                _resourceThresholds.MemoryWarningThresholdMB);
+            if (_resourceThresholds.MaxConnectionPoolSize > 200) {
+                NLogLogger.Warn(
+                    "资源阈值告警：MaxConnectionPoolSize={MaxConnectionPoolSize} 超出推荐上限 200，可能导致数据库连接耗尽。",
+                    _resourceThresholds.MaxConnectionPoolSize);
+                _observability.EmitEvent("resource.threshold.exceeded", NLog.LogLevel.Warn, $"MaxConnectionPoolSize={_resourceThresholds.MaxConnectionPoolSize} exceeds recommended 200");
+            }
+            if (_resourceThresholds.MemoryWarningThresholdMB > 0 && _resourceThresholds.MemoryWarningThresholdMB < 512) {
+                NLogLogger.Warn(
+                    "资源阈值告警：MemoryWarningThresholdMB={MemoryWarningThresholdMB} 低于推荐下限 512 MB，可能导致频繁触发内存告警。",
+                    _resourceThresholds.MemoryWarningThresholdMB);
+                _observability.EmitEvent("resource.threshold.exceeded", NLog.LogLevel.Warn, $"MemoryWarningThresholdMB={_resourceThresholds.MemoryWarningThresholdMB} is below recommended 512");
+            }
         }
 
         /// <summary>输出单个参数的基线审计结果。</summary>

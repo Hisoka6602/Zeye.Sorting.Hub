@@ -179,7 +179,11 @@
 │   │   ├── HostingOptions.cs（Hosting 主配置模型）
 │   │   ├── SwaggerOptions.cs（Swagger 子配置模型）
 │   │   ├── BrowserAutoOpenOptions.cs（Development 浏览器自动打开配置）
-│   │   └── AuditReadOnlyApiOptions.cs（AuditReadOnlyApi 显式开关配置）
+│   │   ├── AuditReadOnlyApiOptions.cs（AuditReadOnlyApi 显式开关配置）
+│   │   └── ResourceThresholdsOptions.cs（运行时资源阈值告警配置）
+│   ├── HealthChecks（健康检查目录）
+│   │   ├── DatabaseReadinessHealthCheck.cs（数据库就绪探针：/health/ready）
+│   │   └── HealthCheckResponseWriter.cs（健康检查 JSON 响应序列化工具）
 │   ├── Utilities（工具目录）
 │   │   └── LocalDateTimeParsing.cs（本地时间解析与 API 问题响应工厂共享工具）
 │   ├── Middleware（请求审计中间件目录）
@@ -229,6 +233,8 @@
 │   ├── TestLogger.cs（通用泛型日志测试桩）
 │   ├── TestMySqlDialect.cs（MySQL ProviderName 方言测试桩）
 │   ├── TestObservability.cs（自动调优观测测试桩：收集指标与事件）
+│   ├── TestOptionsMonitor.cs（IOptionsMonitor<T> 测试桩：支持 Update 方法触发热加载）
+│   ├── OptionsMonitorSubscription.cs（IOptionsMonitor.OnChange 订阅句柄，Dispose 时取消订阅）
 │   ├── TestSqlServerDialect.cs（SQL Server ProviderName 方言测试桩）
 │   ├── ThrowOnReadStream.cs（读取即抛异常的请求体流测试桩）
 │   └── Zeye.Sorting.Hub.Host.Tests.csproj（xUnit 测试项目定义）
@@ -517,6 +523,9 @@
 - `Options/SwaggerOptions.cs`：Swagger 子配置模型。
 - `Options/BrowserAutoOpenOptions.cs`：Development 浏览器自动打开配置模型。
 - `Options/AuditReadOnlyApiOptions.cs`：审计只读 API 开关配置模型（`AuditReadOnlyApi:Enabled`）。
+- `Options/ResourceThresholdsOptions.cs`：运行时资源阈值告警配置模型（`ResourceThresholds:MaxConnectionPoolSize`、`MemoryWarningThresholdMB` 等）。
+- `HealthChecks/DatabaseReadinessHealthCheck.cs`：数据库就绪健康检查探针，挂载于 `/health/ready`，探测数据库连接可用性。
+- `HealthChecks/HealthCheckResponseWriter.cs`：健康检查 JSON 响应序列化工具，输出结构化 JSON 包含所有检查项状态。
 - `Utilities/LocalDateTimeParsing.cs`：本地时间解析与 API 问题响应工厂共享工具。
 - `Middleware/WebRequestAuditLogOptions.cs`：Web 请求审计中间件配置模型。
 - `Middleware/WebRequestAuditLogMiddleware.cs`：Web 请求审计中间件实现（主请求零阻塞：仅负责采集与入队，不等待写库；补齐 Request/Response Body 采集与可回放 Curl 拼装）。
@@ -528,7 +537,7 @@
 - `Middleware/ResponseCaptureResult.cs`：响应正文采集结果值类型。
 - `Zeye.Sorting.Hub.Host.csproj`：Host 项目定义。
 - `nlog.config`：NLog 日志配置。
-- `appsettings.json`：默认运行配置（含 `WebRequestAuditLog.IncludeRequestBody/IncludeResponseBody` 当前目标值说明；新增 `AuditReadOnlyApi:Enabled` 显式开关）。
+- `appsettings.json`：默认运行配置（含 `WebRequestAuditLog.IncludeRequestBody/IncludeResponseBody`、`AuditReadOnlyApi:Enabled` 显式开关、`ResourceThresholds:MaxConnectionPoolSize/MemoryWarningThresholdMB` 资源阈值节、`Persistence:AutoTuning:MonthlyReportDay` 月报日期配置）。
 - `appsettings.Development.json`：开发环境配置覆盖文件。
 
 #### `Zeye.Sorting.Hub.Host/Swagger/`：Swagger 扩展目录
@@ -654,6 +663,8 @@
 - `TestLogger.cs`：通用泛型日志测试桩，收集日志消息供断言。
 - `TestMySqlDialect.cs`：MySQL ProviderName 方言测试桩。
 - `TestObservability.cs`：自动调优观测测试桩，收集指标与事件输出。
+- `TestOptionsMonitor.cs`：`IOptionsMonitor<T>` 测试桩，允许测试中直接注入配置值并通过 `Update` 方法模拟热加载变更。
+- `OptionsMonitorSubscription.cs`：`IOptionsMonitor.OnChange` 订阅句柄，`Dispose` 时执行取消订阅回调，供 `TestOptionsMonitor<T>` 复用。
 - `TestSqlServerDialect.cs`：SQL Server ProviderName 方言测试桩。
 - `ThrowOnReadStream.cs`：读取即抛异常的请求体流测试桩，用于验证中间件请求体采集异常隔离不影响主链路。
 
