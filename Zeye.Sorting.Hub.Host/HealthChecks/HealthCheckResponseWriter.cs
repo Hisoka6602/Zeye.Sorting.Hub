@@ -31,7 +31,7 @@ internal static class HealthCheckResponseWriter {
         using (var writer = new Utf8JsonWriter(memoryStream, options)) {
             writer.WriteStartObject();
             writer.WriteString("status", StatusText.GetValueOrDefault(report.Status, "Unknown"));
-            writer.WriteString("generatedAt", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+            writer.WriteString("generatedAt", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")); // 本地时间语义
             writer.WriteStartObject("entries");
             foreach (var (key, value) in report.Entries) {
                 writer.WriteStartObject(key);

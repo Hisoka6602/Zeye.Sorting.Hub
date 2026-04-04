@@ -561,8 +561,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                 .Add(_dailyReportTime < TimeSpan.Zero ? new TimeSpan(2, 30, 0) : _dailyReportTime);
         }
 
-
-                private static SlowQueryMetric BuildMetric(string fingerprint, IGrouping<string, SlowQuerySample> group) {
+        /// <summary>将一组样本聚合为单条慢查询指标。</summary>
+        private static SlowQueryMetric BuildMetric(string fingerprint, IGrouping<string, SlowQuerySample> group) {
             var samples = group.ToList();
             var callCount = samples.Count;
             var elapsedValues = samples

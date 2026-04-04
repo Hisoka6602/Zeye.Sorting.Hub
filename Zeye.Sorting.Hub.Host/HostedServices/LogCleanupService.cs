@@ -8,6 +8,11 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
     /// <summary>
     /// 日志清理服务 - 自动清理超过指定天数的日志文件，支持配置热加载与可观测性指标输出。
+    /// <para>
+    /// 配置热加载行为：使用 <see cref="IOptionsMonitor{T}"/>，配置文件变更后，
+    /// 下次执行 <see cref="ExecuteAsync"/> 循环时自动读取 <see cref="Settings"/> 属性获取最新配置，
+    /// 无需手动重启服务。变更事件同步输出审计日志。
+    /// </para>
     /// </summary>
     public class LogCleanupService : BackgroundService {
         /// <summary>

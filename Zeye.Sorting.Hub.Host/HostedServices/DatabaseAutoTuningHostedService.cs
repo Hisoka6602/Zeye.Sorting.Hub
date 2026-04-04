@@ -599,9 +599,11 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// 输出完成后重置本月累计计数器。
         /// </summary>
         private void EmitMonthlyReport(SlowQueryAnalysisResult result) {
+            // 无动作尝试时成功率默认为 100%（无失败即满分，符合无操作无风险语义）
+            const double FullSuccessRatePercent = 100d;
             var analysisSuccessRate = _monthlyActionsAttempted > 0
                 ? (double)_monthlyActionsSucceeded / _monthlyActionsAttempted * 100
-                : 100d;
+                : FullSuccessRatePercent;
             NLogLogger.Info(
                 "月度巡检报告：Provider={Provider}, GeneratedTime={GeneratedTime}, AnalysisCycles={AnalysisCycles}, ActionsAttempted={ActionsAttempted}, ActionsSucceeded={ActionsSucceeded}, ActionsFailed={ActionsFailed}, ActionSuccessRate={ActionSuccessRate:F1}%, RollbackCount={RollbackCount}, AlertCount={AlertCount}, ActiveHotTables={ActiveHotTables}",
                 _dialect.ProviderName,
