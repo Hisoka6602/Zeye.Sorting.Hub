@@ -12,7 +12,8 @@
 │   │   └── validate-copilot-rules.sh（Copilot 限制规则校验脚本：从 copilot-instructions.md 解析规则并执行自动校验）
 │   └── workflows（CI 工作流目录）
 │       ├── copilot-instructions-validation.yml（Copilot 限制规则 PR 校验流水线：每次 PR 运行规则校验脚本）
-│       └── ef-migration-validation.yml（EF 迁移验收流水线：MySQL+SQL Server 双 Provider 执行 dotnet ef list/update/script）
+│       ├── ef-migration-validation.yml（EF 迁移验收流水线：MySQL+SQL Server 双 Provider 执行 dotnet ef list/update/script）
+│       └── stability-gates.yml（长期运行稳定性门禁：构建+测试、配置合法性、隔离器边界、回滚资产、健康探针端点共 5 项门禁）
 ├── .gitattributes（Git 属性配置）
 ├── .gitignore（Git 忽略规则）
 ├── 待完善事项.md（待完善事项列表，仅记录代码中尚未实现的可完善点）
@@ -216,6 +217,7 @@
 │   ├── FixedPlanProbe.cs（执行计划探针测试桩：固定返回可用快照）
 │   ├── LocalTimeTestConstraintHelper.cs（测试层本地时间语义约束工具类：提供 CreateLocalTime/AssertIsLocalTime/AssertNotUtc，防止测试引入 UTC 语义）
 │   ├── LogCleanupServiceTests.cs（日志清理服务测试：验证目录栈递归扫描所有子目录 *.log 并仅删除过期文件）
+│   ├── ConfigChangeHistoryStoreTests.cs（配置变更历史存储器测试：空历史、单条记录、多条按序排列、超容量环形覆盖、热加载联动快照记录）
 │   ├── MissingIndexShardingPhysicalTableProbe.cs（索引缺失探测测试桩：按表返回缺失索引）
 │   ├── NullScope.cs（通用测试日志空作用域单例）
 │   ├── ObservabilityEntry.cs（自动调优观测记录模型）
@@ -295,7 +297,8 @@
 │   └── Zeye.Sorting.Hub.RuleEngine.csproj（RuleEngine 项目定义）
 ├── Zeye.Sorting.Hub.SharedKernel（共享内核）
 │   ├── Utilities（共享工具目录）
-│   │   └── SafeExecutor.cs（安全执行器：使用 NLog 静态 logger，不再依赖 MEL ILogger 构造注入；隔离任何异常，Execute/ExecuteAsync 确保副作用不会导致宿主崩溃）
+│   │   ├── SafeExecutor.cs（安全执行器：使用 NLog 静态 logger，不再依赖 MEL ILogger 构造注入；隔离任何异常，Execute/ExecuteAsync 确保副作用不会导致宿主崩溃）
+│   │   └── ConfigChangeHistoryStore.cs（配置变更历史存储器：线程安全环形缓冲，保留最近 N 次配置快照，支持前后值审计与回滚查询）
 │   └── Zeye.Sorting.Hub.SharedKernel.csproj（SharedKernel 项目定义）
 ├── Zeye.Sorting.Hub.sln（.NET 解决方案入口）
 ├── EFCore数据库迁移指南.md（EF Core CodeFirst 迁移使用说明文档）
@@ -339,6 +342,7 @@
 ### `.github/workflows/`：CI 工作流目录
 - `copilot-instructions-validation.yml`：Copilot 限制规则校验流水线；每次 PR 触发并执行 `validate-copilot-rules.sh`，对规则自动门禁。
 - `ef-migration-validation.yml`：EF 迁移验收流水线（MySQL + SQL Server 容器环境），真实执行 `dotnet ef migrations list`、`dotnet ef database update`、`dotnet ef migrations script` 三项门禁命令。
+- `stability-gates.yml`：长期运行稳定性门禁流水线；包含构建+单元测试、配置合法性验证、隔离器边界检查（EnableGuard/AllowDangerousActionExecution）、回滚资产检查（EnableAutoRollback/EnableAutoValidation）与健康探针端点注册检查共 5 个并行 job。
 
 ### `Zeye.Sorting.Hub.Analytics/`：分析与报表子域（当前为占位工程）
 - `Zeye.Sorting.Hub.Analytics.csproj`：Analytics 项目定义。
@@ -629,6 +633,7 @@
 
 #### `Zeye.Sorting.Hub.SharedKernel/Utilities/`：共享工具目录
 - `SafeExecutor.cs`：安全执行器；使用 NLog 静态 logger（`LogManager.GetCurrentClassLogger()`），移除了 MEL `ILogger<SafeExecutor>` 构造依赖；提供 `Execute`、`ExecuteAsync`（void）、`ExecuteAsync<T>`（带返回值）三个重载，确保任何异常都不会导致宿主崩溃。
+- `ConfigChangeHistoryStore.cs`：配置变更历史存储器；泛型环形缓冲实现，线程安全，保留最近 N 次配置快照（默认 10 条）；暴露 `Record(previous, current, changedFields)` 写入快照、`GetHistory()` 获取历史与 `GetLatest()` 获取最新快照，供配置变更审计与回滚查询使用。
 
 ### `Zeye.Sorting.Hub.Host.Tests/`：API 与应用层测试层
 - `Zeye.Sorting.Hub.Host.Tests.csproj`：xUnit 测试项目定义。
@@ -643,6 +648,7 @@
 - `FixedPlanProbe.cs`：执行计划探针测试桩，固定返回“探针可用且无回归”。
 - `LocalTimeTestConstraintHelper.cs`：测试层本地时间语义约束工具类，提供 `CreateLocalTime`/`AssertIsLocalTime`/`AssertNotUtc` 方法，防止测试代码引入 UTC 语义。
 - `LogCleanupServiceTests.cs`：日志清理服务回归测试，验证目录栈递归扫描子目录日志并仅清理超过保留天数的旧日志文件。
+- `ConfigChangeHistoryStoreTests.cs`：配置变更历史存储器单元测试，覆盖空历史、单条记录、多条按序排列、超容量环形覆盖与 LogCleanupService 热加载联动快照记录五个场景。
 - `MissingIndexShardingPhysicalTableProbe.cs`：关键索引缺失探测测试桩，按物理表返回缺失索引。
 - `NullScope.cs`：通用测试日志空作用域单例。
 - `ObservabilityEntry.cs`：自动调优观测记录模型，承载名称/值/标签快照。

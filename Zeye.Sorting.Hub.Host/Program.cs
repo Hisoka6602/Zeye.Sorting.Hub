@@ -62,6 +62,7 @@ try {
     builder.Services.AddHostedService<LogCleanupService>();
     builder.Services.AddHostedService<DevelopmentBrowserLauncherHostedService>();
     builder.Services.AddSingleton<SafeExecutor>();
+    builder.Services.AddSingleton<ConfigChangeHistoryStore<LogCleanupSettings>>();
     builder.Services.AddSortingHubPersistence(builder.Configuration);
     builder.Services.AddSingleton<IAutoTuningObservability, AutoTuningLoggerObservability>();
     // ──────────────────────────────────────────────────────

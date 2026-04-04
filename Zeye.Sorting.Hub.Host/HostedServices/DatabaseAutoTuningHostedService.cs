@@ -197,6 +197,16 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// </summary>
         private readonly bool _enableActionDryRun;
         /// <summary>
+        /// 灰度切换阶段 dry-run 保护周期数。大于 0 时，策略初始化后先运行 N 个分析周期的 dry-run，
+        /// 周期数满后自动晋升为真实执行。0 表示不启用灰度 dry-run（直接按 DryRun 配置项决定）。
+        /// 可填写范围：0~100，默认值 0。
+        /// </summary>
+        private readonly int _gradualSwitchDryRunCycles;
+        /// <summary>
+        /// 灰度切换已经过的 dry-run 周期计数（运行时状态，不持久化）。
+        /// </summary>
+        private int _gradualSwitchElapsedCycles;
+        /// <summary>
         /// 字段：_whitelistedTables。
         /// </summary>
         private readonly HashSet<string> _whitelistedTables;
@@ -341,6 +351,12 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// </summary>
         private readonly ResourceThresholdsOptions _resourceThresholds;
         /// <summary>
+        /// 月度巡检报告归档目录路径。非空时，每次输出月报同步将报告内容写入文件存档，
+        /// 格式：{MonthlyReportArchivePath}/monthly-report-{yyyy-MM}.txt。
+        /// 为空或空白时跳过文件归档，仅输出日志。
+        /// </summary>
+        private readonly string _monthlyReportArchivePath;
+        /// <summary>
         /// 表级热度计数（用于策略评估）。
         /// </summary>
         private readonly Dictionary<string, int> _tableHeatByTable = new(StringComparer.OrdinalIgnoreCase);
@@ -416,6 +432,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _enableDangerousActionIsolator = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutonomousKey("Execution:Isolator:EnableGuard"), true);
             _allowDangerousActionExecution = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutonomousKey("Execution:Isolator:AllowDangerousActionExecution"), false);
             _enableActionDryRun = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutonomousKey("Execution:Isolator:DryRun"), false);
+            _gradualSwitchDryRunCycles = AutoTuningConfigurationHelper.GetNonNegativeIntOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutonomousKey("Execution:Isolator:GradualSwitchDryRunCycles"), 0);
             _enableAutoRollback = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutonomousKey("Validation:EnableAutoRollback"), true);
             _whitelistedTables = LoadWhitelistedTables(configuration.GetSection(AutoTuningConfigurationHelper.BuildAutonomousKey("Execution:WhitelistedTables")));
             if (_whitelistedTables.Count == 0) {
@@ -455,6 +472,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _enablePlanProbe = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutonomousKey("Validation:PlanProbe:Enable"), true);
             _planProbeSampleRate = AutoTuningConfigurationHelper.GetDecimalClampedOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutonomousKey("Validation:PlanProbe:SampleRate"), 1m, 0m, 1m);
             _resourceThresholds = resourceThresholdsOptions.Value;
+            _monthlyReportArchivePath = configuration[AutoTuningConfigurationHelper.BuildAutoTuningKey("MonthlyReportArchivePath")] ?? string.Empty;
         }
 
         /// <summary>
@@ -494,7 +512,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                         EmitDailyReport(result);
                     }
                     if (result.ShouldEmitMonthlyReport) {
-                        EmitMonthlyReport(result);
+                        await EmitMonthlyReportAsync(result, stoppingToken);
                     }
                     continue;
                 }
@@ -549,7 +567,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 }
 
                 if (result.ShouldEmitMonthlyReport) {
-                    EmitMonthlyReport(result);
+                    await EmitMonthlyReportAsync(result, stoppingToken);
                 }
             }
         }
@@ -596,7 +614,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// 输出月度巡检报告，覆盖稳定性、治理动作成功率、告警总量与回滚次数。
         /// 输出完成后重置本月累计计数器。
         /// </summary>
-        private void EmitMonthlyReport(SlowQueryAnalysisResult result) {
+        /// <param name="result">分析结果。</param>
+        /// <param name="cancellationToken">取消令牌，用于归档写文件时的优雅停止。</param>
+        private async Task EmitMonthlyReportAsync(SlowQueryAnalysisResult result, CancellationToken cancellationToken) {
             // 无动作尝试时成功率默认为 100%（无失败即满分，符合无操作无风险语义）
             const double FullSuccessRatePercent = 100d;
             var analysisSuccessRate = _monthlyActionsAttempted > 0
@@ -629,6 +649,11 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _observability.EmitMetric("autotuning.monthly.rollback_count", _monthlyRollbackCount);
             _observability.EmitMetric("autotuning.monthly.alert_count", _monthlyAlertCount);
 
+            // 月报文件归档：当 MonthlyReportArchivePath 已配置时写入文件，供季度/年度复盘使用
+            if (!string.IsNullOrWhiteSpace(_monthlyReportArchivePath)) {
+                await ArchiveMonthlyReportToFileAsync(result, analysisSuccessRate, cancellationToken);
+            }
+
             // 重置本月累计计数器
             _monthlyAnalysisCycles = 0;
             _monthlyActionsAttempted = 0;
@@ -636,6 +661,74 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _monthlyActionsFailed = 0;
             _monthlyRollbackCount = 0;
             _monthlyAlertCount = 0;
+        }
+
+        /// <summary>
+        /// 将月度巡检报告异步写入归档目录文件，文件名格式：monthly-report-{yyyy-MM}.txt。
+        /// 写入失败时记录告警日志，不影响主流程。
+        /// </summary>
+        /// <param name="result">分析结果（含生成时间与慢查询 Top 快照）。</param>
+        /// <param name="actionSuccessRate">动作成功率（百分比）。</param>
+        /// <param name="cancellationToken">取消令牌，透传给文件写入以支持宿主停止时优雅中断。</param>
+        private async Task ArchiveMonthlyReportToFileAsync(SlowQueryAnalysisResult result, double actionSuccessRate, CancellationToken cancellationToken) {
+            try {
+                // 步骤 1：解析归档目录为绝对路径
+                var archiveDir = Path.IsPathRooted(_monthlyReportArchivePath)
+                    ? _monthlyReportArchivePath
+                    : Path.Combine(AppContext.BaseDirectory, _monthlyReportArchivePath);
+
+                // 步骤 2：确保目录存在
+                Directory.CreateDirectory(archiveDir);
+
+                // 步骤 3：构建归档文件路径（按年月唯一）
+                var fileName = $"monthly-report-{result.GeneratedTime:yyyy-MM}.txt";
+                var filePath = Path.Combine(archiveDir, fileName);
+
+                // 步骤 4：构建报告内容
+                var content = BuildMonthlyReportContent(result, actionSuccessRate);
+
+                // 步骤 5：异步追加写入文件（同月多次输出时保留全量记录；透传 cancellationToken 以支持宿主停止时及时中断）
+                await File.AppendAllTextAsync(filePath, content, cancellationToken);
+                NLogLogger.Info(
+                    "月度巡检报告已归档：Provider={Provider}, FilePath={FilePath}",
+                    _dialect.ProviderName,
+                    filePath);
+            }
+            catch (Exception ex) {
+                NLogLogger.Warn(ex,
+                    "月度巡检报告归档失败（不影响主流程）：Provider={Provider}, ArchivePath={ArchivePath}",
+                    _dialect.ProviderName,
+                    _monthlyReportArchivePath);
+            }
+        }
+
+        /// <summary>
+        /// 构建月度巡检报告文本内容。
+        /// </summary>
+        /// <param name="result">分析结果。</param>
+        /// <param name="actionSuccessRate">动作成功率（百分比）。</param>
+        /// <returns>报告文本。</returns>
+        private string BuildMonthlyReportContent(SlowQueryAnalysisResult result, double actionSuccessRate) {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("========================================");
+            sb.AppendLine($"月度巡检报告");
+            sb.AppendLine($"生成时间：{result.GeneratedTime:yyyy-MM-dd HH:mm:ss}");
+            sb.AppendLine($"数据库提供者：{_dialect.ProviderName}");
+            sb.AppendLine("----------------------------------------");
+            sb.AppendLine($"分析周期数：{_monthlyAnalysisCycles}");
+            sb.AppendLine($"尝试执行动作数：{_monthlyActionsAttempted}");
+            sb.AppendLine($"成功执行动作数：{_monthlyActionsSucceeded}");
+            sb.AppendLine($"失败执行动作数：{_monthlyActionsFailed}");
+            sb.AppendLine($"动作成功率：{actionSuccessRate:F1}%");
+            sb.AppendLine($"触发回滚次数：{_monthlyRollbackCount}");
+            sb.AppendLine($"告警次数：{_monthlyAlertCount}");
+            sb.AppendLine($"活跃热点表数：{_tableHeatByTable.Count(static pair => pair.Value > 0)}");
+            if (result.Metrics.Count > 0) {
+                sb.AppendLine($"慢 SQL Top 快照数：{result.Metrics.Count}");
+            }
+            sb.AppendLine("========================================");
+            sb.AppendLine();
+            return sb.ToString();
         }
 
 
@@ -962,7 +1055,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
         }
 
-        /// <summary>统一危险动作隔离入口（开关、dry-run、审计、执行）。</summary>
+        /// <summary>统一危险动作隔离入口（开关、dry-run、灰度切换保护、审计、执行）。</summary>
         private async Task<bool> ExecuteThroughIsolatorAsync(
             string actionId,
             SlowQueryTuningCandidate candidate,
@@ -972,10 +1065,60 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             bool isRollback,
             CancellationToken cancellationToken) {
             var dangerous = IsDangerousAction(actionSql);
+
+            // 灰度切换保护：以"分析周期"（_analysisCycleCounter）为粒度判断是否处于 dry-run 保护阶段，
+            // 确保同一分析周期内所有动作行为一致（不会出现部分 dry-run、部分真实执行的混合状态）。
+            // 保护期区间为分析周期 1~GradualSwitchDryRunCycles（含边界），第 N+1 周期开始晋升。
+            var effectiveDryRun = _enableActionDryRun;
+            if (!isRollback && _gradualSwitchDryRunCycles > 0) {
+                // 步骤 1：以当前分析周期编号为基准，判断是否仍在保护期内（含边界：周期 ≤ N 均为 dry-run）。
+                var currentAnalysisCycle = _analysisCycleCounter;
+                if (currentAnalysisCycle <= _gradualSwitchDryRunCycles) {
+                    effectiveDryRun = true;
+
+                    // 步骤 2：仅在进入新分析周期时同步一次已记录的保护周期数，输出一次日志，避免同周期内重复输出。
+                    if (_gradualSwitchElapsedCycles != currentAnalysisCycle) {
+                        _gradualSwitchElapsedCycles = currentAnalysisCycle;
+                        NLogLogger.Info(
+                            "灰度切换干跑保护中：Provider={Provider}, ActionId={ActionId}, ElapsedCycles={ElapsedCycles}, RequiredCycles={RequiredCycles}",
+                            _dialect.ProviderName,
+                            actionId,
+                            _gradualSwitchElapsedCycles,
+                            _gradualSwitchDryRunCycles);
+                    }
+                }
+                else {
+                    // 步骤 3：已超过保护期（currentAnalysisCycle > GradualSwitchDryRunCycles），与前一分支互斥。
+                    // 首次跨过时仅发一次晋升事件（通过 _gradualSwitchElapsedCycles 幂等判断），避免重复触发。
+                    // 仅在全局 DryRun=false 时才表示真正进入真实执行模式；否则说明灰度保护结束但仍受 DryRun 配置影响。
+                    if (_gradualSwitchElapsedCycles <= _gradualSwitchDryRunCycles) {
+                        _gradualSwitchElapsedCycles = _gradualSwitchDryRunCycles + 1;
+                        var promotionMessage = _enableActionDryRun
+                            ? $"灰度切换保护阶段已满，但全局 DryRun=true，动作仍不会真实执行：Provider={_dialect.ProviderName}, GradualSwitchDryRunCycles={_gradualSwitchDryRunCycles}"
+                            : $"灰度切换已完成干跑保护阶段，晋升为真实执行：Provider={_dialect.ProviderName}, GradualSwitchDryRunCycles={_gradualSwitchDryRunCycles}";
+                        _observability.EmitEvent(
+                            "autotuning.gradual_switch.promoted",
+                            NLog.LogLevel.Info,
+                            promotionMessage,
+                            new Dictionary<string, string> {
+                                ["provider"] = _dialect.ProviderName,
+                                ["gradual_switch_dry_run_cycles"] = _gradualSwitchDryRunCycles.ToString(),
+                                ["global_dry_run"] = _enableActionDryRun.ToString().ToLowerInvariant()
+                            });
+                        NLogLogger.Info(
+                            "灰度切换晋升：Provider={Provider}, DryRunCycles={DryRunCycles}, GlobalDryRun={GlobalDryRun}，保护阶段已满，{ExecutionMode}。",
+                            _dialect.ProviderName,
+                            _gradualSwitchDryRunCycles,
+                            _enableActionDryRun,
+                            _enableActionDryRun ? "全局 DryRun=true 仍阻止真实执行" : "后续动作将进入真实执行模式");
+                    }
+                }
+            }
+
             var isolationDecision = ActionIsolationPolicy.Evaluate(
                 _enableDangerousActionIsolator,
                 _allowDangerousActionExecution,
-                _enableActionDryRun,
+                effectiveDryRun,
                 dangerous,
                 isRollback);
             if (isolationDecision == ActionIsolationDecision.BlockedByGuard) {

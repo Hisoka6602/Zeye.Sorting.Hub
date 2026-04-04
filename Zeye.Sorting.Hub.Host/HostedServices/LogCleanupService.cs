@@ -11,7 +11,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
     /// <para>
     /// 配置热加载行为：使用 <see cref="IOptionsMonitor{T}"/>，配置文件变更后，
     /// 下次执行 <see cref="ExecuteAsync"/> 循环时自动读取 <see cref="Settings"/> 属性获取最新配置，
-    /// 无需手动重启服务。变更事件同步输出审计日志。
+    /// 无需手动重启服务。变更事件同步输出审计日志（含前后值对比）并记录到历史快照存储器。
     /// </para>
     /// </summary>
     public class LogCleanupService : BackgroundService {
@@ -31,6 +31,14 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// 自动调优可观测输出器，用于输出清理指标（删除数/失败数）。
         /// </summary>
         private readonly IAutoTuningObservability _observability;
+        /// <summary>
+        /// 配置变更历史存储器，保留最近 N 次配置快照，用于前后值审计与回滚查询。
+        /// </summary>
+        private readonly ConfigChangeHistoryStore<LogCleanupSettings> _changeHistory;
+        /// <summary>
+        /// 上一次生效的配置快照，用于变更时的前后值对比审计。
+        /// </summary>
+        private LogCleanupSettings? _previousSettings;
 
         /// <summary>
         /// 初始化 <see cref="LogCleanupService"/>。
@@ -38,15 +46,21 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <param name="safeExecutor">安全执行器。</param>
         /// <param name="settingsMonitor">配置热加载监视器。</param>
         /// <param name="observability">可观测性指标输出器。</param>
+        /// <param name="changeHistory">配置变更历史存储器。</param>
         public LogCleanupService(
             SafeExecutor safeExecutor,
             IOptionsMonitor<LogCleanupSettings> settingsMonitor,
-            IAutoTuningObservability observability) {
+            IAutoTuningObservability observability,
+            ConfigChangeHistoryStore<LogCleanupSettings> changeHistory) {
             _safeExecutor = safeExecutor;
             _settingsMonitor = settingsMonitor;
             _observability = observability;
+            _changeHistory = changeHistory;
 
-            // 配置热加载：当配置变更时记录审计日志
+            // 记录初始配置快照
+            _previousSettings = settingsMonitor.CurrentValue;
+
+            // 配置热加载：当配置变更时记录审计日志（含前后值对比）
             _settingsMonitor.OnChange(OnSettingsChanged);
         }
 
@@ -190,17 +204,65 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         /// <summary>
-        /// 配置变更回调：热加载生效时输出审计日志。
+        /// 配置变更回调：热加载生效时输出前后值对比审计日志并记录快照历史。
         /// </summary>
         /// <param name="newSettings">新配置值。</param>
         /// <param name="name">配置名称（IOptionsMonitor 名称，通常为 null）。</param>
-        private static void OnSettingsChanged(LogCleanupSettings newSettings, string? name) {
+        private void OnSettingsChanged(LogCleanupSettings newSettings, string? name) {
+            var prev = _previousSettings;
+            var changedFields = BuildChangedFieldsSummary(prev, newSettings);
+
             Logger.Info(
-                "日志清理配置已热加载更新：Enabled={Enabled}, RetentionDays={RetentionDays}, CheckIntervalHours={CheckIntervalHours}, LogDirectory={LogDirectory}",
+                "日志清理配置已热加载更新（变更审计）：EffectiveTime={EffectiveTime}, ChangedFields=[{ChangedFields}], " +
+                "Before=[Enabled={PrevEnabled}, RetentionDays={PrevRetentionDays}, CheckIntervalHours={PrevCheckIntervalHours}, LogDirectory={PrevLogDirectory}], " +
+                "After=[Enabled={Enabled}, RetentionDays={RetentionDays}, CheckIntervalHours={CheckIntervalHours}, LogDirectory={LogDirectory}]",
+                DateTime.Now,
+                changedFields,
+                prev?.Enabled,
+                prev?.RetentionDays,
+                prev?.CheckIntervalHours,
+                prev?.LogDirectory,
                 newSettings.Enabled,
                 newSettings.RetentionDays,
                 newSettings.CheckIntervalHours,
                 newSettings.LogDirectory);
+
+            // 记录到历史存储器（传入 record with {} 拷贝，确保历史条目为真正不可变快照）
+            _changeHistory.Record(
+                prev is null ? null : prev with { },
+                newSettings with { },
+                changedFields);
+
+            // 更新前值快照（保存当前值副本，供下次变更对比使用）
+            _previousSettings = newSettings with { };
+        }
+
+        /// <summary>
+        /// 构建配置变更字段摘要，列出发生变化的字段及其前后值。
+        /// </summary>
+        /// <param name="prev">变更前配置（为 null 表示首次初始化）。</param>
+        /// <param name="curr">变更后配置。</param>
+        /// <returns>变更字段摘要字符串，如 "RetentionDays: 2→5; LogDirectory: logs→/var/logs"。</returns>
+        private static string BuildChangedFieldsSummary(LogCleanupSettings? prev, LogCleanupSettings curr) {
+            if (prev is null) {
+                return "(首次初始化)";
+            }
+
+            var parts = new List<string>(4);
+            if (prev.Enabled != curr.Enabled) {
+                parts.Add($"Enabled: {prev.Enabled}→{curr.Enabled}");
+            }
+            if (prev.RetentionDays != curr.RetentionDays) {
+                parts.Add($"RetentionDays: {prev.RetentionDays}→{curr.RetentionDays}");
+            }
+            if (prev.CheckIntervalHours != curr.CheckIntervalHours) {
+                parts.Add($"CheckIntervalHours: {prev.CheckIntervalHours}→{curr.CheckIntervalHours}");
+            }
+            if (!string.Equals(prev.LogDirectory, curr.LogDirectory, StringComparison.Ordinal)) {
+                parts.Add($"LogDirectory: {prev.LogDirectory}→{curr.LogDirectory}");
+            }
+
+            return parts.Count > 0 ? string.Join("; ", parts) : "(无字段变更)";
         }
     }
 }

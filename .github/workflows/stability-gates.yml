@@ -1,0 +1,219 @@
+name: stability-gates
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/stability-gates.yml"
+      - "Zeye.Sorting.Hub.Domain/**"
+      - "Zeye.Sorting.Hub.Infrastructure/**"
+      - "Zeye.Sorting.Hub.Host/**"
+      - "Zeye.Sorting.Hub.SharedKernel/**"
+      - "Zeye.Sorting.Hub.Application/**"
+      - "Zeye.Sorting.Hub.Host.Tests/**"
+      - "长期运行优化与热更新支持清单.md"
+
+permissions:
+  contents: read
+
+jobs:
+  # ──────────────────────────────────────────────────────────
+  # 门禁 1：构建验证 + 单元测试
+  # ──────────────────────────────────────────────────────────
+  build-and-test:
+    name: 构建 & 单元测试
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore Zeye.Sorting.Hub.sln
+
+      - name: Build
+        run: dotnet build Zeye.Sorting.Hub.sln --no-restore -c Release
+
+      - name: Test
+        run: dotnet test Zeye.Sorting.Hub.Host.Tests/Zeye.Sorting.Hub.Host.Tests.csproj --no-build -c Release --logger "console;verbosity=normal"
+
+  # ──────────────────────────────────────────────────────────
+  # 门禁 2：配置合法性验证
+  #   验证 appsettings.json 中关键长期运行治理配置项均已存在，
+  #   避免配置节遗漏导致功能静默降级。
+  # ──────────────────────────────────────────────────────────
+  config-validity:
+    name: 配置合法性验证
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 验证关键配置项存在
+        run: |
+          set -euo pipefail
+          CONFIG="Zeye.Sorting.Hub.Host/appsettings.json"
+          FAIL=0
+
+          # 步骤 1：将 JSONC（含 // 行注释）转换为标准 JSON，供 jq 可靠解析
+          # 仅过滤以 // 开头的纯注释行，不破坏值字符串中包含 // 的内容
+          CLEAN_JSON=$(grep -v '^\s*//' "$CONFIG")
+
+          check_key() {
+            local key="$1"
+            # 使用 jq any() 在合法 JSON 中递归查找指定键，彻底避免注释假阳性
+            if echo "$CLEAN_JSON" | jq -e "any(.. | objects; has(\"${key}\"))" > /dev/null 2>&1; then
+              echo "✅  ${key}"
+            else
+              echo "❌  缺失配置项：${key}"
+              FAIL=1
+            fi
+          }
+
+          echo "── 健康探针配置 ──"
+          check_key "Hosting"
+
+          echo "── 资源阈值配置 ──"
+          check_key "ResourceThresholds"
+          check_key "MaxConnectionPoolSize"
+          check_key "MemoryWarningThresholdMB"
+
+          echo "── 自动调优核心配置 ──"
+          check_key "AutoTuning"
+          check_key "EnableFullAutomation"
+          check_key "EnableAutoValidation"
+          check_key "EnableAutoRollback"
+
+          echo "── 隔离器边界配置 ──"
+          check_key "EnableGuard"
+          check_key "AllowDangerousActionExecution"
+          check_key "DryRun"
+          check_key "GradualSwitchDryRunCycles"
+
+          echo "── 月报归档配置 ──"
+          check_key "MonthlyReportArchivePath"
+          check_key "MonthlyReportDay"
+
+          echo "── 告警防抖配置 ──"
+          check_key "AlertDebounceWindowSeconds"
+          check_key "AlertP99Milliseconds"
+          check_key "AlertDeadlockCount"
+
+          echo "── 日志清理配置 ──"
+          check_key "LogCleanup"
+          check_key "RetentionDays"
+          check_key "CheckIntervalHours"
+
+          if [ "$FAIL" -eq 1 ]; then
+            echo ""
+            echo "配置合法性验证失败：存在缺失的关键配置项，请检查 appsettings.json。"
+            exit 1
+          fi
+
+          echo ""
+          echo "配置合法性验证通过。"
+
+  # ──────────────────────────────────────────────────────────
+  # 门禁 3：隔离器边界检查
+  #   确认隔离器 EnableGuard=true 且默认 AllowDangerousActionExecution=false，
+  #   防止危险动作默认开放。
+  # ──────────────────────────────────────────────────────────
+  isolator-boundary:
+    name: 隔离器边界检查
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 验证隔离器默认安全配置
+        run: |
+          set -euo pipefail
+          CONFIG="Zeye.Sorting.Hub.Host/appsettings.json"
+
+          # 验证 EnableGuard 为 true
+          if grep -q '"EnableGuard": true' "$CONFIG"; then
+            echo "✅  AutoTuning Isolator EnableGuard=true"
+          else
+            echo "❌  AutoTuning Isolator EnableGuard 未设置为 true，危险动作未被保护！"
+            exit 1
+          fi
+
+          # 验证 AllowDangerousActionExecution 为 false
+          if grep -q '"AllowDangerousActionExecution": false' "$CONFIG"; then
+            echo "✅  AutoTuning Isolator AllowDangerousActionExecution=false"
+          else
+            echo "❌  AllowDangerousActionExecution 默认值非 false，危险动作将被允许执行！"
+            exit 1
+          fi
+
+          echo "隔离器边界检查通过。"
+
+  # ──────────────────────────────────────────────────────────
+  # 门禁 4：回滚资产检查
+  #   确认 EnableAutoRollback 与 EnableAutoValidation 已开启，
+  #   保证自动执行动作后具备验证与回滚能力。
+  # ──────────────────────────────────────────────────────────
+  rollback-asset:
+    name: 回滚资产检查
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 验证自动验证与回滚已开启
+        run: |
+          set -euo pipefail
+          CONFIG="Zeye.Sorting.Hub.Host/appsettings.json"
+
+          if grep -q '"EnableAutoRollback": true' "$CONFIG"; then
+            echo "✅  EnableAutoRollback=true"
+          else
+            echo "❌  EnableAutoRollback 未设置为 true，自动执行后缺少回滚保障！"
+            exit 1
+          fi
+
+          if grep -q '"EnableAutoValidation": true' "$CONFIG"; then
+            echo "✅  EnableAutoValidation=true"
+          else
+            echo "❌  EnableAutoValidation 未设置为 true，自动执行后缺少验证保障！"
+            exit 1
+          fi
+
+          echo "回滚资产检查通过。"
+
+  # ──────────────────────────────────────────────────────────
+  # 门禁 5：健康探针端点存在性检查
+  #   确认 /health/live 与 /health/ready 端点已注册，
+  #   保证容器编排与流量接入具备存活/就绪分层能力。
+  # ──────────────────────────────────────────────────────────
+  health-probe:
+    name: 健康探针端点检查
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 验证健康探针端点已注册
+        run: |
+          set -euo pipefail
+          PROGRAM="Zeye.Sorting.Hub.Host/Program.cs"
+
+          if grep -q '"/health/live"' "$PROGRAM"; then
+            echo "✅  /health/live 端点已注册"
+          else
+            echo "❌  /health/live 存活探针端点未注册，容器无法正确判断进程健康！"
+            exit 1
+          fi
+
+          if grep -q '"/health/ready"' "$PROGRAM"; then
+            echo "✅  /health/ready 端点已注册"
+          else
+            echo "❌  /health/ready 就绪探针端点未注册，流量接入缺少就绪判断！"
+            exit 1
+          fi
+
+          echo "健康探针端点检查通过。"
