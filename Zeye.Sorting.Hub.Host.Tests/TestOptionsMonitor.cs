@@ -34,7 +34,7 @@ internal sealed class TestOptionsMonitor<T> : IOptionsMonitor<T> {
     /// <inheritdoc />
     public IDisposable? OnChange(Action<T, string?> listener) {
         _listeners.Add(listener);
-        return new ListenerRegistration(_listeners, listener);
+        return new OptionsMonitorSubscription(() => _listeners.Remove(listener));
     }
 
     /// <summary>
@@ -45,35 +45,6 @@ internal sealed class TestOptionsMonitor<T> : IOptionsMonitor<T> {
         _value = value;
         foreach (var listener in _listeners) {
             listener(value, null);
-        }
-    }
-
-    /// <summary>
-    /// 可取消订阅的监听器注册句柄，Dispose 时从列表移除对应 listener。
-    /// </summary>
-    private sealed class ListenerRegistration : IDisposable {
-        /// <summary>
-        /// 监听器列表引用。
-        /// </summary>
-        private readonly List<Action<T, string?>> _list;
-        /// <summary>
-        /// 待移除的监听器。
-        /// </summary>
-        private readonly Action<T, string?> _listener;
-
-        /// <summary>
-        /// 初始化 <see cref="ListenerRegistration"/>。
-        /// </summary>
-        /// <param name="list">监听器列表。</param>
-        /// <param name="listener">待移除的监听器。</param>
-        public ListenerRegistration(List<Action<T, string?>> list, Action<T, string?> listener) {
-            _list = list;
-            _listener = listener;
-        }
-
-        /// <inheritdoc />
-        public void Dispose() {
-            _list.Remove(_listener);
         }
     }
 }

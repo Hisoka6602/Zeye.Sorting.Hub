@@ -234,6 +234,7 @@
 │   ├── TestMySqlDialect.cs（MySQL ProviderName 方言测试桩）
 │   ├── TestObservability.cs（自动调优观测测试桩：收集指标与事件）
 │   ├── TestOptionsMonitor.cs（IOptionsMonitor<T> 测试桩：支持 Update 方法触发热加载）
+│   ├── OptionsMonitorSubscription.cs（IOptionsMonitor.OnChange 订阅句柄，Dispose 时取消订阅）
 │   ├── TestSqlServerDialect.cs（SQL Server ProviderName 方言测试桩）
 │   ├── ThrowOnReadStream.cs（读取即抛异常的请求体流测试桩）
 │   └── Zeye.Sorting.Hub.Host.Tests.csproj（xUnit 测试项目定义）
@@ -663,6 +664,7 @@
 - `TestMySqlDialect.cs`：MySQL ProviderName 方言测试桩。
 - `TestObservability.cs`：自动调优观测测试桩，收集指标与事件输出。
 - `TestOptionsMonitor.cs`：`IOptionsMonitor<T>` 测试桩，允许测试中直接注入配置值并通过 `Update` 方法模拟热加载变更。
+- `OptionsMonitorSubscription.cs`：`IOptionsMonitor.OnChange` 订阅句柄，`Dispose` 时执行取消订阅回调，供 `TestOptionsMonitor<T>` 复用。
 - `TestSqlServerDialect.cs`：SQL Server ProviderName 方言测试桩。
 - `ThrowOnReadStream.cs`：读取即抛异常的请求体流测试桩，用于验证中间件请求体采集异常隔离不影响主链路。
 
