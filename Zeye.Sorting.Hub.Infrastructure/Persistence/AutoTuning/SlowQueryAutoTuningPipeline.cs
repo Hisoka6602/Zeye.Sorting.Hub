@@ -114,6 +114,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         /// </summary>
         private readonly TimeSpan _dailyReportTime;
         /// <summary>
+        /// 月报输出的每月日期（1~28）。
+        /// </summary>
+        private readonly int _monthlyReportDay;
+        /// <summary>
         /// 可观测输出器（指标/事件）。
         /// </summary>
         private readonly IAutoTuningObservability _observability;
@@ -133,6 +137,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         /// 下一次应输出日报的本地时间。
         /// </summary>
         private DateTime _nextDailyReportTime;
+        /// <summary>
+        /// 下一次应输出月报的本地日期。
+        /// </summary>
+        private DateTime _nextMonthlyReportDate;
 
         /// <summary>初始化慢查询采集、分析和告警阈值配置。</summary>
         public SlowQueryAutoTuningPipeline(IConfiguration configuration, IAutoTuningObservability observability) {
@@ -151,7 +159,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             _alertConsecutiveWindows = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("AlertConsecutiveWindows"), 1);
             _alertRecoveryConsecutiveWindows = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("AlertRecoveryConsecutiveWindows"), 1);
             _dailyReportTime = AutoTuningConfigurationHelper.GetTimeOfDayOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("DailyReportLocalTime"), new TimeSpan(2, 30, 0));
+            _monthlyReportDay = Math.Clamp(
+                AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("MonthlyReportDay"), 1),
+                1, 28);
             _nextDailyReportTime = BuildNextDailyReportTime(DateTime.Now);
+            _nextMonthlyReportDate = BuildNextMonthlyReportDate(DateTime.Now);
         }
 
         /// <summary>采集慢查询样本（含错误、超时、死锁标记）。</summary>
@@ -196,13 +208,15 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         public SlowQueryAnalysisResult Analyze(IDatabaseDialect dialect) {
             var now = DateTime.Now;
             var shouldEmitDailyReport = ShouldEmitDailyReport(now);
+            var shouldEmitMonthlyReport = ShouldEmitMonthlyReport(now);
             var window = DequeueWindow();
             _observability.EmitMetric("autotuning.analysis.window_size", window.Count);
             if (window.Count == 0) {
                 return SlowQueryAnalysisResult.Empty with {
                     GeneratedTime = now,
                     DroppedSamples = GetDroppedCount(),
-                    ShouldEmitDailyReport = shouldEmitDailyReport
+                    ShouldEmitDailyReport = shouldEmitDailyReport,
+                    ShouldEmitMonthlyReport = shouldEmitMonthlyReport
                 };
             }
 
@@ -248,7 +262,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                 Alerts: alertMessages,
                 RecoveryNotifications: recoveryMessages,
                 AlertNotifications: alerts,
-                ShouldEmitDailyReport: shouldEmitDailyReport);
+                ShouldEmitDailyReport: shouldEmitDailyReport,
+                ShouldEmitMonthlyReport: shouldEmitMonthlyReport);
         }
 
         /// <summary>从队列中取出单次分析窗口样本。</summary>
@@ -519,8 +534,35 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             return next;
         }
 
-        /// <summary>将一组样本聚合为单条慢查询指标。</summary>
-        private static SlowQueryMetric BuildMetric(string fingerprint, IGrouping<string, SlowQuerySample> group) {
+        /// <summary>判断当前是否到达月报输出时点（每月第 N 天日报时间点）。</summary>
+        private bool ShouldEmitMonthlyReport(DateTime now) {
+            lock (_queueSync) {
+                if (now < _nextMonthlyReportDate) {
+                    return false;
+                }
+
+                _nextMonthlyReportDate = BuildNextMonthlyReportDate(now);
+                return true;
+            }
+        }
+
+        /// <summary>计算下一次月报触发日期（每月第 N 天，与 DailyReportLocalTime 同时输出）。</summary>
+        private DateTime BuildNextMonthlyReportDate(DateTime now) {
+            // 步骤 1：在本月和下月尝试构建目标日期，取第一个严格大于 now 的值
+            var candidate = new DateTime(now.Year, now.Month, _monthlyReportDay)
+                .Add(_dailyReportTime < TimeSpan.Zero ? new TimeSpan(2, 30, 0) : _dailyReportTime);
+            if (candidate > now) {
+                return candidate;
+            }
+
+            // 步骤 2：推进到下个月的同一天
+            var nextMonth = now.AddMonths(1);
+            return new DateTime(nextMonth.Year, nextMonth.Month, _monthlyReportDay)
+                .Add(_dailyReportTime < TimeSpan.Zero ? new TimeSpan(2, 30, 0) : _dailyReportTime);
+        }
+
+
+                private static SlowQueryMetric BuildMetric(string fingerprint, IGrouping<string, SlowQuerySample> group) {
             var samples = group.ToList();
             var callCount = samples.Count;
             var elapsedValues = samples

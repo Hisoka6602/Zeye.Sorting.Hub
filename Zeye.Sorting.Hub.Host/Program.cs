@@ -10,6 +10,7 @@ using Zeye.Sorting.Hub.Host.Middleware;
 using Microsoft.AspNetCore.Authentication;
 using Zeye.Sorting.Hub.Host.HostedServices;
 using Zeye.Sorting.Hub.Host.Authentication;
+using Zeye.Sorting.Hub.Host.HealthChecks;
 using Zeye.Sorting.Hub.SharedKernel.Utilities;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels;
 using Zeye.Sorting.Hub.Domain.Options.LogCleanup;
@@ -57,11 +58,21 @@ try {
         builder.Configuration.GetSection("LogCleanup"));
     builder.Services.Configure<HostingOptions>(builder.Configuration.GetSection("Hosting"));
     builder.Services.Configure<AuditReadOnlyApiOptions>(builder.Configuration.GetSection(AuditReadOnlyApiOptions.SectionName));
+    builder.Services.Configure<ResourceThresholdsOptions>(builder.Configuration.GetSection(ResourceThresholdsOptions.SectionName));
     builder.Services.AddHostedService<LogCleanupService>();
     builder.Services.AddHostedService<DevelopmentBrowserLauncherHostedService>();
     builder.Services.AddSingleton<SafeExecutor>();
     builder.Services.AddSortingHubPersistence(builder.Configuration);
     builder.Services.AddSingleton<IAutoTuningObservability, AutoTuningLoggerObservability>();
+    // ──────────────────────────────────────────────────────
+    // 健康检查：存活探针（/health/live）+ 就绪探针（/health/ready）
+    //   - /health/live   仅判断进程健康（无依赖检查），用于容器重启决策
+    //   - /health/ready  包含数据库可用性探测，用于流量接入决策
+    // ──────────────────────────────────────────────────────
+    builder.Services.AddHealthChecks()
+        .AddCheck<DatabaseReadinessHealthCheck>(
+            name: "database",
+            tags: ["ready"]);
     builder.Services.AddProblemDetails();
     builder.Services
         .AddAuthentication(GuardedAuthenticationHandler.SchemeName)
@@ -166,11 +177,35 @@ try {
         });
     }
 
-    // 最小探活端点：用于容器/网关健康检查，不承载业务语义
+    // ──────────────────────────────────────────────────────
+    // 分层健康探针（探针分离，避免误判导致抖动重启）：
+    //   /health/live    存活探针：进程级存活（只判断进程是否在运行，无依赖检查）
+    //   /health/ready   就绪探针：包含数据库连接探测（表示实例可接受流量）
+    //   /health         兼容端点：保持旧版接入链路不变（等价于存活探针）
+    // ──────────────────────────────────────────────────────
+    app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions {
+        // 存活探针：不检查任何 tag，仅进程级响应
+        Predicate = static _ => false,
+        ResponseWriter = HealthCheckResponseWriter.WriteJsonResponseAsync
+    })
+    .WithName("LivenessProbe")
+    .WithSummary("存活探针")
+    .WithDescription("进程级存活探测，不包含依赖检查。容器重启策略依据此端点决策。");
+
+    app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions {
+        // 就绪探针：检查 ready 标签下的所有项（含数据库连接）
+        Predicate = static check => check.Tags.Contains("ready"),
+        ResponseWriter = HealthCheckResponseWriter.WriteJsonResponseAsync
+    })
+    .WithName("ReadinessProbe")
+    .WithSummary("就绪探针")
+    .WithDescription("包含数据库连接探测，表示实例可接受流量。流量切入决策依据此端点。");
+
+    // 兼容端点：保持旧版 /health 接入链路可用
     app.MapGet("/health", () => Results.Ok(new { status = "Healthy" }))
         .WithName("HealthCheck")
-        .WithSummary("服务健康检查")
-        .WithDescription("用于容器与网关探活，仅返回服务存活状态，不承载任何业务语义。");
+        .WithSummary("服务健康检查（兼容端点）")
+        .WithDescription("兼容历史接入路径，等价于存活探针。建议新接入方改用 /health/live 或 /health/ready。");
     // Parcel 只读查询端点：统一走 Application 查询服务，不直接暴露领域模型。
     app.MapParcelReadOnlyApis();
     // Parcel 管理端写接口：普通写操作 + 危险治理接口（cleanup-expired）分开治理。

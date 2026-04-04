@@ -1393,6 +1393,7 @@ public sealed class AutoTuningProductionControlTests {
             Array.Empty<string>(),
             Array.Empty<string>(),
             Array.Empty<SlowQueryAlertNotification>(),
+            false,
             false);
         var updateAutonomousSignals = typeof(DatabaseAutoTuningHostedService).GetMethod("UpdateAutonomousSignals", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
         updateAutonomousSignals.Invoke(service, [result, DateTime.Now]);
@@ -1442,6 +1443,7 @@ public sealed class AutoTuningProductionControlTests {
             Array.Empty<string>(),
             Array.Empty<string>(),
             Array.Empty<SlowQueryAlertNotification>(),
+            false,
             false);
         updateAutonomousSignals.Invoke(service, [partial, fixedNow]);
         Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hit_rate" && Math.Abs(entry.Value - 0.5d) < DoublePrecisionTolerance);
@@ -1459,6 +1461,7 @@ public sealed class AutoTuningProductionControlTests {
             Array.Empty<string>(),
             Array.Empty<string>(),
             Array.Empty<SlowQueryAlertNotification>(),
+            false,
             false);
         updateAutonomousSignals.Invoke(service, [none, fixedNow]);
         Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hit_rate" && Math.Abs(entry.Value) < DoublePrecisionTolerance);
@@ -1523,6 +1526,7 @@ public sealed class AutoTuningProductionControlTests {
             Array.Empty<string>(),
             Array.Empty<string>(),
             Array.Empty<SlowQueryAlertNotification>(),
+            false,
             false);
 
         updateAutonomousSignals.Invoke(service, [result, fixedNow]);
@@ -1589,6 +1593,7 @@ public sealed class AutoTuningProductionControlTests {
             Array.Empty<string>(),
             Array.Empty<string>(),
             Array.Empty<SlowQueryAlertNotification>(),
+            false,
             false);
 
         updateAutonomousSignals.Invoke(service, [result, fixedNow]);
@@ -1632,6 +1637,7 @@ public sealed class AutoTuningProductionControlTests {
             Array.Empty<string>(),
             Array.Empty<string>(),
             Array.Empty<SlowQueryAlertNotification>(),
+            false,
             false);
 
         updateAutonomousSignals.Invoke(service, [result, fixedNow]);
@@ -1698,6 +1704,7 @@ public sealed class AutoTuningProductionControlTests {
             [],
             [],
             [],
+            false,
             false);
         var method = typeof(DatabaseAutoTuningHostedService).GetMethod("ApplyIndexSuggestionGuardsAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
         var guardedResult = await (Task<SlowQueryAnalysisResult>)method.Invoke(service, [result, CancellationToken.None])!;
@@ -1765,6 +1772,7 @@ public sealed class AutoTuningProductionControlTests {
             [],
             [],
             [],
+            false,
             false);
         var method = typeof(DatabaseAutoTuningHostedService).GetMethod("ApplyIndexSuggestionGuardsAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
         var guardedResult = await (Task<SlowQueryAnalysisResult>)method.Invoke(service, [result, CancellationToken.None])!;
@@ -1828,6 +1836,7 @@ public sealed class AutoTuningProductionControlTests {
             [],
             [],
             [],
+            false,
             false);
         var method = typeof(DatabaseAutoTuningHostedService).GetMethod("ApplyIndexSuggestionGuardsAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
         var guardedResult = await (Task<SlowQueryAnalysisResult>)method.Invoke(service, [result, CancellationToken.None])!;
@@ -2300,6 +2309,7 @@ public sealed class AutoTuningProductionControlTests {
             Array.Empty<string>(),
             Array.Empty<string>(),
             Array.Empty<SlowQueryAlertNotification>(),
+            false,
             false);
         var metricsByFingerprint = result.Metrics.ToDictionary(static x => x.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
         var validateTask = (Task)validate.Invoke(service, [result, metricsByFingerprint, CancellationToken.None])!;
@@ -2386,6 +2396,7 @@ public sealed class AutoTuningProductionControlTests {
             Array.Empty<string>(),
             Array.Empty<string>(),
             Array.Empty<SlowQueryAlertNotification>(),
+            false,
             false);
         var metricsByFingerprint = result.Metrics.ToDictionary(static x => x.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
         var validateTask = (Task)validate.Invoke(service, [result, metricsByFingerprint, CancellationToken.None])!;
@@ -2451,6 +2462,7 @@ public sealed class AutoTuningProductionControlTests {
             Array.Empty<string>(),
             Array.Empty<string>(),
             Array.Empty<SlowQueryAlertNotification>(),
+            false,
             false);
         var metricsByFingerprint = result.Metrics.ToDictionary(static x => x.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
         var validateTask = (Task)validate.Invoke(service, [result, metricsByFingerprint, CancellationToken.None])!;
@@ -2515,6 +2527,7 @@ public sealed class AutoTuningProductionControlTests {
             Array.Empty<string>(),
             Array.Empty<string>(),
             Array.Empty<SlowQueryAlertNotification>(),
+            false,
             false);
         var metricsByFingerprint = result.Metrics.ToDictionary(static x => x.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
         var validateTask = (Task)validate.Invoke(service, [result, metricsByFingerprint, CancellationToken.None])!;

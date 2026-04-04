@@ -1,12 +1,13 @@
 using Microsoft.Extensions.Options;
 using NLog;
 using Zeye.Sorting.Hub.Domain.Options.LogCleanup;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.SharedKernel.Utilities;
 
 namespace Zeye.Sorting.Hub.Host.HostedServices {
 
     /// <summary>
-    /// 日志清理服务 - 自动清理超过指定天数的日志文件
+    /// 日志清理服务 - 自动清理超过指定天数的日志文件，支持配置热加载与可观测性指标输出。
     /// </summary>
     public class LogCleanupService : BackgroundService {
         /// <summary>
@@ -18,28 +19,48 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// </summary>
         private readonly SafeExecutor _safeExecutor;
         /// <summary>
-        /// 日志清理配置实例，包含开关、保留天数与检查间隔参数。
+        /// 配置热加载监视器，支持运行时配置变更自动生效。
         /// </summary>
-        private readonly LogCleanupSettings _settings;
+        private readonly IOptionsMonitor<LogCleanupSettings> _settingsMonitor;
+        /// <summary>
+        /// 自动调优可观测输出器，用于输出清理指标（删除数/失败数）。
+        /// </summary>
+        private readonly IAutoTuningObservability _observability;
 
+        /// <summary>
+        /// 初始化 <see cref="LogCleanupService"/>。
+        /// </summary>
+        /// <param name="safeExecutor">安全执行器。</param>
+        /// <param name="settingsMonitor">配置热加载监视器。</param>
+        /// <param name="observability">可观测性指标输出器。</param>
         public LogCleanupService(
             SafeExecutor safeExecutor,
-            IOptions<LogCleanupSettings> settings) {
+            IOptionsMonitor<LogCleanupSettings> settingsMonitor,
+            IAutoTuningObservability observability) {
             _safeExecutor = safeExecutor;
-            _settings = settings.Value;
+            _settingsMonitor = settingsMonitor;
+            _observability = observability;
+
+            // 配置热加载：当配置变更时记录审计日志
+            _settingsMonitor.OnChange(OnSettingsChanged);
         }
+
+        /// <summary>
+        /// 当前生效配置（支持热加载，每次读取获取最新值）。
+        /// </summary>
+        private LogCleanupSettings Settings => _settingsMonitor.CurrentValue;
 
         /// <summary>
         /// 执行逻辑：ExecuteAsync。
         /// </summary>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
-            if (!_settings.Enabled) {
+            if (!Settings.Enabled) {
                 Logger.Info("日志清理服务已禁用");
                 return;
             }
 
             Logger.Info("日志清理服务已启动，保留天数: {RetentionDays}天，检查间隔: {CheckIntervalHours}小时",
-                _settings.RetentionDays, _settings.CheckIntervalHours);
+                Settings.RetentionDays, Settings.CheckIntervalHours);
 
             // 首次启动时立即执行一次清理
             _safeExecutor.Execute(
@@ -48,7 +69,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
             while (!stoppingToken.IsCancellationRequested) {
                 try {
-                    await Task.Delay(TimeSpan.FromHours(_settings.CheckIntervalHours), stoppingToken);
+                    await Task.Delay(TimeSpan.FromHours(Settings.CheckIntervalHours), stoppingToken);
 
                     _safeExecutor.Execute(
                         () => CleanupOldLogs(stoppingToken),
@@ -66,14 +87,15 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// 执行逻辑：CleanupOldLogs。
         /// </summary>
         internal void CleanupOldLogs(CancellationToken cancellationToken) {
-            var logDirectory = ResolveLogDirectoryPath();
+            var settings = Settings;
+            var logDirectory = ResolveLogDirectoryPath(settings);
 
             if (!Directory.Exists(logDirectory)) {
                 Logger.Warn("日志目录不存在: {LogDirectory}", logDirectory);
                 return;
             }
 
-            var cutoffDate = DateTime.Now.AddDays(-_settings.RetentionDays);
+            var cutoffDate = DateTime.Now.AddDays(-settings.RetentionDays);
             Logger.Info("开始清理日志，删除 {CutoffDate} 之前的日志文件", cutoffDate);
 
             var deletedCount = 0;
@@ -86,19 +108,30 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
             Logger.Info("日志清理完成，删除文件数: {DeletedCount}，失败数: {FailedCount}",
                 deletedCount, failedCount);
+
+            // 输出可观测性指标（失败计数与删除计数）
+            _observability.EmitMetric("log.cleanup.deleted_files", deletedCount);
+            _observability.EmitMetric("log.cleanup.failed_files", failedCount);
         }
 
         /// <summary>
         /// 将日志目录配置解析为绝对路径。
         /// </summary>
+        /// <param name="settings">当前生效的日志清理配置。</param>
         /// <returns>日志目录绝对路径。</returns>
-        private string ResolveLogDirectoryPath() {
-            if (Path.IsPathRooted(_settings.LogDirectory)) {
-                return _settings.LogDirectory;
+        private static string ResolveLogDirectoryPath(LogCleanupSettings settings) {
+            if (Path.IsPathRooted(settings.LogDirectory)) {
+                return settings.LogDirectory;
             }
 
-            return Path.Combine(AppContext.BaseDirectory, _settings.LogDirectory);
+            return Path.Combine(AppContext.BaseDirectory, settings.LogDirectory);
         }
+
+        /// <summary>
+        /// 将日志目录配置解析为绝对路径（使用当前热加载配置）。
+        /// </summary>
+        /// <returns>日志目录绝对路径。</returns>
+        private string ResolveLogDirectoryPath() => ResolveLogDirectoryPath(Settings);
 
         /// <summary>
         /// 使用目录栈递归扫描目录树并清理过期日志。
@@ -149,6 +182,20 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
 
             return (deletedCount, failedCount);
+        }
+
+        /// <summary>
+        /// 配置变更回调：热加载生效时输出审计日志。
+        /// </summary>
+        /// <param name="newSettings">新配置值。</param>
+        /// <param name="name">配置名称（IOptionsMonitor 名称，通常为 null）。</param>
+        private static void OnSettingsChanged(LogCleanupSettings newSettings, string? name) {
+            Logger.Info(
+                "日志清理配置已热加载更新：Enabled={Enabled}, RetentionDays={RetentionDays}, CheckIntervalHours={CheckIntervalHours}, LogDirectory={LogDirectory}",
+                newSettings.Enabled,
+                newSettings.RetentionDays,
+                newSettings.CheckIntervalHours,
+                newSettings.LogDirectory);
         }
     }
 }

@@ -1,5 +1,7 @@
+using Microsoft.Extensions.Options;
 using Zeye.Sorting.Hub.Domain.Options.LogCleanup;
 using Zeye.Sorting.Hub.Host.HostedServices;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.SharedKernel.Utilities;
 
 namespace Zeye.Sorting.Hub.Host.Tests;
@@ -33,13 +35,13 @@ public sealed class LogCleanupServiceTests {
             File.SetLastWriteTime(nestedExpiredLog, DateTime.Now.AddDays(-5));
             File.SetLastWriteTime(nestedRecentLog, DateTime.Now);
 
-            var settings = Microsoft.Extensions.Options.Options.Create(new LogCleanupSettings {
+            var settingsMonitor = new TestOptionsMonitor<LogCleanupSettings>(new LogCleanupSettings {
                 Enabled = true,
                 RetentionDays = 2,
                 CheckIntervalHours = 1,
                 LogDirectory = rootDirectory
             });
-            var service = new LogCleanupService(new SafeExecutor(), settings);
+            var service = new LogCleanupService(new SafeExecutor(), settingsMonitor, new NullAutoTuningObservability());
             service.CleanupOldLogs(CancellationToken.None);
 
             Assert.False(File.Exists(rootExpiredLog));
