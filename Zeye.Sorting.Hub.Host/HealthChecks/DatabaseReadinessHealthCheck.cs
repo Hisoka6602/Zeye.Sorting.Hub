@@ -39,7 +39,7 @@ public sealed class DatabaseReadinessHealthCheck : IHealthCheck {
         }
         catch (Exception ex) {
             Logger.Error(ex, "数据库就绪探针检查失败");
-            return HealthCheckResult.Unhealthy($"数据库就绪探针异常：{ex.Message}", ex);
+            return HealthCheckResult.Unhealthy("数据库就绪探针异常。");
         }
     }
 }

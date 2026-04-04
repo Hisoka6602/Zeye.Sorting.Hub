@@ -6,7 +6,9 @@ using System.Text.RegularExpressions;
 using NLog;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.Extensions.Options;
 using Zeye.Sorting.Hub.Domain.Enums;
+using Zeye.Sorting.Hub.Host.Options;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
@@ -335,13 +337,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// </summary>
         private readonly decimal _planProbeSampleRate;
         /// <summary>
-        /// 数据库连接池最大连接数告警阈值（来自 ResourceThresholds 配置）。
+        /// 资源阈值配置选项（连接池上限、内存告警阈值），用于 AuditBaseline 启动期审计。
         /// </summary>
-        private readonly int _resourceMaxConnectionPoolSize;
-        /// <summary>
-        /// 进程内存告警阈值（MB，来自 ResourceThresholds 配置）。
-        /// </summary>
-        private readonly int _resourceMemoryWarningThresholdMB;
+        private readonly ResourceThresholdsOptions _resourceThresholds;
         /// <summary>
         /// 表级热度计数（用于策略评估）。
         /// </summary>
@@ -402,7 +400,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             IServiceScopeFactory scopeFactory,
             IDatabaseDialect dialect,
             SlowQueryAutoTuningPipeline pipeline,
-            IConfiguration configuration) {
+            IConfiguration configuration,
+            IOptions<ResourceThresholdsOptions> resourceThresholdsOptions) {
             _observability = observability;
             _planRegressionProbe = planRegressionProbe;
             _scopeFactory = scopeFactory;
@@ -455,8 +454,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _pauseActionCyclesOnRegression = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutonomousKey("Validation:PauseActionCyclesOnRegression"), 2);
             _enablePlanProbe = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutonomousKey("Validation:PlanProbe:Enable"), true);
             _planProbeSampleRate = AutoTuningConfigurationHelper.GetDecimalClampedOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutonomousKey("Validation:PlanProbe:SampleRate"), 1m, 0m, 1m);
-            _resourceMaxConnectionPoolSize = Math.Max(1, configuration.GetValue<int>("ResourceThresholds:MaxConnectionPoolSize", 100));
-            _resourceMemoryWarningThresholdMB = Math.Max(0, configuration.GetValue<int>("ResourceThresholds:MemoryWarningThresholdMB", 1024));
+            _resourceThresholds = resourceThresholdsOptions.Value;
         }
 
         /// <summary>
@@ -478,7 +476,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             IDatabaseDialect dialect,
             SlowQueryAutoTuningPipeline pipeline,
             IConfiguration configuration)
-            : this(observability, planRegressionProbe, scopeFactory, dialect, pipeline, configuration) {
+            : this(observability, planRegressionProbe, scopeFactory, dialect, pipeline, configuration, Microsoft.Extensions.Options.Options.Create(new ResourceThresholdsOptions())) {
             ArgumentNullException.ThrowIfNull(legacyLogger);
         }
 
@@ -1823,19 +1821,19 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             // 资源阈值边界审计：记录配置的连接池与内存告警阈值，超出推荐上限时告警
             NLogLogger.Info(
                 "资源阈值配置审计：MaxConnectionPoolSize={MaxConnectionPoolSize}（推荐 ≤ 200），MemoryWarningThresholdMB={MemoryWarningThresholdMB}（推荐 ≥ 512）",
-                _resourceMaxConnectionPoolSize,
-                _resourceMemoryWarningThresholdMB);
-            if (_resourceMaxConnectionPoolSize > 200) {
+                _resourceThresholds.MaxConnectionPoolSize,
+                _resourceThresholds.MemoryWarningThresholdMB);
+            if (_resourceThresholds.MaxConnectionPoolSize > 200) {
                 NLogLogger.Warn(
                     "资源阈值告警：MaxConnectionPoolSize={MaxConnectionPoolSize} 超出推荐上限 200，可能导致数据库连接耗尽。",
-                    _resourceMaxConnectionPoolSize);
-                _observability.EmitEvent("resource.threshold.exceeded", NLog.LogLevel.Warn, $"MaxConnectionPoolSize={_resourceMaxConnectionPoolSize} exceeds recommended 200");
+                    _resourceThresholds.MaxConnectionPoolSize);
+                _observability.EmitEvent("resource.threshold.exceeded", NLog.LogLevel.Warn, $"MaxConnectionPoolSize={_resourceThresholds.MaxConnectionPoolSize} exceeds recommended 200");
             }
-            if (_resourceMemoryWarningThresholdMB > 0 && _resourceMemoryWarningThresholdMB < 512) {
+            if (_resourceThresholds.MemoryWarningThresholdMB > 0 && _resourceThresholds.MemoryWarningThresholdMB < 512) {
                 NLogLogger.Warn(
                     "资源阈值告警：MemoryWarningThresholdMB={MemoryWarningThresholdMB} 低于推荐下限 512 MB，可能导致频繁触发内存告警。",
-                    _resourceMemoryWarningThresholdMB);
-                _observability.EmitEvent("resource.threshold.exceeded", NLog.LogLevel.Warn, $"MemoryWarningThresholdMB={_resourceMemoryWarningThresholdMB} is below recommended 512");
+                    _resourceThresholds.MemoryWarningThresholdMB);
+                _observability.EmitEvent("resource.threshold.exceeded", NLog.LogLevel.Warn, $"MemoryWarningThresholdMB={_resourceThresholds.MemoryWarningThresholdMB} is below recommended 512");
             }
         }
 

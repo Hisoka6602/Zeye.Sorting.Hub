@@ -21,10 +21,4 @@ public sealed class ResourceThresholdsOptions {
     /// 可填写范围：正整数（MB），建议值 1024（1 GB），0 表示不启用内存阈值告警。
     /// </summary>
     public int MemoryWarningThresholdMB { get; init; } = 1024;
-
-    /// <summary>
-    /// 审计后台队列满载丢弃告警阈值（丢弃计数达到该值后输出告警）。
-    /// 可填写范围：正整数，建议值 10，0 表示不启用。
-    /// </summary>
-    public int AuditQueueDropWarnCount { get; init; } = 10;
 }

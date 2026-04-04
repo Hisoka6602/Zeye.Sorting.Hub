@@ -548,17 +548,15 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
 
         /// <summary>计算下一次月报触发日期（每月第 N 天，与 DailyReportLocalTime 同时输出）。</summary>
         private DateTime BuildNextMonthlyReportDate(DateTime now) {
-            // 步骤 1：在本月和下月尝试构建目标日期，取第一个严格大于 now 的值
-            var candidate = new DateTime(now.Year, now.Month, _monthlyReportDay)
-                .Add(_dailyReportTime < TimeSpan.Zero ? new TimeSpan(2, 30, 0) : _dailyReportTime);
+            // 步骤 1：基于 now.Date 构建本月候选值，保持与 now 一致的本地时间 DateTimeKind
+            var currentMonthStart = now.Date.AddDays(1 - now.Day);
+            var candidate = currentMonthStart.AddDays(_monthlyReportDay - 1).Add(_dailyReportTime);
             if (candidate > now) {
                 return candidate;
             }
 
-            // 步骤 2：推进到下个月的同一天
-            var nextMonth = now.AddMonths(1);
-            return new DateTime(nextMonth.Year, nextMonth.Month, _monthlyReportDay)
-                .Add(_dailyReportTime < TimeSpan.Zero ? new TimeSpan(2, 30, 0) : _dailyReportTime);
+            // 步骤 2：推进到下个月的同一天，复用已校验的 _dailyReportTime
+            return currentMonthStart.AddMonths(1).AddDays(_monthlyReportDay - 1).Add(_dailyReportTime);
         }
 
         /// <summary>将一组样本聚合为单条慢查询指标。</summary>

@@ -1,4 +1,3 @@
-using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
@@ -19,35 +18,34 @@ internal static class HealthCheckResponseWriter {
 
     /// <summary>
     /// 将健康检查结果序列化为 JSON 并写入 HttpResponse。
+    /// 直接写入 <see cref="HttpResponse.BodyWriter"/>（PipeWriter），
+    /// 避免 MemoryStream 中间分配与字节→字符串双重编码开销。
     /// </summary>
     /// <param name="context">当前 HTTP 上下文。</param>
     /// <param name="report">健康检查报告。</param>
     /// <returns>异步任务。</returns>
-    public static Task WriteJsonResponseAsync(HttpContext context, HealthReport report) {
+    public static async Task WriteJsonResponseAsync(HttpContext context, HealthReport report) {
         context.Response.ContentType = "application/json; charset=utf-8";
 
         var options = new JsonWriterOptions { Indented = false };
-        using var memoryStream = new MemoryStream();
-        using (var writer = new Utf8JsonWriter(memoryStream, options)) {
-            writer.WriteStartObject();
-            writer.WriteString("status", StatusText.GetValueOrDefault(report.Status, "Unknown"));
-            writer.WriteString("generatedAt", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")); // 本地时间语义
-            writer.WriteStartObject("entries");
-            foreach (var (key, value) in report.Entries) {
-                writer.WriteStartObject(key);
-                writer.WriteString("status", StatusText.GetValueOrDefault(value.Status, "Unknown"));
-                if (value.Description is not null) {
-                    writer.WriteString("description", value.Description);
-                }
-                if (value.Duration != TimeSpan.Zero) {
-                    writer.WriteNumber("durationMs", (long)value.Duration.TotalMilliseconds);
-                }
-                writer.WriteEndObject();
+        // 直接写入 BodyWriter，无中间缓冲区与字符串分配
+        await using var writer = new Utf8JsonWriter(context.Response.BodyWriter, options);
+        writer.WriteStartObject();
+        writer.WriteString("status", StatusText.GetValueOrDefault(report.Status, "Unknown"));
+        writer.WriteString("generatedAt", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")); // 本地时间语义
+        writer.WriteStartObject("entries");
+        foreach (var (key, value) in report.Entries) {
+            writer.WriteStartObject(key);
+            writer.WriteString("status", StatusText.GetValueOrDefault(value.Status, "Unknown"));
+            if (value.Description is not null) {
+                writer.WriteString("description", value.Description);
+            }
+            if (value.Duration != TimeSpan.Zero) {
+                writer.WriteNumber("durationMs", (long)value.Duration.TotalMilliseconds);
             }
             writer.WriteEndObject();
-            writer.WriteEndObject();
         }
-
-        return context.Response.WriteAsync(Encoding.UTF8.GetString(memoryStream.ToArray()));
+        writer.WriteEndObject();
+        writer.WriteEndObject();
     }
 }

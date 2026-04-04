@@ -2271,7 +2271,8 @@ public sealed class AutoTuningProductionControlTests {
             new EmptyServiceScopeFactory(),
             new TestDialect(),
             pipeline,
-            configuration);
+            configuration,
+            Microsoft.Extensions.Options.Options.Create(new Zeye.Sorting.Hub.Host.Options.ResourceThresholdsOptions()));
 
         var moveToStage = typeof(DatabaseAutoTuningHostedService).GetMethod("MoveToStage", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
         moveToStage.Invoke(service, [AutoTuningClosedLoopStage.Execute, "test-execute", "action-001", "fingerprint-001"]);
@@ -2368,7 +2369,8 @@ public sealed class AutoTuningProductionControlTests {
             new EmptyServiceScopeFactory(),
             new TestDialect(),
             pipeline,
-            configuration);
+            configuration,
+            Microsoft.Extensions.Options.Options.Create(new Zeye.Sorting.Hub.Host.Options.ResourceThresholdsOptions()));
 
         SetField(service, "_analysisCycleCounter", 2);
         SeedPendingRollback(service);
