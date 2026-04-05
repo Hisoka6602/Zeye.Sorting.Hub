@@ -7,19 +7,13 @@ namespace Zeye.Sorting.Hub.Domain.Repositories.Models.Validation {
 /// </summary>
 [AttributeUsage(AttributeTargets.Class, AllowMultiple = true)]
 public sealed class MaxTimeRangeAttribute : ValidationAttribute {
-    /// <summary>
-    /// 字段：_startPropertyName。
-    /// </summary>
+    /// <summary>查询模型中起始时间属性名称。</summary>
     private readonly string _startPropertyName;
 
-    /// <summary>
-    /// 字段：_endPropertyName。
-    /// </summary>
+    /// <summary>查询模型中结束时间属性名称。</summary>
     private readonly string _endPropertyName;
 
-    /// <summary>
-    /// 字段：_maxMonths。
-    /// </summary>
+    /// <summary>允许查询的最大时间跨度（月数）。</summary>
     private readonly int _maxMonths;
 
     /// <summary>

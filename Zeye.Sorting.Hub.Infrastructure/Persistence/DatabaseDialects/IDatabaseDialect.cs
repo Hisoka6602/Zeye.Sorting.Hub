@@ -8,6 +8,7 @@ using System.Data.Common;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
 
+    /// <summary>数据库方言适配器接口，封装 Provider 差异化的 DDL/DML/探测操作。</summary>
     public interface IDatabaseDialect {
 
         /// <summary>

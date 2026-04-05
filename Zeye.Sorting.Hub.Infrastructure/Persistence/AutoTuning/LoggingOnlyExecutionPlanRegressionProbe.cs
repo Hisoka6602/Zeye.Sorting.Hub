@@ -12,9 +12,7 @@ public sealed class LoggingOnlyExecutionPlanRegressionProbe : IProviderAwareExec
     /// </summary>
     private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
 
-    /// <summary>
-    /// 字段：_observability。
-    /// </summary>
+    /// <summary>自动调优可观测输出器（指标/事件）。</summary>
     private readonly IAutoTuningObservability _observability;
 
     /// <summary>

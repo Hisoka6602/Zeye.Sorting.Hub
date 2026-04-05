@@ -140,57 +140,43 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// 自动调优可观测输出器（指标/事件）。
         /// </summary>
         private readonly IAutoTuningObservability _observability;
-        /// <summary>
-        /// 字段：_planRegressionProbe。
-        /// </summary>
+        /// <summary>执行计划回归探针，用于检测 SQL 执行计划劣化。</summary>
         private readonly IExecutionPlanRegressionProbe _planRegressionProbe;
         /// <summary>
         /// DI 作用域工厂，用于按周期解析仓储依赖。
         /// </summary>
         private readonly IServiceScopeFactory _scopeFactory;
-        /// <summary>
-        /// 字段：_dialect。
-        /// </summary>
+        /// <summary>数据库方言适配器，提供 Provider 差异化的 DDL/DML 实现。</summary>
         private readonly IDatabaseDialect _dialect;
         /// <summary>
         /// 慢查询采集与分析管道。
         /// </summary>
         private readonly SlowQueryAutoTuningPipeline _pipeline;
-        /// <summary>
-        /// 字段：_analyzeIntervalSeconds。
-        /// </summary>
+        /// <summary>分析周期间隔（秒）。</summary>
         private readonly int _analyzeIntervalSeconds;
         /// <summary>
         /// 每轮最多执行的自动动作数。
         /// </summary>
         private readonly int _maxExecuteActionsPerCycle;
-        /// <summary>
-        /// 字段：_actionExecutionTimeoutSeconds。
-        /// </summary>
+        /// <summary>单次自动动作执行超时（秒）。</summary>
         private readonly int _actionExecutionTimeoutSeconds;
         /// <summary>
         /// 高峰期是否跳过自动执行。
         /// </summary>
         private readonly bool _skipExecutionDuringPeak;
-        /// <summary>
-        /// 字段：_peakStartTime。
-        /// </summary>
+        /// <summary>高峰时段开始时间（本地时间）。</summary>
         private readonly TimeSpan _peakStartTime;
         /// <summary>
         /// 高峰时段结束时间（本地时间）。
         /// </summary>
         private readonly TimeSpan _peakEndTime;
-        /// <summary>
-        /// 字段：_enableAutoRollback。
-        /// </summary>
+        /// <summary>是否启用回归后自动回滚。</summary>
         private readonly bool _enableAutoRollback;
         /// <summary>
         /// 危险动作隔离器总开关。
         /// </summary>
         private readonly bool _enableDangerousActionIsolator;
-        /// <summary>
-        /// 字段：_allowDangerousActionExecution。
-        /// </summary>
+        /// <summary>是否允许隔离器执行危险动作。</summary>
         private readonly bool _allowDangerousActionExecution;
         /// <summary>
         /// 自动动作是否启用演练模式。
@@ -206,145 +192,109 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// 灰度切换已经过的 dry-run 周期计数（运行时状态，不持久化）。
         /// </summary>
         private int _gradualSwitchElapsedCycles;
-        /// <summary>
-        /// 字段：_whitelistedTables。
-        /// </summary>
+        /// <summary>执行动作白名单表集合（大小写不敏感）。</summary>
         private readonly HashSet<string> _whitelistedTables;
         /// <summary>
         /// 指纹到待回滚动作的索引表，用于验证后触发回滚。
         /// </summary>
         private readonly Dictionary<string, PendingRollbackAction> _pendingRollbackByFingerprint = new(StringComparer.OrdinalIgnoreCase);
-        /// <summary>
-        /// 字段：_baselineCommandTimeoutSeconds。
-        /// </summary>
+        /// <summary>基线命令超时（秒）。</summary>
         private readonly int _baselineCommandTimeoutSeconds;
         /// <summary>
         /// 基线重试次数配置。
         /// </summary>
         private readonly int _baselineMaxRetryCount;
-        /// <summary>
-        /// 字段：_baselineMaxRetryDelaySeconds。
-        /// </summary>
+        /// <summary>基线最大重试间隔（秒）。</summary>
         private readonly int _baselineMaxRetryDelaySeconds;
         /// <summary>
         /// 当前命令超时配置（秒）。
         /// </summary>
         private readonly int _configuredCommandTimeoutSeconds;
-        /// <summary>
-        /// 字段：_configuredMaxRetryCount。
-        /// </summary>
+        /// <summary>当前最大重试次数配置。</summary>
         private readonly int _configuredMaxRetryCount;
         /// <summary>
         /// 当前最大重试间隔配置（秒）。
         /// </summary>
         private readonly int _configuredMaxRetryDelaySeconds;
-        /// <summary>
-        /// 字段：_enableFullAutomation。
-        /// </summary>
+        /// <summary>是否启用全自动化（无人值守）模式。</summary>
         private readonly bool _enableFullAutomation;
         /// <summary>
         /// 进入执行策略评估的最小表热度调用次数。
         /// </summary>
         private readonly int _policyMinTableHeatCalls;
-        /// <summary>
-        /// 字段：_policyMaxRiskScore。
-        /// </summary>
+        /// <summary>非高峰期最大允许风险分。</summary>
         private readonly decimal _policyMaxRiskScore;
         /// <summary>
         /// 高峰窗口最大允许风险分。
         /// </summary>
         private readonly decimal _policyPeakMaxRiskScore;
-        /// <summary>
-        /// 字段：_policyPeakMaxTableHeatCalls。
-        /// </summary>
+        /// <summary>高峰窗口最大表热度调用次数门禁。</summary>
         private readonly int _policyPeakMaxTableHeatCalls;
         /// <summary>
         /// 自动验证总开关。
         /// </summary>
         private readonly bool _enableAutoValidation;
-        /// <summary>
-        /// 字段：_validationDelayCycles。
-        /// </summary>
+        /// <summary>动作执行后等待验证的延迟周期数。</summary>
         private readonly int _validationDelayCycles;
         /// <summary>
         /// P95 回归判定阈值（百分比）。
         /// </summary>
         private readonly decimal _validationP95IncreasePercent;
-        /// <summary>
-        /// 字段：_validationP99IncreasePercent。
-        /// </summary>
+        /// <summary>P99 延迟回归判定阈值（百分比）。</summary>
         private readonly decimal _validationP99IncreasePercent;
         /// <summary>
         /// 错误率回归判定阈值（百分比）。
         /// </summary>
         private readonly decimal _validationErrorRateIncreasePercent;
-        /// <summary>
-        /// 字段：_validationTimeoutRateIncreasePercent。
-        /// </summary>
+        /// <summary>超时率回归判定阈值（百分比）。</summary>
         private readonly decimal _validationTimeoutRateIncreasePercent;
         /// <summary>
         /// 死锁数回归判定阈值（增量计数）。
         /// </summary>
         private readonly int _validationDeadlockIncreaseCount;
-        /// <summary>
-        /// 字段：_enableCapacityPrediction。
-        /// </summary>
+        /// <summary>是否启用容量趋势预测。</summary>
         private readonly bool _enableCapacityPrediction;
         /// <summary>
         /// 容量预测天数窗口。
         /// </summary>
         private readonly int _capacityProjectionDays;
-        /// <summary>
-        /// 字段：_capacityGrowthAlertRows。
-        /// </summary>
+        /// <summary>容量告警行数阈值（预测增长超过此值时触发告警）。</summary>
         private readonly int _capacityGrowthAlertRows;
         /// <summary>
         /// 热点分层建议阈值（行数）。
         /// </summary>
         private readonly int _capacityHotLayeringRows;
-        /// <summary>
-        /// 字段：_configuredSlowQueryThresholdMilliseconds。
-        /// </summary>
+        /// <summary>慢查询阈值配置（毫秒）。</summary>
         private readonly int _configuredSlowQueryThresholdMilliseconds;
         /// <summary>
         /// 慢查询触发次数配置。
         /// </summary>
         private readonly int _configuredTriggerCount;
-        /// <summary>
-        /// 字段：_configuredMaxSuggestionsPerCycle。
-        /// </summary>
+        /// <summary>每周期最大建议数量配置。</summary>
         private readonly int _configuredMaxSuggestionsPerCycle;
         /// <summary>
         /// 告警 P99 阈值配置（毫秒）。
         /// </summary>
         private readonly int _configuredAlertP99Milliseconds;
-        /// <summary>
-        /// 字段：_configuredAlertTimeoutRatePercent。
-        /// </summary>
+        /// <summary>告警超时率阈值配置（百分比）。</summary>
         private readonly decimal _configuredAlertTimeoutRatePercent;
         /// <summary>
         /// 告警死锁阈值配置（计数）。
         /// </summary>
         private readonly int _configuredAlertDeadlockCount;
-        /// <summary>
-        /// 字段：_severeRollbackP99IncreasePercent。
-        /// </summary>
+        /// <summary>严重回归触发回滚的 P99 增幅阈值（百分比）。</summary>
         private readonly decimal _severeRollbackP99IncreasePercent;
         /// <summary>
         /// 严重回归触发回滚的超时率阈值（百分比）。
         /// </summary>
         private readonly decimal _severeRollbackTimeoutIncreasePercent;
-        /// <summary>
-        /// 字段：_pauseActionCyclesOnRegression。
-        /// </summary>
+        /// <summary>检测到回归后暂停自动执行的周期数。</summary>
         private readonly int _pauseActionCyclesOnRegression;
         /// <summary>
         /// 执行计划探针开关。
         /// </summary>
         private readonly bool _enablePlanProbe;
-        /// <summary>
-        /// 字段：_planProbeSampleRate。
-        /// </summary>
+        /// <summary>执行计划探针采样率（取值范围：0.0~1.0）。</summary>
         private readonly decimal _planProbeSampleRate;
         /// <summary>
         /// 资源阈值配置选项（连接池上限、内存告警阈值），用于 AuditBaseline 启动期审计。
@@ -376,21 +326,15 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// 表级容量快照序列（用于容量趋势预测）。
         /// </summary>
         private readonly Dictionary<string, Queue<TableCapacitySnapshot>> _capacitySnapshotsByTable = new(StringComparer.OrdinalIgnoreCase);
-        /// <summary>
-        /// 字段：_modelIndexColumnsByTable。
-        /// </summary>
+        /// <summary>模型定义的各表索引列集合（用于关键索引一致性审计）。</summary>
         private readonly Dictionary<string, IReadOnlyList<string[]>> _modelIndexColumnsByTable = new(StringComparer.OrdinalIgnoreCase);
-        /// <summary>
-        /// 字段：_analysisCycleCounter。
-        /// </summary>
+        /// <summary>分析周期计数器（累计自服务启动后的总周期数）。</summary>
         private int _analysisCycleCounter;
         /// <summary>
         /// 暂停自动执行截止周期（含）。
         /// </summary>
         private int _pauseExecutionUntilCycle;
-        /// <summary>
-        /// 字段：_currentStage。
-        /// </summary>
+        /// <summary>当前闭环阶段（Monitor/Diagnose/Treat/Validate）。</summary>
         private AutoTuningClosedLoopStage _currentStage = AutoTuningClosedLoopStage.Monitor;
         /// <summary>
         /// 闭环阶段追踪器，用于审计阶段迁移链路。
@@ -1410,9 +1354,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return (decimal)(increase / previousValue * 100d);
         }
 
-        /// <summary>
-        /// 执行逻辑：DetermineLockWaitUnavailableReason。
-        /// </summary>
+        /// <summary>根据锁等待超时标志推断自动调优不可用原因。</summary>
         private static AutoTuningUnavailableReason DetermineLockWaitUnavailableReason(int? baselineLockWaitCount, int? currentLockWaitCount) {
             if (!baselineLockWaitCount.HasValue && !currentLockWaitCount.HasValue) {
                 return AutoTuningUnavailableReason.BaselineAndCurrentUnavailable;
@@ -1451,9 +1393,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 rollbackSql ?? string.Empty);
         }
 
-        /// <summary>
-        /// 执行逻辑：MoveToStage。
-        /// </summary>
+        /// <summary>将闭环阶段状态机迁移到指定阶段，并记录阶段变更审计日志。</summary>
         private void MoveToStage(AutoTuningClosedLoopStage stage, string reason, string? actionId = null, string? fingerprint = null) {
             if (_currentStage == stage) {
                 return;
@@ -1502,9 +1442,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 });
         }
 
-        /// <summary>
-        /// 执行逻辑：EmitValidationResult。
-        /// </summary>
+        /// <summary>向观测总线发送验证结果事件，包括 P99/P95/超时率等关键指标。</summary>
         private void EmitValidationResult(PendingRollbackAction rollback, AutoTuningVerificationResult result) {
             var level = string.Equals(result.Verdict, "pass", StringComparison.OrdinalIgnoreCase)
                 ? NLog.LogLevel.Info
@@ -1539,14 +1477,30 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 string.Join(" | ", result.SnapshotDiff.Select(static diff => $"{diff.Name}:{diff.Status}:{diff.Delta}:{diff.Reason}")));
         }
 
-        /// <summary>
-        /// 执行逻辑：NormalizeTagValue。
-        /// </summary>
-        private static string NormalizeTagValue(string? value) => string.IsNullOrWhiteSpace(value) ? NotAvailableTag : value.Trim();
+        /// <summary>将标签值清洗为日志安全的单行格式（替换换行符为空格、截断超长内容至 256 字符）。</summary>
+        private static string NormalizeTagValue(string? value) {
+            // 步骤 1：空值守卫。
+            if (string.IsNullOrWhiteSpace(value)) {
+                return NotAvailableTag;
+            }
 
-        /// <summary>
-        /// 执行逻辑：EvaluatePlanRegression。
-        /// </summary>
+            // 步骤 2：将多种换行符替换为空格，防止标签值出现多行内容污染日志结构。
+            var normalized = value
+                .Replace("\r\n", " ", StringComparison.Ordinal)
+                .Replace('\r', ' ')
+                .Replace('\n', ' ')
+                .Trim();
+
+            if (normalized.Length == 0) {
+                return NotAvailableTag;
+            }
+
+            // 步骤 3：截断超长标签值，避免观测标签或日志字段异常膨胀（上限 256 字符）。
+            const int maxTagValueLength = 256;
+            return normalized.Length <= maxTagValueLength ? normalized : normalized[..maxTagValueLength];
+        }
+
+        /// <summary>评估 SQL 执行计划是否发生回归（对比探针快照与基线）。</summary>
         private PlanRegressionSnapshot EvaluatePlanRegression(PendingRollbackAction rollback) {
             var normalizedFingerprint = NormalizeTagValue(rollback.Fingerprint);
             if (!_enablePlanProbe) {
@@ -1560,9 +1514,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return _planRegressionProbe.Evaluate(_dialect.ProviderName, rollback.Fingerprint);
         }
 
-        /// <summary>
-        /// 执行逻辑：ShouldSamplePlanProbe。
-        /// </summary>
+        /// <summary>根据采样率决定当前周期是否执行执行计划探针采样。</summary>
         private bool ShouldSamplePlanProbe(PendingRollbackAction rollback) {
             if (_planProbeSampleRate <= 0m) {
                 return false;
@@ -1579,9 +1531,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             return bucket < (uint)threshold;
         }
 
-        /// <summary>
-        /// 执行逻辑：BuildUnavailablePlanRegressionSnapshot。
-        /// </summary>
+        /// <summary>构造一个表示探针不可用状态的执行计划快照。</summary>
         private PlanRegressionSnapshot BuildUnavailablePlanRegressionSnapshot(string fingerprint, AutoTuningUnavailableReason reason) {
             return new PlanRegressionSnapshot(
                 IsAvailable: false,
@@ -1590,9 +1540,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 UnavailableReason: reason.ToTagValue());
         }
 
-        /// <summary>
-        /// 执行逻辑：BuildEvidenceContext。
-        /// </summary>
+        /// <summary>构建当前分析周期的证据上下文（用于日志关联追踪）。</summary>
         private static EvidenceContext BuildEvidenceContext(string? actionId, string? fingerprint, bool normalized = false) {
             var normalizedActionId = normalized ? actionId ?? NotAvailableTag : NormalizeTagValue(actionId);
             var normalizedFingerprint = normalized ? fingerprint ?? NotAvailableTag : NormalizeTagValue(fingerprint);
@@ -2249,9 +2197,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             AuditBaselineItem(key, (double)configured, baseline);
         }
 
-        /// <summary>
-        /// 执行逻辑：AuditBaselineItem。
-        /// </summary>
+        /// <summary>审计单条基线配置项是否在合理范围，偏差时写入告警日志。</summary>
         private void AuditBaselineItem(string key, double configured, double baseline) {
             if (Math.Abs(configured - baseline) < 0.0001d) {
                 NLogLogger.Info("运行参数基线审计通过：Key={Key}, Current={Current}, Baseline={Baseline}", key, configured, baseline);

@@ -70,16 +70,31 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private LogCleanupSettings Settings => _settingsMonitor.CurrentValue;
 
         /// <summary>
-        /// 执行逻辑：ExecuteAsync。
+        /// 获取有效保留天数（对无效配置值进行保护性回退，防止 0/负数导致误删全量日志）。
         /// </summary>
+        /// <param name="settings">当前配置。</param>
+        /// <returns>有效保留天数（至少为 1）。</returns>
+        private static int GetEffectiveRetentionDays(LogCleanupSettings settings) =>
+            Math.Max(1, settings.RetentionDays);
+
+        /// <summary>
+        /// 获取有效检查间隔小时数（对无效配置值进行保护性回退，防止 0/负数导致忙等待循环）。
+        /// </summary>
+        /// <param name="settings">当前配置。</param>
+        /// <returns>有效检查间隔（至少为 1 小时）。</returns>
+        private static int GetEffectiveCheckIntervalHours(LogCleanupSettings settings) =>
+            Math.Max(1, settings.CheckIntervalHours);
+
+        /// <summary>后台服务主循环：按设定间隔周期性执行日志清理。</summary>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
             if (!Settings.Enabled) {
                 Logger.Info("日志清理服务已禁用");
                 return;
             }
 
-            Logger.Info("日志清理服务已启动，保留天数: {RetentionDays}天，检查间隔: {CheckIntervalHours}小时",
-                Settings.RetentionDays, Settings.CheckIntervalHours);
+            Logger.Info("日志清理服务已启动，保留天数（有效值）: {EffectiveRetentionDays}天（配置原始值: {ConfiguredRetentionDays}），检查间隔（有效值）: {EffectiveCheckIntervalHours}小时（配置原始值: {ConfiguredCheckIntervalHours}）",
+                GetEffectiveRetentionDays(Settings), Settings.RetentionDays,
+                GetEffectiveCheckIntervalHours(Settings), Settings.CheckIntervalHours);
 
             // 首次启动时立即执行一次清理
             _safeExecutor.Execute(
@@ -88,7 +103,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
             while (!stoppingToken.IsCancellationRequested) {
                 try {
-                    await Task.Delay(TimeSpan.FromHours(Settings.CheckIntervalHours), stoppingToken);
+                    await Task.Delay(TimeSpan.FromHours(GetEffectiveCheckIntervalHours(Settings)), stoppingToken);
 
                     _safeExecutor.Execute(
                         () => CleanupOldLogs(stoppingToken),
@@ -102,9 +117,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
         }
 
-        /// <summary>
-        /// 执行逻辑：CleanupOldLogs。
-        /// </summary>
+        /// <summary>扫描日志目录，删除超过保留天数的旧日志文件。</summary>
         internal void CleanupOldLogs(CancellationToken cancellationToken) {
             var settings = Settings;
             var logDirectory = ResolveLogDirectoryPath(settings);
@@ -114,7 +127,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 return;
             }
 
-            var cutoffDate = DateTime.Now.AddDays(-settings.RetentionDays);
+            var cutoffDate = DateTime.Now.AddDays(-GetEffectiveRetentionDays(settings));
             Logger.Info("开始清理日志，删除 {CutoffDate} 之前的日志文件", cutoffDate);
 
             var deletedCount = 0;

@@ -12,9 +12,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
 
     /// <summary>SQL Server 方言</summary>
     public sealed class SqlServerDialect : IDatabaseDialect, IBatchShardingPhysicalTableProbe {
-        /// <summary>
-        /// 字段：BatchShardingProbeSql。
-        /// </summary>
+        /// <summary>批量探测分表物理存在性的 SQL 语句模板。</summary>
         internal const string BatchShardingProbeSql = """
 SELECT t.name
 FROM sys.tables AS t

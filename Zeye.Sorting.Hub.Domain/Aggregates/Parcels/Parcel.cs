@@ -174,9 +174,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         /// </summary>
         public IReadOnlyList<BarCodeInfo> BarCodeInfos => _barCodeInfos;
 
-        /// <summary>
-        /// 字段：_weightInfos。
-        /// </summary>
+        /// <summary>包裹称重信息列表（支持多次称重记录）。</summary>
         private readonly List<WeightInfo> _weightInfos = new();
         /// <summary>
         /// 称重明细集合（只读视图）
@@ -188,9 +186,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         /// </summary>
         public VolumeInfo? VolumeInfo { get; private set; }
 
-        /// <summary>
-        /// 字段：_apiRequests。
-        /// </summary>
+        /// <summary>包裹关联 API 请求记录列表。</summary>
         private readonly List<ApiRequestInfo> _apiRequests = new();
         /// <summary>
         /// 外部接口请求记录集合（只读视图）
@@ -202,27 +198,21 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         /// </summary>
         public ChuteInfo? ChuteInfo { get; private set; }
 
-        /// <summary>
-        /// 字段：_commandInfos。
-        /// </summary>
+        /// <summary>包裹关联指令信息列表。</summary>
         private readonly List<CommandInfo> _commandInfos = new();
         /// <summary>
         /// 通信指令记录集合（只读视图）
         /// </summary>
         public IReadOnlyList<CommandInfo> CommandInfos => _commandInfos;
 
-        /// <summary>
-        /// 字段：_imageInfos。
-        /// </summary>
+        /// <summary>包裹关联图像信息列表。</summary>
         private readonly List<ImageInfo> _imageInfos = new();
         /// <summary>
         /// 图片信息集合（只读视图）
         /// </summary>
         public IReadOnlyList<ImageInfo> ImageInfos => _imageInfos;
 
-        /// <summary>
-        /// 字段：_videoInfos。
-        /// </summary>
+        /// <summary>包裹关联视频信息列表。</summary>
         private readonly List<VideoInfo> _videoInfos = new();
         /// <summary>
         /// 视频信息集合（只读视图）

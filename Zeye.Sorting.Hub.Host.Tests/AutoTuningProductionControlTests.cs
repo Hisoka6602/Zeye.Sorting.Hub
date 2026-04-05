@@ -27,7 +27,9 @@ using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects;
 
 namespace Zeye.Sorting.Hub.Host.Tests;
 
+/// <summary>自动调优生产控制相关功能的集成测试集合。</summary>
 public sealed class AutoTuningProductionControlTests {
+    /// <summary>浮点精度比较容差（用于断言 double 近似相等）。</summary>
     private const double DoublePrecisionTolerance = 0.0001d;
 
     /// <summary>

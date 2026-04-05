@@ -8,9 +8,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 public sealed class AutoTuningClosedLoopTracker {
     private const int MaxStageHistory = 1000;
 
-    /// <summary>
-    /// 字段：_stages。
-    /// </summary>
+    /// <summary>闭环阶段迁移历史记录列表。</summary>
     private readonly List<AutoTuningClosedLoopStage> _stages = new();
 
     /// <summary>
