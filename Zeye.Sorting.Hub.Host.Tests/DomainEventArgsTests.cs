@@ -14,7 +14,7 @@ public sealed class DomainEventArgsTests {
     /// </summary>
     [Fact]
     public void ParcelScannedEventArgs_ShouldCarryAllBusinessFields() {
-        var scannedTime = LocalTimeTestConstraintHelper.CreateLocalTime(2026, 3, 20, 10, 30, 0);
+        var scannedTime = LocalTimeTestConstraint.CreateLocalTime(2026, 3, 20, 10, 30, 0);
 
         var args = new ParcelScannedEventArgs {
             ParcelId = 101L,
@@ -31,7 +31,7 @@ public sealed class DomainEventArgsTests {
         Assert.Equal(scannedTime, args.ScannedTime);
         Assert.Equal("BAG-XY01", args.BagCode);
         Assert.Equal(501L, args.TargetChuteId);
-        LocalTimeTestConstraintHelper.AssertIsLocalTime(args.ScannedTime);
+        LocalTimeTestConstraint.AssertIsLocalTime(args.ScannedTime);
     }
 
     /// <summary>
@@ -39,7 +39,7 @@ public sealed class DomainEventArgsTests {
     /// </summary>
     [Fact]
     public void ParcelScannedEventArgs_ShouldUseValueEquality() {
-        var scannedTime = LocalTimeTestConstraintHelper.CreateLocalTime(2026, 3, 20, 10, 0, 0);
+        var scannedTime = LocalTimeTestConstraint.CreateLocalTime(2026, 3, 20, 10, 0, 0);
 
         var a = new ParcelScannedEventArgs {
             ParcelId = 1L,
@@ -66,7 +66,7 @@ public sealed class DomainEventArgsTests {
     /// </summary>
     [Fact]
     public void ParcelChuteAssignedEventArgs_ShouldCarryAllBusinessFields() {
-        var scannedTime = LocalTimeTestConstraintHelper.CreateLocalTime(2026, 3, 20, 11, 0, 0);
+        var scannedTime = LocalTimeTestConstraint.CreateLocalTime(2026, 3, 20, 11, 0, 0);
 
         var args = new ParcelChuteAssignedEventArgs {
             ParcelId = 202L,
@@ -79,7 +79,7 @@ public sealed class DomainEventArgsTests {
         Assert.Equal(601L, args.TargetChuteId);
         Assert.Equal(602L, args.ActualChuteId);
         Assert.Equal(scannedTime, args.ScannedTime);
-        LocalTimeTestConstraintHelper.AssertIsLocalTime(args.ScannedTime);
+        LocalTimeTestConstraint.AssertIsLocalTime(args.ScannedTime);
     }
 
     /// <summary>
@@ -87,7 +87,7 @@ public sealed class DomainEventArgsTests {
     /// </summary>
     [Fact]
     public void ParcelChuteAssignedEventArgs_ShouldUseValueEquality() {
-        var scannedTime = LocalTimeTestConstraintHelper.CreateLocalTime(2026, 3, 20, 11, 0, 0);
+        var scannedTime = LocalTimeTestConstraint.CreateLocalTime(2026, 3, 20, 11, 0, 0);
 
         var a = new ParcelChuteAssignedEventArgs {
             ParcelId = 1L,
@@ -110,7 +110,7 @@ public sealed class DomainEventArgsTests {
     /// </summary>
     [Fact]
     public void ParcelChuteAssignedEventArgs_WithDifferentFields_ShouldNotBeEqual() {
-        var scannedTime = LocalTimeTestConstraintHelper.CreateLocalTime(2026, 3, 20, 11, 0, 0);
+        var scannedTime = LocalTimeTestConstraint.CreateLocalTime(2026, 3, 20, 11, 0, 0);
 
         var a = new ParcelChuteAssignedEventArgs {
             ParcelId = 1L,

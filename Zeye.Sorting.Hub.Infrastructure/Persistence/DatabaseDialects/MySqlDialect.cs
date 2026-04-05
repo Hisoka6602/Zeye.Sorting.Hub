@@ -27,13 +27,13 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
 
             var normalizedSchemaName = schemaName?.Trim();
             var normalizedTableName = tableName.Trim();
-            var indexColumns = DatabaseProviderExceptionHelper.NormalizeWhereColumns(whereColumns, 3);
+            var indexColumns = DatabaseProviderOperations.NormalizeWhereColumns(whereColumns, 3);
 
             if (indexColumns.Length == 0) {
                 return Array.Empty<string>();
             }
 
-            var indexName = DatabaseProviderExceptionHelper.BuildIndexName(normalizedSchemaName, normalizedTableName, indexColumns, 60);
+            var indexName = DatabaseProviderOperations.BuildIndexName(normalizedSchemaName, normalizedTableName, indexColumns, 60);
 
             var escapedTable = string.IsNullOrWhiteSpace(normalizedSchemaName)
                 ? $"`{normalizedTableName}`"
@@ -49,7 +49,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
 
         /// <summary>判断异常是否可被视为“已存在”并忽略。</summary>
         public bool ShouldIgnoreAutoTuningException(Exception exception) {
-            return DatabaseProviderExceptionHelper.TryGetProviderErrorNumber(exception, out var errorNumber) && errorNumber == 1061;
+            return DatabaseProviderOperations.TryGetProviderErrorNumber(exception, out var errorNumber) && errorNumber == 1061;
         }
 
         /// <summary>

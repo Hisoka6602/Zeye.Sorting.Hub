@@ -41,15 +41,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
             "Server=127.0.0.1,1433;Database=zeye_sorting_hub;User Id=sa;Password=Admin@1234;TrustServerCertificate=True;Encrypt=False;";
 
         /// <summary>
-        /// 向上遍历父目录时的最大层级数，防止无限递归到文件系统根目录。
-        /// </summary>
-        private const int MaxParentDirectorySearchDepth = 6;
-
-        /// <summary>
         /// 为 SQL Server 场景构建设计时 DbContext（供统一设计时工厂内部复用）。
         /// </summary>
         public SortingHubDbContext CreateDbContext(string[] args) {
-            var config = LoadConfiguration();
+            var config = DesignTimeConfigurationLocator.LoadConfiguration();
             return CreateDbContext(config);
         }
 
@@ -64,48 +59,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
                 .Options;
 
             return new SortingHubDbContext(options);
-        }
-
-        /// <summary>
-        /// 从 <c>appsettings.json</c> 加载配置。
-        /// 按优先级搜索以下路径：当前工作目录 → 相邻 Host 目录 → 向上遍历父目录中的 Host 子目录。
-        /// </summary>
-        private static IConfiguration LoadConfiguration() {
-            var basePath = FindAppsettingsDirectory();
-            if (basePath is null) {
-                return new ConfigurationBuilder().Build();
-            }
-
-            return new ConfigurationBuilder()
-                .SetBasePath(basePath)
-                .AddJsonFile("appsettings.json", optional: true)
-                .AddJsonFile("appsettings.Development.json", optional: true)
-                .Build();
-        }
-
-        /// <summary>
-        /// 按优先级搜索包含 <c>appsettings.json</c> 的目录。
-        /// </summary>
-        private static string? FindAppsettingsDirectory() {
-            var cwd = Directory.GetCurrentDirectory();
-
-            // 优先级 1：当前目录直接包含 appsettings.json（从 Host 或解决方案根运行）
-            if (File.Exists(Path.Combine(cwd, "appsettings.json"))) {
-                return cwd;
-            }
-
-            // 优先级 2 & 3：向上遍历，寻找包含 Zeye.Sorting.Hub.Host/appsettings.json 的目录
-            var dir = new DirectoryInfo(cwd);
-            for (var i = 0; i < MaxParentDirectorySearchDepth && dir != null; i++) {
-                var hostAppsettings = Path.Combine(dir.FullName, "Zeye.Sorting.Hub.Host", "appsettings.json");
-                if (File.Exists(hostAppsettings)) {
-                    return Path.Combine(dir.FullName, "Zeye.Sorting.Hub.Host");
-                }
-
-                dir = dir.Parent;
-            }
-
-            return null;
         }
     }
 }

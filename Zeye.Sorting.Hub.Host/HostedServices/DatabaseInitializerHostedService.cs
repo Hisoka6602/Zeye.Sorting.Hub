@@ -193,32 +193,32 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _environmentName = hostEnvironment.EnvironmentName;
             _isProductionEnvironment = hostEnvironment.IsProduction();
             _migrationFailureMode = ResolveMigrationFailureMode(configuration, _isProductionEnvironment);
-            _createShardingTableOnStarting = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, CreateShardingTableOnStartingConfigKey, false);
-            _parcelRelatedHashShardingMod = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, ParcelRelatedHashShardingModConfigKey, 16);
-            _hashShardingExpansionTriggerRatio = AutoTuningConfigurationHelper.GetDecimalInRangeOrDefault(configuration, HashShardingExpansionTriggerRatioConfigKey, 0.8m, 0m, 1m);
-            _hashShardingExpansionCurrentMod = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, HashShardingExpansionPlanCurrentModConfigKey, _parcelRelatedHashShardingMod);
-            _hashShardingExpansionTargetMod = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, HashShardingExpansionPlanTargetModConfigKey, _hashShardingExpansionCurrentMod * 2);
+            _createShardingTableOnStarting = AutoTuningConfigurationReader.GetBoolOrDefault(configuration, CreateShardingTableOnStartingConfigKey, false);
+            _parcelRelatedHashShardingMod = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, ParcelRelatedHashShardingModConfigKey, 16);
+            _hashShardingExpansionTriggerRatio = AutoTuningConfigurationReader.GetDecimalInRangeOrDefault(configuration, HashShardingExpansionTriggerRatioConfigKey, 0.8m, 0m, 1m);
+            _hashShardingExpansionCurrentMod = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, HashShardingExpansionPlanCurrentModConfigKey, _parcelRelatedHashShardingMod);
+            _hashShardingExpansionTargetMod = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, HashShardingExpansionPlanTargetModConfigKey, _hashShardingExpansionCurrentMod * 2);
             _hashShardingExpansionStages = ResolveShardingExpansionPlanStages(configuration);
             _hashShardingLegacyExpansionPlan = NormalizeOptionalTextOrPlaceholder(configuration[HashShardingLegacyExpansionPlanConfigKey], NotConfiguredPlaceholder);
-            _shardingPrebuildWindowHours = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, ShardingPrebuildWindowHoursConfigKey, 72);
+            _shardingPrebuildWindowHours = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, ShardingPrebuildWindowHoursConfigKey, 72);
             _shardingRunbook = NormalizeOptionalTextOrPlaceholder(configuration[ShardingRunbookConfigKey], NotConfiguredPlaceholder);
-            _enableWebRequestAuditLogPerDayGuard = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, WebRequestAuditLogPerDayGuardEnabledConfigKey, true);
-            _enableWebRequestAuditLogRetention = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, WebRequestAuditLogRetentionEnabledConfigKey, true);
+            _enableWebRequestAuditLogPerDayGuard = AutoTuningConfigurationReader.GetBoolOrDefault(configuration, WebRequestAuditLogPerDayGuardEnabledConfigKey, true);
+            _enableWebRequestAuditLogRetention = AutoTuningConfigurationReader.GetBoolOrDefault(configuration, WebRequestAuditLogRetentionEnabledConfigKey, true);
             _webRequestAuditLogRetentionKeepRecentShardCount = ResolveWebRequestAuditLogRetentionKeepRecentShardCount(configuration);
-            _webRequestAuditLogRetentionEnableGuard = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, WebRequestAuditLogRetentionIsolatorEnableGuardConfigKey, true);
-            _webRequestAuditLogRetentionAllowDangerousActionExecution = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, WebRequestAuditLogRetentionIsolatorAllowDangerousActionExecutionConfigKey, false);
-            _webRequestAuditLogRetentionDryRun = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, WebRequestAuditLogRetentionIsolatorDryRunConfigKey, true);
-            _enableCriticalIndexAudit = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, ShardingCriticalIndexAuditEnabledConfigKey, true);
-            _blockOnCriticalIndexMissing = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, ShardingCriticalIndexAuditBlockOnMissingConfigKey, true);
+            _webRequestAuditLogRetentionEnableGuard = AutoTuningConfigurationReader.GetBoolOrDefault(configuration, WebRequestAuditLogRetentionIsolatorEnableGuardConfigKey, true);
+            _webRequestAuditLogRetentionAllowDangerousActionExecution = AutoTuningConfigurationReader.GetBoolOrDefault(configuration, WebRequestAuditLogRetentionIsolatorAllowDangerousActionExecutionConfigKey, false);
+            _webRequestAuditLogRetentionDryRun = AutoTuningConfigurationReader.GetBoolOrDefault(configuration, WebRequestAuditLogRetentionIsolatorDryRunConfigKey, true);
+            _enableCriticalIndexAudit = AutoTuningConfigurationReader.GetBoolOrDefault(configuration, ShardingCriticalIndexAuditEnabledConfigKey, true);
+            _blockOnCriticalIndexMissing = AutoTuningConfigurationReader.GetBoolOrDefault(configuration, ShardingCriticalIndexAuditBlockOnMissingConfigKey, true);
             _observability = serviceProvider.GetService<IAutoTuningObservability>() ?? new NullAutoTuningObservability();
             var parcelShardingStrategyEvaluation = ParcelShardingStrategyEvaluator.Evaluate(configuration);
             _parcelShardingStrategyDecision = parcelShardingStrategyEvaluation.Decision;
             _parcelShardingStrategyValidationErrors = parcelShardingStrategyEvaluation.ValidationErrors;
             _shardingPhysicalTableProbe = shardingPhysicalTableProbe;
-            _ensureDatabaseExistsEnabled = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, EnsureDatabaseExistsEnabledConfigKey, true);
-            _ensureDatabaseExistsEnableGuard = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, EnsureDatabaseExistsIsolatorEnableGuardConfigKey, true);
-            _ensureDatabaseExistsAllowDangerousActionExecution = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, EnsureDatabaseExistsIsolatorAllowDangerousActionExecutionConfigKey, false);
-            _ensureDatabaseExistsDryRun = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, EnsureDatabaseExistsIsolatorDryRunConfigKey, false);
+            _ensureDatabaseExistsEnabled = AutoTuningConfigurationReader.GetBoolOrDefault(configuration, EnsureDatabaseExistsEnabledConfigKey, true);
+            _ensureDatabaseExistsEnableGuard = AutoTuningConfigurationReader.GetBoolOrDefault(configuration, EnsureDatabaseExistsIsolatorEnableGuardConfigKey, true);
+            _ensureDatabaseExistsAllowDangerousActionExecution = AutoTuningConfigurationReader.GetBoolOrDefault(configuration, EnsureDatabaseExistsIsolatorAllowDangerousActionExecutionConfigKey, false);
+            _ensureDatabaseExistsDryRun = AutoTuningConfigurationReader.GetBoolOrDefault(configuration, EnsureDatabaseExistsIsolatorDryRunConfigKey, false);
             var providerRaw = configuration[PersistenceProviderConfigKey];
             _databaseProviderKey = ResolveProviderConnectionStringKey(providerRaw, _dialect.ProviderName);
 
@@ -1399,21 +1399,5 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             throw new InvalidOperationException($"不支持的数据库提供器：{providerName}");
         }
 
-        /// <summary>
-        /// PerDay 治理组模型。
-        /// </summary>
-        /// <param name="GroupName">治理组名称。</param>
-        /// <param name="BaseTableNames">治理组逻辑表名清单。</param>
-        internal readonly record struct PerDayGovernanceGroup(
-            string GroupName,
-            IReadOnlyList<string> BaseTableNames);
-        /// <summary>
-        /// WebRequestAuditLog 历史分表保留候选模型。
-        /// </summary>
-        /// <param name="CandidateCount">候选总数。</param>
-        /// <param name="CandidatePhysicalTableNames">候选物理表名清单。</param>
-        private readonly record struct WebRequestAuditLogRetentionCandidates(
-            int CandidateCount,
-            IReadOnlyList<string> CandidatePhysicalTableNames);
     }
 }

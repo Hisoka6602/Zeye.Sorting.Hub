@@ -95,11 +95,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// </summary>
         public static IServiceCollection AddSortingHubPersistence(this IServiceCollection services, IConfiguration configuration) {
             var provider = configuration["Persistence:Provider"];
-            var commandTimeoutSeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
-            var minCommandElapsedMilliseconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:MinCommandElapsedMilliseconds", 50);
+            var commandTimeoutSeconds = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
+            var minCommandElapsedMilliseconds = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:MinCommandElapsedMilliseconds", 50);
             var parcelShardingStartTime = GetShardingStartTime(configuration);
-            var createShardingTableOnStarting = AutoTuningConfigurationHelper.GetBoolOrDefault(configuration, "Persistence:Sharding:CreateShardingTableOnStarting", false);
-            var parcelRelatedHashShardingMod = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, "Persistence:Sharding:ParcelRelatedHashShardingMod", DefaultParcelRelatedHashShardingMod);
+            var createShardingTableOnStarting = AutoTuningConfigurationReader.GetBoolOrDefault(configuration, "Persistence:Sharding:CreateShardingTableOnStarting", false);
+            var parcelRelatedHashShardingMod = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, "Persistence:Sharding:ParcelRelatedHashShardingMod", DefaultParcelRelatedHashShardingMod);
             var parcelShardingStrategyEvaluation = ParcelShardingStrategyEvaluator.Evaluate(configuration);
             var parcelShardingStrategyDecision = parcelShardingStrategyEvaluation.Decision;
             if (parcelShardingStrategyEvaluation.ValidationErrors.Count > 0) {
@@ -194,9 +194,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             var interceptor = sp.GetRequiredService<SlowQueryCommandInterceptor>();
             var mySqlSessionInterceptor = sp.GetRequiredService<MySqlSessionBootstrapConnectionInterceptor>();
             var cs = cfg.GetConnectionString(ConfiguredProviderNames.MySql)!;
-            var commandTimeoutSeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
-            var maxRetryCount = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryCount", 5);
-            var maxRetryDelaySeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryDelaySeconds", 10);
+            var commandTimeoutSeconds = AutoTuningConfigurationReader.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
+            var maxRetryCount = AutoTuningConfigurationReader.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryCount", 5);
+            var maxRetryDelaySeconds = AutoTuningConfigurationReader.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryDelaySeconds", 10);
 
             var serverVersion = ResolveMySqlServerVersion(cfg, cs, null);
             options.UseMySql(cs, serverVersion, mySqlOptions => {
@@ -267,9 +267,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             var cfg = sp.GetRequiredService<IConfiguration>();
             var interceptor = sp.GetRequiredService<SlowQueryCommandInterceptor>();
             var cs = cfg.GetConnectionString(ConfiguredProviderNames.SqlServer)!;
-            var commandTimeoutSeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
-            var maxRetryCount = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryCount", 5);
-            var maxRetryDelaySeconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryDelaySeconds", 10);
+            var commandTimeoutSeconds = AutoTuningConfigurationReader.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
+            var maxRetryCount = AutoTuningConfigurationReader.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryCount", 5);
+            var maxRetryDelaySeconds = AutoTuningConfigurationReader.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryDelaySeconds", 10);
 
             options.UseSqlServer(cs, sqlServerOptions => {
                 // 迁移程序集通常指向 Host 或 Infrastructure，按迁移放置位置调整
@@ -332,7 +332,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
 
             // 分表起始时间在进入规则注册前统一归一化为“本地时间语义”，
             // 避免外部配置传入未指定 Kind 的时间值时产生路由歧义。
-            var localShardingStartTime = AutoTuningConfigurationHelper.NormalizeToLocalTime(parcelShardingStartTime);
+            var localShardingStartTime = AutoTuningConfigurationReader.NormalizeToLocalTime(parcelShardingStartTime);
 
             // ------------------------------
             // 1) 主表：Parcel（CreatedTime + 策略决策粒度）
@@ -359,7 +359,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         private static void ConfigureWebRequestAuditLogSharding(
             IShardingBuilder shardingBuilder,
             DateTime shardingStartTime) {
-            var localShardingStartTime = AutoTuningConfigurationHelper.NormalizeToLocalTime(shardingStartTime);
+            var localShardingStartTime = AutoTuningConfigurationReader.NormalizeToLocalTime(shardingStartTime);
             shardingBuilder.SetDateSharding<WebRequestAuditLog>(
                 shardingField: nameof(WebRequestAuditLog.StartedAt),
                 expandByDateMode: ExpandByDateMode.PerDay,
@@ -462,7 +462,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 DateTimeStyles.AssumeLocal,
                 out var parsed)) {
                 // 统一复用本地时间归一化入口，避免规则分叉。
-                return AutoTuningConfigurationHelper.NormalizeToLocalTime(parsed);
+                return AutoTuningConfigurationReader.NormalizeToLocalTime(parsed);
             }
 
             var now = DateTime.Now;

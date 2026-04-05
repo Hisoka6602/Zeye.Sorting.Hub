@@ -3,7 +3,7 @@ using System.Text;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
 
-    internal static class DatabaseProviderExceptionHelper {
+    internal static class DatabaseProviderOperations {
         /// <summary>
         /// 尝试从异常链中提取数据库提供器错误码。
         /// </summary>
