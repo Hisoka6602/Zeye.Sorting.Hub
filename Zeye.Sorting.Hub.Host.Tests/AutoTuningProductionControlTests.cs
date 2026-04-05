@@ -1394,6 +1394,7 @@ public sealed class AutoTuningProductionControlTests {
             Array.Empty<string>(),
             Array.Empty<SlowQueryAlertNotification>(),
             false,
+            false,
             false);
         var updateAutonomousSignals = typeof(DatabaseAutoTuningHostedService).GetMethod("UpdateAutonomousSignals", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
         updateAutonomousSignals.Invoke(service, [result, DateTime.Now]);
@@ -1444,6 +1445,7 @@ public sealed class AutoTuningProductionControlTests {
             Array.Empty<string>(),
             Array.Empty<SlowQueryAlertNotification>(),
             false,
+            false,
             false);
         updateAutonomousSignals.Invoke(service, [partial, fixedNow]);
         Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hit_rate" && Math.Abs(entry.Value - 0.5d) < DoublePrecisionTolerance);
@@ -1461,6 +1463,7 @@ public sealed class AutoTuningProductionControlTests {
             Array.Empty<string>(),
             Array.Empty<string>(),
             Array.Empty<SlowQueryAlertNotification>(),
+            false,
             false,
             false);
         updateAutonomousSignals.Invoke(service, [none, fixedNow]);
@@ -1526,6 +1529,7 @@ public sealed class AutoTuningProductionControlTests {
             Array.Empty<string>(),
             Array.Empty<string>(),
             Array.Empty<SlowQueryAlertNotification>(),
+            false,
             false,
             false);
 
@@ -1594,6 +1598,7 @@ public sealed class AutoTuningProductionControlTests {
             Array.Empty<string>(),
             Array.Empty<SlowQueryAlertNotification>(),
             false,
+            false,
             false);
 
         updateAutonomousSignals.Invoke(service, [result, fixedNow]);
@@ -1637,6 +1642,7 @@ public sealed class AutoTuningProductionControlTests {
             Array.Empty<string>(),
             Array.Empty<string>(),
             Array.Empty<SlowQueryAlertNotification>(),
+            false,
             false,
             false);
 
@@ -1704,6 +1710,7 @@ public sealed class AutoTuningProductionControlTests {
             [],
             [],
             [],
+            false,
             false,
             false);
         var method = typeof(DatabaseAutoTuningHostedService).GetMethod("ApplyIndexSuggestionGuardsAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
@@ -1773,6 +1780,7 @@ public sealed class AutoTuningProductionControlTests {
             [],
             [],
             false,
+            false,
             false);
         var method = typeof(DatabaseAutoTuningHostedService).GetMethod("ApplyIndexSuggestionGuardsAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
         var guardedResult = await (Task<SlowQueryAnalysisResult>)method.Invoke(service, [result, CancellationToken.None])!;
@@ -1837,12 +1845,137 @@ public sealed class AutoTuningProductionControlTests {
             [],
             [],
             false,
+            false,
             false);
         var method = typeof(DatabaseAutoTuningHostedService).GetMethod("ApplyIndexSuggestionGuardsAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
         var guardedResult = await (Task<SlowQueryAnalysisResult>)method.Invoke(service, [result, CancellationToken.None])!;
 
         Assert.Single(guardedResult.TuningCandidates);
         Assert.Contains(guardedResult.TuningCandidates[0].SuggestedActions, action => action.Contains("create index", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// 验证场景：ApplyIndexSuggestionGuardsAsync_ShardingGate_BlocksCreateIndexWhenHitRateBelowThreshold。
+    /// 分表治理门禁：当分析窗口 hit rate 低于阈值时，命中分表的候选 CreateIndex 动作应被阻断。
+    /// </summary>
+    [Fact]
+    public async Task ApplyIndexSuggestionGuardsAsync_ShardingGate_BlocksCreateIndexWhenHitRateBelowThreshold() {
+        var logger = new TestLogger<DatabaseAutoTuningHostedService>();
+        var observability = new TestObservability();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:AutoTuning:TriggerCount"] = "3",
+                ["Persistence:AutoTuning:AlertP99Milliseconds"] = "500",
+                // 分表门禁阈值 0.8，命中率 = 5/(5+20) = 0.2 < 0.8 → 应阻断
+                ["Persistence:AutoTuning:ShardingGovernanceHitRateThreshold"] = "0.8"
+            })
+            .Build();
+        var pipeline = new SlowQueryAutoTuningPipeline(configuration, observability);
+        var service = new DatabaseAutoTuningHostedService(
+            logger,
+            observability,
+            new FixedPlanProbe(),
+            new EmptyServiceScopeFactory(),
+            new TestDialect(),
+            pipeline,
+            configuration);
+        // fp-sharding 对应单表查询（IsShardingHitQuery=true），调用量 5
+        // fp-cross 对应 JOIN 跨表查询（IsCrossTableQuery=true，IsShardingHitQuery=false），调用量 20
+        // 总调用量 25，命中 5，hit rate = 0.2 < 0.8，门禁应阻断 fp-sharding 的 CreateIndex
+        var result = new SlowQueryAnalysisResult(
+            DateTime.Now,
+            0,
+            [
+                new SlowQueryMetric("fp-sharding", "select * from parcels where code=@p0", 5, 50, 0m, 0m, 0, 300d, 600d, 700d, null),
+                new SlowQueryMetric("fp-cross", "select * from parcels p join parcel_positions pp on p.id=pp.parcel_id where p.code=@p1", 20, 200, 0m, 0m, 0, 100d, 200d, 250d, null)
+            ],
+            [
+                new SlowQueryTuningCandidate(
+                    "fp-sharding",
+                    null,
+                    "parcels",
+                    ["code"],
+                    [
+                        "CREATE INDEX `idx_auto_parcels_code_x` ON `parcels` (`code`)",
+                        "ANALYZE TABLE `parcels`"
+                    ])
+            ],
+            [],
+            [],
+            [],
+            [],
+            Array.Empty<SlowQueryAlertNotification>(),
+            false,
+            false,
+            false);
+        var method = typeof(DatabaseAutoTuningHostedService).GetMethod("ApplyIndexSuggestionGuardsAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        var guardedResult = await (Task<SlowQueryAnalysisResult>)method.Invoke(service, [result, CancellationToken.None])!;
+
+        // CreateIndex 动作应被门禁阻断，候选中只剩非 CreateIndex 动作（ANALYZE TABLE）
+        Assert.Single(guardedResult.TuningCandidates);
+        Assert.DoesNotContain(guardedResult.TuningCandidates[0].SuggestedActions, action => action.Contains("create index", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(observability.EventEntries, e => e.Name == "autotuning.sharding.governance_gate_blocked");
+    }
+
+    /// <summary>
+    /// 验证场景：ApplyIndexSuggestionGuardsAsync_ShardingGate_KeepsCreateIndexWhenHitRateAboveThreshold。
+    /// 分表治理门禁：当分析窗口 hit rate 高于阈值时，分表候选的 CreateIndex 动作不应被阻断。
+    /// </summary>
+    [Fact]
+    public async Task ApplyIndexSuggestionGuardsAsync_ShardingGate_KeepsCreateIndexWhenHitRateAboveThreshold() {
+        var logger = new TestLogger<DatabaseAutoTuningHostedService>();
+        var observability = new TestObservability();
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> {
+                ["Persistence:AutoTuning:TriggerCount"] = "3",
+                ["Persistence:AutoTuning:AlertP99Milliseconds"] = "500",
+                // 分表门禁阈值 0.3，命中率 = 20/(20+5) = 0.8 ≥ 0.3 → 不应阻断
+                ["Persistence:AutoTuning:ShardingGovernanceHitRateThreshold"] = "0.3"
+            })
+            .Build();
+        var pipeline = new SlowQueryAutoTuningPipeline(configuration, observability);
+        var service = new DatabaseAutoTuningHostedService(
+            logger,
+            observability,
+            new FixedPlanProbe(),
+            new EmptyServiceScopeFactory(),
+            new TestDialect(),
+            pipeline,
+            configuration);
+        // fp-sharding 单表高调用量 20，fp-cross 跨表低调用量 5，hit rate = 0.8 ≥ 0.3
+        var result = new SlowQueryAnalysisResult(
+            DateTime.Now,
+            0,
+            [
+                new SlowQueryMetric("fp-sharding", "select * from parcels where code=@p0", 20, 200, 0m, 0m, 0, 300d, 600d, 700d, null),
+                new SlowQueryMetric("fp-cross", "select * from parcels p join parcel_positions pp on p.id=pp.parcel_id where p.code=@p1", 5, 50, 0m, 0m, 0, 100d, 200d, 250d, null)
+            ],
+            [
+                new SlowQueryTuningCandidate(
+                    "fp-sharding",
+                    null,
+                    "parcels",
+                    ["code"],
+                    [
+                        "CREATE INDEX `idx_auto_parcels_code_x` ON `parcels` (`code`)",
+                        "ANALYZE TABLE `parcels`"
+                    ])
+            ],
+            [],
+            [],
+            [],
+            [],
+            Array.Empty<SlowQueryAlertNotification>(),
+            false,
+            false,
+            false);
+        var method = typeof(DatabaseAutoTuningHostedService).GetMethod("ApplyIndexSuggestionGuardsAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        var guardedResult = await (Task<SlowQueryAnalysisResult>)method.Invoke(service, [result, CancellationToken.None])!;
+
+        // hit rate 满足阈值，CreateIndex 动作不应被门禁阻断
+        Assert.Single(guardedResult.TuningCandidates);
+        Assert.Contains(guardedResult.TuningCandidates[0].SuggestedActions, action => action.Contains("create index", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(observability.EventEntries, e => e.Name == "autotuning.sharding.governance_gate_blocked");
     }
 
     /// <summary>
@@ -2311,6 +2444,7 @@ public sealed class AutoTuningProductionControlTests {
             Array.Empty<string>(),
             Array.Empty<SlowQueryAlertNotification>(),
             false,
+            false,
             false);
         var metricsByFingerprint = result.Metrics.ToDictionary(static x => x.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
         var validateTask = (Task)validate.Invoke(service, [result, metricsByFingerprint, CancellationToken.None])!;
@@ -2399,6 +2533,7 @@ public sealed class AutoTuningProductionControlTests {
             Array.Empty<string>(),
             Array.Empty<SlowQueryAlertNotification>(),
             false,
+            false,
             false);
         var metricsByFingerprint = result.Metrics.ToDictionary(static x => x.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
         var validateTask = (Task)validate.Invoke(service, [result, metricsByFingerprint, CancellationToken.None])!;
@@ -2465,6 +2600,7 @@ public sealed class AutoTuningProductionControlTests {
             Array.Empty<string>(),
             Array.Empty<SlowQueryAlertNotification>(),
             false,
+            false,
             false);
         var metricsByFingerprint = result.Metrics.ToDictionary(static x => x.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
         var validateTask = (Task)validate.Invoke(service, [result, metricsByFingerprint, CancellationToken.None])!;
@@ -2529,6 +2665,7 @@ public sealed class AutoTuningProductionControlTests {
             Array.Empty<string>(),
             Array.Empty<string>(),
             Array.Empty<SlowQueryAlertNotification>(),
+            false,
             false,
             false);
         var metricsByFingerprint = result.Metrics.ToDictionary(static x => x.SqlFingerprint, StringComparer.OrdinalIgnoreCase);

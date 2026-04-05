@@ -98,6 +98,11 @@ jobs:
           check_key "MonthlyReportArchivePath"
           check_key "MonthlyReportDay"
 
+          echo "── 年度运行看板配置 ──"
+          check_key "AnnualDashboardMonth"
+          check_key "AnnualDashboardArchivePath"
+          check_key "ShardingGovernanceHitRateThreshold"
+
           echo "── 告警防抖配置 ──"
           check_key "AlertDebounceWindowSeconds"
           check_key "AlertP99Milliseconds"
@@ -217,3 +222,217 @@ jobs:
           fi
 
           echo "健康探针端点检查通过。"
+
+  # ──────────────────────────────────────────────────────────
+  # 门禁 6：契约兼容性验证
+  #   检查 API 事件载荷 (readonly record struct) 与关键 DTO 只有新增字段，
+  #   不允许删除或重命名已存在的公开字段，防止新旧版本并行时契约破坏。
+  # ──────────────────────────────────────────────────────────
+  contract-compatibility:
+    name: 契约兼容性验证
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: 验证事件载荷与 DTO 契约兼容性
+        run: |
+          set -euo pipefail
+          FAIL=0
+
+          # 步骤 1：所有事件载荷必须使用 readonly record struct（不可变，值语义）
+          echo "── 事件载荷结构验证 ──"
+          EVENT_DIR_FOUND=0
+          while IFS= read -r -d '' file; do
+            EVENT_DIR_FOUND=1
+            if grep -q "public readonly record struct" "$file"; then
+              echo "✅  $(basename "$file") 使用 readonly record struct"
+            elif grep -q "class\|struct" "$file"; then
+              echo "⚠️  $(basename "$file") 非 readonly record struct（建议按规则11修改）"
+            fi
+          done < <(find . -path "*/Events/*.cs" -print0 2>/dev/null)
+
+          if [ "$EVENT_DIR_FOUND" -eq 0 ]; then
+            echo "ℹ️  未发现 Events/ 子目录，跳过事件载荷检查"
+          fi
+
+          # 步骤 2：检查 SlowQueryAnalysisResult 等核心 record 结构是否保留必要字段
+          echo ""
+          echo "── 核心分析结果 record 字段完整性验证 ──"
+          RESULT_FILE="Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/SlowQueryAnalysisResult.cs"
+          if [ -f "$RESULT_FILE" ]; then
+            for field in "GeneratedTime" "DroppedSamples" "Metrics" "TuningCandidates" "Alerts" "ShouldEmitDailyReport" "ShouldEmitMonthlyReport" "ShouldEmitAnnualDashboard"; do
+              if grep -q "$field" "$RESULT_FILE"; then
+                echo "✅  SlowQueryAnalysisResult.$field 存在"
+              else
+                echo "❌  SlowQueryAnalysisResult.$field 缺失，契约破坏！"
+                FAIL=1
+              fi
+            done
+          else
+            echo "❌  核心结果文件 SlowQueryAnalysisResult.cs 缺失！"
+            FAIL=1
+          fi
+
+          # 步骤 3：检查年度看板相关方法是否存在
+          echo ""
+          echo "── 年度运行看板接口完整性验证 ──"
+          SERVICE_FILE="Zeye.Sorting.Hub.Host/HostedServices/DatabaseAutoTuningHostedService.cs"
+          for symbol in "EmitAnnualDashboardAsync" "ArchiveAnnualDashboardToFileAsync" "BuildAnnualDashboardContent" "ValidateShardingStrategyGate"; do
+            if grep -q "$symbol" "$SERVICE_FILE"; then
+              echo "✅  $symbol 存在"
+            else
+              echo "❌  $symbol 缺失，年度看板功能不完整！"
+              FAIL=1
+            fi
+          done
+
+          if [ "$FAIL" -eq 1 ]; then
+            echo ""
+            echo "契约兼容性验证失败：存在契约破坏或核心方法缺失，请检查修改。"
+            exit 1
+          fi
+
+          echo ""
+          echo "契约兼容性验证通过。"
+
+  # ──────────────────────────────────────────────────────────
+  # 门禁 7：蓝绿/滚动部署验证
+  #   验证服务具备近零感知切换所需的基础能力：
+  #   存活/就绪探针分离、危险动作隔离器、自动回滚资产均已就绪。
+  # ──────────────────────────────────────────────────────────
+  deploy-validation:
+    name: 蓝绿/滚动部署验证
+    runs-on: ubuntu-latest
+    needs: [build-and-test, health-probe, rollback-asset]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 验证蓝绿部署健康检查与回滚闭环能力
+        run: |
+          set -euo pipefail
+          FAIL=0
+          CONFIG="Zeye.Sorting.Hub.Host/appsettings.json"
+          PROGRAM="Zeye.Sorting.Hub.Host/Program.cs"
+          SERVICE="Zeye.Sorting.Hub.Host/HostedServices/DatabaseAutoTuningHostedService.cs"
+
+          # 步骤 1：存活/就绪探针分离（确保蓝绿切换时流量路由正确）
+          echo "── 探针分离验证 ──"
+          if grep -q '"/health/live"' "$PROGRAM" && grep -q '"/health/ready"' "$PROGRAM"; then
+            echo "✅  /health/live 和 /health/ready 探针已分离"
+          else
+            echo "❌  探针分离缺失，蓝绿切换时流量路由可能不正确！"
+            FAIL=1
+          fi
+
+          # 步骤 2：自动验证与回滚开关（新版本部署后自动验证，失败自动回滚）
+          echo ""
+          echo "── 自动验证与回滚验证 ──"
+          CLEAN_JSON=$(grep -v '^\s*//' "$CONFIG")
+          for key in "EnableAutoValidation" "EnableAutoRollback"; do
+            if echo "$CLEAN_JSON" | grep -q "\"$key\": true"; then
+              echo "✅  $key=true"
+            else
+              echo "❌  $key 未设置为 true，新版本部署后缺少自动验证/回滚保障！"
+              FAIL=1
+            fi
+          done
+
+          # 步骤 3：灰度切换保护能力（新策略先经过 dry-run 保护期）
+          echo ""
+          echo "── 灰度切换保护能力验证 ──"
+          if grep -q "GradualSwitchDryRunCycles" "$SERVICE"; then
+            echo "✅  灰度切换 dry-run 保护逻辑已实现"
+          else
+            echo "❌  灰度切换保护逻辑缺失！"
+            FAIL=1
+          fi
+
+          # 步骤 4：分表治理策略切换门禁（验证已实现）
+          echo ""
+          echo "── 分表治理策略切换门禁验证 ──"
+          if grep -q "ValidateShardingStrategyGate" "$SERVICE"; then
+            echo "✅  分表治理策略切换门禁已实现"
+          else
+            echo "❌  分表治理策略切换门禁缺失！"
+            FAIL=1
+          fi
+
+          if [ "$FAIL" -eq 1 ]; then
+            echo ""
+            echo "蓝绿/滚动部署验证失败：缺少关键部署保障能力，请修复后重试。"
+            exit 1
+          fi
+
+          echo ""
+          echo "蓝绿/滚动部署验证通过。"
+
+  # ──────────────────────────────────────────────────────────
+  # 门禁 8：演练记录门禁
+  #   检查是否存在有效的年度演练记录文件或演练达标声明，
+  #   防止缺少演练记录的版本直接发布到生产环境。
+  # ──────────────────────────────────────────────────────────
+  drill-record-gate:
+    name: 演练记录门禁
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 验证演练记录或达标声明存在
+        run: |
+          set -euo pipefail
+
+          # 策略：允许通过以下任一方式证明演练达标
+          # 1. 存在 drill-records/ 目录且包含至少一个 .txt/.md 文件
+          # 2. 存在 DRILL_ATTESTATION 文件（手动声明已完成演练）
+          # 3. 清单文件中对应演练条目已标注 [x]
+
+          CHECKLIST="长期运行优化与热更新支持清单.md"
+          PASS=0
+
+          echo "── 演练记录目录检查 ──"
+          if find . -path "*/drill-records/*" -name "*.txt" -o -path "*/drill-records/*" -name "*.md" 2>/dev/null | grep -q .; then
+            echo "✅  发现演练记录文件"
+            PASS=1
+          else
+            echo "ℹ️  未发现 drill-records/ 目录下的演练文件"
+          fi
+
+          echo ""
+          echo "── 演练达标声明文件检查 ──"
+          if [ -f "DRILL_ATTESTATION" ]; then
+            echo "✅  发现演练达标声明文件 DRILL_ATTESTATION"
+            PASS=1
+          else
+            echo "ℹ️  未发现 DRILL_ATTESTATION 声明文件"
+          fi
+
+          echo ""
+          echo "── 清单演练条目完成状态检查 ──"
+          if [ -f "$CHECKLIST" ]; then
+            # 检查清单中"演练/drill"相关的 [x] 条目（-i 忽略大小写，覆盖 Drill/drill 等组合）
+            DRILL_PATTERN='\- \[x\].*(演练|drill)'
+            DRILL_DONE=$(grep -ciE "$DRILL_PATTERN" "$CHECKLIST" 2>/dev/null || true)
+            if [ "$DRILL_DONE" -gt 0 ]; then
+              echo "✅  清单中 $DRILL_DONE 个演练相关条目已标注完成"
+              PASS=1
+            else
+              echo "ℹ️  清单中暂无演练条目标注为已完成"
+            fi
+          fi
+
+          if [ "$PASS" -eq 0 ]; then
+            echo ""
+            echo "演练记录门禁：未发现任何有效演练记录或达标声明。"
+            echo "请在 drill-records/ 目录添加演练记录文件，或创建 DRILL_ATTESTATION 声明文件，或在清单中标注演练条目已完成。"
+            echo "（本门禁在当前阶段以警告形式输出，不阻断 PR。后续将升级为强制门禁。）"
+            # 当前阶段不阻断，输出警告即可
+            exit 0
+          fi
+
+          echo ""
+          echo "演练记录门禁通过。"

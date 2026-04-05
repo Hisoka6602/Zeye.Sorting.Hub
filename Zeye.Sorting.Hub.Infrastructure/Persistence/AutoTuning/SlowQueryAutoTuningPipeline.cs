@@ -141,6 +141,14 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         /// 下一次应输出月报的本地日期。
         /// </summary>
         private DateTime _nextMonthlyReportDate;
+        /// <summary>
+        /// 年度运行看板输出月份（1~12），每年该月 1 日与日报同时触发年度看板生成。
+        /// </summary>
+        private readonly int _annualDashboardMonth;
+        /// <summary>
+        /// 下一次应输出年度运行看板的本地日期。
+        /// </summary>
+        private DateTime _nextAnnualDashboardDate;
 
         /// <summary>初始化慢查询采集、分析和告警阈值配置。</summary>
         public SlowQueryAutoTuningPipeline(IConfiguration configuration, IAutoTuningObservability observability) {
@@ -162,8 +170,12 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             _monthlyReportDay = Math.Clamp(
                 AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("MonthlyReportDay"), 1),
                 1, 28);
+            _annualDashboardMonth = Math.Clamp(
+                AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("AnnualDashboardMonth"), 1),
+                1, 12);
             _nextDailyReportTime = BuildNextDailyReportTime(DateTime.Now);
             _nextMonthlyReportDate = BuildNextMonthlyReportDate(DateTime.Now);
+            _nextAnnualDashboardDate = BuildNextAnnualDashboardDate(DateTime.Now);
         }
 
         /// <summary>采集慢查询样本（含错误、超时、死锁标记）。</summary>
@@ -209,6 +221,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             var now = DateTime.Now;
             var shouldEmitDailyReport = ShouldEmitDailyReport(now);
             var shouldEmitMonthlyReport = ShouldEmitMonthlyReport(now);
+            var shouldEmitAnnualDashboard = ShouldEmitAnnualDashboard(now);
             var window = DequeueWindow();
             _observability.EmitMetric("autotuning.analysis.window_size", window.Count);
             if (window.Count == 0) {
@@ -216,7 +229,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                     GeneratedTime = now,
                     DroppedSamples = GetDroppedCount(),
                     ShouldEmitDailyReport = shouldEmitDailyReport,
-                    ShouldEmitMonthlyReport = shouldEmitMonthlyReport
+                    ShouldEmitMonthlyReport = shouldEmitMonthlyReport,
+                    ShouldEmitAnnualDashboard = shouldEmitAnnualDashboard
                 };
             }
 
@@ -263,7 +277,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                 RecoveryNotifications: recoveryMessages,
                 AlertNotifications: alerts,
                 ShouldEmitDailyReport: shouldEmitDailyReport,
-                ShouldEmitMonthlyReport: shouldEmitMonthlyReport);
+                ShouldEmitMonthlyReport: shouldEmitMonthlyReport,
+                ShouldEmitAnnualDashboard: shouldEmitAnnualDashboard);
         }
 
         /// <summary>从队列中取出单次分析窗口样本。</summary>
@@ -557,6 +572,30 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
 
             // 步骤 2：推进到下个月的同一天，复用已校验的 _dailyReportTime
             return currentMonthStart.AddMonths(1).AddDays(_monthlyReportDay - 1).Add(_dailyReportTime);
+        }
+
+        /// <summary>判断当前是否到达年度运行看板输出时点（每年指定月 1 日日报时间点）。</summary>
+        private bool ShouldEmitAnnualDashboard(DateTime now) {
+            lock (_queueSync) {
+                if (now < _nextAnnualDashboardDate) {
+                    return false;
+                }
+
+                _nextAnnualDashboardDate = BuildNextAnnualDashboardDate(now);
+                return true;
+            }
+        }
+
+        /// <summary>计算下一次年度运行看板触发日期（每年指定月 1 日，与 DailyReportLocalTime 同时输出）。</summary>
+        private DateTime BuildNextAnnualDashboardDate(DateTime now) {
+            // 步骤 1：构建当年目标触发时间（指定月 1 日 + 日报时点）
+            var thisYear = new DateTime(now.Year, _annualDashboardMonth, 1, 0, 0, 0, DateTimeKind.Local).Add(_dailyReportTime);
+            if (thisYear > now) {
+                return thisYear;
+            }
+
+            // 步骤 2：已过本年触发点，推进到下一年同月 1 日
+            return new DateTime(now.Year + 1, _annualDashboardMonth, 1, 0, 0, 0, DateTimeKind.Local).Add(_dailyReportTime);
         }
 
         /// <summary>将一组样本聚合为单条慢查询指标。</summary>

@@ -13,7 +13,7 @@
 │   └── workflows（CI 工作流目录）
 │       ├── copilot-instructions-validation.yml（Copilot 限制规则 PR 校验流水线：每次 PR 运行规则校验脚本）
 │       ├── ef-migration-validation.yml（EF 迁移验收流水线：MySQL+SQL Server 双 Provider 执行 dotnet ef list/update/script）
-│       └── stability-gates.yml（长期运行稳定性门禁：构建+测试、配置合法性、隔离器边界、回滚资产、健康探针端点共 5 项门禁）
+│       └── stability-gates.yml（长期运行稳定性门禁：构建+测试、配置合法性、隔离器边界、回滚资产、健康探针端点、契约兼容性、蓝绿部署验证、演练记录共 8 项门禁）
 ├── .gitattributes（Git 属性配置）
 ├── .gitignore（Git 忽略规则）
 ├── 待完善事项.md（待完善事项列表，仅记录代码中尚未实现的可完善点）
@@ -342,7 +342,7 @@
 ### `.github/workflows/`：CI 工作流目录
 - `copilot-instructions-validation.yml`：Copilot 限制规则校验流水线；每次 PR 触发并执行 `validate-copilot-rules.sh`，对规则自动门禁。
 - `ef-migration-validation.yml`：EF 迁移验收流水线（MySQL + SQL Server 容器环境），真实执行 `dotnet ef migrations list`、`dotnet ef database update`、`dotnet ef migrations script` 三项门禁命令。
-- `stability-gates.yml`：长期运行稳定性门禁流水线；包含构建+单元测试、配置合法性验证、隔离器边界检查（EnableGuard/AllowDangerousActionExecution）、回滚资产检查（EnableAutoRollback/EnableAutoValidation）与健康探针端点注册检查共 5 个并行 job。
+- `stability-gates.yml`：长期运行稳定性门禁流水线；包含构建+单元测试、配置合法性验证（含年度看板/分表门禁配置）、隔离器边界检查、回滚资产检查、健康探针端点注册检查、契约兼容性验证、蓝绿/滚动部署验证、演练记录门禁共 8 个并行 job。
 
 ### `Zeye.Sorting.Hub.Analytics/`：分析与报表子域（当前为占位工程）
 - `Zeye.Sorting.Hub.Analytics.csproj`：Analytics 项目定义。

@@ -14,7 +14,8 @@ public sealed record SlowQueryAnalysisResult(
     IReadOnlyList<string> RecoveryNotifications,
     IReadOnlyList<SlowQueryAlertNotification> AlertNotifications,
     bool ShouldEmitDailyReport,
-    bool ShouldEmitMonthlyReport) {
+    bool ShouldEmitMonthlyReport,
+    bool ShouldEmitAnnualDashboard) {
     /// <summary>
     /// 空分析结果。
     /// </summary>
@@ -29,5 +30,6 @@ public sealed record SlowQueryAnalysisResult(
         RecoveryNotifications: Array.Empty<string>(),
         AlertNotifications: Array.Empty<SlowQueryAlertNotification>(),
         ShouldEmitDailyReport: false,
-        ShouldEmitMonthlyReport: false);
+        ShouldEmitMonthlyReport: false,
+        ShouldEmitAnnualDashboard: false);
 }
