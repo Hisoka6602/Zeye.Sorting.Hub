@@ -1135,7 +1135,7 @@ check_config_comment_range_annotation() {
 # 检查 NLog 落盘 File target 是否同时包含 archiveAboveSize=10485760、
 # archiveNumbering=DateAndSequence、archiveEvery=Day，违反则报错（规则 31）。
 check_nlog_file_rotation_config() {
-  log_step "执行规则校验：NLog 落盘 File target 10 MiB 轮转配置"
+  log_step "执行规则校验：NLog 落盘 File target 10 MB 轮转配置"
 
   local nlog_config
   nlog_config="$(find . -maxdepth 4 -name "nlog.config" | head -n 1)"
@@ -1170,7 +1170,7 @@ check_nlog_file_rotation_config() {
   done < <(echo "$targets_content" | grep -oP 'xsi:type="File".{0,800}?/>' || true)
 
   if [[ -n "$violations" ]]; then
-    record_failure "检测到 NLog File target 缺少 10 MiB 轮转配置，违反规则 31：\n$violations"
+    record_failure "检测到 NLog File target 缺少 10 MB 轮转配置，违反规则 31：\n$violations"
   fi
 }
 
