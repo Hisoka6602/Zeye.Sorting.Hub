@@ -1032,6 +1032,11 @@ run_rule_by_text() {
     return
   fi
 
+  if [[ "$normalized_text" == *"存盘日志文件大小不能超过"* || "$normalized_text" == *"archiveAboveSize"* || "$normalized_text" == *"DateAndSequence"* ]]; then
+    check_nlog_file_rotation_config
+    return
+  fi
+
   record_failure "发现未映射的 Copilot 规则，请同步更新 CI 校验逻辑（规则 ${rule_number}: ${rule_text}）。"
 }
 
@@ -1124,6 +1129,48 @@ check_config_comment_range_annotation() {
 
   if [[ -n "$violations" ]]; then
     record_failure "检测到配置类公共属性缺少注释（需说明可填写范围），违反规则 30：\n$violations"
+  fi
+}
+
+# 检查 NLog 落盘 File target 是否同时包含 archiveAboveSize=10485760、
+# archiveNumbering=DateAndSequence、archiveEvery=Day，违反则报错（规则 31）。
+check_nlog_file_rotation_config() {
+  log_step "执行规则校验：NLog 落盘 File target 10 MiB 轮转配置"
+
+  local nlog_config
+  nlog_config="$(find . -maxdepth 4 -name "nlog.config" | head -n 1)"
+  if [[ -z "$nlog_config" ]]; then
+    log_step "未找到 nlog.config，跳过规则 31 校验"
+    return
+  fi
+
+  # 提取所有 xsi:type="File" target 块（多行合并为单行以便 grep）
+  local targets_content
+  targets_content="$(tr '\n' ' ' < "$nlog_config")"
+
+  # 用 grep -oP 提取每个 File target 片段（从 xsi:type="File" 到下一个 />）
+  local violations=""
+  local target_block=""
+  while IFS= read -r target_block; do
+    [[ -z "$target_block" ]] && continue
+    local target_name
+    target_name="$(echo "$target_block" | grep -oP 'name="\K[^"]+' | head -n 1 || true)"
+    [[ -z "$target_name" ]] && target_name="(未知 target)"
+
+    # 检查三项必需配置
+    if ! echo "$target_block" | grep -q 'archiveAboveSize="10485760"'; then
+      violations+="  - $nlog_config ($target_name): 缺少 archiveAboveSize=\"10485760\"\n"
+    fi
+    if ! echo "$target_block" | grep -q 'archiveNumbering="DateAndSequence"'; then
+      violations+="  - $nlog_config ($target_name): 缺少 archiveNumbering=\"DateAndSequence\"\n"
+    fi
+    if ! echo "$target_block" | grep -q 'archiveEvery="Day"'; then
+      violations+="  - $nlog_config ($target_name): 缺少 archiveEvery=\"Day\"\n"
+    fi
+  done < <(echo "$targets_content" | grep -oP 'xsi:type="File".{0,800}?/>' || true)
+
+  if [[ -n "$violations" ]]; then
+    record_failure "检测到 NLog File target 缺少 10 MiB 轮转配置，违反规则 31：\n$violations"
   fi
 }
 
