@@ -550,9 +550,11 @@ jobs:
           echo ""
           echo "── DbContext 迁移快照文件检查 ──"
           # 检查各 DbContext 是否存在 ModelSnapshot 文件（结构变更记录）
+          # 使用 Code First 迁移时此文件必须存在，缺少则意味着迁移资产不完整
           SNAPSHOT_COUNT=$(find . -name "*ModelSnapshot.cs" -not -path "*/obj/*" -not -path "*/bin/*" 2>/dev/null | wc -l)
           if [ "$SNAPSHOT_COUNT" -eq 0 ]; then
-            echo "⚠️  未发现 ModelSnapshot 文件，若项目使用 Code First 迁移则应存在此文件"
+            echo "❌  未发现 ModelSnapshot 文件，迁移快照资产缺失，Code First 迁移将无法正确追踪结构变更！"
+            FAIL=1
           else
             echo "✅  发现 ${SNAPSHOT_COUNT} 个 ModelSnapshot 文件"
           fi
