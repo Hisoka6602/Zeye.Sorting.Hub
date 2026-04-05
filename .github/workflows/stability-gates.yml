@@ -414,9 +414,9 @@ jobs:
           echo ""
           echo "── 清单演练条目完成状态检查 ──"
           if [ -f "$CHECKLIST" ]; then
-            # 检查清单中"演练/drill"相关的 [x] 条目（忽略大小写）
-            DRILL_PATTERN='\- \[x\].*[演练Dd]rill'
-            DRILL_DONE=$(grep -cE "$DRILL_PATTERN" "$CHECKLIST" 2>/dev/null || true)
+            # 检查清单中"演练/drill"相关的 [x] 条目（-i 忽略大小写，覆盖 Drill/drill 等组合）
+            DRILL_PATTERN='\- \[x\].*(演练|drill)'
+            DRILL_DONE=$(grep -ciE "$DRILL_PATTERN" "$CHECKLIST" 2>/dev/null || true)
             if [ "$DRILL_DONE" -gt 0 ]; then
               echo "✅  清单中 $DRILL_DONE 个演练相关条目已标注完成"
               PASS=1

@@ -1729,24 +1729,34 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
         /// <summary>
         /// 分表治理策略切换门禁：计算当前分析窗口的 sharding hit rate，
-        /// 若低于配置阈值则阻断所有分表相关候选的自动动作，并通过 ShardingGovernanceGuardException 记录告警。
+        /// 若低于配置阈值则阻断分表相关候选的自动 CreateIndex 动作（非 CreateIndex 动作不受影响），
+        /// 并通过 ShardingGovernanceGuardException 记录告警。
         /// 门禁阈值为 0.0 时禁用，不进行任何拦截。
         /// </summary>
         /// <param name="metrics">当前分析窗口的慢查询指标列表。</param>
-        /// <returns>需要阻断的候选 SQL 指纹集合（匹配到分表查询且 hit rate 不达标）。</returns>
+        /// <returns>需要阻断 CreateIndex 建议的候选 SQL 指纹集合（匹配到分表查询且 hit rate 不达标）。</returns>
         private HashSet<string> ValidateShardingStrategyGate(IReadOnlyList<SlowQueryMetric> metrics) {
             // 门禁未启用（阈值为 0）则返回空集合，不阻断任何候选
             if (_shardingGovernanceHitRateThreshold <= 0d || metrics.Count == 0) {
                 return [];
             }
 
-            // 步骤 1：计算当前 sharding hit rate
-            var totalCalls = metrics.Sum(static m => m.CallCount);
+            // 步骤 1：单次遍历同时统计 totalCalls/shardingHitCalls 并收集命中指纹，避免重复调用 IsShardingHitQuery
+            var totalCalls = 0;
+            var shardingHitCalls = 0;
+            var shardingHitFingerprints = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var m in metrics) {
+                totalCalls += m.CallCount;
+                if (IsShardingHitQuery(m.SampleSql)) {
+                    shardingHitCalls += m.CallCount;
+                    shardingHitFingerprints.Add(m.SqlFingerprint);
+                }
+            }
+
             if (totalCalls <= 0) {
                 return [];
             }
 
-            var shardingHitCalls = metrics.Sum(static m => IsShardingHitQuery(m.SampleSql) ? m.CallCount : 0);
             var hitRate = Math.Clamp((double)shardingHitCalls / totalCalls, 0d, 1d);
 
             // 步骤 2：hit rate 满足阈值则不拦截
@@ -1754,23 +1764,16 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 return [];
             }
 
-            // 步骤 3：hit rate 不足，收集所有分表相关的候选 fingerprint，记录告警
-            var blocked = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var metric in metrics) {
-                if (IsShardingHitQuery(metric.SampleSql)) {
-                    blocked.Add(metric.SqlFingerprint);
-                }
-            }
-
-            if (blocked.Count > 0) {
+            // 步骤 3：hit rate 不足，发出告警并返回需阻断的指纹集合
+            if (shardingHitFingerprints.Count > 0) {
                 var guardEx = new ShardingGovernanceGuardException(
-                    $"分表治理策略切换门禁阻断：Provider={_dialect.ProviderName}, HitRate={hitRate:P1}, Threshold={_shardingGovernanceHitRateThreshold:P1}, BlockedCount={blocked.Count}，命中率低于阈值，暂停分表相关自动动作。");
+                    $"分表治理策略切换门禁阻断：Provider={_dialect.ProviderName}, HitRate={hitRate:P1}, Threshold={_shardingGovernanceHitRateThreshold:P1}, BlockedCount={shardingHitFingerprints.Count}，命中率低于阈值，暂停分表相关自动索引动作。");
                 NLogLogger.Warn(guardEx,
                     "分表治理策略切换门禁触发：Provider={Provider}, HitRate={HitRate:F3}, Threshold={Threshold:F3}, BlockedCandidates={BlockedCount}",
                     _dialect.ProviderName,
                     hitRate,
                     _shardingGovernanceHitRateThreshold,
-                    blocked.Count);
+                    shardingHitFingerprints.Count);
                 _observability.EmitEvent(
                     "autotuning.sharding.governance_gate_blocked",
                     NLog.LogLevel.Warn,
@@ -1779,11 +1782,11 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                         ["provider"] = _dialect.ProviderName,
                         ["hit_rate"] = hitRate.ToString("F3", CultureInfo.InvariantCulture),
                         ["threshold"] = _shardingGovernanceHitRateThreshold.ToString("F3", CultureInfo.InvariantCulture),
-                        ["blocked_count"] = blocked.Count.ToString()
+                        ["blocked_count"] = shardingHitFingerprints.Count.ToString()
                     });
             }
 
-            return blocked;
+            return shardingHitFingerprints;
         }
 
         /// <summary>按需加载模型静态索引列信息。</summary>
