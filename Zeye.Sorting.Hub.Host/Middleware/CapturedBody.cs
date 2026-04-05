@@ -1,0 +1,21 @@
+namespace Zeye.Sorting.Hub.Host.Middleware;
+
+/// <summary>
+/// 正文采集结果。
+/// 注意：此类型原为 WebRequestAuditLogMiddleware 内的 private 嵌套类型，
+/// 提取为独立文件后可见性提升为 internal，仅在宿主程序集内部使用。
+/// </summary>
+/// <param name="Content">正文内容。</param>
+/// <param name="HasBody">是否存在正文。</param>
+/// <param name="IsTruncated">是否截断。</param>
+/// <param name="OriginalLengthBytes">原始字节长度。</param>
+internal readonly record struct CapturedBody(
+    string Content,
+    bool HasBody,
+    bool IsTruncated,
+    long OriginalLengthBytes) {
+    /// <summary>
+    /// 空正文采集结果。
+    /// </summary>
+    public static CapturedBody Empty => new(string.Empty, false, false, 0L);
+}

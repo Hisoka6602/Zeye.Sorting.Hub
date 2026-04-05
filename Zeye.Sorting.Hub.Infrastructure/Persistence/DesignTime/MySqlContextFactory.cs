@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.Extensions.Configuration;
+using NLog;
 using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
@@ -36,20 +37,20 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
         private const string ProviderArgumentName = "--provider";
 
         /// <summary>
+        /// NLog 日志器，用于设计时警告落盘。
+        /// </summary>
+        private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
+
+        /// <summary>
         /// 设计时兜底占位连接字符串，仅在无法从 <c>appsettings.json</c> 读取时使用。
         /// 此值仅用于 <c>dotnet ef</c> 工具链的设计时模型分析，不影响运行时连接。
         /// </summary>
         private const string FallbackConnectionString =
             "server=127.0.0.1;port=3306;database=zeye_sorting_hub;uid=root;pwd=Admin@1234;SslMode=None;";
 
-        /// <summary>
-        /// 向上遍历父目录时的最大层级数，防止无限递归到文件系统根目录。
-        /// </summary>
-        private const int MaxParentDirectorySearchDepth = 6;
-
         /// <inheritdoc />
         public SortingHubDbContext CreateDbContext(string[] args) {
-            var config = LoadConfiguration();
+            var config = DesignTimeConfigurationLocator.LoadConfiguration();
             var provider = ResolveProvider(args, config);
 
             if (string.Equals(provider, ConfiguredProviderNames.SqlServer, StringComparison.OrdinalIgnoreCase)) {
@@ -64,7 +65,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
             var serverVersion = DependencyInjection.PersistenceServiceCollectionExtensions.ResolveMySqlServerVersion(
                 config,
                 normalizedConnectionString,
-                msg => Console.Error.WriteLine($"[Warning] {msg}"));
+                msg => Logger.Warn("[DesignTime] {0}", msg));
             var options = new DbContextOptionsBuilder<SortingHubDbContext>()
                 .UseMySql(normalizedConnectionString, serverVersion)
                 .Options;
@@ -111,48 +112,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
             }
 
             throw new InvalidOperationException($"不支持的数据库提供器：{provider}。可选值：{ConfiguredProviderNames.MySql} / {ConfiguredProviderNames.SqlServer}。");
-        }
-
-        /// <summary>
-        /// 从 <c>appsettings.json</c> 加载配置。
-        /// 按优先级搜索以下路径：当前工作目录 → 相邻 Host 目录 → 向上遍历父目录中的 Host 子目录。
-        /// </summary>
-        private static IConfiguration LoadConfiguration() {
-            var basePath = FindAppsettingsDirectory();
-            if (basePath is null) {
-                return new ConfigurationBuilder().Build();
-            }
-
-            return new ConfigurationBuilder()
-                .SetBasePath(basePath)
-                .AddJsonFile("appsettings.json", optional: true)
-                .AddJsonFile("appsettings.Development.json", optional: true)
-                .Build();
-        }
-
-        /// <summary>
-        /// 按优先级搜索包含 <c>appsettings.json</c> 的目录。
-        /// </summary>
-        private static string? FindAppsettingsDirectory() {
-            var cwd = Directory.GetCurrentDirectory();
-
-            // 优先级 1：当前目录直接包含 appsettings.json（从 Host 或解决方案根运行）
-            if (File.Exists(Path.Combine(cwd, "appsettings.json"))) {
-                return cwd;
-            }
-
-            // 优先级 2 & 3：向上遍历，寻找包含 Zeye.Sorting.Hub.Host/appsettings.json 的目录
-            var dir = new DirectoryInfo(cwd);
-            for (var i = 0; i < MaxParentDirectorySearchDepth && dir != null; i++) {
-                var hostAppsettings = Path.Combine(dir.FullName, "Zeye.Sorting.Hub.Host", "appsettings.json");
-                if (File.Exists(hostAppsettings)) {
-                    return Path.Combine(dir.FullName, "Zeye.Sorting.Hub.Host");
-                }
-
-                dir = dir.Parent;
-            }
-
-            return null;
         }
 
     }

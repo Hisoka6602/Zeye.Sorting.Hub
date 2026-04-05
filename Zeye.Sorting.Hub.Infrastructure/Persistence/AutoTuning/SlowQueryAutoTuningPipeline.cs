@@ -153,25 +153,25 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         /// <summary>初始化慢查询采集、分析和告警阈值配置。</summary>
         public SlowQueryAutoTuningPipeline(IConfiguration configuration, IAutoTuningObservability observability) {
             _observability = observability;
-            _slowQueryThresholdMilliseconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("SlowQueryThresholdMilliseconds"), 500);
-            _analysisBatchSize = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("AnalysisBatchSize"), 20);
-            _triggerCount = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("TriggerCount"), 3);
-            _maxSuggestionsPerCycle = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("MaxActionsPerCycle"), 3);
-            _maxQueueSize = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("MaxQueueSize"), 1000);
-            _aggregationTopN = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("AggregationTopN"), 10);
-            _alertDebounceMinCallCount = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("AlertDebounceMinCallCount"), _triggerCount);
-            _alertP99Milliseconds = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("AlertP99Milliseconds"), 500);
-            _alertTimeoutRatePercent = AutoTuningConfigurationHelper.GetNonNegativeDecimalOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("AlertTimeoutRatePercent"), 1m);
-            _alertDeadlockCount = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("AlertDeadlockCount"), 1);
-            _alertDebounceWindow = AutoTuningConfigurationHelper.GetPositiveSecondsAsTimeSpanOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("AlertDebounceWindowSeconds"), TimeSpan.FromMinutes(10));
-            _alertConsecutiveWindows = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("AlertConsecutiveWindows"), 1);
-            _alertRecoveryConsecutiveWindows = AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("AlertRecoveryConsecutiveWindows"), 1);
-            _dailyReportTime = AutoTuningConfigurationHelper.GetTimeOfDayOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("DailyReportLocalTime"), new TimeSpan(2, 30, 0));
+            _slowQueryThresholdMilliseconds = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationReader.BuildAutoTuningKey("SlowQueryThresholdMilliseconds"), 500);
+            _analysisBatchSize = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationReader.BuildAutoTuningKey("AnalysisBatchSize"), 20);
+            _triggerCount = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationReader.BuildAutoTuningKey("TriggerCount"), 3);
+            _maxSuggestionsPerCycle = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationReader.BuildAutoTuningKey("MaxActionsPerCycle"), 3);
+            _maxQueueSize = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationReader.BuildAutoTuningKey("MaxQueueSize"), 1000);
+            _aggregationTopN = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationReader.BuildAutoTuningKey("AggregationTopN"), 10);
+            _alertDebounceMinCallCount = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationReader.BuildAutoTuningKey("AlertDebounceMinCallCount"), _triggerCount);
+            _alertP99Milliseconds = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationReader.BuildAutoTuningKey("AlertP99Milliseconds"), 500);
+            _alertTimeoutRatePercent = AutoTuningConfigurationReader.GetNonNegativeDecimalOrDefault(configuration, AutoTuningConfigurationReader.BuildAutoTuningKey("AlertTimeoutRatePercent"), 1m);
+            _alertDeadlockCount = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationReader.BuildAutoTuningKey("AlertDeadlockCount"), 1);
+            _alertDebounceWindow = AutoTuningConfigurationReader.GetPositiveSecondsAsTimeSpanOrDefault(configuration, AutoTuningConfigurationReader.BuildAutoTuningKey("AlertDebounceWindowSeconds"), TimeSpan.FromMinutes(10));
+            _alertConsecutiveWindows = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationReader.BuildAutoTuningKey("AlertConsecutiveWindows"), 1);
+            _alertRecoveryConsecutiveWindows = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationReader.BuildAutoTuningKey("AlertRecoveryConsecutiveWindows"), 1);
+            _dailyReportTime = AutoTuningConfigurationReader.GetTimeOfDayOrDefault(configuration, AutoTuningConfigurationReader.BuildAutoTuningKey("DailyReportLocalTime"), new TimeSpan(2, 30, 0));
             _monthlyReportDay = Math.Clamp(
-                AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("MonthlyReportDay"), 1),
+                AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationReader.BuildAutoTuningKey("MonthlyReportDay"), 1),
                 1, 28);
             _annualDashboardMonth = Math.Clamp(
-                AutoTuningConfigurationHelper.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationHelper.BuildAutoTuningKey("AnnualDashboardMonth"), 1),
+                AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationReader.BuildAutoTuningKey("AnnualDashboardMonth"), 1),
                 1, 12);
             _nextDailyReportTime = BuildNextDailyReportTime(DateTime.Now);
             _nextMonthlyReportDate = BuildNextMonthlyReportDate(DateTime.Now);
@@ -653,7 +653,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                 return true;
             }
 
-            return DatabaseProviderExceptionHelper.TryGetProviderErrorNumber(exception, out var number)
+            return DatabaseProviderOperations.TryGetProviderErrorNumber(exception, out var number)
                 && (number == -2 || number == 3024);
         }
 
@@ -663,7 +663,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                 return false;
             }
 
-            return DatabaseProviderExceptionHelper.TryGetProviderErrorNumber(exception, out var number)
+            return DatabaseProviderOperations.TryGetProviderErrorNumber(exception, out var number)
                 && (number == 1205 || number == 1213);
         }
 

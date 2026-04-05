@@ -35,7 +35,7 @@ public readonly record struct RepositoryResult<T> {
     /// </summary>
     public static RepositoryResult<T> Fail(string errorMessage) => new() {
         IsSuccess = false,
-        ErrorMessage = string.IsNullOrWhiteSpace(errorMessage) ? "仓储操作失败" : errorMessage
+        ErrorMessage = string.IsNullOrWhiteSpace(errorMessage) ? RepositoryResult.DefaultFailMessage : errorMessage
     };
 
     /// <summary>
@@ -43,7 +43,7 @@ public readonly record struct RepositoryResult<T> {
     /// </summary>
     public static RepositoryResult<T> Fail(string errorMessage, string errorCode) => new() {
         IsSuccess = false,
-        ErrorMessage = string.IsNullOrWhiteSpace(errorMessage) ? "仓储操作失败" : errorMessage,
+        ErrorMessage = string.IsNullOrWhiteSpace(errorMessage) ? RepositoryResult.DefaultFailMessage : errorMessage,
         ErrorCode = string.IsNullOrWhiteSpace(errorCode) ? null : errorCode
     };
 }

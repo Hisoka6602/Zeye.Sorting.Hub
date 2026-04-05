@@ -5,6 +5,11 @@ namespace Zeye.Sorting.Hub.Domain.Repositories.Models.Results;
 /// </summary>
 public readonly record struct RepositoryResult {
     /// <summary>
+    /// 失败时的默认错误消息，用于防御性兜底。
+    /// </summary>
+    internal const string DefaultFailMessage = "仓储操作失败";
+
+    /// <summary>
     /// 仓储错误码（成功时为空）。
     /// </summary>
     public string? ErrorCode { get; init; }
@@ -29,7 +34,7 @@ public readonly record struct RepositoryResult {
     /// </summary>
     public static RepositoryResult Fail(string errorMessage) => new() {
         IsSuccess = false,
-        ErrorMessage = string.IsNullOrWhiteSpace(errorMessage) ? "仓储操作失败" : errorMessage
+        ErrorMessage = string.IsNullOrWhiteSpace(errorMessage) ? DefaultFailMessage : errorMessage
     };
 
     /// <summary>
@@ -37,7 +42,7 @@ public readonly record struct RepositoryResult {
     /// </summary>
     public static RepositoryResult Fail(string errorMessage, string errorCode) => new() {
         IsSuccess = false,
-        ErrorMessage = string.IsNullOrWhiteSpace(errorMessage) ? "仓储操作失败" : errorMessage,
+        ErrorMessage = string.IsNullOrWhiteSpace(errorMessage) ? DefaultFailMessage : errorMessage,
         ErrorCode = string.IsNullOrWhiteSpace(errorCode) ? null : errorCode
     };
 }

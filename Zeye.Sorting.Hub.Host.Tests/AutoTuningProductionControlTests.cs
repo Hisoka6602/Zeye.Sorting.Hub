@@ -995,7 +995,7 @@ public sealed class AutoTuningProductionControlTests {
             DateTime.Now.Date.AddDays(-1)
         };
         var governanceGroups = new[] {
-            new DatabaseInitializerHostedService.PerDayGovernanceGroup(
+            new PerDayGovernanceGroup(
                 GroupName: "WebRequestAuditLog",
                 BaseTableNames: new[] { "WebRequestAuditLogs", "WebRequestAuditLogDetails" })
         };
@@ -1212,19 +1212,19 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：AutoTuningConfigurationHelper_BuildKeys_ShouldUseExpectedPrefix。
+    /// 验证场景：AutoTuningConfigurationReader_BuildKeys_ShouldUseExpectedPrefix。
     /// </summary>
     [Fact]
-    public void AutoTuningConfigurationHelper_BuildKeys_ShouldUseExpectedPrefix() {
-        var autoTuningKey = AutoTuningConfigurationHelper.BuildAutoTuningKey("TriggerCount");
-        var autonomousKey = AutoTuningConfigurationHelper.BuildAutonomousKey("Validation:DelayCycles");
+    public void AutoTuningConfigurationReader_BuildKeys_ShouldUseExpectedPrefix() {
+        var autoTuningKey = AutoTuningConfigurationReader.BuildAutoTuningKey("TriggerCount");
+        var autonomousKey = AutoTuningConfigurationReader.BuildAutonomousKey("Validation:DelayCycles");
 
         Assert.Equal("Persistence:AutoTuning:TriggerCount", autoTuningKey);
         Assert.Equal("Persistence:AutoTuning:Autonomous:Validation:DelayCycles", autonomousKey);
     }
 
     /// <summary>
-    /// 验证场景：AutoTuningConfigurationHelper_BuildAutoTuningKey_ShouldProduceCorrectPath（参数化）。
+    /// 验证场景：AutoTuningConfigurationReader_BuildAutoTuningKey_ShouldProduceCorrectPath（参数化）。
     /// 覆盖多个常用配置项后缀，确保拼装规则对未来新增配置项持续有效。
     /// </summary>
     [Theory]
@@ -1238,13 +1238,13 @@ public sealed class AutoTuningProductionControlTests {
     [InlineData("AlertConsecutiveWindows", "Persistence:AutoTuning:AlertConsecutiveWindows")]
     [InlineData("AlertRecoveryConsecutiveWindows", "Persistence:AutoTuning:AlertRecoveryConsecutiveWindows")]
     [InlineData("AlertDebounceMinCallCount", "Persistence:AutoTuning:AlertDebounceMinCallCount")]
-    public void AutoTuningConfigurationHelper_BuildAutoTuningKey_ShouldProduceCorrectPath(string suffix, string expectedKey) {
-        var actual = AutoTuningConfigurationHelper.BuildAutoTuningKey(suffix);
+    public void AutoTuningConfigurationReader_BuildAutoTuningKey_ShouldProduceCorrectPath(string suffix, string expectedKey) {
+        var actual = AutoTuningConfigurationReader.BuildAutoTuningKey(suffix);
         Assert.Equal(expectedKey, actual);
     }
 
     /// <summary>
-    /// 验证场景：AutoTuningConfigurationHelper_BuildAutonomousKey_ShouldProduceCorrectPath（参数化）。
+    /// 验证场景：AutoTuningConfigurationReader_BuildAutonomousKey_ShouldProduceCorrectPath（参数化）。
     /// 覆盖多个 Autonomous 配置子路径，确保前缀拼装规则对嵌套层级一致有效。
     /// </summary>
     [Theory]
@@ -1254,29 +1254,29 @@ public sealed class AutoTuningProductionControlTests {
     [InlineData("CapacityPrediction:PredictionWindowDays", "Persistence:AutoTuning:Autonomous:CapacityPrediction:PredictionWindowDays")]
     [InlineData("CapacityPrediction:GrowthRateThreshold", "Persistence:AutoTuning:Autonomous:CapacityPrediction:GrowthRateThreshold")]
     [InlineData("SchemaSync:EnableAutoSchemaSync", "Persistence:AutoTuning:Autonomous:SchemaSync:EnableAutoSchemaSync")]
-    public void AutoTuningConfigurationHelper_BuildAutonomousKey_ShouldProduceCorrectPath(string suffix, string expectedKey) {
-        var actual = AutoTuningConfigurationHelper.BuildAutonomousKey(suffix);
+    public void AutoTuningConfigurationReader_BuildAutonomousKey_ShouldProduceCorrectPath(string suffix, string expectedKey) {
+        var actual = AutoTuningConfigurationReader.BuildAutonomousKey(suffix);
         Assert.Equal(expectedKey, actual);
     }
 
     /// <summary>
-    /// 验证场景：AutoTuningConfigurationHelper_NormalizeToLocalTime_UsesLocalSemantics。
+    /// 验证场景：AutoTuningConfigurationReader_NormalizeToLocalTime_UsesLocalSemantics。
     /// </summary>
     [Fact]
-    public void AutoTuningConfigurationHelper_NormalizeToLocalTime_UsesLocalSemantics() {
+    public void AutoTuningConfigurationReader_NormalizeToLocalTime_UsesLocalSemantics() {
         var unspecified = new DateTime(2026, 3, 18, 10, 0, 0, DateTimeKind.Unspecified);
-        var normalizedUnspecified = AutoTuningConfigurationHelper.NormalizeToLocalTime(unspecified);
+        var normalizedUnspecified = AutoTuningConfigurationReader.NormalizeToLocalTime(unspecified);
         Assert.Equal(DateTimeKind.Local, normalizedUnspecified.Kind);
         Assert.Equal(unspecified, DateTime.SpecifyKind(normalizedUnspecified, DateTimeKind.Unspecified));
 
         var local = new DateTime(2026, 3, 18, 10, 0, 0, DateTimeKind.Local);
-        var normalizedLocal = AutoTuningConfigurationHelper.NormalizeToLocalTime(local);
+        var normalizedLocal = AutoTuningConfigurationReader.NormalizeToLocalTime(local);
         Assert.Equal(local, normalizedLocal);
 
         var nonLocalKind = Enum.GetValues<DateTimeKind>()
             .First(kind => kind != DateTimeKind.Local && kind != DateTimeKind.Unspecified);
         var nonLocalKindInput = DateTime.SpecifyKind(unspecified, nonLocalKind);
-        Assert.Throws<InvalidOperationException>(() => AutoTuningConfigurationHelper.NormalizeToLocalTime(nonLocalKindInput));
+        Assert.Throws<InvalidOperationException>(() => AutoTuningConfigurationReader.NormalizeToLocalTime(nonLocalKindInput));
     }
 
     /// <summary>
@@ -1305,7 +1305,7 @@ public sealed class AutoTuningProductionControlTests {
     /// </summary>
     [Fact]
     public void BuildIndexName_ShouldThrowArgumentOutOfRangeException_WhenMaxLengthLessThanMinimumRequired() {
-        var helperType = typeof(MySqlDialect).Assembly.GetType("Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects.DatabaseProviderExceptionHelper");
+        var helperType = typeof(MySqlDialect).Assembly.GetType("Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects.DatabaseProviderOperations");
         Assert.NotNull(helperType);
 
         var method = helperType!.GetMethod("BuildIndexName", BindingFlags.Public | BindingFlags.Static);

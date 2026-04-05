@@ -37,7 +37,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             IsError = isError;
             IsTimeout = isTimeout;
             IsDeadlock = isDeadlock;
-            OccurredTime = AutoTuningConfigurationHelper.NormalizeToLocalTime(occurredTime);
+            OccurredTime = AutoTuningConfigurationReader.NormalizeToLocalTime(occurredTime);
         }
     }
 }

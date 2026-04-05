@@ -5,7 +5,7 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 /// 提供统一的本地时间构造与断言方法，确保测试数据不引入 UTC 相关语义，
 /// 降低后续测试中误用 UTC 语义的回归风险。
 /// </summary>
-internal static class LocalTimeTestConstraintHelper {
+internal static class LocalTimeTestConstraint {
 
     /// <summary>
     /// 构造一个 <see cref="DateTimeKind.Local"/> 类型的时间值，等价于 new DateTime(year, month, day, hour, minute, second, DateTimeKind.Local)。

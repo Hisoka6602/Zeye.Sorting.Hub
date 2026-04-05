@@ -4,7 +4,7 @@ using Microsoft.Extensions.Configuration;
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
 
     /// <summary>自动调优配置读取辅助方法（集中管理，避免多处影分身副本）。</summary>
-    public static class AutoTuningConfigurationHelper {
+    public static class AutoTuningConfigurationReader {
         private const string AutoTuningConfigPrefix = "Persistence:AutoTuning";
         private const string AutonomousConfigPrefix = "Persistence:AutoTuning:Autonomous";
 

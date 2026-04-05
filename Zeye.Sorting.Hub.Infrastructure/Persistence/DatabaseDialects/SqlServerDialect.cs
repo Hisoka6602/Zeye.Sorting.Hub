@@ -42,13 +42,13 @@ WHERE s.name = @p0
 
             var normalizedSchemaName = schemaName?.Trim();
             var normalizedTableName = tableName.Trim();
-            var indexColumns = DatabaseProviderExceptionHelper.NormalizeWhereColumns(whereColumns, 3);
+            var indexColumns = DatabaseProviderOperations.NormalizeWhereColumns(whereColumns, 3);
 
             if (indexColumns.Length == 0) {
                 return Array.Empty<string>();
             }
 
-            var indexName = DatabaseProviderExceptionHelper.BuildIndexName(normalizedSchemaName, normalizedTableName, indexColumns, 120);
+            var indexName = DatabaseProviderOperations.BuildIndexName(normalizedSchemaName, normalizedTableName, indexColumns, 120);
 
             var escapedTable = string.IsNullOrWhiteSpace(normalizedSchemaName)
                 ? $"[{normalizedTableName}]"
@@ -69,7 +69,7 @@ WHERE s.name = @p0
 
         /// <summary>判断异常是否可被视为“已存在”并忽略。</summary>
         public bool ShouldIgnoreAutoTuningException(Exception exception) {
-            return DatabaseProviderExceptionHelper.TryGetProviderErrorNumber(exception, out var errorNumber) && errorNumber == 1913;
+            return DatabaseProviderOperations.TryGetProviderErrorNumber(exception, out var errorNumber) && errorNumber == 1913;
         }
 
         /// <summary>

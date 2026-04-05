@@ -103,17 +103,17 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
         : base(contextFactory, NLogLogger) {
         var effectiveConfiguration = configuration ?? EmptyConfiguration;
         // 步骤 1：守卫开关默认开启（保守默认值，避免危险动作默认放开）。
-        _removeExpiredEnableGuard = AutoTuningConfigurationHelper.GetBoolOrDefault(
+        _removeExpiredEnableGuard = AutoTuningConfigurationReader.GetBoolOrDefault(
             effectiveConfiguration,
             RemoveExpiredEnableGuardConfigKey,
             true);
         // 步骤 2：危险动作执行默认关闭（仅显式放开时才允许真实删除）。
-        _removeExpiredAllowDangerousActionExecution = AutoTuningConfigurationHelper.GetBoolOrDefault(
+        _removeExpiredAllowDangerousActionExecution = AutoTuningConfigurationReader.GetBoolOrDefault(
             effectiveConfiguration,
             RemoveExpiredAllowExecutionConfigKey,
             false);
         // 步骤 3：dry-run 默认开启，确保未显式放开前只审计不落地。
-        _removeExpiredDryRun = AutoTuningConfigurationHelper.GetBoolOrDefault(
+        _removeExpiredDryRun = AutoTuningConfigurationReader.GetBoolOrDefault(
             effectiveConfiguration,
             RemoveExpiredDryRunConfigKey,
             true);

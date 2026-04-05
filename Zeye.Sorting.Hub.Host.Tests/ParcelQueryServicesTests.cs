@@ -158,7 +158,7 @@ public sealed class ParcelQueryServicesTests {
     [Fact]
     public async Task GetParcelPagedQueryService_WithMultipleFilters_ShouldReturnOnlyMatchingParcels() {
         var databaseName = $"parcel-multifilter-test-{Guid.NewGuid():N}";
-        var baseTime = LocalTimeTestConstraintHelper.CreateLocalTime(2026, 3, 20, 12, 0, 0);
+        var baseTime = LocalTimeTestConstraint.CreateLocalTime(2026, 3, 20, 12, 0, 0);
         try {
             await SeedParcelsAsync(databaseName, [
                 // 完全匹配：BagCode + WorkstationName + ActualChuteId + Status 全部一致
@@ -203,7 +203,7 @@ public sealed class ParcelQueryServicesTests {
     [Fact]
     public async Task GetParcelPagedQueryService_WithExceptionTypeFilter_ShouldReturnOnlyMatchingParcels() {
         var databaseName = $"parcel-exceptiontype-test-{Guid.NewGuid():N}";
-        var baseTime = LocalTimeTestConstraintHelper.CreateLocalTime(2026, 3, 20, 13, 0, 0);
+        var baseTime = LocalTimeTestConstraint.CreateLocalTime(2026, 3, 20, 13, 0, 0);
         try {
             var parcelLost = CreateParcelWithException("BC-EX-1", "BAG-EX", "WS-EX", ParcelExceptionType.ParcelLost, baseTime.AddMinutes(-10), 910, 911);
             var mechanical = CreateParcelWithException("BC-EX-2", "BAG-EX", "WS-EX", ParcelExceptionType.MechanicalFailure, baseTime.AddMinutes(-8), 910, 911);

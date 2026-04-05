@@ -167,8 +167,10 @@
 │   │   ├── ShardingGovernanceGuardException.cs（分表治理守卫异常类型）
 │   │   ├── EvidenceContext.cs（自动调优证据上下文）
 │   │   ├── PendingRollbackAction.cs（待回滚动作模型）
+│   │   ├── PerDayGovernanceGroup.cs（PerDay 治理组模型：组名 + 逻辑表名清单）
 │   │   ├── PolicyDecision.cs（策略决策模型）
-│   │   └── TableCapacitySnapshot.cs（表容量快照模型）
+│   │   ├── TableCapacitySnapshot.cs（表容量快照模型）
+│   │   └── WebRequestAuditLogRetentionCandidates.cs（WebRequestAuditLog 历史分表保留候选模型：候选总数 + 物理表名清单）
 │   ├── Routing（路由扩展目录）
 │   │   ├── ParcelReadOnlyApiRouteExtensions.cs（Parcel 只读 API 路由扩展）
 │   │   ├── ParcelAdminApiRouteExtensions.cs（Parcel 管理端 API 路由扩展）
@@ -189,6 +191,7 @@
 │   ├── Utilities（工具目录）
 │   │   └── LocalDateTimeParsing.cs（本地时间解析与 API 问题响应工厂共享工具）
 │   ├── Middleware（请求审计中间件目录）
+│   │   ├── CapturedBody.cs（正文采集结果值类型：内容/是否有Body/是否截断/原始字节长度）
 │   │   ├── ResponseCaptureResult.cs（响应采集结果值类型）
 │   │   ├── ResponseCaptureTeeStream.cs（响应双写有界采集流）
 │   │   ├── WebRequestAuditBackgroundEntry.cs（审计后台队列项值类型）
@@ -216,7 +219,7 @@
 │   ├── EmptyServiceScopeFactory.cs（最小服务作用域工厂测试桩）
 │   ├── FakeParcelRepository.cs（Parcel 只读/管理端 API 复用仓储测试替身）
 │   ├── FixedPlanProbe.cs（执行计划探针测试桩：固定返回可用快照）
-│   ├── LocalTimeTestConstraintHelper.cs（测试层本地时间语义约束工具类：提供 CreateLocalTime/AssertIsLocalTime/AssertNotUtc，防止测试引入 UTC 语义）
+│   ├── LocalTimeTestConstraint.cs（测试层本地时间语义约束工具类：提供 CreateLocalTime/AssertIsLocalTime/AssertNotUtc，防止测试引入 UTC 语义）
 │   ├── LogCleanupServiceTests.cs（日志清理服务测试：验证目录栈递归扫描所有子目录 *.log 并仅删除过期文件）
 │   ├── ConfigChangeHistoryStoreTests.cs（配置变更历史存储器测试：空历史、单条记录、多条按序排列、超容量环形覆盖、热加载联动快照记录）
 │   ├── MissingIndexShardingPhysicalTableProbe.cs（索引缺失探测测试桩：按表返回缺失索引）
@@ -251,7 +254,7 @@
 │   │   └── WebRequestAuditLogDetailEntityTypeConfiguration.cs（Web 请求审计冷表映射配置）
 │   ├── Persistence（持久化核心目录）
 │   │   ├── AutoTuning（自动调谐核心目录）
-│   │   │   ├── AutoTuningConfigurationHelper.cs（配置读取与本地时间语义归一化/配置键拼装公共辅助类，统一 AutoTuning 键名与时间语义）
+│   │   │   ├── AutoTuningConfigurationReader.cs（配置读取与本地时间语义归一化/配置键拼装工具类，统一 AutoTuning 键名与时间语义）
 │   │   │   ├── MySqlSessionBootstrapConnectionInterceptor.cs（MySQL 连接会话初始化拦截器，直连类型判断，无额外转发）
 │   │   │   ├── SlowQueryAutoTuningPipeline.cs（慢查询采集、TopN 聚合、阈值告警（含基础防抖）与闭环自治结构化建议编排管道；新增主表提取公共方法供 AutoTuning 主链路复用）
 │   │   │   ├── SlowQueryCommandInterceptor.cs（EF Core 慢查询采集拦截器）
@@ -266,7 +269,7 @@
 │   │   │       ├── ParcelTimeShardingGranularity.cs（时间粒度枚举：PerMonth/PerDay）
 │   │   │       └── ParcelVolumeThresholdAction.cs（容量阈值动作枚举：AlertOnly/SwitchToPerDay）
 │   │   ├── DatabaseDialects（数据库方言目录）
-│   │   │   ├── DatabaseProviderExceptionHelper.cs（数据库异常错误码提取与方言共享索引构造辅助类）
+│   │   │   ├── DatabaseProviderOperations.cs（数据库提供器操作类：异常错误码提取、WHERE 列归一化、稳定索引名构造）
 │   │   │   ├── DatabaseIdentifierPolicy.cs（数据库名安全校验与标识符转义工具，统一防注入边界）
 │   │   │   ├── DatabaseConnectionOpenCoordinator.cs（数据库连接打开共享辅助，统一连接状态处理）
 │   │   │   ├── IDatabaseDialect.cs（数据库方言接口）
@@ -275,7 +278,8 @@
 │   │   │   ├── MySqlDialect.cs（MySQL 方言实现：自动调优 + 分表探测 + 启动期数据库存在性探测/建库执行）
 │   │   │   └── SqlServerDialect.cs（SQL Server 方言实现：自动调优 + 分表探测 + 启动期数据库存在性探测/建库执行）
 │   │   ├── DesignTime（EF 设计时支持目录）
-│   │   │   ├── MySqlContextFactory.cs（统一设计时 DbContext 工厂，支持 --provider 切换 MySql/SqlServer）
+│   │   │   ├── DesignTimeConfigurationLocator.cs（设计时配置目录定位器：统一 appsettings.json 查找与加载逻辑，消除 MySql/SqlServer 工厂重复代码）
+│   │   │   ├── MySqlContextFactory.cs（统一设计时 DbContext 工厂，支持 --provider 切换 MySql/SqlServer；告警输出通过 NLog 落盘）
 │   │   │   └── SqlServerContextFactory.cs（SQL Server 设计时 DbContext 构建器）
 │   │   ├── Migrations（EF Core 迁移文件目录）
 │   │   │   ├── 20260324094539_RebuildBaseline20260324.cs（全新基线迁移：空库初始化全量建表/索引/约束）
@@ -299,6 +303,7 @@
 ├── Zeye.Sorting.Hub.SharedKernel（共享内核）
 │   ├── Utilities（共享工具目录）
 │   │   ├── SafeExecutor.cs（安全执行器：使用 NLog 静态 logger，不再依赖 MEL ILogger 构造注入；隔离任何异常，Execute/ExecuteAsync 确保副作用不会导致宿主崩溃）
+│   │   ├── ConfigChangeEntry.cs（配置变更历史记录条目：保存单次配置变更快照，含变更序号/前值/后值/本地生效时间/变更字段摘要）
 │   │   └── ConfigChangeHistoryStore.cs（配置变更历史存储器：线程安全环形缓冲，保留最近 N 次配置快照，支持前后值审计与回滚查询）
 │   └── Zeye.Sorting.Hub.SharedKernel.csproj（SharedKernel 项目定义）
 ├── Zeye.Sorting.Hub.sln（.NET 解决方案入口）
@@ -580,7 +585,7 @@
 - `WebRequestAuditLogIndexNames.cs`：Web 请求审计日志关键索引名称常量（供关键索引审计与映射复用）。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/DatabaseDialects/`：数据库方言抽象与实现目录
-- `DatabaseProviderExceptionHelper.cs`：数据库异常错误码提取与方言共享索引列归一化/索引名构造辅助类。
+- `DatabaseProviderOperations.cs`：数据库提供器操作类（异常错误码提取 `TryGetProviderErrorNumber`、WHERE 列归一化 `NormalizeWhereColumns`、稳定索引名构造 `BuildIndexName`）。
 - `DatabaseIdentifierPolicy.cs`：数据库名安全守卫（数据库名格式校验、MySQL/SQL Server 标识符转义）。
 - `DatabaseConnectionOpenCoordinator.cs`：数据库连接打开共享工具（统一处理 Open/Broken 状态）。
 - `IDatabaseDialect.cs`：数据库方言抽象接口。
@@ -599,9 +604,9 @@
 - `IExecutionPlanRegressionProbe.cs` / `IProviderAwareExecutionPlanRegressionProbe.cs`：执行计划探针抽象。
 - `ExecutionPlanProbeRequest.cs` / `PlanRegressionSnapshot.cs`：执行计划探针请求与结果模型。
 - `LoggingOnlyExecutionPlanRegressionProbe.cs`：默认 logging-only 计划探针实现。
-- `AutoTuningConfigurationHelper.cs`：配置读取公共辅助类，集中提供 `GetPositiveIntOrDefault`、`GetNonNegativeIntOrDefault`、`GetNonNegativeDecimalOrDefault`、`GetDecimalInRangeOrDefault`、`GetDecimalClampedOrDefault`、`GetBoolOrDefault`、`GetPositiveSecondsAsTimeSpanOrDefault`、`GetTimeOfDayOrDefault`，并统一 `BuildAutoTuningKey`、`BuildAutonomousKey` 与 `NormalizeToLocalTime`，消除重复键拼装与时间归一化实现。
+- `AutoTuningConfigurationReader.cs`：配置读取工具类，集中提供 `GetPositiveIntOrDefault`、`GetNonNegativeIntOrDefault`、`GetNonNegativeDecimalOrDefault`、`GetDecimalInRangeOrDefault`、`GetDecimalClampedOrDefault`、`GetBoolOrDefault`、`GetPositiveSecondsAsTimeSpanOrDefault`、`GetTimeOfDayOrDefault`，并统一 `BuildAutoTuningKey`、`BuildAutonomousKey` 与 `NormalizeToLocalTime`，消除重复键拼装与时间归一化实现。
 - `MySqlSessionBootstrapConnectionInterceptor.cs`：MySQL 连接会话初始化拦截器（类型判断逻辑内联，移除无意义 helper）。
-- `SlowQueryAutoTuningPipeline.cs`：慢查询采集、TopN 聚合、阈值告警（含基础防抖）与闭环自治结构化建议编排管道（配置键拼装复用 `AutoTuningConfigurationHelper`，并提供主表提取公共方法供 HostedService 与建议编排共用）。
+- `SlowQueryAutoTuningPipeline.cs`：慢查询采集、TopN 聚合、阈值告警（含基础防抖）与闭环自治结构化建议编排管道（配置键拼装复用 `AutoTuningConfigurationReader`，并提供主表提取公共方法供 HostedService 与建议编排共用）。
 - `SlowQueryCommandInterceptor.cs`：EF Core 慢查询采集拦截器。
 - `SlowQuerySample.cs`：慢查询采样记录模型。
 
@@ -609,7 +614,8 @@
 - `ParcelShardingStrategyEvaluator.cs`：Parcel 分表策略评估器（分表模式/时间粒度/容量阈值/阈值动作配置解析，结构化校验，容量观测输入统一收敛为 Observation 对象，输出含 finer-granularity 扩展规划的统一决策结果，复用于注册入口与启动审计守卫）。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/DesignTime/`：EF 设计时支持目录
-- `MySqlContextFactory.cs`：MySQL 设计时 DbContext 工厂（告警输出改为 `Action<string>` 回调写入 `Console.Error`，已移除 MEL `ILogger` 依赖）。
+- `DesignTimeConfigurationLocator.cs`：设计时配置目录定位器，统一 appsettings.json 查找与加载逻辑，消除工厂间重复代码。
+- `MySqlContextFactory.cs`：MySQL 设计时 DbContext 工厂（告警通过 NLog 落盘，配置加载统一委托 DesignTimeConfigurationLocator）。
 - `SqlServerContextFactory.cs`：SQL Server 设计时 DbContext 构建器（由统一设计时工厂按 provider 分发调用），连接字符串 key 使用 `ConfiguredProviderNames.SqlServer`，提供 SQL Server 连接字符串搜索与 `DbContextOptions` 组装能力。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/`：EF Core 迁移文件目录
@@ -635,6 +641,7 @@
 
 #### `Zeye.Sorting.Hub.SharedKernel/Utilities/`：共享工具目录
 - `SafeExecutor.cs`：安全执行器；使用 NLog 静态 logger（`LogManager.GetCurrentClassLogger()`），移除了 MEL `ILogger<SafeExecutor>` 构造依赖；提供 `Execute`、`ExecuteAsync`（void）、`ExecuteAsync<T>`（带返回值）三个重载，确保任何异常都不会导致宿主崩溃。
+- `ConfigChangeEntry.cs`：配置变更历史记录条目；`sealed record` 值类型，携带变更序号（单调递增）、前值快照、后值快照、本地生效时间与变更字段摘要，供配置变更审计使用。
 - `ConfigChangeHistoryStore.cs`：配置变更历史存储器；泛型环形缓冲实现，线程安全，保留最近 N 次配置快照（默认 10 条）；暴露 `Record(previous, current, changedFields)` 写入快照、`GetHistory()` 获取历史与 `GetLatest()` 获取最新快照，供配置变更审计与回滚查询使用。
 
 ### `Zeye.Sorting.Hub.Host.Tests/`：API 与应用层测试层
@@ -648,7 +655,7 @@
 - `EmptyServiceScopeFactory.cs`：最小服务作用域工厂测试桩。
 - `FakeParcelRepository.cs`：Parcel 仓储测试替身，提供只读/写入/过期清理三态结果用于 API 回归测试。
 - `FixedPlanProbe.cs`：执行计划探针测试桩，固定返回“探针可用且无回归”。
-- `LocalTimeTestConstraintHelper.cs`：测试层本地时间语义约束工具类，提供 `CreateLocalTime`/`AssertIsLocalTime`/`AssertNotUtc` 方法，防止测试代码引入 UTC 语义。
+- `LocalTimeTestConstraint.cs`：测试层本地时间语义约束工具类，提供 `CreateLocalTime`/`AssertIsLocalTime`/`AssertNotUtc` 方法，防止测试代码引入 UTC 语义。
 - `LogCleanupServiceTests.cs`：日志清理服务回归测试，验证目录栈递归扫描子目录日志并仅清理超过保留天数的旧日志文件。
 - `ConfigChangeHistoryStoreTests.cs`：配置变更历史存储器单元测试，覆盖空历史、单条记录、多条按序排列、超容量环形覆盖与 LogCleanupService 热加载联动快照记录五个场景。
 - `MissingIndexShardingPhysicalTableProbe.cs`：关键索引缺失探测测试桩，按物理表返回缺失索引。
