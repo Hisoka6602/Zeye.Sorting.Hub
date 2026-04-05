@@ -533,10 +533,16 @@ jobs:
             # 一次性扫描所有 Migrations 下的 .cs 文件，按目录分组统计
             ALL_MIGRATION_FILES=$(find . -path "*/Migrations/*.cs" -not -path "*/obj/*" -not -path "*/bin/*" 2>/dev/null || true)
             MIGRATION_DIR_COUNT=$(echo "$MIGRATION_DIRS" | wc -l)
-            TOTAL_FILE_COUNT=$(echo "$ALL_MIGRATION_FILES" | grep -c . || echo 0)
+            # 使用 wc -l 替代 grep -c，避免空变量时计数错误
+            if [ -n "$ALL_MIGRATION_FILES" ]; then
+              TOTAL_FILE_COUNT=$(echo "$ALL_MIGRATION_FILES" | wc -l)
+            else
+              TOTAL_FILE_COUNT=0
+            fi
             echo "✅  发现 ${MIGRATION_DIR_COUNT} 个 Migrations 目录，共 ${TOTAL_FILE_COUNT} 个迁移文件："
             echo "$MIGRATION_DIRS" | while IFS= read -r dir; do
-              FILE_COUNT=$(echo "$ALL_MIGRATION_FILES" | grep -c "^${dir}/" || echo 0)
+              # 使用 grep -F 固定字符串匹配，避免路径中特殊字符引起的正则误匹配
+              FILE_COUNT=$(echo "$ALL_MIGRATION_FILES" | grep -Fc "${dir}/" 2>/dev/null || echo 0)
               echo "    - ${dir}（${FILE_COUNT} 个迁移文件）"
             done
           fi
