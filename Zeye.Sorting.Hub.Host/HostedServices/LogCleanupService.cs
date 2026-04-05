@@ -92,8 +92,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 return;
             }
 
-            Logger.Info("日志清理服务已启动，保留天数: {RetentionDays}天，检查间隔: {CheckIntervalHours}小时",
-                Settings.RetentionDays, Settings.CheckIntervalHours);
+            Logger.Info("日志清理服务已启动，保留天数（有效值）: {EffectiveRetentionDays}天（配置原始值: {ConfiguredRetentionDays}），检查间隔（有效值）: {EffectiveCheckIntervalHours}小时（配置原始值: {ConfiguredCheckIntervalHours}）",
+                GetEffectiveRetentionDays(Settings), Settings.RetentionDays,
+                GetEffectiveCheckIntervalHours(Settings), Settings.CheckIntervalHours);
 
             // 首次启动时立即执行一次清理
             _safeExecutor.Execute(

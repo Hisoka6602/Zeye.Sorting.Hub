@@ -1477,8 +1477,28 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 string.Join(" | ", result.SnapshotDiff.Select(static diff => $"{diff.Name}:{diff.Status}:{diff.Delta}:{diff.Reason}")));
         }
 
-        /// <summary>将标签值清洗为日志安全的单行格式（去除换行、截断超长内容）。</summary>
-        private static string NormalizeTagValue(string? value) => string.IsNullOrWhiteSpace(value) ? NotAvailableTag : value.Trim();
+        /// <summary>将标签值清洗为日志安全的单行格式（替换换行符为空格、截断超长内容至 256 字符）。</summary>
+        private static string NormalizeTagValue(string? value) {
+            // 步骤 1：空值守卫。
+            if (string.IsNullOrWhiteSpace(value)) {
+                return NotAvailableTag;
+            }
+
+            // 步骤 2：将多种换行符替换为空格，防止标签值出现多行内容污染日志结构。
+            var normalized = value
+                .Replace("\r\n", " ", StringComparison.Ordinal)
+                .Replace('\r', ' ')
+                .Replace('\n', ' ')
+                .Trim();
+
+            if (normalized.Length == 0) {
+                return NotAvailableTag;
+            }
+
+            // 步骤 3：截断超长标签值，避免观测标签或日志字段异常膨胀（上限 256 字符）。
+            const int maxTagValueLength = 256;
+            return normalized.Length <= maxTagValueLength ? normalized : normalized[..maxTagValueLength];
+        }
 
         /// <summary>评估 SQL 执行计划是否发生回归（对比探针快照与基线）。</summary>
         private PlanRegressionSnapshot EvaluatePlanRegression(PendingRollbackAction rollback) {
