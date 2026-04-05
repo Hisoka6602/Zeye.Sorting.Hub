@@ -13,9 +13,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
     /// Parcel 聚合 EF Core 映射（Infrastructure 层）
     /// </summary>
     public sealed class ParcelEntityTypeConfiguration : IEntityTypeConfiguration<Parcel> {
-        /// <summary>
-        /// 执行逻辑：Configure。
-        /// </summary>
+        /// <summary>配置 Parcel 实体的 EF Core 映射规则（列类型、索引、值对象拥有关系等）。</summary>
         public void Configure(EntityTypeBuilder<Parcel> builder) {
             builder.ToTable("Parcels");
 

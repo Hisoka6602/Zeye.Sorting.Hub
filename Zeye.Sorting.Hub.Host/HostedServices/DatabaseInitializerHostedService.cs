@@ -30,15 +30,31 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <summary>配置项缺失时用于占位展示的默认文本（与中文日志语境保持一致）。</summary>
         private const string NotConfiguredPlaceholder = "未配置";
 
+        /// <summary>迁移失败策略配置键（通用）。</summary>
         private const string MigrationFailureStrategyConfigKey = "Persistence:Migration:FailureStrategy";
+
+        /// <summary>迁移失败策略配置键（生产环境专用）。</summary>
         private const string MigrationFailureStrategyProductionConfigKey = "Persistence:Migration:FailureStrategy:Production";
+
+        /// <summary>迁移失败策略配置键（非生产环境专用）。</summary>
         private const string MigrationFailureStrategyNonProductionConfigKey = "Persistence:Migration:FailureStrategy:NonProduction";
+
+        /// <summary>迁移错误时是否阻断启动的配置键。</summary>
         private const string FailStartupOnMigrationErrorConfigKey = "Persistence:Migration:FailStartupOnError";
+
+        /// <summary>MySQL Provider 标识键。</summary>
         private const string MySqlProviderKey = "MySql";
+
+        /// <summary>SQL Server Provider 标识键。</summary>
         private const string SqlServerProviderKey = "SqlServer";
+
+        /// <summary>MySQL 方言显示名称。</summary>
         private const string DialectProviderNameMySql = "MySQL";
+
+        /// <summary>SQL Server 方言显示名称。</summary>
         private const string DialectProviderNameSqlServer = "SQLServer";
 
+        /// <summary>Provider 标识到连接字符串节点键名的映射表（不区分大小写）。</summary>
         private static readonly IReadOnlyDictionary<string, string> ProviderConnectionStringKeyMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
             [MySqlProviderKey] = MySqlProviderKey,
             [SqlServerProviderKey] = SqlServerProviderKey,
@@ -46,32 +62,73 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             [DialectProviderNameSqlServer] = SqlServerProviderKey
         };
 
+        /// <summary>数据持久化 Provider 类型配置键。</summary>
         private const string PersistenceProviderConfigKey = "Persistence:Provider";
+
+        /// <summary>是否启用启动期自动建库检查的配置键。</summary>
         private const string EnsureDatabaseExistsEnabledConfigKey = "Persistence:DatabaseBootstrap:EnsureDatabaseExists:Enabled";
+
+        /// <summary>自动建库隔离守卫开关配置键。</summary>
         private const string EnsureDatabaseExistsIsolatorEnableGuardConfigKey = "Persistence:DatabaseBootstrap:EnsureDatabaseExists:Isolator:EnableGuard";
+
+        /// <summary>自动建库是否允许执行危险动作的配置键。</summary>
         private const string EnsureDatabaseExistsIsolatorAllowDangerousActionExecutionConfigKey = "Persistence:DatabaseBootstrap:EnsureDatabaseExists:Isolator:AllowDangerousActionExecution";
+
+        /// <summary>自动建库 dry-run 模式开关配置键。</summary>
         private const string EnsureDatabaseExistsIsolatorDryRunConfigKey = "Persistence:DatabaseBootstrap:EnsureDatabaseExists:Isolator:DryRun";
+
+        /// <summary>启动时是否自动创建分表的配置键。</summary>
         private const string CreateShardingTableOnStartingConfigKey = "Persistence:Sharding:CreateShardingTableOnStarting";
+
+        /// <summary>Parcel 关联哈希分片模数配置键。</summary>
         private const string ParcelRelatedHashShardingModConfigKey = "Persistence:Sharding:ParcelRelatedHashShardingMod";
+
+        /// <summary>哈希扩容触发阈值配置键（取值范围：0~1）。</summary>
         private const string HashShardingExpansionTriggerRatioConfigKey = "Persistence:Sharding:HashSharding:ExpansionTriggerRatio";
+
+        /// <summary>哈希扩容文本计划配置键（兼容历史格式）。</summary>
         private const string HashShardingLegacyExpansionPlanConfigKey = "Persistence:Sharding:HashSharding:ExpansionPlan";
+
+        /// <summary>哈希扩容当前模数配置键。</summary>
         private const string HashShardingExpansionPlanCurrentModConfigKey = "Persistence:Sharding:HashSharding:ExpansionPlan:CurrentMod";
+
+        /// <summary>哈希扩容目标模数配置键。</summary>
         private const string HashShardingExpansionPlanTargetModConfigKey = "Persistence:Sharding:HashSharding:ExpansionPlan:TargetMod";
+
+        /// <summary>哈希扩容阶段列表配置键（逗号分隔的阶段描述串）。</summary>
         private const string HashShardingExpansionPlanStagesConfigKey = "Persistence:Sharding:HashSharding:ExpansionPlan:Stages";
+
+        /// <summary>分表预建窗口（小时数）配置键。</summary>
         private const string ShardingPrebuildWindowHoursConfigKey = "Persistence:Sharding:Governance:PrebuildWindowHours";
+
+        /// <summary>分表治理 Runbook 配置键（文档路径或链接）。</summary>
         private const string ShardingRunbookConfigKey = "Persistence:Sharding:Governance:Runbook";
+
+        /// <summary>是否启用 WebRequestAuditLog 每日治理守卫的配置键。</summary>
         private const string WebRequestAuditLogPerDayGuardEnabledConfigKey = "Persistence:Sharding:Governance:WebRequestAuditLog:EnablePerDayGuard";
+
+        /// <summary>是否启用 WebRequestAuditLog 历史分表保留治理的配置键。</summary>
         private const string WebRequestAuditLogRetentionEnabledConfigKey = "Persistence:Sharding:Governance:WebRequestAuditLog:Retention:Enabled";
+
+        /// <summary>WebRequestAuditLog 历史分表保留数量配置键（正整数）。</summary>
         private const string WebRequestAuditLogRetentionKeepRecentShardCountConfigKey = "Persistence:Sharding:Governance:WebRequestAuditLog:Retention:KeepRecentShardCount";
+
+        /// <summary>WebRequestAuditLog 历史分表保留治理守卫开关配置键。</summary>
         private const string WebRequestAuditLogRetentionIsolatorEnableGuardConfigKey = "Persistence:Sharding:Governance:WebRequestAuditLog:Retention:Isolator:EnableGuard";
+
+        /// <summary>WebRequestAuditLog 历史分表保留是否允许执行危险动作的配置键。</summary>
         private const string WebRequestAuditLogRetentionIsolatorAllowDangerousActionExecutionConfigKey = "Persistence:Sharding:Governance:WebRequestAuditLog:Retention:Isolator:AllowDangerousActionExecution";
+
+        /// <summary>WebRequestAuditLog 历史分表保留 dry-run 模式开关配置键。</summary>
         private const string WebRequestAuditLogRetentionIsolatorDryRunConfigKey = "Persistence:Sharding:Governance:WebRequestAuditLog:Retention:Isolator:DryRun";
+
+        /// <summary>是否启用分表关键索引一致性审计的配置键。</summary>
         private const string ShardingCriticalIndexAuditEnabledConfigKey = "Persistence:Sharding:Governance:CriticalIndexAudit:Enabled";
+
+        /// <summary>关键索引缺失时是否阻断启动的配置键。</summary>
         private const string ShardingCriticalIndexAuditBlockOnMissingConfigKey = "Persistence:Sharding:Governance:CriticalIndexAudit:BlockOnMissing";
 
-        /// <summary>
-        /// 字段：_serviceProvider。
-        /// </summary>
+        /// <summary>DI 服务提供程序，用于在启动阶段按需解析作用域服务。</summary>
         private readonly IServiceProvider _serviceProvider;
 
         /// <summary>
@@ -84,9 +141,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// </summary>
         private static readonly Logger NLogLogger = LogManager.GetCurrentClassLogger();
 
-        /// <summary>
-        /// 字段：_dialect。
-        /// </summary>
+        /// <summary>数据库方言适配器，提供 Provider 差异化的 DDL/DML 实现。</summary>
         private readonly IDatabaseDialect _dialect;
 
         /// <summary>当前宿主环境名称。</summary>
@@ -176,9 +231,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <summary>当前数据库 Provider 配置键。</summary>
         private readonly string? _databaseProviderKey;
 
-        /// <summary>
-        /// 字段：_retryPolicy。
-        /// </summary>
+        /// <summary>Polly 异步重试策略，用于迁移及 DDL 操作的瞬态故障恢复。</summary>
         private readonly AsyncRetryPolicy _retryPolicy;
 
         public DatabaseInitializerHostedService(
@@ -254,9 +307,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             ArgumentNullException.ThrowIfNull(legacyLogger);
         }
 
-        /// <summary>
-        /// 执行逻辑：StartAsync。
-        /// </summary>
+        /// <summary>服务启动入口：依序执行数据库迁移、方言初始化、分表预建等引导流程。</summary>
         public async Task StartAsync(CancellationToken cancellationToken) {
             try {
                 AuditShardingGovernance();
@@ -667,9 +718,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
         }
 
-        /// <summary>
-        /// 执行逻辑：StopAsync。
-        /// </summary>
+        /// <summary>服务停止：暂无持有的后台资源需要释放，直接返回已完成任务。</summary>
         public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
         /// <summary>

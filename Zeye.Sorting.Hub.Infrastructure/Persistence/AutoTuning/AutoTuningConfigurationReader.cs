@@ -5,7 +5,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
 
     /// <summary>自动调优配置读取辅助方法（集中管理，避免多处影分身副本）。</summary>
     public static class AutoTuningConfigurationReader {
+        /// <summary>AutoTuning 配置根节点前缀。</summary>
         private const string AutoTuningConfigPrefix = "Persistence:AutoTuning";
+
+        /// <summary>Autonomous 自主调优子节点前缀。</summary>
         private const string AutonomousConfigPrefix = "Persistence:AutoTuning:Autonomous";
 
         /// <summary>构建 AutoTuning 配置全路径键名。</summary>

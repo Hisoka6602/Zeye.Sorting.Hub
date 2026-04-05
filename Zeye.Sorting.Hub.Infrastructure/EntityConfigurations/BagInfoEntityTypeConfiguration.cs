@@ -19,9 +19,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
     /// - [MaxLength] 特征标记已在 Domain 层声明，此处无需重复配置 HasMaxLength。
     /// </summary>
     public sealed class BagInfoEntityTypeConfiguration : IEntityTypeConfiguration<BagInfo> {
-        /// <summary>
-        /// 执行逻辑：Configure。
-        /// </summary>
+        /// <summary>配置 BagInfo 实体的 EF Core 映射规则（列类型、索引等）。</summary>
         public void Configure(EntityTypeBuilder<BagInfo> builder) {
             builder.ToTable("Bags");
 

@@ -446,9 +446,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                     sourceName: ShardingConstant.DefaultSource));
         }
 
-        /// <summary>
-        /// 执行逻辑：GetShardingStartTime。
-        /// </summary>
+        /// <summary>获取分表起始时间（基于当前本地时间的整点对齐值）。</summary>
         private static DateTime GetShardingStartTime(IConfiguration configuration) {
             var configured = configuration["Persistence:Sharding:ParcelStartTime"];
 

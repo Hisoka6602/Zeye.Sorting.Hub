@@ -69,9 +69,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// </summary>
         private LogCleanupSettings Settings => _settingsMonitor.CurrentValue;
 
-        /// <summary>
-        /// 执行逻辑：ExecuteAsync。
-        /// </summary>
+        /// <summary>后台服务主循环：按设定间隔周期性执行日志清理。</summary>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
             if (!Settings.Enabled) {
                 Logger.Info("日志清理服务已禁用");
@@ -102,9 +100,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
         }
 
-        /// <summary>
-        /// 执行逻辑：CleanupOldLogs。
-        /// </summary>
+        /// <summary>扫描日志目录，删除超过保留天数的旧日志文件。</summary>
         internal void CleanupOldLogs(CancellationToken cancellationToken) {
             var settings = Settings;
             var logDirectory = ResolveLogDirectoryPath(settings);
