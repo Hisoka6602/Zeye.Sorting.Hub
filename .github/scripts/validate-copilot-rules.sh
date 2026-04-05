@@ -6,7 +6,7 @@ set -euo pipefail
 FAILURES=0
 
 # Copilot 限制规则快照哈希；规则变更后运行脚本内 compute_rules_hash 对应逻辑重新计算并更新此值。
-COPILOT_RULES_SHA256="9350b799b04537e6b6a17acb212af3a936203db92ac4daf0d293e779cb14d521"
+COPILOT_RULES_SHA256="2388c33844cb93d55a63ef07a34f08a65a1b926c42100764c1f38402d5583a71"
 
 # PR diff 缓存，避免重复计算。
 PR_DIFF_READY=0
