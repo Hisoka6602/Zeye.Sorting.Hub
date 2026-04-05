@@ -3,6 +3,10 @@ using System.Text;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
 
+    /// <summary>
+    /// 数据库提供器操作工具类，提供异常错误码提取、WHERE 列归一化与稳定索引名构造等共享能力，
+    /// 供 MySQL 和 SQL Server 方言实现复用，消除重复实现。
+    /// </summary>
     internal static class DatabaseProviderOperations {
         /// <summary>
         /// 尝试从异常链中提取数据库提供器错误码。
