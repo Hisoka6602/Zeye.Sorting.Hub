@@ -12,6 +12,7 @@ on:
       - "Zeye.Sorting.Hub.Application/**"
       - "Zeye.Sorting.Hub.Host.Tests/**"
       - "长期运行优化与热更新支持清单.md"
+      - "drill-records/**"
 
 permissions:
   contents: read
@@ -112,6 +113,9 @@ jobs:
           check_key "LogCleanup"
           check_key "RetentionDays"
           check_key "CheckIntervalHours"
+
+          echo "── 分表预建配置 ──"
+          check_key "PrebuildWindowHours"
 
           if [ "$FAIL" -eq 1 ]; then
             echo ""
@@ -371,9 +375,10 @@ jobs:
           echo "蓝绿/滚动部署验证通过。"
 
   # ──────────────────────────────────────────────────────────
-  # 门禁 8：演练记录门禁
-  #   检查是否存在有效的年度演练记录文件或演练达标声明，
+  # 门禁 8：演练记录门禁（强制阻断）
+  #   检查是否存在有效的季度/年度演练记录文件或演练达标声明，
   #   防止缺少演练记录的版本直接发布到生产环境。
+  #   已升级为强制阻断：drill-records/ 目录无记录文件时 PR 无法合并。
   # ──────────────────────────────────────────────────────────
   drill-record-gate:
     name: 演练记录门禁
@@ -395,8 +400,9 @@ jobs:
           PASS=0
 
           echo "── 演练记录目录检查 ──"
-          if find . -path "*/drill-records/*" -name "*.txt" -o -path "*/drill-records/*" -name "*.md" 2>/dev/null | grep -q .; then
-            echo "✅  发现演练记录文件"
+          if find . -path "*/drill-records/*" \( -name "*.txt" -o -name "*.md" \) 2>/dev/null | grep -q .; then
+            RECORD_COUNT=$(find . -path "*/drill-records/*" \( -name "*.txt" -o -name "*.md" \) 2>/dev/null | wc -l)
+            echo "✅  发现 ${RECORD_COUNT} 个演练记录文件"
             PASS=1
           else
             echo "ℹ️  未发现 drill-records/ 目录下的演练文件"
@@ -418,7 +424,7 @@ jobs:
             DRILL_PATTERN='\- \[x\].*(演练|drill)'
             DRILL_DONE=$(grep -ciE "$DRILL_PATTERN" "$CHECKLIST" 2>/dev/null || true)
             if [ "$DRILL_DONE" -gt 0 ]; then
-              echo "✅  清单中 $DRILL_DONE 个演练相关条目已标注完成"
+              echo "✅  清单中 ${DRILL_DONE} 个演练相关条目已标注完成"
               PASS=1
             else
               echo "ℹ️  清单中暂无演练条目标注为已完成"
@@ -428,11 +434,134 @@ jobs:
           if [ "$PASS" -eq 0 ]; then
             echo ""
             echo "演练记录门禁：未发现任何有效演练记录或达标声明。"
-            echo "请在 drill-records/ 目录添加演练记录文件，或创建 DRILL_ATTESTATION 声明文件，或在清单中标注演练条目已完成。"
-            echo "（本门禁在当前阶段以警告形式输出，不阻断 PR。后续将升级为强制门禁。）"
-            # 当前阶段不阻断，输出警告即可
-            exit 0
+            echo "请在 drill-records/ 目录添加演练记录文件（.md/.txt），或创建 DRILL_ATTESTATION 声明文件，或在清单中标注演练条目已完成。"
+            echo "此门禁已升级为强制阻断，缺少演练记录将无法合并 PR。"
+            exit 1
           fi
 
           echo ""
           echo "演练记录门禁通过。"
+
+  # ──────────────────────────────────────────────────────────
+  # 门禁 9：分表预建校验门禁
+  #   验证 PrebuildWindowHours 配置合法（>= 24），且分表预建逻辑已在代码中实现，
+  #   将运行期守卫升级为发布前自动门禁，防止配置缺失导致分表预建失效。
+  # ──────────────────────────────────────────────────────────
+  sharding-prebuild-gate:
+    name: 分表预建校验门禁
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 验证分表预建配置与逻辑完整性
+        run: |
+          set -euo pipefail
+          CONFIG="Zeye.Sorting.Hub.Host/appsettings.json"
+          INITIALIZER="Zeye.Sorting.Hub.Host/HostedServices/DatabaseInitializerHostedService.cs"
+          FAIL=0
+
+          echo "── 分表预建窗口配置检查 ──"
+          # 从配置中提取 PrebuildWindowHours 值（JSONC 先去注释）
+          CLEAN_JSON=$(grep -v '^\s*//' "$CONFIG")
+          PREBUILD_HOURS=$(echo "$CLEAN_JSON" | grep -oP '"PrebuildWindowHours"\s*:\s*\K[0-9]+' || true)
+
+          if [ -z "$PREBUILD_HOURS" ]; then
+            echo "❌  未找到 PrebuildWindowHours 配置项，分表预建窗口未配置！"
+            FAIL=1
+          elif [ "$PREBUILD_HOURS" -lt 24 ]; then
+            echo "❌  PrebuildWindowHours=${PREBUILD_HOURS} 小于最小值 24，预建窗口过短，存在分表未及时创建风险！"
+            FAIL=1
+          else
+            echo "✅  PrebuildWindowHours=${PREBUILD_HOURS}（>= 24，配置合法）"
+          fi
+
+          echo ""
+          echo "── 分表预建代码逻辑检查 ──"
+          # 验证 DatabaseInitializerHostedService 中存在分表预建相关代码
+          if grep -q "PrebuildWindowHours\|ShardingPrebuildWindowHoursConfigKey" "$INITIALIZER"; then
+            echo "✅  分表预建逻辑已在 DatabaseInitializerHostedService 中实现"
+          else
+            echo "❌  DatabaseInitializerHostedService 中缺少分表预建逻辑！"
+            FAIL=1
+          fi
+
+          echo ""
+          echo "── 分表治理策略切换门禁配置检查 ──"
+          # 验证 ShardingGovernanceHitRateThreshold 配置存在
+          if echo "$CLEAN_JSON" | jq -e 'any(.. | objects; has("ShardingGovernanceHitRateThreshold"))' > /dev/null 2>&1; then
+            echo "✅  ShardingGovernanceHitRateThreshold 已配置"
+          else
+            echo "❌  ShardingGovernanceHitRateThreshold 缺失，分表治理策略切换门禁未配置！"
+            FAIL=1
+          fi
+
+          if [ "$FAIL" -eq 1 ]; then
+            echo ""
+            echo "分表预建校验门禁失败：存在配置或代码问题，请修复后重试。"
+            exit 1
+          fi
+
+          echo ""
+          echo "分表预建校验门禁通过。"
+
+  # ──────────────────────────────────────────────────────────
+  # 门禁 10：迁移脚本归档验证门禁
+  #   验证 EFCore 迁移文件存在且未被误删除，
+  #   防止迁移资产缺失导致版本升级时无法执行结构变更。
+  # ──────────────────────────────────────────────────────────
+  migration-archive-gate:
+    name: 迁移脚本归档验证门禁
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 验证迁移脚本归档完整性
+        run: |
+          set -euo pipefail
+          FAIL=0
+
+          echo "── EFCore 迁移文件存在性检查 ──"
+          # 查找所有迁移快照文件（每个 DbContext 应有对应的 Migrations 目录）
+          MIGRATION_DIRS=$(find . -type d -name "Migrations" -not -path "*/obj/*" -not -path "*/bin/*" 2>/dev/null)
+          if [ -z "$MIGRATION_DIRS" ]; then
+            echo "❌  未发现任何 Migrations 目录，迁移资产可能缺失！"
+            FAIL=1
+          else
+            MIGRATION_DIR_COUNT=$(echo "$MIGRATION_DIRS" | wc -l)
+            echo "✅  发现 ${MIGRATION_DIR_COUNT} 个 Migrations 目录："
+            echo "$MIGRATION_DIRS" | while IFS= read -r dir; do
+              FILE_COUNT=$(find "$dir" -name "*.cs" 2>/dev/null | wc -l)
+              echo "    - ${dir}（${FILE_COUNT} 个迁移文件）"
+            done
+          fi
+
+          echo ""
+          echo "── DbContext 迁移快照文件检查 ──"
+          # 检查各 DbContext 是否存在 ModelSnapshot 文件（结构变更记录）
+          SNAPSHOT_COUNT=$(find . -name "*ModelSnapshot.cs" -not -path "*/obj/*" -not -path "*/bin/*" 2>/dev/null | wc -l)
+          if [ "$SNAPSHOT_COUNT" -eq 0 ]; then
+            echo "⚠️  未发现 ModelSnapshot 文件，若项目使用 Code First 迁移则应存在此文件"
+          else
+            echo "✅  发现 ${SNAPSHOT_COUNT} 个 ModelSnapshot 文件"
+          fi
+
+          echo ""
+          echo "── 迁移初始化记录检查 ──"
+          # 验证至少存在一个迁移记录文件（_Initial 或类似命名），代表迁移历史可追溯
+          INITIAL_MIGRATION=$(find . \( -name "*_Initial*.cs" -o -name "*_Init*.cs" \) 2>/dev/null | grep -v "/obj/\|/bin/" | head -1 || true)
+          if [ -n "$INITIAL_MIGRATION" ]; then
+            echo "✅  发现初始迁移记录：$(basename "$INITIAL_MIGRATION")"
+          else
+            echo "ℹ️  未发现 _Initial/_Init 命名的初始迁移文件（若使用其他命名规范可忽略）"
+          fi
+
+          if [ "$FAIL" -eq 1 ]; then
+            echo ""
+            echo "迁移脚本归档验证失败：迁移资产存在问题，请检查后重试。"
+            exit 1
+          fi
+
+          echo ""
+          echo "迁移脚本归档验证通过。"
