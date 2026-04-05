@@ -30,16 +30,16 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <summary>配置项缺失时用于占位展示的默认文本（与中文日志语境保持一致）。</summary>
         private const string NotConfiguredPlaceholder = "未配置";
 
-        /// <summary>迁移失败策略配置键（通用，优先级最低）。可填写值：Degraded（降级运行）/ FailFast（快速失败）。</summary>
+        /// <summary>迁移失败策略配置键（通用，优先级最低）。可填写值:Degraded（降级运行）/ FailFast（快速失败）。</summary>
         private const string MigrationFailureStrategyConfigKey = "Persistence:Migration:FailureStrategy";
 
-        /// <summary>迁移失败策略配置键（生产环境专用，优先级高于通用键）。可填写值：Degraded（降级运行）/ FailFast（快速失败）。</summary>
+        /// <summary>迁移失败策略配置键（生产环境专用，优先级高于通用键）。可填写值:Degraded（降级运行）/ FailFast（快速失败）。</summary>
         private const string MigrationFailureStrategyProductionConfigKey = "Persistence:Migration:FailureStrategy:Production";
 
-        /// <summary>迁移失败策略配置键（非生产环境专用，优先级高于通用键）。可填写值：Degraded（降级运行）/ FailFast（快速失败）。</summary>
+        /// <summary>迁移失败策略配置键（非生产环境专用，优先级高于通用键）。可填写值:Degraded（降级运行）/ FailFast（快速失败）。</summary>
         private const string MigrationFailureStrategyNonProductionConfigKey = "Persistence:Migration:FailureStrategy:NonProduction";
 
-        /// <summary>迁移错误时是否阻断启动的配置键。可填写值：true / false。</summary>
+        /// <summary>迁移错误时是否阻断启动的配置键。可填写值:true / false。</summary>
         private const string FailStartupOnMigrationErrorConfigKey = "Persistence:Migration:FailStartupOnError";
 
         /// <summary>MySQL Provider 标识键。</summary>
@@ -62,70 +62,70 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             [DialectProviderNameSqlServer] = SqlServerProviderKey
         };
 
-        /// <summary>数据持久化 Provider 类型配置键。可填写值：MySql / SqlServer。</summary>
+        /// <summary>数据持久化 Provider 类型配置键。可填写值:MySql / SqlServer。</summary>
         private const string PersistenceProviderConfigKey = "Persistence:Provider";
 
-        /// <summary>是否启用启动期自动建库检查的配置键。可填写值：true / false。</summary>
+        /// <summary>是否启用启动期自动建库检查的配置键。可填写值:true / false。</summary>
         private const string EnsureDatabaseExistsEnabledConfigKey = "Persistence:DatabaseBootstrap:EnsureDatabaseExists:Enabled";
 
-        /// <summary>自动建库隔离守卫开关配置键。可填写值：true / false。</summary>
+        /// <summary>自动建库隔离守卫开关配置键。可填写值:true / false。</summary>
         private const string EnsureDatabaseExistsIsolatorEnableGuardConfigKey = "Persistence:DatabaseBootstrap:EnsureDatabaseExists:Isolator:EnableGuard";
 
-        /// <summary>自动建库是否允许执行危险动作的配置键。可填写值：true / false。</summary>
+        /// <summary>自动建库是否允许执行危险动作的配置键。可填写值:true / false。</summary>
         private const string EnsureDatabaseExistsIsolatorAllowDangerousActionExecutionConfigKey = "Persistence:DatabaseBootstrap:EnsureDatabaseExists:Isolator:AllowDangerousActionExecution";
 
-        /// <summary>自动建库 dry-run 模式开关配置键。可填写值：true / false。</summary>
+        /// <summary>自动建库 dry-run 模式开关配置键。可填写值:true / false。</summary>
         private const string EnsureDatabaseExistsIsolatorDryRunConfigKey = "Persistence:DatabaseBootstrap:EnsureDatabaseExists:Isolator:DryRun";
 
-        /// <summary>启动时是否自动创建分表的配置键。可填写值：true / false。</summary>
+        /// <summary>启动时是否自动创建分表的配置键。可填写值:true / false。</summary>
         private const string CreateShardingTableOnStartingConfigKey = "Persistence:Sharding:CreateShardingTableOnStarting";
 
-        /// <summary>Parcel 关联哈希分片模数配置键。可填写值：正整数（默认 16）。</summary>
+        /// <summary>Parcel 关联哈希分片模数配置键。可填写值:正整数（默认 16）。</summary>
         private const string ParcelRelatedHashShardingModConfigKey = "Persistence:Sharding:ParcelRelatedHashShardingMod";
 
-        /// <summary>哈希扩容触发阈值配置键。可填写值：0~1 之间的小数（默认 0.8）。</summary>
+        /// <summary>哈希扩容触发阈值配置键。可填写值:0~1 之间的小数（默认 0.8）。</summary>
         private const string HashShardingExpansionTriggerRatioConfigKey = "Persistence:Sharding:HashSharding:ExpansionTriggerRatio";
 
         /// <summary>哈希扩容文本计划配置键（兼容历史格式，新版推荐使用结构化配置项）。</summary>
         private const string HashShardingLegacyExpansionPlanConfigKey = "Persistence:Sharding:HashSharding:ExpansionPlan";
 
-        /// <summary>哈希扩容当前模数配置键。可填写值：正整数。</summary>
+        /// <summary>哈希扩容当前模数配置键。可填写值:正整数。</summary>
         private const string HashShardingExpansionPlanCurrentModConfigKey = "Persistence:Sharding:HashSharding:ExpansionPlan:CurrentMod";
 
-        /// <summary>哈希扩容目标模数配置键。可填写值：正整数（应大于当前模数）。</summary>
+        /// <summary>哈希扩容目标模数配置键。可填写值:正整数（应大于当前模数）。</summary>
         private const string HashShardingExpansionPlanTargetModConfigKey = "Persistence:Sharding:HashSharding:ExpansionPlan:TargetMod";
 
-        /// <summary>哈希扩容阶段列表配置键。可填写值：逗号分隔的阶段描述串（如 "16→32,32→64"）。</summary>
+        /// <summary>哈希扩容阶段列表配置键。可填写值:逗号分隔的阶段描述串（如 "16→32,32→64"）。</summary>
         private const string HashShardingExpansionPlanStagesConfigKey = "Persistence:Sharding:HashSharding:ExpansionPlan:Stages";
 
-        /// <summary>分表预建窗口配置键。可填写值：正整数（小时数，默认 72）。</summary>
+        /// <summary>分表预建窗口配置键。可填写值:正整数（小时数，默认 72）。</summary>
         private const string ShardingPrebuildWindowHoursConfigKey = "Persistence:Sharding:Governance:PrebuildWindowHours";
 
-        /// <summary>分表治理 Runbook 配置键。可填写值：任意文档路径或外链 URL。</summary>
+        /// <summary>分表治理 Runbook 配置键。可填写值:任意文档路径或外链 URL。</summary>
         private const string ShardingRunbookConfigKey = "Persistence:Sharding:Governance:Runbook";
 
-        /// <summary>是否启用 WebRequestAuditLog 每日治理守卫的配置键。可填写值：true / false。</summary>
+        /// <summary>是否启用 WebRequestAuditLog 每日治理守卫的配置键。可填写值:true / false。</summary>
         private const string WebRequestAuditLogPerDayGuardEnabledConfigKey = "Persistence:Sharding:Governance:WebRequestAuditLog:EnablePerDayGuard";
 
-        /// <summary>是否启用 WebRequestAuditLog 历史分表保留治理的配置键。可填写值：true / false。</summary>
+        /// <summary>是否启用 WebRequestAuditLog 历史分表保留治理的配置键。可填写值:true / false。</summary>
         private const string WebRequestAuditLogRetentionEnabledConfigKey = "Persistence:Sharding:Governance:WebRequestAuditLog:Retention:Enabled";
 
-        /// <summary>WebRequestAuditLog 历史分表保留数量配置键。可填写值：正整数（保留最近 N 个分片）。</summary>
+        /// <summary>WebRequestAuditLog 历史分表保留数量配置键。可填写值:正整数（保留最近 N 个分片）。</summary>
         private const string WebRequestAuditLogRetentionKeepRecentShardCountConfigKey = "Persistence:Sharding:Governance:WebRequestAuditLog:Retention:KeepRecentShardCount";
 
-        /// <summary>WebRequestAuditLog 历史分表保留治理守卫开关配置键。可填写值：true / false。</summary>
+        /// <summary>WebRequestAuditLog 历史分表保留治理守卫开关配置键。可填写值:true / false。</summary>
         private const string WebRequestAuditLogRetentionIsolatorEnableGuardConfigKey = "Persistence:Sharding:Governance:WebRequestAuditLog:Retention:Isolator:EnableGuard";
 
-        /// <summary>WebRequestAuditLog 历史分表保留是否允许执行危险动作的配置键。可填写值：true / false。</summary>
+        /// <summary>WebRequestAuditLog 历史分表保留是否允许执行危险动作的配置键。可填写值:true / false。</summary>
         private const string WebRequestAuditLogRetentionIsolatorAllowDangerousActionExecutionConfigKey = "Persistence:Sharding:Governance:WebRequestAuditLog:Retention:Isolator:AllowDangerousActionExecution";
 
-        /// <summary>WebRequestAuditLog 历史分表保留 dry-run 模式开关配置键。可填写值：true / false。</summary>
+        /// <summary>WebRequestAuditLog 历史分表保留 dry-run 模式开关配置键。可填写值:true / false。</summary>
         private const string WebRequestAuditLogRetentionIsolatorDryRunConfigKey = "Persistence:Sharding:Governance:WebRequestAuditLog:Retention:Isolator:DryRun";
 
-        /// <summary>是否启用分表关键索引一致性审计的配置键。可填写值：true / false。</summary>
+        /// <summary>是否启用分表关键索引一致性审计的配置键。可填写值:true / false。</summary>
         private const string ShardingCriticalIndexAuditEnabledConfigKey = "Persistence:Sharding:Governance:CriticalIndexAudit:Enabled";
 
-        /// <summary>关键索引缺失时是否阻断启动的配置键。可填写值：true / false。</summary>
+        /// <summary>关键索引缺失时是否阻断启动的配置键。可填写值:true / false。</summary>
         private const string ShardingCriticalIndexAuditBlockOnMissingConfigKey = "Persistence:Sharding:Governance:CriticalIndexAudit:BlockOnMissing";
 
         /// <summary>DI 服务提供程序，用于在启动阶段按需解析作用域服务。</summary>

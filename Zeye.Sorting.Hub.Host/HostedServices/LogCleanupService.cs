@@ -69,6 +69,22 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// </summary>
         private LogCleanupSettings Settings => _settingsMonitor.CurrentValue;
 
+        /// <summary>
+        /// 获取有效保留天数（对无效配置值进行保护性回退，防止 0/负数导致误删全量日志）。
+        /// </summary>
+        /// <param name="settings">当前配置。</param>
+        /// <returns>有效保留天数（至少为 1）。</returns>
+        private static int GetEffectiveRetentionDays(LogCleanupSettings settings) =>
+            Math.Max(1, settings.RetentionDays);
+
+        /// <summary>
+        /// 获取有效检查间隔小时数（对无效配置值进行保护性回退，防止 0/负数导致忙等待循环）。
+        /// </summary>
+        /// <param name="settings">当前配置。</param>
+        /// <returns>有效检查间隔（至少为 1 小时）。</returns>
+        private static int GetEffectiveCheckIntervalHours(LogCleanupSettings settings) =>
+            Math.Max(1, settings.CheckIntervalHours);
+
         /// <summary>后台服务主循环：按设定间隔周期性执行日志清理。</summary>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
             if (!Settings.Enabled) {
@@ -86,7 +102,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
             while (!stoppingToken.IsCancellationRequested) {
                 try {
-                    await Task.Delay(TimeSpan.FromHours(Settings.CheckIntervalHours), stoppingToken);
+                    await Task.Delay(TimeSpan.FromHours(GetEffectiveCheckIntervalHours(Settings)), stoppingToken);
 
                     _safeExecutor.Execute(
                         () => CleanupOldLogs(stoppingToken),
@@ -110,7 +126,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 return;
             }
 
-            var cutoffDate = DateTime.Now.AddDays(-settings.RetentionDays);
+            var cutoffDate = DateTime.Now.AddDays(-GetEffectiveRetentionDays(settings));
             Logger.Info("开始清理日志，删除 {CutoffDate} 之前的日志文件", cutoffDate);
 
             var deletedCount = 0;
