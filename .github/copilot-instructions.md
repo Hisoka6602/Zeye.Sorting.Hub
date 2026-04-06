@@ -57,11 +57,26 @@
 
 ## 日志落盘规范
 
+- 所有业务日志、异常日志、后台任务日志、数据库相关日志都必须落盘，禁止仅输出到控制台不落盘。
 - 存盘日志文件大小不能超过 10 MB，超过必须触发轮转（即滚动写入新文件）。
 - NLog 所有 `xsi:type="File"` target 必须同时满足：
   - `archiveAboveSize="10485760"`（10 MB 尺寸上限）
   - `archiveNumbering="DateAndSequence"`（支持同天多次轮转，避免覆盖）
   - 同时保留 `archiveEvery="Day"`（同天多次+每日归档双保险）
+
+## DDD 分层接口与实现放置规范（强制）
+
+- 必须严格遵守依赖方向：`Host -> Infrastructure -> Application -> Domain`。
+- `Domain` 不允许依赖 `Application`、`Infrastructure`、`Host`；`Application` 不允许依赖 `Infrastructure`、`Host`。
+- 接口定义必须按语义归属放置，禁止“为了实现方便”上移或下沉：
+  - 聚合/实体/值对象持久化边界、领域规则/策略/规格/工厂/领域服务接口：定义在 `Domain`。
+  - 查询、权限、当前用户、本地化、文件存储、导入导出、消息发布、第三方网关、业务设备能力接口：定义在 `Application/Abstractions`。
+  - 协议编解码、CRC、协议解析、通信细节等技术抽象：定义在 `Infrastructure`（仅基础设施内部）。
+- 实现放置必须遵守分层边界：
+  - `Domain` 与 `Application` 抽象的外部资源实现（数据库/缓存/文件/网络/设备）必须放在 `Infrastructure`。
+  - `Host` 仅允许入口与组装代码（Program、Controller、Hub、HostedService、DI、中间件），禁止承载仓储实现、网关实现、驱动实现、协议编解码实现和核心领域规则实现。
+- 严禁重复职责并存：若新增代码覆盖旧实现，必须同时删除旧接口、旧实现、旧 DI 注册并更新调用方引用。
+- Controller、Hub、HostedService 只能依赖 `Application` 抽象，禁止直接依赖仓储实现类或基础设施实现细节。
 
 ## PR 交付门禁（必须全部满足）
 
