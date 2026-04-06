@@ -52,7 +52,6 @@ try {
         builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", Microsoft.Extensions.Logging.LogLevel.Warning);
     }
 
-    var startupLogger = LogManager.GetLogger("Startup");
     builder.Services.Configure<LogCleanupSettings>(
         builder.Configuration.GetSection("LogCleanup"));
     builder.Services.Configure<HostingOptions>(builder.Configuration.GetSection("Hosting"));
@@ -95,7 +94,7 @@ try {
             }
 
             if (builder.Environment.IsDevelopment()) {
-                startupLogger.Warn("Swagger XML 注释文件未找到：{XmlPath}", xmlPath);
+                logger.Warn("Swagger XML 注释文件未找到：{XmlPath}", xmlPath);
             }
         }
 
@@ -130,17 +129,16 @@ try {
             var exception = exceptionFeature?.Error;
 
             // 步骤 2：所有异常必须记录日志
-            var exceptionLogger = LogManager.GetLogger("GlobalExceptionHandler");
             if (exception is not null) {
-                exceptionLogger.Error(exception, "处理 HTTP 请求时发生未处理异常，路径：{Path}", context.Request.Path);
+                logger.Error(exception, "处理 HTTP 请求时发生未处理异常，TraceId：{TraceId}", context.TraceIdentifier);
             }
             else {
-                exceptionLogger.Error("处理 HTTP 请求时发生未知异常，路径：{Path}", context.Request.Path);
+                logger.Error("处理 HTTP 请求时发生未知异常，TraceId：{TraceId}", context.TraceIdentifier);
             }
 
             // 步骤 3：若响应已开始写出，则避免再次写入响应导致连接异常
             if (context.Response.HasStarted) {
-                exceptionLogger.Error("响应已开始写出，无法输出统一 ProblemDetails，路径：{Path}", context.Request.Path);
+                logger.Error("响应已开始写出，无法输出统一 ProblemDetails，TraceId：{TraceId}", context.TraceIdentifier);
                 return;
             }
 
