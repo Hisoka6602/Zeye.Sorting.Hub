@@ -52,8 +52,7 @@ try {
         builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", Microsoft.Extensions.Logging.LogLevel.Warning);
     }
 
-    using var startupLoggerFactory = LoggerFactory.Create(logging => logging.AddNLog());
-    var startupLogger = startupLoggerFactory.CreateLogger("Startup");
+    var startupLogger = LogManager.GetLogger("Startup");
     builder.Services.Configure<LogCleanupSettings>(
         builder.Configuration.GetSection("LogCleanup"));
     builder.Services.Configure<HostingOptions>(builder.Configuration.GetSection("Hosting"));
@@ -96,7 +95,7 @@ try {
             }
 
             if (builder.Environment.IsDevelopment()) {
-                startupLogger.LogWarning("Swagger XML 注释文件未找到：{XmlPath}", xmlPath);
+                startupLogger.Warn("Swagger XML 注释文件未找到：{XmlPath}", xmlPath);
             }
         }
 
@@ -131,18 +130,17 @@ try {
             var exception = exceptionFeature?.Error;
 
             // 步骤 2：所有异常必须记录日志
-            var loggerFactory = context.RequestServices.GetRequiredService<ILoggerFactory>();
-            var logger = loggerFactory.CreateLogger("GlobalExceptionHandler");
+            var exceptionLogger = LogManager.GetLogger("GlobalExceptionHandler");
             if (exception is not null) {
-                logger.LogError(exception, "处理 HTTP 请求时发生未处理异常，路径：{Path}", context.Request.Path);
+                exceptionLogger.Error(exception, "处理 HTTP 请求时发生未处理异常，路径：{Path}", context.Request.Path);
             }
             else {
-                logger.LogError("处理 HTTP 请求时发生未知异常，路径：{Path}", context.Request.Path);
+                exceptionLogger.Error("处理 HTTP 请求时发生未知异常，路径：{Path}", context.Request.Path);
             }
 
             // 步骤 3：若响应已开始写出，则避免再次写入响应导致连接异常
             if (context.Response.HasStarted) {
-                logger.LogError("响应已开始写出，无法输出统一 ProblemDetails，路径：{Path}", context.Request.Path);
+                exceptionLogger.Error("响应已开始写出，无法输出统一 ProblemDetails，路径：{Path}", context.Request.Path);
                 return;
             }
 

@@ -607,9 +607,22 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                 .OrderBy(static x => x)
                 .ToArray();
             var totalRows = samples.Sum(static s => s.AffectedRows);
-            var errorCount = samples.Count(static s => s.IsError);
-            var timeoutCount = samples.Count(static s => s.IsTimeout);
-            var deadlockCount = samples.Count(static s => s.IsDeadlock);
+            var errorCount = 0;
+            var timeoutCount = 0;
+            var deadlockCount = 0;
+            foreach (var sample in samples) {
+                if (sample.IsError) {
+                    errorCount++;
+                }
+
+                if (sample.IsTimeout) {
+                    timeoutCount++;
+                }
+
+                if (sample.IsDeadlock) {
+                    deadlockCount++;
+                }
+            }
             var sampleSql = samples[0].CommandText;
 
             return new SlowQueryMetric(
