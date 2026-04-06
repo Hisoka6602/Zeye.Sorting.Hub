@@ -1484,12 +1484,21 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 return NotAvailableTag;
             }
 
-            // 步骤 2：将多种换行符替换为空格，防止标签值出现多行内容污染日志结构。
-            var normalized = value
-                .Replace("\r\n", " ", StringComparison.Ordinal)
-                .Replace('\r', ' ')
-                .Replace('\n', ' ')
-                .Trim();
+            // 步骤 2：单次遍历替换换行符，减少链式 Replace 额外分配。
+            var normalized = value;
+            var firstBreakIndex = value.AsSpan().IndexOfAny('\r', '\n');
+            if (firstBreakIndex >= 0) {
+                var buffer = value.ToCharArray();
+                for (var index = firstBreakIndex; index < buffer.Length; index++) {
+                    if (buffer[index] is '\r' or '\n') {
+                        buffer[index] = ' ';
+                    }
+                }
+
+                normalized = new string(buffer);
+            }
+
+            normalized = normalized.Trim();
 
             if (normalized.Length == 0) {
                 return NotAvailableTag;
