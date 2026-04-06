@@ -1489,9 +1489,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             var firstBreakIndex = value.AsSpan().IndexOfAny('\r', '\n');
             if (firstBreakIndex >= 0) {
                 var buffer = value.ToCharArray();
-                for (var index = firstBreakIndex; index < buffer.Length; index++) {
-                    if (buffer[index] is '\r' or '\n') {
-                        buffer[index] = ' ';
+                for (var charIndex = firstBreakIndex; charIndex < buffer.Length; charIndex++) {
+                    if (buffer[charIndex] is '\r' or '\n') {
+                        buffer[charIndex] = ' ';
                     }
                 }
 
