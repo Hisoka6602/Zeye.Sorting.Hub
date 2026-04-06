@@ -257,7 +257,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// <param name="nlogArg">填入 NLog 模板占位符的参数值，同时用于格式化回调消息。</param>
         private static void LogResolveWarning(Action<string>? warnCallback, string nlogTemplate, string nlogArg) {
             NLogLogger.Warn(nlogTemplate, nlogArg);
-            warnCallback?.Invoke($"{nlogTemplate[..nlogTemplate.IndexOf('{', StringComparison.Ordinal)]}{nlogArg}");
+            var placeholderIndex = nlogTemplate.IndexOf('{', StringComparison.Ordinal);
+            var messagePrefix = placeholderIndex >= 0 ? nlogTemplate[..placeholderIndex] : nlogTemplate;
+            warnCallback?.Invoke($"{messagePrefix}{nlogArg}");
         }
 
         /// <summary>
