@@ -1,4 +1,3 @@
-using Azure;
 using NLog;
 using System.Text.Encodings.Web;
 using Microsoft.Extensions.Options;
@@ -67,7 +66,7 @@ namespace Zeye.Sorting.Hub.Host.Authentication {
         /// </summary>
         protected override Task HandleChallengeAsync(AuthenticationProperties properties) {
             var normalizedPath = NormalizeRequestPath(Request.Path);
-            AuthenticationLogger.Warn("认证挑战触发，返回 401，路径：{Path}", normalizedPath);
+            AuthenticationLogger.Warn("认证挑战触发，返回 401，路径: {Path}", normalizedPath);
             Response.StatusCode = StatusCodes.Status401Unauthorized;
             return Task.CompletedTask;
         }
@@ -77,7 +76,7 @@ namespace Zeye.Sorting.Hub.Host.Authentication {
         /// </summary>
         protected override Task HandleForbiddenAsync(AuthenticationProperties properties) {
             var normalizedPath = NormalizeRequestPath(Request.Path);
-            AuthenticationLogger.Warn("认证禁止触发，返回 403，路径：{Path}", normalizedPath);
+            AuthenticationLogger.Warn("认证禁止触发，返回 403，路径: {Path}", normalizedPath);
             Response.StatusCode = StatusCodes.Status403Forbidden;
             return Task.CompletedTask;
         }

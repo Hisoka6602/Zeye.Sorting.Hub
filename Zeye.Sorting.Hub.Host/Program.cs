@@ -132,15 +132,15 @@ try {
 
             // 步骤 2：所有异常必须记录日志
             if (exception is not null) {
-                exceptionLogger.Error(exception, "处理 HTTP 请求时发生未处理异常，TraceId：{TraceId}", context.TraceIdentifier);
+                exceptionLogger.Error(exception, "处理 HTTP 请求时发生未处理异常，TraceId: {TraceId}", context.TraceIdentifier);
             }
             else {
-                exceptionLogger.Error("处理 HTTP 请求时发生未知异常，TraceId：{TraceId}", context.TraceIdentifier);
+                exceptionLogger.Error("处理 HTTP 请求时发生未知异常，TraceId: {TraceId}", context.TraceIdentifier);
             }
 
             // 步骤 3：若响应已开始写出，则避免再次写入响应导致连接异常
             if (context.Response.HasStarted) {
-                exceptionLogger.Error("响应已开始写出，无法输出统一 ProblemDetails，TraceId：{TraceId}", context.TraceIdentifier);
+                exceptionLogger.Error("响应已开始写出，无法输出统一 ProblemDetails，TraceId: {TraceId}", context.TraceIdentifier);
                 return;
             }
 
