@@ -24,12 +24,8 @@ namespace Zeye.Sorting.Hub.Host.Authentication {
                 return "/";
             }
 
-            // 步骤 2：移除换行符，避免日志伪造。
-            var normalized = value
-                .Replace("\r\n", " ", StringComparison.Ordinal)
-                .Replace('\r', ' ')
-                .Replace('\n', ' ')
-                .Trim();
+            // 步骤 2：单次遍历替换换行符，避免多次 Replace 产生额外分配。
+            var normalized = ReplaceLineBreaksToSpace(value).Trim();
             if (normalized.Length == 0) {
                 return "/";
             }
@@ -37,6 +33,27 @@ namespace Zeye.Sorting.Hub.Host.Authentication {
             // 步骤 3：限制最大长度，防止日志字段异常膨胀。
             const int maxPathLength = 256;
             return normalized.Length <= maxPathLength ? normalized : normalized[..maxPathLength];
+        }
+
+        /// <summary>
+        /// 将字符串中的 CR/LF 替换为空格，且仅在存在换行符时分配新字符串。
+        /// </summary>
+        /// <param name="value">输入字符串。</param>
+        /// <returns>替换后的字符串。</returns>
+        private static string ReplaceLineBreaksToSpace(string value) {
+            var firstBreakIndex = value.AsSpan().IndexOfAny('\r', '\n');
+            if (firstBreakIndex < 0) {
+                return value;
+            }
+
+            var buffer = value.ToCharArray();
+            for (var index = firstBreakIndex; index < buffer.Length; index++) {
+                if (buffer[index] is '\r' or '\n') {
+                    buffer[index] = ' ';
+                }
+            }
+
+            return new string(buffer);
         }
 
         /// <summary>
