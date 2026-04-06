@@ -66,7 +66,7 @@ public sealed class GetParcelPagedQueryService {
         catch (Exception ex) {
             Logger.Error(
                 ex,
-                "分页查询 Parcel 列表失败，PageNumber={0}, PageSize={1}, BarCodeKeyword={2}, BagCode={3}, WorkstationName={4}, Status={5}, ActualChuteId={6}, TargetChuteId={7}, ScannedTimeStart={8}, ScannedTimeEnd={9}",
+                "分页查询 Parcel 列表失败，PageNumber={PageNumber}, PageSize={PageSize}, BarCodeKeyword={BarCodeKeyword}, BagCode={BagCode}, WorkstationName={WorkstationName}, Status={Status}, ActualChuteId={ActualChuteId}, TargetChuteId={TargetChuteId}, ScannedTimeStart={ScannedTimeStart}, ScannedTimeEnd={ScannedTimeEnd}",
                 request.PageNumber,
                 request.PageSize,
                 request.BarCodeKeyword,
@@ -91,7 +91,7 @@ public sealed class GetParcelPagedQueryService {
 
         if (request.ScannedTimeStart.HasValue && request.ScannedTimeEnd.HasValue && request.ScannedTimeEnd.Value < request.ScannedTimeStart.Value) {
             Logger.Warn(
-                "分页查询 Parcel 列表参数非法，ScannedTimeStart={0}, ScannedTimeEnd={1}",
+                "分页查询 Parcel 列表参数非法，ScannedTimeStart={ScannedTimeStart}, ScannedTimeEnd={ScannedTimeEnd}",
                 request.ScannedTimeStart,
                 request.ScannedTimeEnd);
             throw new ArgumentException("扫码结束时间不能早于开始时间。", nameof(request));

@@ -68,7 +68,7 @@ public sealed class GetAdjacentParcelsQueryService {
         catch (Exception ex) {
             Logger.Error(
                 ex,
-                "查询 Parcel 邻近记录失败，Id={0}, BeforeCount={1}, AfterCount={2}",
+                "查询 Parcel 邻近记录失败，Id={ParcelId}, BeforeCount={BeforeCount}, AfterCount={AfterCount}",
                 request.Id,
                 request.BeforeCount,
                 request.AfterCount);
