@@ -90,6 +90,7 @@
 - `Infrastructure`（技术细节抽象，仅限内部）：
   - 协议编解码接口、协议解析接口、CRC 计算接口、通信传输接口
   - 基础设施内部缓存/性能抽象（不得上浮为业务契约）
+  - 上述接口仅允许 `Infrastructure` 内部实现与调用，`Application` 不得直接依赖，必须通过 `Application/Abstractions` 的业务抽象间接使用
 
 ### 实现位置（类放置）强约束
 
@@ -104,7 +105,7 @@
 
 - 仓储接口：`I{Name}Repository`
 - 领域服务接口：`I{Name}DomainService`
-- 领域策略/规格/策略接口：`I{Name}Policy` / `I{Name}Specification` / `I{Name}Strategy`
+- 领域策略/规格/规则接口：`I{Name}Policy` / `I{Name}Specification` / `I{Name}Strategy`
 - 领域工厂接口：`I{Name}Factory`
 - 查询/读服务接口：`I{Name}QueryService` / `I{Name}ReadService`
 - 外部网关/客户端接口：`I{Name}Gateway` / `I{Name}Client`
@@ -114,7 +115,7 @@
 
 - `Domain`：`Aggregates/`、`Entities/`、`ValueObjects/`、`Events/`、`Services/`、`Policies/`、`Specifications/`、`Repositories/`、`Factories/`、`SharedKernel/`、`Exceptions/`
 - `Application`：`Abstractions/`（按 Persistence/Queries/Security/Storage/Messaging/Localization/Integrations/Export/Import/Devices 子目录细分）、`Commands/`、`Queries/`、`Dtos/`、`Services/`、`Mappers/`、`Behaviors/`
-- `Infrastructure`：`Persistence/`（DbContexts/Repositories/Configurations/Migrations）、`Queries/`、`Security/`、`Storage/`、`Messaging/`、`Localization/`、`Integrations/`、`Devices/`（Protocols/Abstractions/Codecs/Parsers/Checksums）、`Caching/`、`DependencyInjection/`
+- `Infrastructure`：`Persistence/`（DbContexts/Repositories/Configurations/Migrations）、`Queries/`、`Security/`、`Storage/`、`Messaging/`、`Localization/`、`Integrations/`、`Devices/`（Protocols/Internals/Codecs/Parsers/Checksums）、`Caching/`、`DependencyInjection/`
 - `Host`：`Controllers/`、`Hubs/`、`HostedServices/`、`Middleware/`、`Options/`、`Extensions/`、`Program.cs`
 
 ### 明确禁止项（强制）
