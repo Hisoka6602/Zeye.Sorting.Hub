@@ -123,24 +123,36 @@ try {
     // ──────────────────────────────────────────────────────
     // 全局异常出口：统一 ProblemDetails + 异常日志落盘
     // ──────────────────────────────────────────────────────
+    var globalExceptionLogger = LogManager.GetLogger($"{nameof(Program)}.GlobalExceptionHandler");
     app.UseExceptionHandler(exceptionHandlerApp => {
         exceptionHandlerApp.Run(async context => {
-            var exceptionLogger = LogManager.GetLogger($"{nameof(Program)}.GlobalExceptionHandler");
             // 步骤 1：提取当前请求异常
             var exceptionFeature = context.Features.Get<IExceptionHandlerFeature>();
             var exception = exceptionFeature?.Error;
+            var rawPath = context.Request.Path.HasValue ? context.Request.Path.Value : "/";
+            var normalizedPath = string.IsNullOrWhiteSpace(rawPath)
+                ? "/"
+                : LineBreakNormalizer.ReplaceLineBreaksToSpace(rawPath).Trim();
+            if (normalizedPath.Length == 0) {
+                normalizedPath = "/";
+            }
+
+            const int maxPathLength = 256;
+            if (normalizedPath.Length > maxPathLength) {
+                normalizedPath = normalizedPath[..maxPathLength];
+            }
 
             // 步骤 2：所有异常必须记录日志
             if (exception is not null) {
-                exceptionLogger.Error(exception, "处理 HTTP 请求时发生未处理异常，TraceId: {TraceId}", context.TraceIdentifier);
+                globalExceptionLogger.Error(exception, "处理 HTTP 请求时发生未处理异常，Path: {Path}, TraceId: {TraceId}", normalizedPath, context.TraceIdentifier);
             }
             else {
-                exceptionLogger.Error("处理 HTTP 请求时发生未知异常，TraceId: {TraceId}", context.TraceIdentifier);
+                globalExceptionLogger.Error("处理 HTTP 请求时发生未知异常，Path: {Path}, TraceId: {TraceId}", normalizedPath, context.TraceIdentifier);
             }
 
             // 步骤 3：若响应已开始写出，则避免再次写入响应导致连接异常
             if (context.Response.HasStarted) {
-                exceptionLogger.Error("响应已开始写出，无法输出统一 ProblemDetails，TraceId: {TraceId}", context.TraceIdentifier);
+                globalExceptionLogger.Error("响应已开始写出，无法输出统一 ProblemDetails，Path: {Path}, TraceId: {TraceId}", normalizedPath, context.TraceIdentifier);
                 return;
             }
 

@@ -12,6 +12,7 @@ using Zeye.Sorting.Hub.Host.Options;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
+using Zeye.Sorting.Hub.SharedKernel.Utilities;
 
 namespace Zeye.Sorting.Hub.Host.HostedServices {
 
@@ -1485,18 +1486,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
 
             // 步骤 2：单次遍历替换换行符，减少链式 Replace 额外分配。
-            var normalized = value;
-            var firstBreakIndex = value.AsSpan().IndexOfAny('\r', '\n');
-            if (firstBreakIndex >= 0) {
-                var buffer = value.ToCharArray();
-                for (var charIndex = firstBreakIndex; charIndex < buffer.Length; charIndex++) {
-                    if (buffer[charIndex] is '\r' or '\n') {
-                        buffer[charIndex] = ' ';
-                    }
-                }
-
-                normalized = new string(buffer);
-            }
+            var normalized = LineBreakNormalizer.ReplaceLineBreaksToSpace(value);
 
             normalized = normalized.Trim();
 

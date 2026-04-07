@@ -304,7 +304,8 @@
 │   ├── Utilities（共享工具目录）
 │   │   ├── SafeExecutor.cs（安全执行器：使用 NLog 静态 logger，不再依赖 MEL ILogger 构造注入；隔离任何异常，Execute/ExecuteAsync 确保副作用不会导致宿主崩溃）
 │   │   ├── ConfigChangeEntry.cs（配置变更历史记录条目：保存单次配置变更快照，含变更序号/前值/后值/本地生效时间/变更字段摘要）
-│   │   └── ConfigChangeHistoryStore.cs（配置变更历史存储器：线程安全环形缓冲，保留最近 N 次配置快照，支持前后值审计与回滚查询）
+│   │   ├── ConfigChangeHistoryStore.cs（配置变更历史存储器：线程安全环形缓冲，保留最近 N 次配置快照，支持前后值审计与回滚查询）
+│   │   └── LineBreakNormalizer.cs（换行标准化工具：将 CR/LF 归一化为空格，仅在存在换行时分配新字符串）
 │   └── Zeye.Sorting.Hub.SharedKernel.csproj（SharedKernel 项目定义）
 ├── Zeye.Sorting.Hub.sln（.NET 解决方案入口）
 ├── EFCore数据库迁移指南.md（EF Core CodeFirst 迁移使用说明文档）
@@ -643,6 +644,7 @@
 - `SafeExecutor.cs`：安全执行器；使用 NLog 静态 logger（`LogManager.GetCurrentClassLogger()`），移除了 MEL `ILogger<SafeExecutor>` 构造依赖；提供 `Execute`、`ExecuteAsync`（void）、`ExecuteAsync<T>`（带返回值）三个重载，确保任何异常都不会导致宿主崩溃。
 - `ConfigChangeEntry.cs`：配置变更历史记录条目；`sealed record` 值类型，携带变更序号（单调递增）、前值快照、后值快照、本地生效时间与变更字段摘要，供配置变更审计使用。
 - `ConfigChangeHistoryStore.cs`：配置变更历史存储器；泛型环形缓冲实现，线程安全，保留最近 N 次配置快照（默认 10 条）；暴露 `Record(previous, current, changedFields)` 写入快照、`GetHistory()` 获取历史与 `GetLatest()` 获取最新快照，供配置变更审计与回滚查询使用。
+- `LineBreakNormalizer.cs`：换行标准化工具；统一将 CR/LF 归一化为空格且仅在存在换行符时分配新字符串，供日志路径/标签清洗复用，避免同义逻辑分散实现。
 
 ### `Zeye.Sorting.Hub.Host.Tests/`：API 与应用层测试层
 - `Zeye.Sorting.Hub.Host.Tests.csproj`：xUnit 测试项目定义。
@@ -686,6 +688,10 @@
 
 ## 本次更新内容
 
+- 修复审查项：全局异常处理日志器改为注册期单例复用，避免异常回调热路径重复获取 logger。
+- 修复审查项：全局异常日志补充 `Path + TraceId` 诊断上下文，并对路径执行单行化与长度限制（256 字符）。
+- 修复审查项：新增 `LineBreakNormalizer` 共享工具，统一替换 `GuardedAuthenticationHandler` 与 `DatabaseAutoTuningHostedService` 的重复换行清洗实现。
+- 同步更新 README 文件树与“各层级与各文件作用说明（逐项）”章节，确保新增共享工具文件职责与仓库结构一致。
 - 日志清理服务由顶层扫描调整为目录栈递归扫描：覆盖日志根目录及全部子目录 `*.log` 清理，不再遗漏深层目录日志文件。
 - 日志清理取消与异常日志定位修正为“当前实际扫描目录”，删除失败日志补充“文件绝对路径 + 实际目录”定位信息，便于排障。
 - 新增 `LogCleanupServiceTests` 回归测试，验证递归扫描行为与过期删除边界（仅删除过期日志，保留最近日志）。
@@ -693,6 +699,7 @@
 
 ## 后续可完善点
 
+- 可将其它日志输入清洗路径（如 query/header 维度）逐步迁移至 `LineBreakNormalizer`，进一步压缩重复实现面并统一观测口径。
 - 可为日志清理服务补充“扫描目录无权限/文件被占用”场景测试，进一步验证失败计数与日志观测一致性。
 - 可扩展递归扫描的可观测指标（扫描目录数、扫描文件数、跳过数），便于大规模日志目录治理调优。
 
