@@ -16,6 +16,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence {
         /// </summary>
         private const string SqlServerDefaultSchema = "dbo";
 
+        /// <summary>
+        /// 初始化 <see cref="SortingHubDbContext"/>。
+        /// </summary>
+        /// <param name="options">DbContext 配置选项。</param>
         public SortingHubDbContext(DbContextOptions<SortingHubDbContext> options) : base(options) {
         }
 

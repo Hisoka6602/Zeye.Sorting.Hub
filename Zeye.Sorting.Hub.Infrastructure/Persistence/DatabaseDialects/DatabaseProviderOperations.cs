@@ -11,6 +11,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
         /// <summary>
         /// 尝试从异常链中提取数据库提供器错误码。
         /// </summary>
+        /// <param name="exception">待检查的异常。</param>
+        /// <param name="errorNumber">若成功，返回提取到的错误码；否则为 0。</param>
+        /// <returns>成功提取时返回 <c>true</c>；否则返回 <c>false</c>。</returns>
         public static bool TryGetProviderErrorNumber(Exception exception, out int errorNumber) {
             for (Exception? current = exception; current is not null; current = current.InnerException) {
                 var numberProperty = current.GetType().GetProperty("Number");
