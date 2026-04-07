@@ -41,7 +41,7 @@ public sealed class GetParcelByIdQueryService {
             return parcel is null ? null : ParcelContractMapper.ToDetail(parcel);
         }
         catch (Exception ex) {
-            Logger.Error(ex, "按 Id 查询 Parcel 详情失败，ParcelId={0}", parcelId);
+            Logger.Error(ex, "按 Id 查询 Parcel 详情失败，ParcelId={ParcelId}", parcelId);
             throw;
         }
     }

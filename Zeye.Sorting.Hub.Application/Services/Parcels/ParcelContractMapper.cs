@@ -33,14 +33,14 @@ internal static class ParcelContractMapper {
                 BarCode = x.BarCode,
                 BarCodeType = (int)x.BarCodeType,
                 CapturedTime = x.CapturedTime
-            }).ToList(),
+            }).ToArray(),
             weightInfos: parcel.WeightInfos.Select(x => new WeightInfoResponse {
                 RawWeight = x.RawWeight,
                 EvidenceCode = x.EvidenceCode,
                 FormattedWeight = x.FormattedWeight,
                 WeighingTime = x.WeighingTime,
                 AdjustedWeight = x.AdjustedWeight
-            }).ToList(),
+            }).ToArray(),
             volumeInfo: parcel.VolumeInfo is null ? null : new VolumeInfoResponse {
                 SourceType = (int)parcel.VolumeInfo.SourceType,
                 RawVolume = parcel.VolumeInfo.RawVolume,
@@ -70,7 +70,7 @@ internal static class ParcelContractMapper {
                 Exception = x.Exception,
                 RawData = x.RawData,
                 FormattedMessage = x.FormattedMessage
-            }).ToList(),
+            }).ToArray(),
             chuteInfo: parcel.ChuteInfo is null ? null : new ChuteInfoResponse {
                 TargetChuteId = parcel.ChuteInfo.TargetChuteId,
                 ActualChuteId = parcel.ChuteInfo.ActualChuteId,
@@ -86,7 +86,7 @@ internal static class ParcelContractMapper {
                 ActionType = (int)x.ActionType,
                 FormattedMessage = x.FormattedMessage,
                 Direction = (int)x.Direction
-            }).ToList(),
+            }).ToArray(),
             imageInfos: parcel.ImageInfos.Select(x => new ImageInfoResponse {
                 CameraName = x.CameraName,
                 CustomName = x.CustomName,
@@ -94,12 +94,12 @@ internal static class ParcelContractMapper {
                 ImageType = (int)x.ImageType,
                 RelativePath = x.RelativePath,
                 CaptureType = (int)x.CaptureType
-            }).ToList(),
+            }).ToArray(),
             videoInfos: parcel.VideoInfos.Select(x => new VideoInfoResponse {
                 Channel = x.Channel,
                 NvrSerialNumber = x.NvrSerialNumber,
                 NodeType = (int)x.NodeType
-            }).ToList(),
+            }).ToArray(),
             sorterCarrierInfo: parcel.SorterCarrierInfo is null ? null : new SorterCarrierInfoResponse {
                 SorterCarrierId = parcel.SorterCarrierInfo.SorterCarrierId,
                 LoadedTime = parcel.SorterCarrierInfo.LoadedTime,

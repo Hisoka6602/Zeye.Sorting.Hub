@@ -26,6 +26,7 @@ var logger = LogManager.GetCurrentClassLogger();
 const string UrlsConfigKey = "urls";
 
 try {
+    var startupLogger = LogManager.GetLogger($"{nameof(Program)}.Startup");
     var builder = WebApplication.CreateBuilder(args);
     var hostingOptions = builder.Configuration.GetSection("Hosting").Get<HostingOptions>() ?? new HostingOptions();
     var urlsFromConfiguration = builder.Configuration[UrlsConfigKey];
@@ -52,8 +53,6 @@ try {
         builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", Microsoft.Extensions.Logging.LogLevel.Warning);
     }
 
-    using var startupLoggerFactory = LoggerFactory.Create(logging => logging.AddNLog());
-    var startupLogger = startupLoggerFactory.CreateLogger("Startup");
     builder.Services.Configure<LogCleanupSettings>(
         builder.Configuration.GetSection("LogCleanup"));
     builder.Services.Configure<HostingOptions>(builder.Configuration.GetSection("Hosting"));
@@ -96,7 +95,7 @@ try {
             }
 
             if (builder.Environment.IsDevelopment()) {
-                startupLogger.LogWarning("Swagger XML 注释文件未找到：{XmlPath}", xmlPath);
+                startupLogger.Warn("Swagger XML 注释文件未找到：{XmlPath}", xmlPath);
             }
         }
 
@@ -124,25 +123,34 @@ try {
     // ──────────────────────────────────────────────────────
     // 全局异常出口：统一 ProblemDetails + 异常日志落盘
     // ──────────────────────────────────────────────────────
+    var globalExceptionLogger = LogManager.GetLogger($"{nameof(Program)}.GlobalExceptionHandler");
     app.UseExceptionHandler(exceptionHandlerApp => {
         exceptionHandlerApp.Run(async context => {
             // 步骤 1：提取当前请求异常
             var exceptionFeature = context.Features.Get<IExceptionHandlerFeature>();
             var exception = exceptionFeature?.Error;
+            var rawPath = context.Request.Path.HasValue ? context.Request.Path.Value : "/";
+            var trimmedPath = string.IsNullOrWhiteSpace(rawPath)
+                ? string.Empty
+                : LineBreakNormalizer.ReplaceLineBreaksToSpace(rawPath).Trim();
+            var normalizedPath = string.IsNullOrWhiteSpace(trimmedPath) ? "/" : trimmedPath;
+
+            const int maxPathLength = 256;
+            if (normalizedPath.Length > maxPathLength) {
+                normalizedPath = normalizedPath[..maxPathLength];
+            }
 
             // 步骤 2：所有异常必须记录日志
-            var loggerFactory = context.RequestServices.GetRequiredService<ILoggerFactory>();
-            var logger = loggerFactory.CreateLogger("GlobalExceptionHandler");
             if (exception is not null) {
-                logger.LogError(exception, "处理 HTTP 请求时发生未处理异常，路径：{Path}", context.Request.Path);
+                globalExceptionLogger.Error(exception, "处理 HTTP 请求时发生未处理异常，Path: {Path}, TraceId: {TraceId}", normalizedPath, context.TraceIdentifier);
             }
             else {
-                logger.LogError("处理 HTTP 请求时发生未知异常，路径：{Path}", context.Request.Path);
+                globalExceptionLogger.Error("处理 HTTP 请求时发生未知异常，Path: {Path}, TraceId: {TraceId}", normalizedPath, context.TraceIdentifier);
             }
 
             // 步骤 3：若响应已开始写出，则避免再次写入响应导致连接异常
             if (context.Response.HasStarted) {
-                logger.LogError("响应已开始写出，无法输出统一 ProblemDetails，路径：{Path}", context.Request.Path);
+                globalExceptionLogger.Error("响应已开始写出，无法输出统一 ProblemDetails，Path: {Path}, TraceId: {TraceId}", normalizedPath, context.TraceIdentifier);
                 return;
             }
 

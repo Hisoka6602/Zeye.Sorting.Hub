@@ -57,11 +57,77 @@
 
 ## 日志落盘规范
 
+- 所有业务日志、异常日志、后台任务日志、数据库相关日志都必须落盘，禁止仅输出到控制台不落盘。
 - 存盘日志文件大小不能超过 10 MB，超过必须触发轮转（即滚动写入新文件）。
 - NLog 所有 `xsi:type="File"` target 必须同时满足：
   - `archiveAboveSize="10485760"`（10 MB 尺寸上限）
   - `archiveNumbering="DateAndSequence"`（支持同天多次轮转，避免覆盖）
   - 同时保留 `archiveEvery="Day"`（同天多次+每日归档双保险）
+
+## DDD 分层接口与实现放置规范（强制）
+
+- 必须严格遵守依赖方向：`Host -> Infrastructure -> Application -> Domain`。
+- `Domain` 不允许依赖 `Application`、`Infrastructure`、`Host`；`Application` 不允许依赖 `Infrastructure`、`Host`。
+- 接口定义必须按语义归属放置，禁止“为了实现方便”上移或下沉。
+
+### 抽象位置（接口定义）强约束
+
+- `Domain`（领域抽象）：
+  - 仓储接口：`Domain/Repositories`
+  - 领域服务接口：`Domain/Services`
+  - 领域策略/规格/规则接口：`Domain/Policies`、`Domain/Specifications`
+  - 领域工厂接口：`Domain/Factories`
+  - 领域时间/标识等共享抽象：`Domain/SharedKernel`
+- `Application/Abstractions`（应用协作抽象）：
+  - `Persistence`：`IUnitOfWork`
+  - `Queries`：查询/读模型接口
+  - `Security`：当前用户/租户/权限上下文接口
+  - `Localization`：本地化接口
+  - `Storage` / `Export` / `Import`：文件与导入导出接口
+  - `Messaging`：消息发布/通知接口
+  - `Integrations`：第三方系统网关/客户端接口
+  - `Devices`：面向业务的设备能力抽象
+- `Infrastructure`（技术细节抽象，仅限内部）：
+  - 协议编解码接口、协议解析接口、CRC 计算接口、通信传输接口
+  - 基础设施内部缓存/性能抽象（不得上浮为业务契约）
+  - 上述接口仅允许 `Infrastructure` 内部实现与调用，`Application` 不得直接依赖，必须通过 `Application/Abstractions` 的业务抽象间接使用
+
+### 实现位置（类放置）强约束
+
+- `Domain` 允许：纯领域规则实现（领域服务、策略、规格、工厂、值对象行为）。
+- `Domain` 禁止：`DbContext`、EF/SQL、Redis、HTTP、文件系统、MQ、驱动通信、协议编解码实现。
+- `Application` 允许：Command/Query Handler、ApplicationService、用例编排、DTO 映射。
+- `Application` 禁止：仓储实现、SQL/EF 具体实现、`HttpClient` 具体实现、Redis/文件/驱动通信实现。
+- `Infrastructure` 负责实现 `Domain` 与 `Application` 抽象：Repository、UnitOfWork、DbContext、网关、缓存、消息、文件、设备驱动、协议编解码。
+- `Host` 仅允许入口与组装代码（Program、Controller、Hub、HostedService、DI、中间件），禁止承载仓储实现、网关实现、驱动实现、协议编解码实现和核心领域规则实现。
+
+### 命名规则（必须遵守）
+
+- 仓储接口：`I{Name}Repository`
+- 领域服务接口：`I{Name}DomainService`
+- 领域策略/规格/规则接口：`I{Name}Policy` / `I{Name}Specification` / `I{Name}Strategy`
+- 领域工厂接口：`I{Name}Factory`
+- 查询/读服务接口：`I{Name}QueryService` / `I{Name}ReadService`
+- 外部网关/客户端接口：`I{Name}Gateway` / `I{Name}Client`
+- 协议编解码/解析接口：`I{Name}FrameCodec` / `I{Name}ProtocolParser`
+
+### 目录与分层边界建议（默认采用）
+
+- `Domain`：`Aggregates/`、`Entities/`、`ValueObjects/`、`Events/`、`Services/`、`Policies/`、`Specifications/`、`Repositories/`、`Factories/`、`SharedKernel/`、`Exceptions/`
+- `Application`：`Abstractions/`（按 Persistence/Queries/Security/Storage/Messaging/Localization/Integrations/Export/Import/Devices 子目录细分）、`Commands/`、`Queries/`、`Dtos/`、`Services/`、`Mappers/`、`Behaviors/`
+- `Infrastructure`：`Persistence/`（DbContexts/Repositories/Configurations/Migrations）、`Queries/`、`Security/`、`Storage/`、`Messaging/`、`Localization/`、`Integrations/`、`Devices/`（Protocols/Internals/Codecs/Parsers/Checksums）、`Caching/`、`DependencyInjection/`
+- `Host`：`Controllers/`、`Hubs/`、`HostedServices/`、`Middleware/`、`Options/`、`Extensions/`、`Program.cs`
+
+### 明确禁止项（强制）
+
+- 禁止将所有接口统一放到 `Application`。
+- 禁止 `Domain` 引用 `Application` 抽象或 DTO。
+- 禁止基础设施实现细节（EF、Redis、HTTP、MQ、文件系统、串口/TCP、报文格式）泄漏到 `Domain` 或 `Application`。
+- 禁止 `Host` 承载核心业务实现或基础设施实现。
+- 禁止仓储接口暴露 `IQueryable`。
+- 查询接口与查询 DTO 禁止放在 `Domain`。
+- 严禁重复职责并存：若新增代码覆盖旧实现，必须同时删除旧接口、旧实现、旧 DI 注册并更新调用方引用。
+- Controller、Hub、HostedService 只能依赖 `Application` 抽象，禁止直接依赖仓储实现类或基础设施实现细节。
 
 ## PR 交付门禁（必须全部满足）
 

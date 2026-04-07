@@ -12,6 +12,7 @@ using Zeye.Sorting.Hub.Host.Options;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
+using Zeye.Sorting.Hub.SharedKernel.Utilities;
 
 namespace Zeye.Sorting.Hub.Host.HostedServices {
 
@@ -1484,12 +1485,10 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 return NotAvailableTag;
             }
 
-            // 步骤 2：将多种换行符替换为空格，防止标签值出现多行内容污染日志结构。
-            var normalized = value
-                .Replace("\r\n", " ", StringComparison.Ordinal)
-                .Replace('\r', ' ')
-                .Replace('\n', ' ')
-                .Trim();
+            // 步骤 2：单次遍历替换换行符，减少链式 Replace 额外分配。
+            var normalized = LineBreakNormalizer.ReplaceLineBreaksToSpace(value);
+
+            normalized = normalized.Trim();
 
             if (normalized.Length == 0) {
                 return NotAvailableTag;

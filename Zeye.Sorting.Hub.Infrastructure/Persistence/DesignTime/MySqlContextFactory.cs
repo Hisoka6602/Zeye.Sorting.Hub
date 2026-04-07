@@ -65,7 +65,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
             var serverVersion = DependencyInjection.PersistenceServiceCollectionExtensions.ResolveMySqlServerVersion(
                 config,
                 normalizedConnectionString,
-                msg => Logger.Warn("[DesignTime] {0}", msg));
+                msg => Logger.Warn("[DesignTime] {Message}", msg));
             var options = new DbContextOptionsBuilder<SortingHubDbContext>()
                 .UseMySql(normalizedConnectionString, serverVersion)
                 .Options;
