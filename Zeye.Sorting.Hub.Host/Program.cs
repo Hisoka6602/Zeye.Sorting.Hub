@@ -130,12 +130,10 @@ try {
             var exceptionFeature = context.Features.Get<IExceptionHandlerFeature>();
             var exception = exceptionFeature?.Error;
             var rawPath = context.Request.Path.HasValue ? context.Request.Path.Value : "/";
-            var normalizedPath = string.IsNullOrWhiteSpace(rawPath)
-                ? "/"
+            var trimmedPath = string.IsNullOrWhiteSpace(rawPath)
+                ? string.Empty
                 : LineBreakNormalizer.ReplaceLineBreaksToSpace(rawPath).Trim();
-            if (normalizedPath.Length == 0) {
-                normalizedPath = "/";
-            }
+            var normalizedPath = string.IsNullOrWhiteSpace(trimmedPath) ? "/" : trimmedPath;
 
             const int maxPathLength = 256;
             if (normalizedPath.Length > maxPathLength) {
