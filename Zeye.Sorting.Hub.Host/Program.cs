@@ -18,6 +18,7 @@ using Zeye.Sorting.Hub.Application.Services.Parcels;
 using Zeye.Sorting.Hub.Application.Services.AuditLogs;
 using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 // ──────────────────────────────────────────────────────────
 // 启动期引导日志：在 DI 容器就绪之前捕获启动异常
@@ -62,9 +63,10 @@ try {
     builder.Services.AddHostedService<DevelopmentBrowserLauncherHostedService>();
     builder.Services.AddSingleton<SafeExecutor>();
     builder.Services.AddSingleton<ConfigChangeHistoryStore<LogCleanupSettings>>();
-    // 先注册观测实现，确保 AddSortingHubPersistence 内的 TryAddSingleton 不重复注册空实现
-    builder.Services.AddSingleton<IAutoTuningObservability, AutoTuningLoggerObservability>();
     builder.Services.AddSortingHubPersistence(builder.Configuration);
+    // 显式替换 IAutoTuningObservability：无论 AddSortingHubPersistence 内是否已注册占位空实现，
+    // Replace 均保证最终容器中只存在真实的日志观测实现，与注册顺序无关。
+    builder.Services.Replace(ServiceDescriptor.Singleton<IAutoTuningObservability, AutoTuningLoggerObservability>());
     // ──────────────────────────────────────────────────────
     // 健康检查：存活探针（/health/live）+ 就绪探针（/health/ready）
     //   - /health/live   仅判断进程健康（无依赖检查），用于容器重启决策

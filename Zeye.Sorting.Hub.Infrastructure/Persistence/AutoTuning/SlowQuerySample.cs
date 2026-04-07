@@ -31,6 +31,14 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         /// <summary>
         /// 初始化慢查询采样记录。
         /// </summary>
+        /// <param name="commandText">原始 SQL 命令文本。</param>
+        /// <param name="sqlFingerprint">SQL 指纹（标准化后的哈希标识，用于聚合统计）。</param>
+        /// <param name="elapsedMilliseconds">执行耗时，单位为毫秒。</param>
+        /// <param name="affectedRows">影响行数；不可用时为 0。</param>
+        /// <param name="isError">指示本次执行是否发生异常。</param>
+        /// <param name="isTimeout">指示本次异常是否为超时异常。</param>
+        /// <param name="isDeadlock">指示本次异常是否为死锁异常。</param>
+        /// <param name="occurredTime">采样发生时间，保持本地时间语义。</param>
         public SlowQuerySample(
             string commandText,
             string sqlFingerprint,

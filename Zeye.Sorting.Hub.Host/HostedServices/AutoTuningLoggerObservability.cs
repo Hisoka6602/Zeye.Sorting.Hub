@@ -26,13 +26,27 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
         /// <summary>
         /// 将标签字典格式化为可读字符串。
+        /// 采用手写循环代替 LINQ，减少热路径内存分配。
         /// </summary>
         private static string FormatTags(IReadOnlyDictionary<string, string>? tags) {
             if (tags is null || tags.Count == 0) {
                 return string.Empty;
             }
 
-            return string.Join(", ", tags.Select(static pair => $"{pair.Key}={pair.Value}"));
+            // 步骤 1：预估容量（每个条目约 32 字符），避免 StringBuilder 多次扩容。
+            var sb = new System.Text.StringBuilder(tags.Count * 32);
+            var first = true;
+            foreach (var pair in tags) {
+                if (!first) {
+                    sb.Append(", ");
+                }
+
+                sb.Append(pair.Key).Append('=').Append(pair.Value);
+                first = false;
+            }
+
+            // 步骤 2：返回最终字符串。
+            return sb.ToString();
         }
     }
 }
