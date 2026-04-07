@@ -36,7 +36,13 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// </summary>
         private readonly ConfigChangeHistoryStore<LogCleanupSettings> _changeHistory;
         /// <summary>
+        /// IOptionsMonitor.OnChange 订阅句柄，用于在服务停止时注销回调，防止回调在服务停止后触发。
+        /// </summary>
+        private readonly IDisposable? _settingsChangeRegistration;
+        /// <summary>
         /// 上一次生效的配置快照，用于变更时的前后值对比审计。
+        /// 并发安全：通过 <see cref="Interlocked.Exchange{T}"/> 进行原子读写，
+        /// 保证多个配置变更回调并发时"变更前"值的正确性。
         /// </summary>
         private LogCleanupSettings? _previousSettings;
 
@@ -57,11 +63,19 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _observability = observability;
             _changeHistory = changeHistory;
 
-            // 记录初始配置快照
+            // 记录初始配置快照（发布于主线程，先于任何回调触发）
             _previousSettings = settingsMonitor.CurrentValue;
 
-            // 配置热加载：当配置变更时记录审计日志（含前后值对比）
-            _settingsMonitor.OnChange(OnSettingsChanged);
+            // 配置热加载：当配置变更时记录审计日志（含前后值对比），保存句柄以便 Dispose 时注销
+            _settingsChangeRegistration = _settingsMonitor.OnChange(OnSettingsChanged);
+        }
+
+        /// <summary>
+        /// 释放资源，注销配置变更回调以防止服务停止后仍触发回调。
+        /// </summary>
+        public override void Dispose() {
+            _settingsChangeRegistration?.Dispose();
+            base.Dispose();
         }
 
         /// <summary>
@@ -218,11 +232,19 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
         /// <summary>
         /// 配置变更回调：热加载生效时输出前后值对比审计日志并记录快照历史。
+        /// <para>
+        /// 并发安全说明：使用 <see cref="Interlocked.Exchange{T}"/> 原子地将 <c>_previousSettings</c>
+        /// 替换为新快照并获取旧值，消除多次快速配置变更时并发回调导致的读写竞态（TOCTOU）。
+        /// </para>
         /// </summary>
         /// <param name="newSettings">新配置值。</param>
         /// <param name="name">配置名称（IOptionsMonitor 名称，通常为 null）。</param>
         private void OnSettingsChanged(LogCleanupSettings newSettings, string? name) {
-            var prev = _previousSettings;
+            // 步骤 1：原子交换——获取旧快照并写入新值，保证并发回调时"变更前"值的正确性。
+            // newSettings 是 record 类型（值语义），无需额外 with{} 拷贝。
+            var prev = Interlocked.Exchange(ref _previousSettings, newSettings);
+
+            // 步骤 2：基于捕获的旧值计算变更字段摘要（此后不再依赖共享状态）。
             var changedFields = BuildChangedFieldsSummary(prev, newSettings);
 
             Logger.Info(
@@ -240,14 +262,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 newSettings.CheckIntervalHours,
                 newSettings.LogDirectory);
 
-            // 记录到历史存储器（传入 record with {} 拷贝，确保历史条目为真正不可变快照）
-            _changeHistory.Record(
-                prev is null ? null : prev with { },
-                newSettings with { },
-                changedFields);
-
-            // 更新前值快照（保存当前值副本，供下次变更对比使用）
-            _previousSettings = newSettings with { };
+            // 步骤 3：记录到历史存储器（prev 已是不可变快照，无需再做 with{} 拷贝）。
+            _changeHistory.Record(prev, newSettings, changedFields);
         }
 
         /// <summary>
