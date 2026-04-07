@@ -17,6 +17,12 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
         where TEntity : class
         where TContext : DbContext {
 
+        /// <summary>
+        /// 初始化 <see cref="MemoryCacheRepositoryBase{TEntity,TContext}"/>。
+        /// </summary>
+        /// <param name="contextFactory">EF Core DbContext 工厂。</param>
+        /// <param name="memoryCache">内存缓存实例。</param>
+        /// <param name="logger">NLog 日志器（由派生类传入）。</param>
         protected MemoryCacheRepositoryBase(
             IDbContextFactory<TContext> contextFactory,
             IMemoryCache memoryCache,
@@ -25,6 +31,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
             MemoryCache = memoryCache ?? throw new ArgumentNullException(nameof(memoryCache));
         }
 
+        /// <summary>
+        /// 内存缓存实例，用于缓存失效操作。
+        /// </summary>
         protected IMemoryCache MemoryCache { get; }
 
         /// <summary>

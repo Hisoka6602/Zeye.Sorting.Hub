@@ -11,10 +11,10 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private static readonly NLog.ILogger Logger = LogManager.GetCurrentClassLogger();
 
         /// <summary>
-        /// 将指标数值写入 NLog Debug 日志（指标级别，不影响业务流程）。
+        /// 将指标数值写入 NLog Info 日志，确保指标落盘（所有业务日志必须落盘）。
         /// </summary>
         public void EmitMetric(string name, double value, IReadOnlyDictionary<string, string>? tags = null) {
-            Logger.Debug("AutoTuningMetric: Name={Name}, Value={Value}, Tags={Tags}", name, value, FormatTags(tags));
+            Logger.Info("AutoTuningMetric: Name={Name}, Value={Value}, Tags={Tags}", name, value, FormatTags(tags));
         }
 
         /// <summary>

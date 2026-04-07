@@ -13,7 +13,7 @@ internal static class Guard {
     /// </summary>
     private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
 
-/// <summary>
+    /// <summary>
     /// 校验长整型值是否大于零；不大于零时记录警告日志并抛出
     /// <see cref="ArgumentOutOfRangeException"/>。
     /// 适用于 Id 类参数（必须为正数）。

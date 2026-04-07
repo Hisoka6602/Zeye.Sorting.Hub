@@ -62,8 +62,9 @@ try {
     builder.Services.AddHostedService<DevelopmentBrowserLauncherHostedService>();
     builder.Services.AddSingleton<SafeExecutor>();
     builder.Services.AddSingleton<ConfigChangeHistoryStore<LogCleanupSettings>>();
-    builder.Services.AddSortingHubPersistence(builder.Configuration);
+    // 先注册观测实现，确保 AddSortingHubPersistence 内的 TryAddSingleton 不重复注册空实现
     builder.Services.AddSingleton<IAutoTuningObservability, AutoTuningLoggerObservability>();
+    builder.Services.AddSortingHubPersistence(builder.Configuration);
     // ──────────────────────────────────────────────────────
     // 健康检查：存活探针（/health/live）+ 就绪探针（/health/ready）
     //   - /health/live   仅判断进程健康（无依赖检查），用于容器重启决策

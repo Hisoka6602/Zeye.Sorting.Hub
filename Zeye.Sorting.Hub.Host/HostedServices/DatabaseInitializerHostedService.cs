@@ -234,6 +234,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <summary>Polly 异步重试策略，用于迁移及 DDL 操作的瞬态故障恢复。</summary>
         private readonly AsyncRetryPolicy _retryPolicy;
 
+        /// <summary>
+        /// 初始化数据库初始化器后台服务及其启动参数。
+        /// </summary>
         public DatabaseInitializerHostedService(
             IServiceProvider serviceProvider,
             IDatabaseDialect dialect,
