@@ -22,7 +22,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
         /// </summary>
         /// <param name="contextFactory">EF Core DbContext 工厂。</param>
         /// <param name="memoryCache">内存缓存实例。</param>
-        /// <param name="logger">NLog 日志器（由派生类传入）。</param>
+        /// <param name="logger">NLog 日志器，用于记录仓储操作日志。</param>
         protected MemoryCacheRepositoryBase(
             IDbContextFactory<TContext> contextFactory,
             IMemoryCache memoryCache,
