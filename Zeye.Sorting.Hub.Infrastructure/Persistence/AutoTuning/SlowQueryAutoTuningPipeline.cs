@@ -122,11 +122,18 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         /// </summary>
         private readonly IAutoTuningObservability _observability;
         /// <summary>
-        /// 队列与状态访问同步锁。
+        /// 队列与报告时间点访问同步锁。
+        /// 保护字段：<see cref="_slowQueries"/>、<see cref="_droppedCount"/>、
+        /// <see cref="_nextDailyReportTime"/>、<see cref="_nextMonthlyReportDate"/>、<see cref="_nextAnnualDashboardDate"/>。
         /// </summary>
         private readonly object _queueSync = new();
         /// <summary>
         /// 告警防抖状态字典（按 SQL 指纹跟踪）。
+        /// <para>
+        /// 线程安全契约：此字段<b>仅</b>由 <see cref="Analyze"/> 方法（及其调用链）访问。
+        /// <see cref="Analyze"/> 由外部单一后台线程顺序调用，调用方必须保证不并发调用 <see cref="Analyze"/>。
+        /// <see cref="Collect"/> 不访问此字段，二者之间不存在共享可变状态。
+        /// </para>
         /// </summary>
         private readonly Dictionary<string, AlertTrackingState> _alertStates = new(StringComparer.OrdinalIgnoreCase);
         /// <summary>
@@ -216,7 +223,14 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             }
         }
 
-        /// <summary>分析窗口内样本并生成指标、建议与告警。</summary>
+        /// <summary>
+        /// 分析窗口内样本并生成指标、建议与告警。
+        /// <para>
+        /// 线程安全说明：<see cref="_alertStates"/> 在此方法内被读写，调用方必须保证本方法不被并发调用。
+        /// 队列相关字段（<see cref="_slowQueries"/>、<see cref="_droppedCount"/> 及报告时间点）
+        /// 通过 <see cref="_queueSync"/> 保护，可与 <see cref="Collect"/> 安全并发。
+        /// </para>
+        /// </summary>
         public SlowQueryAnalysisResult Analyze(IDatabaseDialect dialect) {
             var now = DateTime.Now;
             var shouldEmitDailyReport = ShouldEmitDailyReport(now);
