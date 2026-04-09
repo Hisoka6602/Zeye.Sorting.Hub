@@ -1,6 +1,6 @@
 # PR-B 检查台账：`Zeye.Sorting.Hub.Domain/`
 
-> **批次说明**：本台账对应分批审查方案中的 PR-B，覆盖 `Zeye.Sorting.Hub.Domain/` 目录下的全部受版本控制文件（共 67 个）。  
+> **批次说明**：本台账对应 `逐文件检查方案.md` 中的 PR-B 批次，覆盖 `Zeye.Sorting.Hub.Domain/` 目录下的全部受版本控制文件（共 67 个）。  
 > **基线版本**：`18d5370`（2026-04-09）  
 > **检查时间**：2026-04-09  
 > **检查人**：Copilot
@@ -169,7 +169,7 @@
 
 - **影响文件**：`ApiRequestInfo.cs`、`BagInfo.cs`、`BarCodeInfo.cs`、`ChuteInfo.cs`、`CommandInfo.cs`、`GrayDetectorInfo.cs`、`ImageInfo.cs`、`ParcelDeviceInfo.cs`、`ParcelPositionInfo.cs`、`SorterCarrierInfo.cs`、`StickingParcelInfo.cs`、`VideoInfo.cs`、`VolumeInfo.cs`、`WeightInfo.cs`
 - **行号区间**：各文件值对象声明行（以 `ApiRequestInfo.cs L16` 为例：`public sealed record class ApiRequestInfo`）
-- **证据描述**：`.github/copilot-instructions.md` 明确规定"事件载荷需要使用 `readonly record struct`（确保不可变、值语义与更优内存性能）"，此规则同样适用于领域值对象。`sealed record class` 是引用类型，每次传递都在堆上分配对象，热路径（如高频包裹上报）会产生 GC 压力；`readonly record struct` 是值类型，可栈分配或内联，性能更优。
+- **证据描述**：`.github/copilot-instructions.md` 明确规定事件载荷需要使用 `readonly record struct`（确保不可变、值语义与更优内存性能）。值对象作为领域不可变数据载体，同样应遵循此规则以确保值语义与内存性能。`sealed record class` 是引用类型，每次传递都在堆上分配对象，热路径（如高频包裹上报）会产生 GC 压力；`readonly record struct` 是值类型，可栈分配或内联，性能更优。
 - **分级**：P1（高性能隐患 + 规范性问题）
 - **建议修复阶段/PR**：PR-FIX-B1（注意：字段超 64 字节的大值对象接口传递建议加 `in` 参数修饰符）
 
@@ -181,6 +181,7 @@
 - **行号区间**：L14-L15
 - **证据描述**：
   ```csharp
+  // BagInfo.cs L14-L16
   [Index(nameof(ChuteId), IsUnique = true)]   // Microsoft.EntityFrameworkCore 属性
   [Index(nameof(BagCode), IsUnique = true)]
   public sealed record class BagInfo {
@@ -216,7 +217,7 @@
   internal readonly record struct ParcelChuteAssignedEventArgs { ... }
   internal readonly record struct ParcelScannedEventArgs { ... }
   ```
-  事件载荷的设计意图是跨层通知（通过 MediatR 或自研事件总线在 Application/Infrastructure 中订阅处理），`internal` 访问限制导致 Application/Infrastructure 层无法访问，违背事件设计初衷。当前 `InternalsVisibleTo` 仅暴露给 `Host.Tests`，未授权 Application 层。
+  事件载荷的设计意图是跨层通知（通过 MediatR 或自研事件总线在 Application/Infrastructure 中订阅处理），`internal` 访问限制导致 Application/Infrastructure 层无法访问，违背事件设计初衷。`Domain.csproj` 中 `InternalsVisibleTo` 配置（`AssemblyAttribute` 节，参见 `Domain.csproj`）仅暴露给 `Host.Tests`，未授权 Application 层。
 - **分级**：P1（功能性隐患，跨层消费被阻断）
 - **建议修复阶段/PR**：PR-FIX-B2（改为 `public readonly record struct`；若确认仅 Domain 内使用，需在注释中明确说明消费范围并添加 Domain 内事件分发逻辑）
 
@@ -411,7 +412,7 @@
 | 禁止 UTC 时间（`DateTime.UtcNow` 等） | ✅ 合规 | 0 | 时间字段注释均标注"本地时间语义" |
 | 所有枚举在 `Enums/` 子目录下 | ✅ 合规 | 0 | — |
 | 枚举项必须有 `Description` 和注释 | ✅ 合规 | 0 | — |
-| 事件载荷使用 `readonly record struct` | ✅ struct 形式合规 | 0（但有 internal 问题） | 见 P1-B-004 |
+| 事件载荷使用 `readonly record struct` | ⚠️ 部分合规 | 2（internal 阻断跨层消费）| struct 形式正确，但 internal 修饰符违背事件跨层消费意图，见 P1-B-004 |
 | **值对象使用 `readonly record struct`** | ❌ 违规 | 14 | 见 P1-B-001 |
 | 方法必须有注释 | ✅ 合规 | 0 | — |
 | 类字段必须有注释 | ✅ 合规 | 0 | — |
@@ -419,7 +420,7 @@
 | 禁止过时标记（注释残留死代码） | ❌ 违规 | 1 | 见 P2-B-003（ActionType.cs） |
 | 每个类独立文件 | ✅ 合规 | 0 | — |
 | 分层边界（查询 DTO/接口不在 Domain） | ❌ 违规 | 8 | 见 P1-B-007、P1-B-008、P1-B-009 |
-| Domain 不依赖 Infrastructure 实现 | ❌ 违规 | 3 | Polly 引用、`[Index]`、`ProtocolType` |
+| Domain 不依赖 Infrastructure 实现 | ❌ 违规 | 4+ | Polly 引用、`[Index]`（BagInfo.cs）、`ProtocolType`（CommandInfo.cs）、`[Precision]` 残留（多文件，见 P2-B-005） |
 
 ---
 
@@ -427,7 +428,7 @@
 
 | PR | 修复内容 | 问题级别 | 预估风险 |
 |----|---------|---------|---------|
-| **PR-FIX-B1** | 14 个值对象改为 `readonly record struct`；删除 `BagInfo.cs` 的 `[Index]`（移至 Infrastructure Fluent API）；`CommandInfo.cs` 新建领域枚举 `CommunicationProtocolType` 替换 `System.Net.Sockets.ProtocolType` | P1 | 中（涉及 EF Core owned entity struct 配置） |
+| **PR-FIX-B1** | 14 个值对象改为 `readonly record struct`；删除 `BagInfo.cs` 的 `[Index]`（移至 Infrastructure Fluent API）；`CommandInfo.cs` 新建领域枚举 `CommunicationProtocolType` 替换 `System.Net.Sockets.ProtocolType` | P1 | 高（struct 改动涉及 EF Core owned entity 配置方式变更、导航属性配置及序列化兼容，需全面回归测试包裹上报链路） |
 | **PR-FIX-B2** | `IEntity`/`AuditableEntity` setter 约束；事件载荷改为 `public`；`Domain.csproj` 移除 Polly；`[Precision]` 全部迁至 Infrastructure Fluent API | P1 | 低 |
 | **PR-FIX-B3** | 查询读模型/过滤器/分页类迁至 `Application/Abstractions/Queries/`；`IParcelRepository` CQRS 分离（查询方法提取至 `IParcelQueryService`）；`IWebRequestAuditLogQueryRepository` 移至 Application 并重命名；`LogCleanupSettings` 迁至 Host/Infrastructure | P1 | 高（涉及跨层移动，需更新所有调用方引用） |
 | **PR-FIX-B4** | 批量清理冗余 using；删除 `WebRequestAuditLogDetail.cs` 冗余默认值；删除 `ActionType.cs` 残留注释；修正缩进；删除 csproj 空占位目录 | P2 | 低（批量规范清理） |
@@ -456,5 +457,5 @@
 - **本PR计划检查文件数**：67
 - **本PR实际已检查文件数**：67
 - **对账差异**：0 ✅
-- **累计已检查文件数**：88 / 286（21 [PR-A] + 67 [PR-B]）
+- **累计已检查文件数**：88 / 286（21 [PR-A] + 67 [PR-B]；总数 286 来自基线版本 `18d5370` 的 `文件清单基线.txt` 统计）
 - **剩余待检查文件数**：198
