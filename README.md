@@ -7,6 +7,7 @@
 ```text
 .
 ├── .github（Copilot 仓库级指令目录）
+│   ├── DDD分层接口与实现放置规范.md（DDD 分层接口定义与实现放置规范：依赖方向约束、接口归属原则、禁止项清单）
 │   ├── copilot-instructions.md（Copilot 自定义指令：禁止 UTC、统一本地时间）
 │   ├── scripts（CI 校验脚本目录）
 │   │   └── validate-copilot-rules.sh（Copilot 限制规则校验脚本：从 copilot-instructions.md 解析规则并执行自动校验）
@@ -21,6 +22,9 @@
 ├── README.md（仓库总览、结构清单与维护规范）
 ├── 长期运行优化与热更新支持清单.md（面向一年无人值守运行的优化与热更新治理清单）
 ├── drill-records/（季度/年度稳定性演练记录目录，供演练记录门禁检查；每次演练后在此新增记录文件）
+├── 检查台账/（逐文件全量审查台账目录；存放文件清单基线与各批次检查结果，按 PR-A/B/C… 分批递增）
+│   ├── 文件清单基线.txt（全仓库受版本控制文件基线清单，由 git ls-files 生成，作为防遗漏对账基准）
+│   └── PR-A-检查台账.md（PR-A 批次检查台账：覆盖根目录、.github/、文档与脚本共 21 个文件的审查结论与问题清单）
 ├── Zeye.Sorting.Hub.Analytics（分析与报表子域，占位工程）
 │   └── Zeye.Sorting.Hub.Analytics.csproj（Analytics 项目定义）
 ├── Zeye.Sorting.Hub.Application（应用层）
@@ -343,8 +347,12 @@
 - `长期运行优化与热更新支持清单.md`：面向一年无人值守运行的长期治理清单，覆盖稳定运行底座、热更新、热替换、阶段化落地与年度验收门禁。
 - `逐文件检查方案.md`：逐文件质量审查执行方案（面向 Copilot 的检查流程），覆盖影分身代码、过度设计、冗余、性能、逻辑、并发竞态与规则违规检查，同时给出多 PR 分批与防遗漏机制。
 - `drill-records/`：季度/年度稳定性演练记录目录；每次演练后新增 `.md` 或 `.txt` 记录文件，供 `stability-gates.yml` 中 `drill-record-gate`（门禁 8）强制检查，缺少记录文件将阻断 PR 合并。
+- `检查台账/`：逐文件全量审查台账目录；存放全仓库文件清单基线（`文件清单基线.txt`）与各批次检查结果 Markdown，按 PR-A/B/C… 分批递增，供检查进度追踪与对账使用。
+  - `文件清单基线.txt`：全仓库受版本控制文件基线清单，由 `git ls-files` 生成，作为逐文件全量审查防遗漏对账基准，每轮全量审查生成一次。
+  - `PR-A-检查台账.md`：PR-A 批次检查台账，覆盖根目录、`.github/`、文档与脚本共 21 个文件的审查结论、问题清单（P0/P1/P2）与后续修复建议。
 
 ### `.github/`：Copilot 仓库级指令目录
+- `DDD分层接口与实现放置规范.md`：DDD 分层接口定义与实现放置规范文档；明确依赖方向（Host→Infrastructure→Application→Domain）、接口定义归属规则（领域能力/应用编排/基础设施内部三类）、实现类放置约束、目录结构建议与禁止事项清单，供 Copilot 与开发人员统一执行。
 - `copilot-instructions.md`：Copilot 自定义指令，硬性要求禁止 UTC 时间 API，统一使用本地时间语义。
 - `scripts/validate-copilot-rules.sh`：Copilot 限制规则校验脚本；从 `copilot-instructions.md` 解析“Copilot 限制规则”逐条执行，已映射规则做自动校验，未映射规则直接失败，确保规则文档更新后 CI 校验逻辑同步更新。
 
