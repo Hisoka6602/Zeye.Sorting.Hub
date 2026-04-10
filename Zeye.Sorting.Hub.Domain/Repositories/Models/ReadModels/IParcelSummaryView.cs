@@ -29,19 +29,19 @@ public interface IParcelSummaryView {
     /// <summary>包裹状态。</summary>
     ParcelStatus Status { get; }
 
-    /// <summary>包裹异常类型（可为空）。</summary>
+    /// <summary>包裹异常类型（可空）。</summary>
     ParcelExceptionType? ExceptionType { get; }
 
     /// <summary>NoRead 类型。</summary>
     NoReadType NoReadType { get; }
 
-    /// <summary>小车编号（可为空）。</summary>
+    /// <summary>小车编号（可空）。</summary>
     int? SorterCarrierId { get; }
 
-    /// <summary>三段码（可为空）。</summary>
+    /// <summary>三段码（可空）。</summary>
     string? SegmentCodes { get; }
 
-    /// <summary>生命周期（毫秒，可为空）。</summary>
+    /// <summary>生命周期（毫秒，可空）。</summary>
     long? LifecycleMilliseconds { get; }
 
     /// <summary>目标格口 Id。</summary>
@@ -86,7 +86,7 @@ public interface IParcelSummaryView {
     /// <summary>落格时间。</summary>
     DateTime DischargeTime { get; }
 
-    /// <summary>包裹完结时间（可为空）。</summary>
+    /// <summary>包裹完结时间（可空）。</summary>
     DateTime? CompletedTime { get; }
 
     /// <summary>是否有图片。</summary>

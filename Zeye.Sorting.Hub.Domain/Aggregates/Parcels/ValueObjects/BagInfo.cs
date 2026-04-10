@@ -5,7 +5,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
     /// 集包信息（值对象）
     /// 说明：每个格口对应一个 Bag
     /// </summary>
-    public sealed record class BagInfo {
+    public sealed record BagInfo {
         /// <summary>
         /// 格口 Id（对应目标格口编号）
         /// </summary>
