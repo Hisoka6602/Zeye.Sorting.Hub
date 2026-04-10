@@ -1,3 +1,4 @@
+using Zeye.Sorting.Hub.Domain.Abstractions;
 using Zeye.Sorting.Hub.Domain.Enums;
 
 namespace Zeye.Sorting.Hub.Domain.Repositories.Models.ReadModels;

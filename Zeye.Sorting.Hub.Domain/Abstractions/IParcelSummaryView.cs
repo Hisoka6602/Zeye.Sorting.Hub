@@ -1,6 +1,6 @@
 using Zeye.Sorting.Hub.Domain.Enums;
 
-namespace Zeye.Sorting.Hub.Domain.Repositories.Models.ReadModels;
+namespace Zeye.Sorting.Hub.Domain.Abstractions;
 
 /// <summary>
 /// Parcel 摘要视图接口。

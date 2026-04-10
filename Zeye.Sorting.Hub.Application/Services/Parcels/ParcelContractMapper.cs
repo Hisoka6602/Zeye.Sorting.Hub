@@ -1,5 +1,6 @@
 using Zeye.Sorting.Hub.Contracts.Models.Parcels;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.ValueObjects;
+using Zeye.Sorting.Hub.Domain.Abstractions;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.ReadModels;
 

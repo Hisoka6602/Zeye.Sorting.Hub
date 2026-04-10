@@ -1,9 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations;
+using Zeye.Sorting.Hub.Domain.Abstractions;
 using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Primitives;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects;
-using Zeye.Sorting.Hub.Domain.Repositories.Models.ReadModels;
 
 namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
 
