@@ -2,6 +2,7 @@ using NLog;
 using Zeye.Sorting.Hub.Application.Utilities;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels;
 using Zeye.Sorting.Hub.Domain.Repositories;
+using Zeye.Sorting.Hub.Domain.Repositories.Models.ReadModels;
 
 namespace Zeye.Sorting.Hub.Application.Services.Parcels;
 
@@ -56,7 +57,7 @@ public sealed class GetAdjacentParcelsQueryService {
                 throw new KeyNotFoundException(adjacentResult.ErrorMessage);
             }
 
-            var adjacent = adjacentResult.Value ?? Array.Empty<Domain.Repositories.Models.ReadModels.ParcelSummaryReadModel>();
+            var adjacent = adjacentResult.Value ?? Array.Empty<ParcelSummaryReadModel>();
             // 步骤 2：统一映射为 Contracts 响应，避免 Host 层重复映射。
             var items = adjacent.Select(ParcelContractMapper.ToListItem).ToArray();
             return new ParcelAdjacentResponse {
@@ -64,6 +65,15 @@ public sealed class GetAdjacentParcelsQueryService {
                 BeforeCount = beforeCount,
                 AfterCount = afterCount
             };
+        }
+        catch (KeyNotFoundException ex) {
+            Logger.Warn(
+                ex,
+                "查询 Parcel 邻近记录未找到，Id={ParcelId}, BeforeCount={BeforeCount}, AfterCount={AfterCount}",
+                request.Id,
+                request.BeforeCount,
+                request.AfterCount);
+            throw;
         }
         catch (Exception ex) {
             Logger.Error(

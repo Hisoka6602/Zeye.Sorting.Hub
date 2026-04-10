@@ -9,14 +9,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Folder Include="DTOs\Commands\" />
-    <Folder Include="DTOs\Queries\" />
-    <Folder Include="Validators\" />
-    <Folder Include="Services\" />
-    <Folder Include="Notifications\" />
-  </ItemGroup>
-
-  <ItemGroup>
     <PackageReference Include="NLog" Version="6.1.1" />
   </ItemGroup>
 

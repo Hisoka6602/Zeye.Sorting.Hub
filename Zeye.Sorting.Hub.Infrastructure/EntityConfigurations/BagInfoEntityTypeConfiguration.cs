@@ -27,7 +27,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
             builder.Property<long>("BagId").ValueGeneratedOnAdd();
             builder.HasKey("BagId");
 
-            // 索引由 Domain 层 [Index] 特征标记声明，配置层不重复声明。
+            // 唯一索引由 Infrastructure 层 Fluent API 声明，避免 Domain 感知 EF Core 属性
+            builder.HasIndex(x => x.ChuteId).IsUnique();
+            builder.HasIndex(x => x.BagCode).IsUnique();
         }
     }
 }

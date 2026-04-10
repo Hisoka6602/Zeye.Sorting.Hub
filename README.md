@@ -157,6 +157,7 @@
 │   │       │   ├── PageRequest.cs（通用分页请求模型）
 │   │       │   └── PageResult.cs（通用分页结果模型）
 │   │       ├── ReadModels（查询读模型目录）
+│   │       │   ├── IParcelSummaryView.cs（Parcel 摘要视图接口，供 Application 层映射器统一消费聚合根与读模型）
 │   │       │   ├── ParcelSummaryReadModel.cs（Parcel 列表摘要读模型）
 │   │       │   ├── WebRequestAuditLogDetailReadModel.cs（Web 请求审计日志详情读模型，含 WebRequestAuditLogId 外键镜像字段）
 │   │       │   └── WebRequestAuditLogSummaryReadModel.cs（Web 请求审计日志列表摘要读模型）
@@ -529,6 +530,7 @@
 - `PageResult.cs`：通用分页结果模型（Items、页码、页大小、总数）。
 
 ###### `Zeye.Sorting.Hub.Domain/Repositories/Models/ReadModels/`：查询读模型目录
+- `IParcelSummaryView.cs`：Parcel 摘要视图接口；抽象聚合根与摘要读模型的公共可读属性，供 Application 层映射器统一消费，消除影分身映射代码。
 - `ParcelSummaryReadModel.cs`：Parcel 列表摘要读模型（包含 Parcel 全部扁平化字段，用于分页列表）。
 - `WebRequestAuditLogSummaryReadModel.cs`：Web 请求审计日志列表摘要读模型（高频查询字段）。
 - `WebRequestAuditLogDetailReadModel.cs`：Web 请求审计日志详情读模型（热表字段 + 冷表详情字段，含 `WebRequestAuditLogId` 外键镜像字段）。

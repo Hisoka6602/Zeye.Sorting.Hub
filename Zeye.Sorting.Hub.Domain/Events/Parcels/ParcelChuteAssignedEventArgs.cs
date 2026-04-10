@@ -4,7 +4,7 @@ namespace Zeye.Sorting.Hub.Domain.Events.Parcels;
 /// 包裹分配格口事件载荷。
 /// 携带包裹完成格口分配动作时的关键业务字段，供下游处理程序使用。
 /// </summary>
-internal readonly record struct ParcelChuteAssignedEventArgs {
+public readonly record struct ParcelChuteAssignedEventArgs {
     /// <summary>
     /// 包裹数据库主键 Id。
     /// </summary>

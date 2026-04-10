@@ -15,8 +15,7 @@ internal static class ParcelContractMapper {
     /// <param name="readModel">仓储摘要读模型。</param>
     /// <returns>列表项合同。</returns>
     public static ParcelListItemResponse ToListItem(ParcelSummaryReadModel readModel) {
-        var args = BuildFromReadModel(readModel);
-        return CreateParcelListItemResponse(args);
+        return CreateParcelListItemResponse(BuildFrom(readModel));
     }
 
     /// <summary>
@@ -25,8 +24,7 @@ internal static class ParcelContractMapper {
     /// <param name="parcel">包裹聚合根。</param>
     /// <returns>详情合同。</returns>
     public static ParcelDetailResponse ToDetail(Parcel parcel) {
-        var args = BuildFromAggregate(parcel);
-        var listItem = CreateParcelListItemResponse(args);
+        var listItem = CreateParcelListItemResponse(BuildFrom(parcel));
         return new ParcelDetailResponse(
             listItem,
             barCodeInfos: parcel.BarCodeInfos.Select(x => new BarCodeInfoResponse {
@@ -147,82 +145,42 @@ internal static class ParcelContractMapper {
     }
 
     /// <summary>
-    /// 从摘要读模型构建映射参数。
+    /// 从实现了 IParcelSummaryView 的对象构建映射参数（统一消费 Parcel 聚合根与 ParcelSummaryReadModel）。
     /// </summary>
-    /// <param name="readModel">摘要读模型。</param>
+    /// <param name="view">Parcel 摘要视图。</param>
     /// <returns>映射参数对象。</returns>
-    private static ParcelResponseArgs BuildFromReadModel(ParcelSummaryReadModel readModel) {
+    private static ParcelResponseArgs BuildFrom(IParcelSummaryView view) {
         return new ParcelResponseArgs {
-            Id = readModel.Id,
-            CreatedTime = readModel.CreatedTime,
-            ModifyTime = readModel.ModifyTime,
-            ModifyIp = readModel.ModifyIp,
-            ParcelTimestamp = readModel.ParcelTimestamp,
-            Type = (int)readModel.Type,
-            Status = (int)readModel.Status,
-            ExceptionType = readModel.ExceptionType is null ? null : (int)readModel.ExceptionType.Value,
-            NoReadType = (int)readModel.NoReadType,
-            SorterCarrierId = readModel.SorterCarrierId,
-            SegmentCodes = readModel.SegmentCodes,
-            LifecycleMilliseconds = readModel.LifecycleMilliseconds,
-            TargetChuteId = readModel.TargetChuteId,
-            ActualChuteId = readModel.ActualChuteId,
-            BarCodes = readModel.BarCodes,
-            Weight = readModel.Weight,
-            RequestStatus = (int)readModel.RequestStatus,
-            BagCode = readModel.BagCode,
-            WorkstationName = readModel.WorkstationName,
-            IsSticking = readModel.IsSticking,
-            Length = readModel.Length,
-            Width = readModel.Width,
-            Height = readModel.Height,
-            Volume = readModel.Volume,
-            ScannedTime = readModel.ScannedTime,
-            DischargeTime = readModel.DischargeTime,
-            CompletedTime = readModel.CompletedTime,
-            HasImages = readModel.HasImages,
-            HasVideos = readModel.HasVideos,
-            Coordinate = readModel.Coordinate
-        };
-    }
-
-    /// <summary>
-    /// 从聚合根构建映射参数。
-    /// </summary>
-    /// <param name="parcel">包裹聚合根。</param>
-    /// <returns>映射参数对象。</returns>
-    private static ParcelResponseArgs BuildFromAggregate(Parcel parcel) {
-        return new ParcelResponseArgs {
-            Id = parcel.Id,
-            CreatedTime = parcel.CreatedTime,
-            ModifyTime = parcel.ModifyTime,
-            ModifyIp = parcel.ModifyIp,
-            ParcelTimestamp = parcel.ParcelTimestamp,
-            Type = (int)parcel.Type,
-            Status = (int)parcel.Status,
-            ExceptionType = parcel.ExceptionType is null ? null : (int)parcel.ExceptionType.Value,
-            NoReadType = (int)parcel.NoReadType,
-            SorterCarrierId = parcel.SorterCarrierId,
-            SegmentCodes = parcel.SegmentCodes,
-            LifecycleMilliseconds = parcel.LifecycleMilliseconds,
-            TargetChuteId = parcel.TargetChuteId,
-            ActualChuteId = parcel.ActualChuteId,
-            BarCodes = parcel.BarCodes,
-            Weight = parcel.Weight,
-            RequestStatus = (int)parcel.RequestStatus,
-            BagCode = parcel.BagCode,
-            WorkstationName = parcel.WorkstationName,
-            IsSticking = parcel.IsSticking,
-            Length = parcel.Length,
-            Width = parcel.Width,
-            Height = parcel.Height,
-            Volume = parcel.Volume,
-            ScannedTime = parcel.ScannedTime,
-            DischargeTime = parcel.DischargeTime,
-            CompletedTime = parcel.CompletedTime,
-            HasImages = parcel.HasImages,
-            HasVideos = parcel.HasVideos,
-            Coordinate = parcel.Coordinate
+            Id = view.Id,
+            CreatedTime = view.CreatedTime,
+            ModifyTime = view.ModifyTime,
+            ModifyIp = view.ModifyIp,
+            ParcelTimestamp = view.ParcelTimestamp,
+            Type = (int)view.Type,
+            Status = (int)view.Status,
+            ExceptionType = view.ExceptionType is null ? null : (int)view.ExceptionType.Value,
+            NoReadType = (int)view.NoReadType,
+            SorterCarrierId = view.SorterCarrierId,
+            SegmentCodes = view.SegmentCodes,
+            LifecycleMilliseconds = view.LifecycleMilliseconds,
+            TargetChuteId = view.TargetChuteId,
+            ActualChuteId = view.ActualChuteId,
+            BarCodes = view.BarCodes,
+            Weight = view.Weight,
+            RequestStatus = (int)view.RequestStatus,
+            BagCode = view.BagCode,
+            WorkstationName = view.WorkstationName,
+            IsSticking = view.IsSticking,
+            Length = view.Length,
+            Width = view.Width,
+            Height = view.Height,
+            Volume = view.Volume,
+            ScannedTime = view.ScannedTime,
+            DischargeTime = view.DischargeTime,
+            CompletedTime = view.CompletedTime,
+            HasImages = view.HasImages,
+            HasVideos = view.HasVideos,
+            Coordinate = view.Coordinate
         };
     }
 
