@@ -25,7 +25,11 @@
 ├── 检查台账/（逐文件全量审查台账目录；存放文件清单基线与各批次检查结果，按 PR-A/B/C… 分批递增）
 │   ├── 文件清单基线.txt（全仓库受版本控制文件基线清单，由 git ls-files 生成，作为防遗漏对账基准）
 │   ├── PR-A-检查台账.md（PR-A 批次检查台账：覆盖根目录、.github/、文档与脚本共 21 个文件的审查结论与问题清单）
-│   └── PR-B-检查台账.md（PR-B 批次检查台账：覆盖 Domain 层共 67 个文件的审查结论与问题清单）
+│   ├── PR-B-检查台账.md（PR-B 批次检查台账：覆盖 Domain 层共 67 个文件的审查结论与问题清单）
+│   ├── PR-C-检查台账.md（PR-C 批次检查台账：覆盖 Application + Contracts 层共 45 个文件的审查结论与问题清单）
+│   ├── PR-D-检查台账.md（PR-D 批次检查台账：覆盖 Infrastructure 层共 63 个文件的审查结论与问题清单）
+│   ├── PR-E-检查台账.md（PR-E 批次检查台账：覆盖 Host 层共 43 个文件的审查结论与问题清单）
+│   └── PR-F-检查台账.md（PR-F 批次检查台账：覆盖 SharedKernel + Host.Tests + 占位子域共 45 个文件的审查结论与问题清单）
 ├── Zeye.Sorting.Hub.Analytics（分析与报表子域，占位工程）
 │   └── Zeye.Sorting.Hub.Analytics.csproj（Analytics 项目定义）
 ├── Zeye.Sorting.Hub.Application（应用层）
@@ -352,6 +356,10 @@
   - `文件清单基线.txt`：全仓库受版本控制文件基线清单，由 `git ls-files` 生成，作为逐文件全量审查防遗漏对账基准，每轮全量审查生成一次。
   - `PR-A-检查台账.md`：PR-A 批次检查台账，覆盖根目录、`.github/`、文档与脚本共 21 个文件的审查结论、问题清单（P0/P1/P2）与后续修复建议。
   - `PR-B-检查台账.md`：PR-B 批次检查台账，覆盖 `Zeye.Sorting.Hub.Domain/` 共 67 个文件的审查结论、问题清单（0 P0 / 10 类 P1 / 9 类 P2）与修复 PR 规划（PR-FIX-B1～B4）。
+  - `PR-C-检查台账.md`：PR-C 批次检查台账，覆盖 `Zeye.Sorting.Hub.Application/` + `Zeye.Sorting.Hub.Contracts/` 共 45 个文件的审查结论、问题清单（0 P0 / 3 P1 / 5 P2）与修复 PR 规划（PR-FIX-C1～C3）。
+  - `PR-D-检查台账.md`：PR-D 批次检查台账，覆盖 `Zeye.Sorting.Hub.Infrastructure/` 共 63 个文件的审查结论、问题清单（0 P0 / 1 P1 / 11 P2）与修复 PR 规划（PR-FIX-D1～D2）。
+  - `PR-E-检查台账.md`：PR-E 批次检查台账，覆盖 `Zeye.Sorting.Hub.Host/` 共 43 个文件的审查结论、问题清单（0 P0 / 3 P1 / 13 P2）与修复 PR 规划（PR-FIX-E1～E4）。
+  - `PR-F-检查台账.md`：PR-F 批次检查台账（最终批次），覆盖 `Zeye.Sorting.Hub.SharedKernel/`、`Zeye.Sorting.Hub.Host.Tests/` 及占位子域共 45 个文件的审查结论、问题清单（0 P0 / 0 P1 / 12 P2）与修复 PR 规划（PR-FIX-F1～F2）；同时提供全量 287 文件 100% 覆盖的总对账结果。
 
 ### `.github/`：Copilot 仓库级指令目录
 - `DDD分层接口与实现放置规范.md`：DDD 分层接口定义与实现放置规范文档；明确依赖方向（Host→Infrastructure→Application→Domain）、接口定义归属规则（领域能力/应用编排/基础设施内部三类）、实现类放置约束、目录结构建议与禁止事项清单，供 Copilot 与开发人员统一执行。
