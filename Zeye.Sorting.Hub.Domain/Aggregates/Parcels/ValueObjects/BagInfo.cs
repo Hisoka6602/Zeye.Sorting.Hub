@@ -1,9 +1,3 @@
-﻿using System;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Collections.Generic;
-using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations;
 
 namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
@@ -11,9 +5,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
     /// 集包信息（值对象）
     /// 说明：每个格口对应一个 Bag
     /// </summary>
-    [Index(nameof(ChuteId), IsUnique = true)]
-    [Index(nameof(BagCode), IsUnique = true)]
-    public sealed record class BagInfo {
+    public sealed record BagInfo {
         /// <summary>
         /// 格口 Id（对应目标格口编号）
         /// </summary>

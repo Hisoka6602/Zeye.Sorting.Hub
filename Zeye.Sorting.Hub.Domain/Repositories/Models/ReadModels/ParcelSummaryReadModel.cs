@@ -1,3 +1,4 @@
+using Zeye.Sorting.Hub.Domain.Abstractions;
 using Zeye.Sorting.Hub.Domain.Enums;
 
 namespace Zeye.Sorting.Hub.Domain.Repositories.Models.ReadModels;
@@ -5,7 +6,7 @@ namespace Zeye.Sorting.Hub.Domain.Repositories.Models.ReadModels;
 /// <summary>
 /// Parcel 列表摘要读模型（包含 Parcel 全部扁平化字段）。
 /// </summary>
-public sealed record ParcelSummaryReadModel {
+public sealed record ParcelSummaryReadModel : IParcelSummaryView {
     /// <summary>
     /// 包裹 Id。
     /// </summary>

@@ -1,9 +1,4 @@
-using System;
-using System.Linq;
-using System.Text;
 using System.ComponentModel;
-using System.Threading.Tasks;
-using System.Collections.Generic;
 
 namespace Zeye.Sorting.Hub.Domain.Enums {
 
@@ -24,8 +19,6 @@ namespace Zeye.Sorting.Hub.Domain.Enums {
         [Description("创建包裹")]
         CreateParcel = 1,
 
-        //发送目标格口信息
-
         /// <summary>
         /// 落格结果通知
         /// </summary>
@@ -43,8 +36,6 @@ namespace Zeye.Sorting.Hub.Domain.Enums {
         /// </summary>
         [Description("包裹异常")]
         ParcelAbnormal = 5,
-
-        //绑定小车
 
         /// <summary>
         /// 包裹左移

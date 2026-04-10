@@ -94,7 +94,8 @@
 │   └── Zeye.Sorting.Hub.Contracts.csproj（Contracts 项目定义）
 ├── Zeye.Sorting.Hub.Domain（核心领域层）
 │   ├── Abstractions（领域抽象接口目录）
-│   │   └── IEntity.cs（实体通用接口）
+│   │   ├── IEntity.cs（实体通用接口）
+│   │   └── IParcelSummaryView.cs（Parcel 摘要视图接口，供 Application 层映射器统一消费聚合根与读模型）
 │   ├── Aggregates（领域聚合目录）
 │   │   ├── AuditLogs（审计日志聚合目录）
 │   │   │   └── WebRequests（Web 请求审计聚合目录）
@@ -442,6 +443,7 @@
 
 #### `Zeye.Sorting.Hub.Domain/Abstractions/`：领域抽象接口层
 - `IEntity.cs`：实体通用接口（定义主键契约）。
+- `IParcelSummaryView.cs`：Parcel 摘要视图接口；抽象聚合根与摘要读模型的公共可读属性，供 Application 层映射器统一消费，消除影分身映射代码。
 
 #### `Zeye.Sorting.Hub.Domain/Aggregates/`：领域聚合目录
 

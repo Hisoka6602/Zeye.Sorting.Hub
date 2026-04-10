@@ -1,10 +1,6 @@
-using System;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations;
+using Zeye.Sorting.Hub.Domain.Abstractions;
 using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Primitives;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects;
@@ -18,7 +14,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
     /// 2) 主表索引、字段精度与关系映射在 Infrastructure/EntityConfigurations 中通过 Fluent API 统一声明；
     /// 3) 其余持久化映射（表名、架构、关系、影子属性等）在 Infrastructure/EntityConfigurations 中完成。
     /// </summary>
-    public sealed class Parcel : AuditableEntity {
+    public sealed class Parcel : AuditableEntity, IParcelSummaryView {
 
         /// <summary>
         /// 包裹时间戳
