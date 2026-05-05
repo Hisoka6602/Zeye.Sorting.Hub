@@ -201,7 +201,7 @@ public sealed partial class BaselineDataValidator {
                 }
             }
             catch (Exception ex) {
-                Logger.Error(ex, "MySql 连接字符串解析失败。");
+                Logger.Error(ex, "MySQL 连接字符串解析失败。");
                 errors.Add($"MySql 连接字符串格式非法：{ex.Message}");
             }
 
@@ -222,7 +222,7 @@ public sealed partial class BaselineDataValidator {
                 }
             }
             catch (Exception ex) {
-                Logger.Error(ex, "SqlServer 连接字符串解析失败。");
+                Logger.Error(ex, "SQL Server 连接字符串解析失败。");
                 errors.Add($"SqlServer 连接字符串格式非法：{ex.Message}");
             }
 
