@@ -16,8 +16,10 @@ using Zeye.Sorting.Hub.Contracts.Models.Parcels;
 using Zeye.Sorting.Hub.Domain.Options.LogCleanup;
 using Zeye.Sorting.Hub.Application.Services.Parcels;
 using Zeye.Sorting.Hub.Application.Services.AuditLogs;
+using Zeye.Sorting.Hub.Application.Services.WriteBuffers;
 using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.WriteBuffering;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 // ──────────────────────────────────────────────────────────
@@ -62,6 +64,7 @@ try {
     builder.Services.AddHostedService<LogCleanupService>();
     builder.Services.AddHostedService<DevelopmentBrowserLauncherHostedService>();
     builder.Services.AddHostedService<DatabaseConnectionWarmupHostedService>();
+    builder.Services.AddHostedService<ParcelBatchWriteFlushHostedService>();
     builder.Services.AddSingleton<SafeExecutor>();
     builder.Services.AddSingleton<ConfigChangeHistoryStore<LogCleanupSettings>>();
     builder.Services.AddSortingHubPersistence(builder.Configuration);
@@ -76,6 +79,9 @@ try {
     builder.Services.AddHealthChecks()
         .AddCheck<DatabaseConnectionDetailedHealthCheck>(
             name: "database",
+            tags: ["ready"])
+        .AddCheck<BufferedWriteQueueHealthCheck>(
+            name: "parcel-buffered-write",
             tags: ["ready"]);
     builder.Services.AddProblemDetails();
     builder.Services

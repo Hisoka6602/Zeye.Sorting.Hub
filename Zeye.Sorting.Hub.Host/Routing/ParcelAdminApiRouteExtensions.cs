@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using NLog;
 using Zeye.Sorting.Hub.Application.Services.Parcels;
+using Zeye.Sorting.Hub.Application.Services.WriteBuffers;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.Admin;
 using Zeye.Sorting.Hub.Host.Utilities;
@@ -39,6 +40,13 @@ public static class ParcelAdminApiRouteExtensions {
             .Produces<ParcelDetailResponse>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status409Conflict);
+
+        group.MapPost("/batch-buffer", CreateBufferedParcelBatchAsync)
+            .WithName("AdminCreateBufferedParcelBatch")
+            .WithSummary("管理端批量缓冲写入 Parcel")
+            .WithDescription("将多个包裹请求写入有界缓冲队列。原有 POST /api/admin/parcels 仍保持同步强一致，本接口仅负责异步缓冲入队并返回 acceptedCount、rejectedCount、queueDepth、isBackpressureTriggered、message。时间字段仅接受本地时间字符串。")
+            .Produces<ParcelBatchBufferedCreateResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status400BadRequest);
 
         group.MapPut("/{id:long}", UpdateParcelStatusAsync)
             .WithName("AdminUpdateParcelStatus")
@@ -89,16 +97,8 @@ public static class ParcelAdminApiRouteExtensions {
         }
 
         // 步骤 1：在 Host 层解析时间字符串并强制拒绝 UTC/offset 表达（字符串方式可彻底拒绝 +offset 表达）。
-        if (!LocalDateTimeParsing.TryParseLocalDateTime(request.ScannedTime, out var scannedTime)) {
-            return LocalDateTimeParsing.CreateBadRequestProblem(
-                "请求参数无效",
-                "scannedTime 必须是本地时间格式（如 yyyy-MM-dd HH:mm:ss），不允许 UTC 或时区 offset。");
-        }
-
-        if (!LocalDateTimeParsing.TryParseLocalDateTime(request.DischargeTime, out var dischargeTime)) {
-            return LocalDateTimeParsing.CreateBadRequestProblem(
-                "请求参数无效",
-                "dischargeTime 必须是本地时间格式（如 yyyy-MM-dd HH:mm:ss），不允许 UTC 或时区 offset。");
+        if (!TryParseCreateRequestTimes(request, out var scannedTime, out var dischargeTime, out var errorMessage)) {
+            return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", errorMessage);
         }
 
         try {
@@ -124,6 +124,57 @@ public static class ParcelAdminApiRouteExtensions {
                 title: "新增失败",
                 detail: ex.Message,
                 statusCode: StatusCodes.Status500InternalServerError);
+        }
+    }
+
+    /// <summary>
+    /// 处理批量缓冲写入包裹请求。
+    /// </summary>
+    /// <param name="request">批量缓冲写入请求。</param>
+    /// <param name="bufferedWriteService">缓冲写入服务。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>缓冲写入响应。</returns>
+    private static async Task<IResult> CreateBufferedParcelBatchAsync(
+        [FromBody] ParcelBatchBufferedCreateRequest request,
+        [FromServices] IBufferedWriteService bufferedWriteService,
+        CancellationToken cancellationToken) {
+        if (request is null || request.Parcels is null) {
+            return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", "请求体不能为空。");
+        }
+
+        if (request.Parcels.Length == 0) {
+            return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", "parcels 至少提供一条记录。");
+        }
+
+        try {
+            // 步骤 1：逐条解析本地时间并复用应用层映射器构建聚合，保持同步新增与缓冲写入语义一致。
+            var parcels = new global::Zeye.Sorting.Hub.Domain.Aggregates.Parcels.Parcel[request.Parcels.Length];
+            for (var index = 0; index < request.Parcels.Length; index++) {
+                var parcelRequest = request.Parcels[index];
+                if (parcelRequest.Id <= 0) {
+                    return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", $"parcels[{index}].id 必须大于 0。");
+                }
+
+                if (!TryParseCreateRequestTimes(parcelRequest, out var scannedTime, out var dischargeTime, out var errorMessage)) {
+                    return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", $"parcels[{index}] {errorMessage}");
+                }
+
+                parcels[index] = ParcelCreateRequestMapper.MapToParcel(parcelRequest, scannedTime, dischargeTime);
+            }
+
+            // 步骤 2：调用缓冲写入服务，仅执行入队，不在请求线程访问数据库。
+            var enqueueResult = await bufferedWriteService.EnqueueAsync(parcels, cancellationToken);
+            return Results.Ok(new ParcelBatchBufferedCreateResponse {
+                AcceptedCount = enqueueResult.AcceptedCount,
+                RejectedCount = enqueueResult.RejectedCount,
+                QueueDepth = enqueueResult.QueueDepth,
+                IsBackpressureTriggered = enqueueResult.IsBackpressureTriggered,
+                Message = enqueueResult.Message
+            });
+        }
+        catch (ArgumentException exception) {
+            Logger.Warn(exception, "Parcel 批量缓冲写入参数校验失败。");
+            return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", exception.Message);
         }
     }
 
@@ -243,5 +294,33 @@ public static class ParcelAdminApiRouteExtensions {
                 detail: ex.Message,
                 statusCode: StatusCodes.Status500InternalServerError);
         }
+    }
+
+    /// <summary>
+    /// 解析新增请求中的本地时间字段。
+    /// </summary>
+    /// <param name="request">新增请求。</param>
+    /// <param name="scannedTime">扫码时间。</param>
+    /// <param name="dischargeTime">落格时间。</param>
+    /// <param name="errorMessage">错误消息。</param>
+    /// <returns>解析成功返回 true。</returns>
+    private static bool TryParseCreateRequestTimes(
+        ParcelCreateRequest request,
+        out DateTime scannedTime,
+        out DateTime dischargeTime,
+        out string errorMessage) {
+        if (!LocalDateTimeParsing.TryParseLocalDateTime(request.ScannedTime, out scannedTime)) {
+            dischargeTime = default;
+            errorMessage = "scannedTime 必须是本地时间格式（如 yyyy-MM-dd HH:mm:ss），不允许 UTC 或时区 offset。";
+            return false;
+        }
+
+        if (!LocalDateTimeParsing.TryParseLocalDateTime(request.DischargeTime, out dischargeTime)) {
+            errorMessage = "dischargeTime 必须是本地时间格式（如 yyyy-MM-dd HH:mm:ss），不允许 UTC 或时区 offset。";
+            return false;
+        }
+
+        errorMessage = string.Empty;
+        return true;
     }
 }

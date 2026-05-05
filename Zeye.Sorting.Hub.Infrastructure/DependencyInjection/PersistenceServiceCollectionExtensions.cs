@@ -20,7 +20,9 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Diagnostics;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 using Zeye.Sorting.Hub.Domain.Enums.Sharding;
+using Zeye.Sorting.Hub.Application.Services.WriteBuffers;
 using Zeye.Sorting.Hub.Infrastructure.Repositories;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.WriteBuffering;
 
 namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
 
@@ -96,6 +98,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// </summary>
         public static IServiceCollection AddSortingHubPersistence(this IServiceCollection services, IConfiguration configuration) {
             RegisterDatabaseConnectionDiagnostics(services, configuration);
+            RegisterBufferedWriteServices(services, configuration);
             var provider = configuration["Persistence:Provider"];
             var commandTimeoutSeconds = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
             var minCommandElapsedMilliseconds = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:MinCommandElapsedMilliseconds", 50);
@@ -212,6 +215,63 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
 
             services.TryAddSingleton<IDatabaseConnectionDiagnostics, DatabaseConnectionDiagnosticsService>();
             services.TryAddSingleton<DatabaseConnectionWarmupService>();
+        }
+
+        /// <summary>
+        /// 注册批量缓冲写入服务。
+        /// </summary>
+        /// <param name="services">服务集合。</param>
+        /// <param name="configuration">配置根。</param>
+        private static void RegisterBufferedWriteServices(IServiceCollection services, IConfiguration configuration) {
+            services.AddOptions<BufferedWriteOptions>()
+                .Configure(options => ApplyBufferedWriteOptions(options, configuration))
+                .Validate(
+                    static options => options.ChannelCapacity is >= BufferedWriteOptions.MinChannelCapacity and <= BufferedWriteOptions.MaxChannelCapacity,
+                    $"ChannelCapacity 必须在 {BufferedWriteOptions.MinChannelCapacity}~{BufferedWriteOptions.MaxChannelCapacity} 之间")
+                .Validate(
+                    static options => options.BatchSize is >= BufferedWriteOptions.MinBatchSize and <= BufferedWriteOptions.MaxBatchSize,
+                    $"BatchSize 必须在 {BufferedWriteOptions.MinBatchSize}~{BufferedWriteOptions.MaxBatchSize} 之间")
+                .Validate(
+                    static options => options.FlushIntervalMilliseconds is >= BufferedWriteOptions.MinFlushIntervalMilliseconds and <= BufferedWriteOptions.MaxFlushIntervalMilliseconds,
+                    $"FlushIntervalMilliseconds 必须在 {BufferedWriteOptions.MinFlushIntervalMilliseconds}~{BufferedWriteOptions.MaxFlushIntervalMilliseconds} 之间")
+                .Validate(
+                    static options => options.MaxRetryCount is >= BufferedWriteOptions.MinMaxRetryCount and <= BufferedWriteOptions.MaxMaxRetryCount,
+                    $"MaxRetryCount 必须在 {BufferedWriteOptions.MinMaxRetryCount}~{BufferedWriteOptions.MaxMaxRetryCount} 之间")
+                .Validate(
+                    static options => options.DeadLetterCapacity is >= BufferedWriteOptions.MinDeadLetterCapacity and <= BufferedWriteOptions.MaxDeadLetterCapacity,
+                    $"DeadLetterCapacity 必须在 {BufferedWriteOptions.MinDeadLetterCapacity}~{BufferedWriteOptions.MaxDeadLetterCapacity} 之间")
+                .Validate(
+                    static options => options.BackpressureRejectThreshold > 0 && options.BackpressureRejectThreshold <= options.ChannelCapacity,
+                    "BackpressureRejectThreshold 必须在 1~ChannelCapacity 之间")
+                .Validate(
+                    static options => options.BatchSize <= options.ChannelCapacity,
+                    "BatchSize 不能大于 ChannelCapacity")
+                .ValidateOnStart();
+
+            services.TryAddSingleton(sp =>
+                new BoundedWriteChannel<BufferedParcelWriteItem>(
+                    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<BufferedWriteOptions>>().Value.ChannelCapacity));
+            services.TryAddSingleton(sp =>
+                new DeadLetterWriteStore(
+                    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<BufferedWriteOptions>>().Value.DeadLetterCapacity));
+            services.TryAddSingleton<ParcelBufferedWriteService>();
+            services.TryAddSingleton<ParcelBatchWriteFlushService>();
+            services.TryAddSingleton<IBufferedWriteService>(sp => sp.GetRequiredService<ParcelBufferedWriteService>());
+        }
+
+        /// <summary>
+        /// 应用批量缓冲写入配置。
+        /// </summary>
+        /// <param name="options">配置实例。</param>
+        /// <param name="configuration">配置根。</param>
+        private static void ApplyBufferedWriteOptions(BufferedWriteOptions options, IConfiguration configuration) {
+            options.IsEnabled = ReadBooleanSetting(configuration, $"{BufferedWriteOptions.SectionPath}:IsEnabled", options.IsEnabled);
+            options.ChannelCapacity = ReadIntSetting(configuration, $"{BufferedWriteOptions.SectionPath}:ChannelCapacity", options.ChannelCapacity);
+            options.BatchSize = ReadIntSetting(configuration, $"{BufferedWriteOptions.SectionPath}:BatchSize", options.BatchSize);
+            options.FlushIntervalMilliseconds = ReadIntSetting(configuration, $"{BufferedWriteOptions.SectionPath}:FlushIntervalMilliseconds", options.FlushIntervalMilliseconds);
+            options.MaxRetryCount = ReadIntSetting(configuration, $"{BufferedWriteOptions.SectionPath}:MaxRetryCount", options.MaxRetryCount);
+            options.BackpressureRejectThreshold = ReadIntSetting(configuration, $"{BufferedWriteOptions.SectionPath}:BackpressureRejectThreshold", options.BackpressureRejectThreshold);
+            options.DeadLetterCapacity = ReadIntSetting(configuration, $"{BufferedWriteOptions.SectionPath}:DeadLetterCapacity", options.DeadLetterCapacity);
         }
 
         /// <summary>

@@ -38,6 +38,21 @@ internal sealed class FakeParcelRepository : IParcelRepository {
     public bool ShouldFailOnAdd { get; set; }
 
     /// <summary>
+    /// 控制 AddRangeAsync 是否模拟写入失败，用于验证缓冲刷新失败与死信路径。
+    /// </summary>
+    public bool ShouldFailOnAddRange { get; set; }
+
+    /// <summary>
+    /// 批量新增调用次数。
+    /// </summary>
+    public int AddRangeCallCount { get; private set; }
+
+    /// <summary>
+    /// 最近一次批量新增条数。
+    /// </summary>
+    public int LastAddRangeCount { get; private set; }
+
+    /// <summary>
     /// 指定清理计划数量，用于断言返回结果中的 PlannedCount。
     /// </summary>
     public int CleanupPlannedCount { get; set; } = 5;
@@ -261,6 +276,12 @@ internal sealed class FakeParcelRepository : IParcelRepository {
     /// 批量新增（使用外部传入 Id，重复时返回冲突错误）。
     /// </summary>
     public Task<RepositoryResult> AddRangeAsync(IReadOnlyCollection<Parcel> parcels, CancellationToken cancellationToken) {
+        AddRangeCallCount++;
+        LastAddRangeCount = parcels.Count;
+        if (ShouldFailOnAddRange) {
+            return Task.FromResult(RepositoryResult.Fail("模拟批量写入失败：数据库不可用。"));
+        }
+
         foreach (var parcel in parcels) {
             if (_store.ContainsKey(parcel.Id)) {
                 return Task.FromResult(RepositoryResult.Fail("包裹 Id 已存在。", RepositoryErrorCodes.ParcelIdConflict));
@@ -270,6 +291,14 @@ internal sealed class FakeParcelRepository : IParcelRepository {
         }
 
         return Task.FromResult(RepositoryResult.Success());
+    }
+
+    /// <summary>
+    /// 获取当前已存储包裹数量。
+    /// </summary>
+    /// <returns>包裹数量。</returns>
+    public int GetStoredParcelCount() {
+        return _store.Count;
     }
 
     /// <summary>
