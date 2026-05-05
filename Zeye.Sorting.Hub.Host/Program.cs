@@ -65,6 +65,8 @@ try {
     builder.Services.AddHostedService<DevelopmentBrowserLauncherHostedService>();
     builder.Services.AddHostedService<DatabaseConnectionWarmupHostedService>();
     builder.Services.AddHostedService<ParcelBatchWriteFlushHostedService>();
+    builder.Services.AddHostedService<ShardingPrebuildHostedService>();
+    builder.Services.AddHostedService<ShardingInspectionHostedService>();
     builder.Services.AddSingleton<SafeExecutor>();
     builder.Services.AddSingleton<ConfigChangeHistoryStore<LogCleanupSettings>>();
     builder.Services.AddSortingHubPersistence(builder.Configuration);
@@ -82,6 +84,9 @@ try {
             tags: ["ready"])
         .AddCheck<BufferedWriteQueueHealthCheck>(
             name: "parcel-buffered-write",
+            tags: ["ready"])
+        .AddCheck<ShardingGovernanceHealthCheck>(
+            name: "sharding-governance",
             tags: ["ready"]);
     builder.Services.AddProblemDetails();
     builder.Services
