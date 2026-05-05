@@ -190,9 +190,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             }
 
             services.AddScoped<IParcelRepository, ParcelRepository>();
-            services.AddScoped<ArchiveTaskRepository>();
-            services.AddScoped<IArchiveTaskRepository>(serviceProvider =>
-                serviceProvider.GetRequiredService<ArchiveTaskRepository>());
+            services.AddScoped<IArchiveTaskRepository, ArchiveTaskRepository>();
             services.AddScoped<WebRequestAuditLogRepository>();
             services.AddScoped<IWebRequestAuditLogRepository>(serviceProvider =>
                 serviceProvider.GetRequiredService<WebRequestAuditLogRepository>());

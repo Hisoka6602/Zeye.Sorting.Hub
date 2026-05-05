@@ -14,16 +14,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories;
 /// </summary>
 public sealed class ArchiveTaskRepository : RepositoryBase<ArchiveTask, SortingHubDbContext>, IArchiveTaskRepository {
     /// <summary>
-    /// NLog 日志器。
-    /// </summary>
-    private static readonly ILogger NLogLogger = LogManager.GetCurrentClassLogger();
-
-    /// <summary>
     /// 初始化归档任务仓储。
     /// </summary>
     /// <param name="contextFactory">数据库上下文工厂。</param>
     public ArchiveTaskRepository(IDbContextFactory<SortingHubDbContext> contextFactory)
-        : base(contextFactory, NLogLogger) {
+        : base(contextFactory, LogManager.GetCurrentClassLogger()) {
     }
 
     /// <summary>

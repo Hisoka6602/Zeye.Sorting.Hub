@@ -9,6 +9,11 @@ namespace Zeye.Sorting.Hub.Host.HostedServices;
 /// </summary>
 public sealed class DataArchiveHostedService : BackgroundService {
     /// <summary>
+    /// Worker 默认轮询延迟秒数（作用域创建失败时兜底使用）。
+    /// </summary>
+    private const int DefaultPollDelaySeconds = 30;
+
+    /// <summary>
     /// NLog 日志器。
     /// </summary>
     private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
@@ -34,7 +39,7 @@ public sealed class DataArchiveHostedService : BackgroundService {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
         Logger.Info("数据归档后台托管服务已启动。");
         while (!stoppingToken.IsCancellationRequested) {
-            var pollDelay = TimeSpan.FromSeconds(30);
+            var pollDelay = TimeSpan.FromSeconds(DefaultPollDelaySeconds);
             try {
                 await using var scope = _serviceScopeFactory.CreateAsyncScope();
                 var worker = scope.ServiceProvider.GetRequiredService<DataArchiveHostedWorker>();
