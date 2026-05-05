@@ -203,7 +203,7 @@ public sealed class ParcelBatchWriteFlushService {
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
             var cancellationMessage = "批量新增取消，失败批次已进入死信隔离。";
-            RecordFailedBatch(batch.Count, cancellationMessage);
+            RecordFailedFlush(batch.Count, cancellationMessage);
             MoveBatchToDeadLetter(batch, cancellationMessage);
             throw;
         }
@@ -216,7 +216,7 @@ public sealed class ParcelBatchWriteFlushService {
         }
 
         var failureMessage = repositoryResult.ErrorMessage ?? "批量新增失败。";
-        RecordFailedBatch(batch.Count, failureMessage);
+        RecordFailedFlush(batch.Count, failureMessage);
         if (cancellationToken.IsCancellationRequested) {
             MoveBatchToDeadLetter(batch, $"{failureMessage}；取消期间进入死信隔离。");
             throw new OperationCanceledException(cancellationToken);
@@ -228,15 +228,15 @@ public sealed class ParcelBatchWriteFlushService {
     /// <summary>
     /// 记录失败批次指标与异常日志。
     /// </summary>
-    /// <param name="batchCount">批次数量。</param>
+    /// <param name="itemCount">批次内记录数量。</param>
     /// <param name="errorMessage">失败消息。</param>
-    private void RecordFailedBatch(int batchCount, string errorMessage) {
+    private void RecordFailedFlush(int itemCount, string errorMessage) {
         _lastFailedFlushAtLocal = DateTime.Now;
         _lastFailureMessage = errorMessage;
         Interlocked.Increment(ref _failedFlushCount);
         Logger.Error(
             "Parcel 批量缓冲写入失败。BatchCount={BatchCount}, ErrorMessage={ErrorMessage}",
-            batchCount,
+            itemCount,
             _lastFailureMessage);
     }
 

@@ -18,6 +18,11 @@ public sealed class BoundedWriteChannel<TItem> {
     private int _depth;
 
     /// <summary>
+    /// 写入深度预占最大自旋次数。
+    /// </summary>
+    private const int MaxDepthReservationSpinCount = 10;
+
+    /// <summary>
     /// 累计丢弃计数。
     /// </summary>
     private long _droppedCount;
@@ -28,6 +33,7 @@ public sealed class BoundedWriteChannel<TItem> {
     /// <param name="capacity">容量上限。</param>
     public BoundedWriteChannel(int capacity) {
         Capacity = Math.Max(1, capacity);
+        // FullMode.Wait 仅配合 TryEnqueue 的 CAS 预占深度逻辑，实际容量边界由 _depth 控制。
         _channel = Channel.CreateBounded<TItem>(new BoundedChannelOptions(Capacity) {
             FullMode = BoundedChannelFullMode.Wait,
             SingleReader = true,
@@ -69,6 +75,10 @@ public sealed class BoundedWriteChannel<TItem> {
             }
 
             spinWait.SpinOnce();
+            if (spinWait.Count > MaxDepthReservationSpinCount) {
+                Interlocked.Increment(ref _droppedCount);
+                return false;
+            }
         }
 
         if (_channel.Writer.TryWrite(item)) {

@@ -155,7 +155,7 @@ public sealed class ParcelBufferedWriteTests {
         var deadLetterStore = new DeadLetterWriteStore(options.DeadLetterCapacity);
         var fakeRepository = new FakeParcelRepository {
             ShouldFailOnAddRange = true,
-            BeforeAddRangeResult = cancellationTokenSource.Cancel
+            BeforeAddRangeResult = () => cancellationTokenSource.Cancel()
         };
         var serviceProvider = BuildRepositoryServiceProvider(fakeRepository);
         var flushService = new ParcelBatchWriteFlushService(
