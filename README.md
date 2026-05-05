@@ -779,7 +779,7 @@
 - `Middleware/ResponseCaptureResult.cs`：响应正文采集结果值类型。
 - `Zeye.Sorting.Hub.Host.csproj`：Host 项目定义。
 - `nlog.config`：NLog 日志配置。
-- `appsettings.json`：默认运行配置（含 `WebRequestAuditLog.IncludeRequestBody/IncludeResponseBody`、`AuditReadOnlyApi:Enabled` 显式开关、`ResourceThresholds:MaxConnectionPoolSize/MemoryWarningThresholdMB` 资源阈值节、`Persistence:Diagnostics` 数据库连接诊断配置、`Persistence:WriteBuffering` 批量缓冲写入配置、`Persistence:Archiving` 归档 dry-run 配置、`Persistence:BaselineData` 基线数据校验配置、`Persistence:MigrationGovernance` 迁移治理配置、`Persistence:Sharding:RuntimeInspection/Prebuild` 分表巡检与预建配置，以及 `Persistence:AutoTuning:SlowQueryProfile` 慢查询画像窗口/单指纹样本上限配置）。
+- `appsettings.json`：默认运行配置（含 `WebRequestAuditLog.IncludeRequestBody/IncludeResponseBody`、`AuditReadOnlyApi:Enabled` 显式开关、`ResourceThresholds:MaxConnectionPoolSize/MemoryWarningThresholdMB` 资源阈值节、`Persistence:Diagnostics` 数据库连接诊断配置、`Persistence:WriteBuffering` 批量缓冲写入配置、`Persistence:Archiving` 归档 dry-run 配置、`Persistence:BaselineData` 基线数据校验配置、`Persistence:MigrationGovernance` 迁移治理配置、`Persistence:Sharding:RuntimeInspection/Prebuild` 分表巡检与预建配置，以及 `Persistence:AutoTuning:SlowQueryProfile` 慢查询画像配置与 `Persistence:AutoTuning:QueryGovernance` 查询治理报告/索引建议阈值配置）。
 - `appsettings.Development.json`：开发环境配置覆盖文件。
 
 #### `Zeye.Sorting.Hub.Host/Swagger/`：Swagger 扩展目录
@@ -1003,7 +1003,7 @@
 
 - 继续实施《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》，执行前先核对现有台账，确认当前已完成到 PR-I，本次补齐 PR-J“查询模板治理与索引建议闭环”。
 - 新增 `QueryTemplateRegistry`、`QueryIndexRecommendationService` 与 `QueryGovernanceReport`，集中登记 6 个高频查询模板，并复用慢查询画像只读抽象生成模板覆盖与索引建议报告。
-- 新增 `QueryGovernanceReportHostedService`，在运行期周期输出查询模板登记、慢查询命中情况、未登记指纹缺口与只读索引建议，不自动执行任何 DDL。
+- 新增 `QueryGovernanceReportHostedService`，并在 `appsettings.json` 增补 `Persistence:AutoTuning:QueryGovernance` 配置节，在运行期周期输出查询模板登记、慢查询命中情况、未登记指纹缺口与只读索引建议，不自动执行任何 DDL。
 - 新增 `QueryGovernanceTests.cs` 与 `检查台账/PR-长期数据库底座J-检查台账.md`，同步更新 README、更新记录与文件清单基线，保证断点可延续。
 
 ## 后续可完善点

@@ -29,6 +29,11 @@ public sealed class QueryIndexRecommendationService {
     private readonly int _minimumCallCount;
 
     /// <summary>
+    /// 浮点毫秒值相等比较容差。
+    /// </summary>
+    private const double MillisecondComparisonTolerance = 0.01d;
+
+    /// <summary>
     /// 初始化查询治理索引建议服务。
     /// </summary>
     /// <param name="slowQueryProfileReader">慢查询画像读取器。</param>
@@ -72,7 +77,7 @@ public sealed class QueryIndexRecommendationService {
             matchedFingerprints.Add(profile.Fingerprint);
             if (!matchedProfilesByTemplateName.TryGetValue(bestTemplate.TemplateName, out var currentProfile)
                 || profile.P99Milliseconds > currentProfile.P99Milliseconds
-                || (Math.Abs(profile.P99Milliseconds - currentProfile.P99Milliseconds) < double.Epsilon && profile.CallCount > currentProfile.CallCount)) {
+                || (Math.Abs(profile.P99Milliseconds - currentProfile.P99Milliseconds) < MillisecondComparisonTolerance && profile.CallCount > currentProfile.CallCount)) {
                 matchedProfilesByTemplateName[bestTemplate.TemplateName] = profile;
             }
         }
@@ -139,16 +144,40 @@ public sealed class QueryIndexRecommendationService {
                 continue;
             }
 
-            if (bestTemplate is null
-                || score > bestScore
-                || (score == bestScore && template.FilterColumns.Count < bestTemplate.FilterColumns.Count)
-                || (score == bestScore && template.FilterColumns.Count == bestTemplate.FilterColumns.Count && template.TemplateName.CompareTo(bestTemplate.TemplateName) < 0)) {
+            if (bestTemplate is null || IsBetterTemplateMatch(template, bestTemplate, score, bestScore)) {
                 bestTemplate = template;
                 bestScore = score;
             }
         }
 
         return bestTemplate;
+    }
+
+    /// <summary>
+    /// 判断候选模板是否优于当前模板。
+    /// </summary>
+    /// <param name="candidateTemplate">候选模板。</param>
+    /// <param name="currentTemplate">当前最佳模板。</param>
+    /// <param name="candidateScore">候选模板得分。</param>
+    /// <param name="currentScore">当前模板得分。</param>
+    /// <returns>若候选模板应替换当前模板则返回 true。</returns>
+    private static bool IsBetterTemplateMatch(
+        QueryTemplateDescriptor candidateTemplate,
+        QueryTemplateDescriptor currentTemplate,
+        int candidateScore,
+        int currentScore) {
+        // 步骤 1：优先选择匹配分值更高的模板，确保表名/过滤/排序字段覆盖更完整。
+        if (candidateScore != currentScore) {
+            return candidateScore > currentScore;
+        }
+
+        // 步骤 2：分值相同时优先选择过滤字段更少的模板，避免通用模板吞掉更明确的专用模板。
+        if (candidateTemplate.FilterColumns.Count != currentTemplate.FilterColumns.Count) {
+            return candidateTemplate.FilterColumns.Count < currentTemplate.FilterColumns.Count;
+        }
+
+        // 步骤 3：若仍然相同，则按模板名称字典序稳定收敛，保证输出结果可预测。
+        return candidateTemplate.TemplateName.CompareTo(currentTemplate.TemplateName) < 0;
     }
 
     /// <summary>

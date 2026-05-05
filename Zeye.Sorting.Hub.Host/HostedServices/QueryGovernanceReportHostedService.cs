@@ -1,5 +1,7 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using NLog;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.QueryGovernance;
 
 namespace Zeye.Sorting.Hub.Host.HostedServices;
@@ -8,6 +10,11 @@ namespace Zeye.Sorting.Hub.Host.HostedServices;
 /// 查询治理报告后台服务。
 /// </summary>
 public sealed class QueryGovernanceReportHostedService : BackgroundService {
+    /// <summary>
+    /// 查询治理报告间隔配置键。
+    /// </summary>
+    private const string ReportIntervalHoursConfigKey = "QueryGovernance:ReportIntervalHours";
+
     /// <summary>
     /// 默认巡检间隔。
     /// </summary>
@@ -24,11 +31,21 @@ public sealed class QueryGovernanceReportHostedService : BackgroundService {
     private readonly QueryIndexRecommendationService _queryIndexRecommendationService;
 
     /// <summary>
+    /// 查询治理报告巡检间隔。
+    /// </summary>
+    private readonly TimeSpan _reportInterval;
+
+    /// <summary>
     /// 初始化查询治理报告后台服务。
     /// </summary>
     /// <param name="queryIndexRecommendationService">查询治理索引建议服务。</param>
-    public QueryGovernanceReportHostedService(QueryIndexRecommendationService queryIndexRecommendationService) {
+    /// <param name="configuration">配置根。</param>
+    public QueryGovernanceReportHostedService(
+        QueryIndexRecommendationService queryIndexRecommendationService,
+        IConfiguration configuration) {
+        ArgumentNullException.ThrowIfNull(configuration);
         _queryIndexRecommendationService = queryIndexRecommendationService ?? throw new ArgumentNullException(nameof(queryIndexRecommendationService));
+        _reportInterval = ResolveReportInterval(configuration);
     }
 
     /// <summary>
@@ -41,7 +58,7 @@ public sealed class QueryGovernanceReportHostedService : BackgroundService {
         EmitGovernanceReport();
 
         // 步骤 2：后续按固定周期重复巡检，持续输出模板覆盖与索引建议闭环结果。
-        using var timer = new PeriodicTimer(DefaultReportInterval);
+        using var timer = new PeriodicTimer(_reportInterval);
         while (await timer.WaitForNextTickAsync(stoppingToken)) {
             EmitGovernanceReport();
         }
@@ -106,5 +123,21 @@ public sealed class QueryGovernanceReportHostedService : BackgroundService {
         catch (Exception exception) {
             NLogLogger.Error(exception, "输出查询治理报告失败。");
         }
+    }
+
+    /// <summary>
+    /// 解析查询治理报告巡检间隔。
+    /// </summary>
+    /// <param name="configuration">配置根。</param>
+    /// <returns>巡检间隔。</returns>
+    private static TimeSpan ResolveReportInterval(IConfiguration configuration) {
+        var reportIntervalHours = Math.Clamp(
+            AutoTuningConfigurationReader.GetPositiveIntOrDefault(
+                configuration,
+                AutoTuningConfigurationReader.BuildAutoTuningKey(ReportIntervalHoursConfigKey),
+                (int)DefaultReportInterval.TotalHours),
+            1,
+            24);
+        return TimeSpan.FromHours(reportIntervalHours);
     }
 }

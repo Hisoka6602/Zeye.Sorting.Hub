@@ -37,6 +37,7 @@
 
 ### 修改文件
 - `Zeye.Sorting.Hub.Host/Program.cs`
+- `Zeye.Sorting.Hub.Host/appsettings.json`
 - `Zeye.Sorting.Hub.Infrastructure/DependencyInjection/PersistenceServiceCollectionExtensions.cs`
 - `README.md`
 - `更新记录.md`
@@ -51,7 +52,7 @@
 
 1. 新增 `QueryTemplateRegistry`，集中登记当前阶段必须治理的 6 个高频查询模板，统一声明用途、涉及表、过滤/排序字段、索引建议、时间范围与深分页边界。
 2. 新增 `QueryIndexRecommendationService` 与 `QueryGovernanceReport`，复用现有 `ISlowQueryProfileReader` 读取慢查询画像，对慢查询指纹做模板匹配、缺口识别与只读索引建议汇总。
-3. 新增 `QueryGovernanceReportHostedService`，在运行期周期输出查询模板登记、未命中模板、未登记慢查询指纹与索引建议报告，不自动执行任何 DDL。
+3. 新增 `QueryGovernanceReportHostedService`，并在 `appsettings.json` 增补 `Persistence:AutoTuning:QueryGovernance` 配置节，在运行期周期输出查询模板登记、未命中模板、未登记慢查询指纹与索引建议报告，不自动执行任何 DDL。
 4. 新增 `QueryGovernanceTests.cs`，覆盖强制模板登记、已登记模板建议输出与未登记慢查询缺口暴露，保证 PR-J 断点可继续往后推进。
 
 ---
