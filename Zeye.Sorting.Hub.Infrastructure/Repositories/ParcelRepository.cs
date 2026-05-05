@@ -225,6 +225,36 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     }
 
     /// <summary>
+    /// 按过滤条件执行游标分页查询（返回摘要读模型）。
+    /// </summary>
+    public Task<CursorPageResult<ParcelSummaryReadModel>> GetCursorPagedAsync(
+        ParcelQueryFilter filter,
+        CursorPageRequest pageRequest,
+        CancellationToken cancellationToken) {
+        ArgumentNullException.ThrowIfNull(filter);
+        ArgumentNullException.ThrowIfNull(pageRequest);
+
+        try {
+            ValidateQueryFilter(filter);
+            return ExecuteCursorQueryAsync(
+                (db, query) => ApplyFilter(query, filter, db.Database.ProviderName)
+                    .ApplyCursorCondition(pageRequest),
+                pageRequest,
+                cancellationToken);
+        }
+        catch (ValidationException ex) {
+            Logger.Warn(
+                ex,
+                "游标分页查询包裹摘要参数校验失败，Filter={@Filter}, PageSize={PageSize}, LastScannedTimeLocal={LastScannedTimeLocal}, LastId={LastId}",
+                filter,
+                pageRequest.PageSize,
+                pageRequest.LastScannedTimeLocal,
+                pageRequest.LastId);
+            throw;
+        }
+    }
+
+    /// <summary>
     /// 按集包号与扫码时间范围分页查询包裹摘要。
     /// </summary>
     public Task<PageResult<ParcelSummaryReadModel>> GetByBagCodeAsync(
@@ -558,6 +588,56 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
         }
         catch (Exception ex) {
             Logger.Error(ex, "分页查询包裹失败，PageNumber={PageNumber}, PageSize={PageSize}", pageNumber, pageSize);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// 执行游标分页查询。
+    /// </summary>
+    /// <param name="queryBuilder">查询构建器。</param>
+    /// <param name="pageRequest">游标分页参数。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>游标分页结果。</returns>
+    private async Task<CursorPageResult<ParcelSummaryReadModel>> ExecuteCursorQueryAsync(
+        Func<SortingHubDbContext, IQueryable<Parcel>, IQueryable<Parcel>> queryBuilder,
+        CursorPageRequest pageRequest,
+        CancellationToken cancellationToken) {
+        var pageSize = pageRequest.NormalizePageSize();
+
+        try {
+            await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
+            var query = queryBuilder(db, Query(db));
+            var items = await query
+                .OrderByDescending(x => x.ScannedTime)
+                .ThenByDescending(x => x.Id)
+                .Take(pageSize + 1)
+                .Select(SelectSummaryExpression)
+                .ToListAsync(cancellationToken);
+
+            var hasMore = items.Count > pageSize;
+            var pageItems = hasMore
+                ? items.Take(pageSize).ToArray()
+                : items.ToArray();
+            var nextItem = hasMore && pageItems.Length > 0
+                ? pageItems[^1]
+                : null;
+
+            return new CursorPageResult<ParcelSummaryReadModel> {
+                Items = pageItems,
+                PageSize = pageSize,
+                HasMore = hasMore,
+                NextScannedTimeLocal = nextItem?.ScannedTime,
+                NextId = nextItem?.Id
+            };
+        }
+        catch (Exception ex) {
+            Logger.Error(
+                ex,
+                "游标分页查询包裹失败，PageSize={PageSize}, LastScannedTimeLocal={LastScannedTimeLocal}, LastId={LastId}",
+                pageSize,
+                pageRequest.LastScannedTimeLocal,
+                pageRequest.LastId);
             throw;
         }
     }

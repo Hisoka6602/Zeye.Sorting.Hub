@@ -106,6 +106,7 @@ try {
         options.SchemaFilter<EnumDescriptionSchemaFilter>();
     });
     builder.Services.AddScoped<GetParcelPagedQueryService>();
+    builder.Services.AddScoped<GetParcelCursorPagedQueryService>();
     builder.Services.AddScoped<GetParcelByIdQueryService>();
     builder.Services.AddScoped<GetAdjacentParcelsQueryService>();
     builder.Services.AddScoped<CreateParcelCommandService>();

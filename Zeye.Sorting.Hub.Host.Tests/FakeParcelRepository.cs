@@ -48,9 +48,25 @@ internal sealed class FakeParcelRepository : IParcelRepository {
     public int CleanupExecutedCount { get; set; } = 5;
 
     /// <summary>
+    /// 最近一次普通分页查询过滤参数。
+    /// </summary>
+    public ParcelQueryFilter? LastPagedFilter { get; private set; }
+
+    /// <summary>
+    /// 最近一次游标分页查询过滤参数。
+    /// </summary>
+    public ParcelQueryFilter? LastCursorFilter { get; private set; }
+
+    /// <summary>
+    /// 最近一次游标分页请求参数。
+    /// </summary>
+    public CursorPageRequest? LastCursorPageRequest { get; private set; }
+
+    /// <summary>
     /// 列表查询返回固定分页结果。
     /// </summary>
     public Task<PageResult<ParcelSummaryReadModel>> GetPagedAsync(ParcelQueryFilter filter, PageRequest pageRequest, CancellationToken cancellationToken) {
+        LastPagedFilter = filter;
         var scannedTime = new DateTime(2026, 3, 20, 10, 0, 0, DateTimeKind.Local);
         var page = new PageResult<ParcelSummaryReadModel> {
             Items = [CreateSummary(1, "BC-LIST-1", "BAG-LIST", scannedTime)],
@@ -59,6 +75,43 @@ internal sealed class FakeParcelRepository : IParcelRepository {
             TotalCount = 1
         };
         return Task.FromResult(page);
+    }
+
+    /// <summary>
+    /// 游标分页返回固定两页结果，并记录最近一次游标查询参数。
+    /// </summary>
+    public Task<CursorPageResult<ParcelSummaryReadModel>> GetCursorPagedAsync(ParcelQueryFilter filter, CursorPageRequest pageRequest, CancellationToken cancellationToken) {
+        LastCursorFilter = filter;
+        LastCursorPageRequest = pageRequest;
+
+        var baseTime = new DateTime(2026, 3, 20, 10, 0, 0, DateTimeKind.Local);
+        var firstPageItems = new[] {
+            CreateSummary(4, "BC-CURSOR-4", "BAG-CURSOR", baseTime.AddMinutes(4)),
+            CreateSummary(3, "BC-CURSOR-3", "BAG-CURSOR", baseTime.AddMinutes(3))
+        };
+        var secondPageItems = new[] {
+            CreateSummary(2, "BC-CURSOR-2", "BAG-CURSOR", baseTime.AddMinutes(2)),
+            CreateSummary(1, "BC-CURSOR-1", "BAG-CURSOR", baseTime.AddMinutes(1))
+        };
+
+        var result = pageRequest.LastId switch {
+            3 => new CursorPageResult<ParcelSummaryReadModel> {
+                Items = secondPageItems,
+                PageSize = pageRequest.NormalizePageSize(),
+                HasMore = false,
+                NextScannedTimeLocal = null,
+                NextId = null
+            },
+            _ => new CursorPageResult<ParcelSummaryReadModel> {
+                Items = firstPageItems,
+                PageSize = pageRequest.NormalizePageSize(),
+                HasMore = true,
+                NextScannedTimeLocal = firstPageItems[^1].ScannedTime,
+                NextId = firstPageItems[^1].Id
+            }
+        };
+
+        return Task.FromResult(result);
     }
 
     /// <summary>
