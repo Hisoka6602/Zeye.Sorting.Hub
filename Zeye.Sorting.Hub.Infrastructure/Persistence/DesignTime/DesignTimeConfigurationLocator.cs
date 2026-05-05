@@ -1,3 +1,4 @@
+using System.Collections;
 using Microsoft.Extensions.Configuration;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
@@ -22,19 +23,42 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
         /// <summary>
         /// 从 appsettings.json 加载设计时配置。
         /// 按优先级搜索以下路径：当前工作目录 → 向上遍历父目录中的 Host 子目录。
+        /// 同时叠加进程环境变量中使用 <c>__</c> 分隔的配置键，便于 CI 在不改写示例配置的前提下覆盖连接字符串。
         /// </summary>
-        /// <returns>加载的配置对象；若未找到 appsettings.json 则返回空配置。</returns>
+        /// <returns>加载的配置对象；若未找到 appsettings.json 则返回仅包含环境变量覆盖项的空配置。</returns>
         public static IConfiguration LoadConfiguration() {
+            var builder = new ConfigurationBuilder();
             var basePath = FindAppsettingsDirectory();
-            if (basePath is null) {
-                return new ConfigurationBuilder().Build();
+            if (basePath is not null) {
+                builder
+                    .SetBasePath(basePath)
+                    .AddJsonFile("appsettings.json", optional: true)
+                    .AddJsonFile("appsettings.Development.json", optional: true);
             }
 
-            return new ConfigurationBuilder()
-                .SetBasePath(basePath)
-                .AddJsonFile("appsettings.json", optional: true)
-                .AddJsonFile("appsettings.Development.json", optional: true)
-                .Build();
+            AppendEnvironmentVariableOverrides(builder);
+            return builder.Build();
+        }
+
+        /// <summary>
+        /// 将环境变量中的双下划线配置键追加为配置覆盖项。
+        /// </summary>
+        /// <param name="builder">配置构建器。</param>
+        private static void AppendEnvironmentVariableOverrides(IConfigurationBuilder builder) {
+            var overrides = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+            var environmentVariables = Environment.GetEnvironmentVariables();
+            foreach (var key in environmentVariables.Keys.OfType<string>()) {
+                if (!key.Contains("__", StringComparison.Ordinal)) {
+                    continue;
+                }
+
+                var normalizedKey = key.Replace("__", ":", StringComparison.Ordinal);
+                overrides[normalizedKey] = environmentVariables[key]?.ToString();
+            }
+
+            if (overrides.Count > 0) {
+                builder.AddInMemoryCollection(overrides);
+            }
         }
 
         /// <summary>

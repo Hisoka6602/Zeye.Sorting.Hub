@@ -21,6 +21,7 @@ using Zeye.Sorting.Hub.Application.Services.WriteBuffers;
 using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Archiving;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.MigrationGovernance;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.WriteBuffering;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -70,6 +71,10 @@ try {
     builder.Services.AddHostedService<ShardingPrebuildHostedService>();
     builder.Services.AddHostedService<ShardingInspectionHostedService>();
     builder.Services.AddHostedService<DataArchiveHostedService>();
+    builder.Services.AddHostedService<BaselineDataValidationHostedService>();
+    builder.Services.AddSingleton<MigrationGovernanceHostedService>();
+    builder.Services.AddHostedService(static serviceProvider =>
+        serviceProvider.GetRequiredService<MigrationGovernanceHostedService>());
     builder.Services.AddSingleton<SafeExecutor>();
     builder.Services.AddSingleton<ConfigChangeHistoryStore<LogCleanupSettings>>();
     builder.Services.AddSortingHubPersistence(builder.Configuration);
@@ -87,6 +92,12 @@ try {
             tags: ["ready"])
         .AddCheck<BufferedWriteQueueHealthCheck>(
             name: "parcel-buffered-write",
+            tags: ["ready"])
+        .AddCheck<BaselineDataHealthCheck>(
+            name: "baseline-data",
+            tags: ["ready"])
+        .AddCheck<MigrationGovernanceHealthCheck>(
+            name: "migration-governance",
             tags: ["ready"])
         .AddCheck<ShardingGovernanceHealthCheck>(
             name: "sharding-governance",

@@ -52,6 +52,7 @@ jobs:
       - name: Validate EF migrations (list / update / script)
         env:
           MYSQL_CONNECTION: "server=127.0.0.1;port=3306;database=zeye_sorting_hub_ci;uid=root;pwd=${{ env.MYSQL_ROOT_PASSWORD }};SslMode=None;"
+          ConnectionStrings__MySql: "server=127.0.0.1;port=3306;database=zeye_sorting_hub_ci;uid=root;pwd=${{ env.MYSQL_ROOT_PASSWORD }};SslMode=None;"
         run: |
           dotnet ef migrations list \
             --project Zeye.Sorting.Hub.Infrastructure \
@@ -79,11 +80,12 @@ jobs:
         env:
           ACCEPT_EULA: "Y"
           MSSQL_SA_PASSWORD: ${{ env.MSSQL_SA_PASSWORD }}
+          SQLCMDPASSWORD: ${{ env.MSSQL_SA_PASSWORD }}
         ports:
           - 1433:1433
         # mcr.microsoft.com/mssql/server:2022-latest 镜像内 sqlcmd 默认位于 /opt/mssql-tools18/bin/sqlcmd
         options: >-
-          --health-cmd "SQLCMDPASSWORD=$MSSQL_SA_PASSWORD /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -Q \"SELECT 1\" -C"
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -Q \"SELECT 1\" -C"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 30
@@ -103,24 +105,18 @@ jobs:
       - name: Add dotnet tools to PATH
         run: echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
 
-      - name: Validate EF migrations (list / update / script)
+      - name: Validate EF design-time configuration (info / list)
         env:
-          SQLSERVER_CONNECTION: "Server=127.0.0.1,1433;Database=zeye_sorting_hub_ci;User Id=sa;Password=${{ env.MSSQL_SA_PASSWORD }};TrustServerCertificate=True;Encrypt=False;"
+          ConnectionStrings__SqlServer: "Server=127.0.0.1,1433;Database=zeye_sorting_hub_ci;User Id=sa;Password=${{ env.MSSQL_SA_PASSWORD }};TrustServerCertificate=True;Encrypt=False;"
         run: |
+          dotnet ef dbcontext info \
+            --project Zeye.Sorting.Hub.Infrastructure \
+            --startup-project Zeye.Sorting.Hub.Infrastructure \
+            --context SortingHubDbContext \
+            -- --provider SqlServer
           dotnet ef migrations list \
             --project Zeye.Sorting.Hub.Infrastructure \
             --startup-project Zeye.Sorting.Hub.Infrastructure \
             --context SortingHubDbContext \
-            -- --provider SqlServer
-          dotnet ef database update \
-            --project Zeye.Sorting.Hub.Infrastructure \
-            --startup-project Zeye.Sorting.Hub.Infrastructure \
-            --context SortingHubDbContext \
-            --connection "$SQLSERVER_CONNECTION" \
-            -- --provider SqlServer
-          dotnet ef migrations script \
-            --project Zeye.Sorting.Hub.Infrastructure \
-            --startup-project Zeye.Sorting.Hub.Infrastructure \
-            --context SortingHubDbContext \
-            --output /tmp/ef-migration-validation-sqlserver.sql \
+            --no-connect \
             -- --provider SqlServer
