@@ -62,7 +62,7 @@
 ## 四、验证记录
 
 - `dotnet build Zeye.Sorting.Hub.sln -v quiet` ✅
-- `dotnet test Zeye.Sorting.Hub.sln --no-build -v quiet` ✅（241 通过）
+- `dotnet test Zeye.Sorting.Hub.sln --no-build -v quiet` ✅（247 通过）
 - `bash .github/scripts/validate-database-foundation-rules.sh` ✅
 - `bash .github/scripts/validate-copilot-rules.sh` ✅
 

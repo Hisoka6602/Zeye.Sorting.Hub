@@ -21,6 +21,7 @@ using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.MigrationGovernance;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 using Zeye.Sorting.Hub.Domain.Enums.Sharding;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects;
@@ -423,7 +424,7 @@ public sealed class AutoTuningProductionControlTests {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Provider"] = "MySql",
-                ["ConnectionStrings:MySql"] = "Server=127.0.0.1;Port=3306;Database=test;Uid=root;Pwd=Admin@1234;",
+                ["ConnectionStrings:MySql"] = "Server=127.0.0.1;Port=3306;Database=test;Uid=root;******;",
                 ["Persistence:Sharding:Strategy:Mode"] = "9"
             })
             .Build();
@@ -822,7 +823,8 @@ public sealed class AutoTuningProductionControlTests {
             new TestDialect(),
             new AlwaysExistsShardingPhysicalTableProbe(),
             new TestHostEnvironment("Development"),
-            configuration);
+            configuration,
+            new MigrationGovernanceStateStore());
 
         var exception = await Record.ExceptionAsync(() => service.StartAsync(CancellationToken.None));
         Assert.Null(exception);
@@ -1046,7 +1048,8 @@ public sealed class AutoTuningProductionControlTests {
             new TestSqlServerDialect(),
             probe,
             new TestHostEnvironment("Development"),
-            mergedConfiguration);
+            mergedConfiguration,
+            new MigrationGovernanceStateStore());
 
         var exception = await Record.ExceptionAsync(() => InvokeShardingGovernanceGuardAsync(service));
         Assert.Null(exception);
@@ -1154,8 +1157,8 @@ public sealed class AutoTuningProductionControlTests {
     [Fact]
     public void Dialect_ExtractDatabaseNameAndAdminConnection_ShouldFollowProviderSemantics() {
         // 仅用于单元测试的本地示例连接字符串，不用于生产环境。
-        var mySqlConnectionString = "Server=127.0.0.1;Port=3306;Database=zeye_sorting_hub;User Id=root;Password=admin;";
-        var sqlServerConnectionString = "Server=127.0.0.1,1433;Database=zeye_sorting_hub;User Id=sa;Password=Admin@1234;TrustServerCertificate=True;Encrypt=False;";
+        var mySqlConnectionString = "Server=127.0.0.1;Port=3306;Database=zeye_sorting_hub;User Id=root;******;";
+        var sqlServerConnectionString = "Server=127.0.0.1,1433;Database=zeye_sorting_hub;User Id=sa;******;TrustServerCertificate=True;Encrypt=False;";
 
         var mySqlDialect = new MySqlDialect();
         var sqlServerDialect = new SqlServerDialect();
@@ -2010,7 +2013,7 @@ public sealed class AutoTuningProductionControlTests {
 
         var resolved = PersistenceServiceCollectionExtensions.ResolveMySqlServerVersion(
             configuration,
-            "server=127.0.0.1;port=3306;database=zeye_sorting_hub;uid=root;pwd=Admin@1234;SslMode=None;",
+            "server=127.0.0.1;port=3306;database=zeye_sorting_hub;uid=root;******;SslMode=None;",
             warningMessages.Add);
 
         Assert.IsType<MySqlServerVersion>(resolved);
@@ -2858,7 +2861,8 @@ public sealed class AutoTuningProductionControlTests {
             dialect ?? new TestDialect(),
             physicalTableProbe,
             new TestHostEnvironment("Development"),
-            configuration);
+            configuration,
+            new MigrationGovernanceStateStore());
     }
 
     /// <summary>

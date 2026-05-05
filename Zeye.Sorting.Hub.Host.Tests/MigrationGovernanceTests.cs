@@ -140,7 +140,7 @@ public sealed class MigrationGovernanceTests {
         try {
             var services = new ServiceCollection();
             services.AddDbContextFactory<SortingHubDbContext>(options =>
-                options.UseSqlServer("Server=127.0.0.1,1;Database=MigrationGovernanceFailure;User Id=sa;******;TrustServerCertificate=True;Connect Timeout=1"));
+                options.UseInMemoryDatabase($"migration-governance-failure-{Guid.NewGuid():N}"));
             var serviceProvider = services.BuildServiceProvider();
             var dbContextFactory = serviceProvider.GetRequiredService<IDbContextFactory<SortingHubDbContext>>();
             var hostEnvironment = new TestHostEnvironment("Development") {

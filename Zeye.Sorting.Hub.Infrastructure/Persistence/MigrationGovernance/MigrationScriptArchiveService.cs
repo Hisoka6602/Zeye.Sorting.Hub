@@ -96,8 +96,9 @@ public sealed class MigrationScriptArchiveService {
         var providerDirectory = Path.Combine(rootDirectory, SanitizePathSegment(providerName));
         Directory.CreateDirectory(providerDirectory);
 
-        var timestamp = DateTime.Now.ToString("yyyyMMddHHmmssfff");
-        var fileName = $"{timestamp}-{SanitizePathSegment(migrationName)}-{artifactName}{extension}";
+        var timestamp = DateTime.Now.ToString("yyyyMMddHHmmssfffffff");
+        var uniqueSuffix = Guid.NewGuid().ToString("N")[..8];
+        var fileName = $"{timestamp}-{uniqueSuffix}-{SanitizePathSegment(migrationName)}-{artifactName}{extension}";
         var filePath = Path.Combine(providerDirectory, fileName);
         await File.WriteAllTextAsync(filePath, content, cancellationToken);
         return filePath;

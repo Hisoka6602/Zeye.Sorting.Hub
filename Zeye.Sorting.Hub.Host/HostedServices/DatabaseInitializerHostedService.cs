@@ -253,11 +253,11 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             IShardingPhysicalTableProbe shardingPhysicalTableProbe,
             IHostEnvironment hostEnvironment,
             IConfiguration configuration,
-            MigrationGovernanceStateStore? migrationGovernanceStateStore = null) {
+            MigrationGovernanceStateStore migrationGovernanceStateStore) {
             _serviceProvider = serviceProvider;
             _configuration = configuration;
             _dialect = dialect;
-            _migrationGovernanceStateStore = migrationGovernanceStateStore ?? new MigrationGovernanceStateStore();
+            _migrationGovernanceStateStore = migrationGovernanceStateStore;
             _environmentName = hostEnvironment.EnvironmentName;
             _isProductionEnvironment = hostEnvironment.IsProduction();
             _migrationFailureMode = ResolveMigrationFailureMode(configuration, _isProductionEnvironment);
@@ -319,7 +319,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             IShardingPhysicalTableProbe shardingPhysicalTableProbe,
             IHostEnvironment hostEnvironment,
             IConfiguration configuration,
-            MigrationGovernanceStateStore? migrationGovernanceStateStore = null)
+            MigrationGovernanceStateStore migrationGovernanceStateStore)
             : this(serviceProvider, dialect, shardingPhysicalTableProbe, hostEnvironment, configuration, migrationGovernanceStateStore) {
             ArgumentNullException.ThrowIfNull(legacyLogger);
         }

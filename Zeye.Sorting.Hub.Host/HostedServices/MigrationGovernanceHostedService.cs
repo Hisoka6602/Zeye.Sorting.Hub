@@ -125,6 +125,7 @@ public sealed class MigrationGovernanceHostedService : IHostedService {
         var blockDangerousMigrationInProduction = ResolveBlockDangerousMigrationInProduction(_configuration);
         var environmentName = _hostEnvironment.EnvironmentName;
         var providerName = _dialect.ProviderName;
+        var isProductionEnvironment = _hostEnvironment.IsProduction();
 
         try {
             if (!isEnabled) {
@@ -143,7 +144,7 @@ public sealed class MigrationGovernanceHostedService : IHostedService {
             var (shouldApplyMigrations, skipReason) = EvaluateShouldApplyMigrations(
                 pendingMigrations.Length > 0,
                 isDryRun,
-                _hostEnvironment.IsProduction(),
+                isProductionEnvironment,
                 blockDangerousMigrationInProduction,
                 dangerousOperations);
 
@@ -165,7 +166,7 @@ public sealed class MigrationGovernanceHostedService : IHostedService {
                     IsEnabled = true,
                     IsDryRun = isDryRun,
                     BlockDangerousMigrationInProduction = blockDangerousMigrationInProduction,
-                    IsProductionEnvironment = _hostEnvironment.IsProduction(),
+                    IsProductionEnvironment = isProductionEnvironment,
                     AllMigrations = allMigrations,
                     AppliedMigrations = appliedMigrations,
                     PendingMigrations = pendingMigrations,
@@ -190,7 +191,7 @@ public sealed class MigrationGovernanceHostedService : IHostedService {
                 IsEnabled = true,
                 IsDryRun = isDryRun,
                 BlockDangerousMigrationInProduction = blockDangerousMigrationInProduction,
-                IsProductionEnvironment = _hostEnvironment.IsProduction(),
+                IsProductionEnvironment = isProductionEnvironment,
                 AllMigrations = allMigrations,
                 AppliedMigrations = appliedMigrations,
                 PendingMigrations = pendingMigrations,
