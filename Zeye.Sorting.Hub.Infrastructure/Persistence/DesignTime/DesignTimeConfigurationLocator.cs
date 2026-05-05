@@ -46,13 +46,14 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
         /// <param name="builder">配置构建器。</param>
         private static void AppendEnvironmentVariableOverrides(IConfigurationBuilder builder) {
             var overrides = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
-            foreach (DictionaryEntry entry in Environment.GetEnvironmentVariables()) {
-                if (entry.Key is not string key || !key.Contains("__", StringComparison.Ordinal)) {
+            var environmentVariables = Environment.GetEnvironmentVariables();
+            foreach (string key in environmentVariables.Keys) {
+                if (!key.Contains("__", StringComparison.Ordinal)) {
                     continue;
                 }
 
                 var normalizedKey = key.Replace("__", ":", StringComparison.Ordinal);
-                overrides[normalizedKey] = entry.Value?.ToString();
+                overrides[normalizedKey] = environmentVariables[key]?.ToString();
             }
 
             if (overrides.Count > 0) {
