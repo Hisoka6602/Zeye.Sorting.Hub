@@ -159,6 +159,7 @@ Zeye.Sorting.Hub.Domain/Zeye.Sorting.Hub.Domain.csproj
 Zeye.Sorting.Hub.Host.Tests/AlwaysExistsShardingPhysicalTableProbe.cs
 Zeye.Sorting.Hub.Host.Tests/AuditReadOnlyApiTests.cs
 Zeye.Sorting.Hub.Host.Tests/AutoTuningProductionControlTests.cs
+Zeye.Sorting.Hub.Host.Tests/BaselineDataTests.cs
 Zeye.Sorting.Hub.Host.Tests/BatchSelectiveMissingShardingPhysicalTableProbe.cs
 Zeye.Sorting.Hub.Host.Tests/ConfigChangeHistoryStoreTests.cs
 Zeye.Sorting.Hub.Host.Tests/ConfigurableShardingPhysicalTableProbe.cs
@@ -174,6 +175,7 @@ Zeye.Sorting.Hub.Host.Tests/HostingOptionsTests.cs
 Zeye.Sorting.Hub.Host.Tests/InMemoryWebRequestAuditLogRepository.cs
 Zeye.Sorting.Hub.Host.Tests/LocalTimeTestConstraint.cs
 Zeye.Sorting.Hub.Host.Tests/LogCleanupServiceTests.cs
+Zeye.Sorting.Hub.Host.Tests/MigrationGovernanceTests.cs
 Zeye.Sorting.Hub.Host.Tests/MissingIndexShardingPhysicalTableProbe.cs
 Zeye.Sorting.Hub.Host.Tests/NullScope.cs
 Zeye.Sorting.Hub.Host.Tests/ObservabilityEntry.cs
@@ -200,12 +202,15 @@ Zeye.Sorting.Hub.Host.Tests/WebRequestAuditLogMiddlewareTests.cs
 Zeye.Sorting.Hub.Host.Tests/WebRequestAuditLogRepositoryTests.cs
 Zeye.Sorting.Hub.Host.Tests/Zeye.Sorting.Hub.Host.Tests.csproj
 Zeye.Sorting.Hub.Host/Authentication/GuardedAuthenticationHandler.cs
+Zeye.Sorting.Hub.Host/HealthChecks/BaselineDataHealthCheck.cs
 Zeye.Sorting.Hub.Host/HealthChecks/BufferedWriteQueueHealthCheck.cs
 Zeye.Sorting.Hub.Host/HealthChecks/DatabaseConnectionDetailedHealthCheck.cs
 Zeye.Sorting.Hub.Host/HealthChecks/DatabaseReadinessHealthCheck.cs
 Zeye.Sorting.Hub.Host/HealthChecks/HealthCheckResponseWriter.cs
+Zeye.Sorting.Hub.Host/HealthChecks/MigrationGovernanceHealthCheck.cs
 Zeye.Sorting.Hub.Host/HealthChecks/ShardingGovernanceHealthCheck.cs
 Zeye.Sorting.Hub.Host/HostedServices/AutoTuningLoggerObservability.cs
+Zeye.Sorting.Hub.Host/HostedServices/BaselineDataValidationHostedService.cs
 Zeye.Sorting.Hub.Host/HostedServices/DataArchiveHostedService.cs
 Zeye.Sorting.Hub.Host/HostedServices/DatabaseAutoTuningHostedService.cs
 Zeye.Sorting.Hub.Host/HostedServices/DatabaseConnectionWarmupHostedService.cs
@@ -213,6 +218,7 @@ Zeye.Sorting.Hub.Host/HostedServices/DatabaseInitializerHostedService.cs
 Zeye.Sorting.Hub.Host/HostedServices/DevelopmentBrowserLauncherHostedService.cs
 Zeye.Sorting.Hub.Host/HostedServices/EvidenceContext.cs
 Zeye.Sorting.Hub.Host/HostedServices/LogCleanupService.cs
+Zeye.Sorting.Hub.Host/HostedServices/MigrationGovernanceHostedService.cs
 Zeye.Sorting.Hub.Host/HostedServices/ParcelBatchWriteFlushHostedService.cs
 Zeye.Sorting.Hub.Host/HostedServices/PendingRollbackAction.cs
 Zeye.Sorting.Hub.Host/HostedServices/PerDayGovernanceGroup.cs
@@ -289,6 +295,10 @@ Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/SlowQueryMetric.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/SlowQuerySample.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/SlowQuerySuggestionInsight.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/SlowQueryTuningCandidate.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Baseline/BaselineDataOptions.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Baseline/BaselineDataSeeder.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Baseline/BaselineDataValidationResult.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Baseline/BaselineDataValidator.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/ConfiguredProviderNames.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/DatabaseDialects/DatabaseConnectionOpenCoordinator.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/DatabaseDialects/DatabaseIdentifierPolicy.cs
@@ -307,6 +317,12 @@ Zeye.Sorting.Hub.Infrastructure/Persistence/Diagnostics/DatabaseConnectionDiagno
 Zeye.Sorting.Hub.Infrastructure/Persistence/Diagnostics/DatabaseConnectionHealthSnapshot.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/Diagnostics/DatabaseConnectionWarmupService.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/Diagnostics/IDatabaseConnectionDiagnostics.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/MigrationGovernance/MigrationExecutionRecord.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/MigrationGovernance/MigrationGovernanceStateStore.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/MigrationGovernance/MigrationPlan.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/MigrationGovernance/MigrationRollbackScriptProvider.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/MigrationGovernance/MigrationSafetyEvaluator.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/MigrationGovernance/MigrationScriptArchiveService.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/20260324094539_RebuildBaseline20260324.Designer.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/20260324094539_RebuildBaseline20260324.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/AddArchiveTaskDryRunSupport.cs
@@ -372,6 +388,8 @@ Zeye.Sorting.Hub.sln
 "\346\243\200\346\237\245\345\217\260\350\264\246/PR-\351\225\277\346\234\237\346\225\260\346\215\256\345\272\223\345\272\225\345\272\247D-\346\243\200\346\237\245\345\217\260\350\264\246.md"
 "\346\243\200\346\237\245\345\217\260\350\264\246/PR-\351\225\277\346\234\237\346\225\260\346\215\256\345\272\223\345\272\225\345\272\247E-\346\243\200\346\237\245\345\217\260\350\264\246.md"
 "\346\243\200\346\237\245\345\217\260\350\264\246/PR-\351\225\277\346\234\237\346\225\260\346\215\256\345\272\223\345\272\225\345\272\247F-\346\243\200\346\237\245\345\217\260\350\264\246.md"
+"\346\243\200\346\237\245\345\217\260\350\264\246/PR-\351\225\277\346\234\237\346\225\260\346\215\256\345\272\223\345\272\225\345\272\247G-\346\243\200\346\237\245\345\217\260\350\264\246.md"
+"\346\243\200\346\237\245\345\217\260\350\264\246/PR-\351\225\277\346\234\237\346\225\260\346\215\256\345\272\223\345\272\225\345\272\247H-\346\243\200\346\237\245\345\217\260\350\264\246.md"
 "\346\243\200\346\237\245\345\217\260\350\264\246/\346\226\207\344\273\266\346\270\205\345\215\225\345\237\272\347\272\277.txt"
 "\351\200\220\346\226\207\344\273\266\346\243\200\346\237\245\346\226\271\346\241\210.md"
 "\351\225\277\346\234\237\350\277\220\350\241\214\344\274\230\345\214\226\344\270\216\347\203\255\346\233\264\346\226\260\346\224\257\346\214\201\346\270\205\345\215\225.md"
