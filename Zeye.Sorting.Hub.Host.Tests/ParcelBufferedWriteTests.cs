@@ -89,7 +89,7 @@ public sealed class ParcelBufferedWriteTests {
         for (var index = 0; index < 3; index++) {
             writeChannel.TryEnqueue(new BufferedParcelWriteItem(
                 Parcel: CreateParcel(1200 + index, LocalTimeTestConstraint.CreateLocalTime(2026, 4, 2, 9, 0, index)),
-                EnqueuedAtLocal: LocalTimeTestConstraint.CreateLocalTime(2026, 4, 2, 9, 1, index),
+                EnqueuedAt: LocalTimeTestConstraint.CreateLocalTime(2026, 4, 2, 9, 1, index),
                 RetryCount: 0,
                 LastErrorMessage: null,
                 LastRetryAtLocal: null));
@@ -125,7 +125,7 @@ public sealed class ParcelBufferedWriteTests {
             Microsoft.Extensions.Options.Options.Create(options));
         writeChannel.TryEnqueue(new BufferedParcelWriteItem(
             Parcel: CreateParcel(1301, LocalTimeTestConstraint.CreateLocalTime(2026, 4, 3, 9, 0, 0)),
-            EnqueuedAtLocal: LocalTimeTestConstraint.CreateLocalTime(2026, 4, 3, 9, 0, 1),
+            EnqueuedAt: LocalTimeTestConstraint.CreateLocalTime(2026, 4, 3, 9, 0, 1),
             RetryCount: 0,
             LastErrorMessage: null,
             LastRetryAtLocal: null));
@@ -162,7 +162,7 @@ public sealed class ParcelBufferedWriteTests {
         var healthCheck = new BufferedWriteQueueHealthCheck(flushService, Microsoft.Extensions.Options.Options.Create(options));
         writeChannel.TryEnqueue(new BufferedParcelWriteItem(
             Parcel: CreateParcel(1401, LocalTimeTestConstraint.CreateLocalTime(2026, 4, 4, 9, 0, 0)),
-            EnqueuedAtLocal: LocalTimeTestConstraint.CreateLocalTime(2026, 4, 4, 9, 0, 1),
+            EnqueuedAt: LocalTimeTestConstraint.CreateLocalTime(2026, 4, 4, 9, 0, 1),
             RetryCount: 0,
             LastErrorMessage: null,
             LastRetryAtLocal: null));

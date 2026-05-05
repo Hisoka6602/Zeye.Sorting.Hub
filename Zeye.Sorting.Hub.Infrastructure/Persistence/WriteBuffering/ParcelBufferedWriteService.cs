@@ -76,7 +76,7 @@ public sealed class ParcelBufferedWriteService : IBufferedWriteService {
 
             var writeItem = new BufferedParcelWriteItem(
                 Parcel: parcel,
-                EnqueuedAtLocal: DateTime.Now,
+                EnqueuedAt: DateTime.Now,
                 RetryCount: 0,
                 LastErrorMessage: null,
                 LastRetryAtLocal: null);
