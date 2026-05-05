@@ -17,6 +17,7 @@ using Zeye.Sorting.Hub.Domain.Options.LogCleanup;
 using Zeye.Sorting.Hub.Application.Services.Parcels;
 using Zeye.Sorting.Hub.Application.Services.AuditLogs;
 using Zeye.Sorting.Hub.Application.Services.DataGovernance;
+using Zeye.Sorting.Hub.Application.Services.Diagnostics;
 using Zeye.Sorting.Hub.Application.Services.WriteBuffers;
 using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Archiving;
@@ -144,6 +145,7 @@ try {
     builder.Services.AddScoped<CreateArchiveTaskCommandService>();
     builder.Services.AddScoped<GetArchiveTaskPagedQueryService>();
     builder.Services.AddScoped<RetryArchiveTaskCommandService>();
+    builder.Services.AddScoped<GetSlowQueryProfileQueryService>();
     builder.Services.AddWebRequestAuditLogging(builder.Configuration);
 
     // Host 启动时执行持久化初始化
@@ -262,6 +264,7 @@ try {
     }
 
     app.MapDataGovernanceApis();
+    app.MapDiagnosticsApis();
 
     app.Run();
 }

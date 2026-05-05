@@ -10,25 +10,34 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         /// </summary>
         private readonly SlowQueryAutoTuningPipeline _pipeline;
 
+        /// <summary>
+        /// 慢查询画像快照存储。
+        /// </summary>
+        private readonly SlowQueryProfileStore _profileStore;
+
         /// <summary>初始化慢查询采集拦截器。</summary>
-        public SlowQueryCommandInterceptor(SlowQueryAutoTuningPipeline pipeline) {
+        public SlowQueryCommandInterceptor(SlowQueryAutoTuningPipeline pipeline, SlowQueryProfileStore profileStore) {
             _pipeline = pipeline;
+            _profileStore = profileStore;
         }
 
         /// <summary>同步非查询命令执行后采集样本。</summary>
         public override int NonQueryExecuted(DbCommand command, CommandExecutedEventData eventData, int result) {
+            _profileStore.Record(command.CommandText, eventData.Duration, result);
             _pipeline.Collect(command.CommandText, eventData.Duration, result);
             return result;
         }
 
         /// <summary>同步标量命令执行后采集样本。</summary>
         public override object? ScalarExecuted(DbCommand command, CommandExecutedEventData eventData, object? result) {
+            _profileStore.Record(command.CommandText, eventData.Duration);
             _pipeline.Collect(command.CommandText, eventData.Duration);
             return result;
         }
 
         /// <summary>同步读取命令执行后采集样本。</summary>
         public override DbDataReader ReaderExecuted(DbCommand command, CommandExecutedEventData eventData, DbDataReader result) {
+            _profileStore.Record(command.CommandText, eventData.Duration);
             _pipeline.Collect(command.CommandText, eventData.Duration);
             return result;
         }
@@ -39,6 +48,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             CommandExecutedEventData eventData,
             int result,
             CancellationToken cancellationToken = default) {
+            _profileStore.Record(command.CommandText, eventData.Duration, result);
             _pipeline.Collect(command.CommandText, eventData.Duration, result);
             return ValueTask.FromResult(result);
         }
@@ -49,6 +59,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             CommandExecutedEventData eventData,
             object? result,
             CancellationToken cancellationToken = default) {
+            _profileStore.Record(command.CommandText, eventData.Duration);
             _pipeline.Collect(command.CommandText, eventData.Duration);
             return ValueTask.FromResult(result);
         }
@@ -59,12 +70,14 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             CommandExecutedEventData eventData,
             DbDataReader result,
             CancellationToken cancellationToken = default) {
+            _profileStore.Record(command.CommandText, eventData.Duration);
             _pipeline.Collect(command.CommandText, eventData.Duration);
             return ValueTask.FromResult(result);
         }
 
         /// <summary>同步命令失败时采集异常样本。</summary>
         public override void CommandFailed(DbCommand command, CommandErrorEventData eventData) {
+            _profileStore.Record(command.CommandText, eventData.Duration, exception: eventData.Exception);
             _pipeline.Collect(command.CommandText, eventData.Duration, exception: eventData.Exception);
         }
 
@@ -73,6 +86,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             DbCommand command,
             CommandErrorEventData eventData,
             CancellationToken cancellationToken = default) {
+            _profileStore.Record(command.CommandText, eventData.Duration, exception: eventData.Exception);
             _pipeline.Collect(command.CommandText, eventData.Duration, exception: eventData.Exception);
             return Task.CompletedTask;
         }
