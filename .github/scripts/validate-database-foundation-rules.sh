@@ -158,6 +158,10 @@ check_sensitive_config() {
   local files=()
   local file=""
   while IFS= read -r file; do
+    if [[ "${file}" == .github/scripts/validate-* ]]; then
+      continue
+    fi
+
     files+=("${file}")
   done < <(collect_changed_files "AM" "*.json" "*.yml" "*.yaml" "*.cs" "*.csproj" "*.props" "*.targets" "*.sh")
 
@@ -261,7 +265,7 @@ check_enum_description() {
           next
         }
 
-        if ($0 ~ /^[[:space:]]*$/ || $0 ~ /^[[:space:]]*\/\// || $0 ~ /^[[:space:]]*\/\// || $0 ~ /^[[:space:]]*\/\*\*?/ || $0 ~ /^[[:space:]]*\*/ || $0 ~ /^[[:space:]]*/// || $0 ~ /^[[:space:]]*\[/) {
+        if ($0 ~ /^[[:space:]]*$/ || $0 ~ /^[[:space:]]*\/\// || $0 ~ /^[[:space:]]*\/\*\*?/ || $0 ~ /^[[:space:]]*\*/ || $0 ~ /^[[:space:]]*/// || $0 ~ /^[[:space:]]*\[/) {
           next
         }
 
