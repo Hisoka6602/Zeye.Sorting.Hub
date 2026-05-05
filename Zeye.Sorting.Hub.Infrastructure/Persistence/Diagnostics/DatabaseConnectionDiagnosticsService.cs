@@ -179,7 +179,8 @@ public sealed class DatabaseConnectionDiagnosticsService : IDatabaseConnectionDi
                 return connection.Database;
             }
         }
-        catch (Exception) {
+        catch (Exception ex) {
+            Logger.Debug(ex, "解析数据库名称失败，回退到 Provider 名称。Provider={Provider}", dbContext.Database.ProviderName);
             // 非关系型提供器不暴露 DbConnection 时回退到 Provider 名称。
         }
 

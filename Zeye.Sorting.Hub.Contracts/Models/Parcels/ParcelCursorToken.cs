@@ -1,3 +1,4 @@
+using NLog;
 using System.Text;
 using System.Text.Json;
 
@@ -7,6 +8,11 @@ namespace Zeye.Sorting.Hub.Contracts.Models.Parcels;
 /// Parcel 游标令牌。
 /// </summary>
 public sealed record ParcelCursorToken {
+    /// <summary>
+    /// NLog 日志器。
+    /// </summary>
+    private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
+
     /// <summary>
     /// 上一页最后一条记录的扫码时间（本地时间语义）。
     /// </summary>
@@ -63,7 +69,8 @@ public sealed record ParcelCursorToken {
             };
             return true;
         }
-        catch (Exception) {
+        catch (Exception ex) {
+            Logger.Debug(ex, "Parcel 游标令牌解析失败。TokenLength={TokenLength}", token.Length);
             return false;
         }
     }

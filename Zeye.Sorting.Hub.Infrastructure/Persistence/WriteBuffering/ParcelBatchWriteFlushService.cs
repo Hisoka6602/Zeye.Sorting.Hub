@@ -201,8 +201,9 @@ public sealed class ParcelBatchWriteFlushService {
         try {
             repositoryResult = await parcelRepository.AddRangeAsync(parcels, cancellationToken);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+        catch (OperationCanceledException ex) when (cancellationToken.IsCancellationRequested) {
             var cancellationMessage = "批量新增取消，失败批次已进入死信隔离。";
+            Logger.Warn(ex, "Parcel 批量缓冲写入取消。BatchCount={BatchCount}", batch.Count);
             RecordFailedFlush(batch.Count, cancellationMessage);
             MoveBatchToDeadLetter(batch, cancellationMessage);
             throw;
