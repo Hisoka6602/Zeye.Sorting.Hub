@@ -122,6 +122,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
 
             services.AddSingleton<SlowQueryAutoTuningPipeline>();
             services.AddSingleton<SlowQueryProfileStore>();
+            services.AddSingleton<Zeye.Sorting.Hub.Application.Abstractions.Diagnostics.ISlowQueryProfileReader>(static serviceProvider =>
+                serviceProvider.GetRequiredService<SlowQueryProfileStore>());
             services.AddSingleton<SlowQueryCommandInterceptor>();
             services.AddSingleton<MySqlSessionBootstrapConnectionInterceptor>();
             services.TryAddSingleton<IAutoTuningObservability, NullAutoTuningObservability>();

@@ -27,6 +27,7 @@ Zeye.Sorting.Hub.Application/Services/DataGovernance/ArchiveTaskContractMapper.c
 Zeye.Sorting.Hub.Application/Services/DataGovernance/CreateArchiveTaskCommandService.cs
 Zeye.Sorting.Hub.Application/Services/DataGovernance/GetArchiveTaskPagedQueryService.cs
 Zeye.Sorting.Hub.Application/Services/DataGovernance/RetryArchiveTaskCommandService.cs
+Zeye.Sorting.Hub.Application/Services/Diagnostics/GetSlowQueryProfileQueryService.cs
 Zeye.Sorting.Hub.Application/Services/Parcels/CleanupExpiredParcelsCommandService.cs
 Zeye.Sorting.Hub.Application/Services/Parcels/CreateParcelCommandService.cs
 Zeye.Sorting.Hub.Application/Services/Parcels/DeleteParcelCommandService.cs
@@ -52,6 +53,8 @@ Zeye.Sorting.Hub.Contracts/Models/DataGovernance/ArchiveTaskCreateRequest.cs
 Zeye.Sorting.Hub.Contracts/Models/DataGovernance/ArchiveTaskListRequest.cs
 Zeye.Sorting.Hub.Contracts/Models/DataGovernance/ArchiveTaskListResponse.cs
 Zeye.Sorting.Hub.Contracts/Models/DataGovernance/ArchiveTaskResponse.cs
+Zeye.Sorting.Hub.Contracts/Models/Diagnostics/SlowQueryProfileListResponse.cs
+Zeye.Sorting.Hub.Contracts/Models/Diagnostics/SlowQueryProfileResponse.cs
 Zeye.Sorting.Hub.Contracts/Models/Parcels/Admin/ParcelBatchBufferedCreateRequest.cs
 Zeye.Sorting.Hub.Contracts/Models/Parcels/Admin/ParcelBatchBufferedCreateResponse.cs
 Zeye.Sorting.Hub.Contracts/Models/Parcels/Admin/ParcelCleanupExpiredRequest.cs
@@ -188,6 +191,7 @@ Zeye.Sorting.Hub.Host.Tests/ParcelReadOnlyApiTests.cs
 Zeye.Sorting.Hub.Host.Tests/ParcelRepositoryTests.cs
 Zeye.Sorting.Hub.Host.Tests/SelectiveMissingShardingPhysicalTableProbe.cs
 Zeye.Sorting.Hub.Host.Tests/ShardingInspectionTests.cs
+Zeye.Sorting.Hub.Host.Tests/SlowQueryFingerprintTests.cs
 Zeye.Sorting.Hub.Host.Tests/SortingHubTestDbContextFactory.cs
 Zeye.Sorting.Hub.Host.Tests/SwaggerDocumentationTests.cs
 Zeye.Sorting.Hub.Host.Tests/TestDialect.cs
@@ -250,6 +254,7 @@ Zeye.Sorting.Hub.Host/QueryParameters/ParcelListQueryParameters.cs
 Zeye.Sorting.Hub.Host/QueryParameters/WebRequestAuditLogListQueryParameters.cs
 Zeye.Sorting.Hub.Host/Routing/AuditReadOnlyApiRouteExtensions.cs
 Zeye.Sorting.Hub.Host/Routing/DataGovernanceApiRouteExtensions.cs
+Zeye.Sorting.Hub.Host/Routing/DiagnosticsApiRouteExtensions.cs
 Zeye.Sorting.Hub.Host/Routing/ParcelAdminApiRouteExtensions.cs
 Zeye.Sorting.Hub.Host/Routing/ParcelReadOnlyApiRouteExtensions.cs
 Zeye.Sorting.Hub.Host/Swagger/EnumDescriptionSchemaFilter.cs
@@ -291,7 +296,11 @@ Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/SlowQueryAlertNotificatio
 Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/SlowQueryAnalysisResult.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/SlowQueryAutoTuningPipeline.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/SlowQueryCommandInterceptor.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/SlowQueryFingerprint.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/SlowQueryFingerprintAggregator.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/SlowQueryMetric.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/SlowQueryProfileSnapshot.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/SlowQueryProfileStore.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/SlowQuerySample.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/SlowQuerySuggestionInsight.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/SlowQueryTuningCandidate.cs

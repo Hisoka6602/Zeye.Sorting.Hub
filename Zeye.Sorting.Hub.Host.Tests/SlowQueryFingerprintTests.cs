@@ -31,7 +31,7 @@ public sealed class SlowQueryFingerprintTests {
         store.Record("SELECT * FROM Parcels WHERE Id = @__id_1", TimeSpan.FromMilliseconds(900));
         store.Record("SELECT * FROM Parcels WHERE Id = @__id_2", TimeSpan.FromMilliseconds(1200), exception: new TimeoutException("超时"));
 
-        var (snapshots, totalFingerprintCount) = store.GetTopSnapshots();
+        var (snapshots, totalFingerprintCount) = store.GetTopProfiles();
 
         var snapshot = Assert.Single(snapshots);
         Assert.Equal(1, totalFingerprintCount);
@@ -56,8 +56,8 @@ public sealed class SlowQueryFingerprintTests {
         store.Record("SELECT * FROM Parcels WHERE Id = 1", TimeSpan.FromMilliseconds(800));
         store.Record("SELECT * FROM ParcelHistory WHERE Id = 2", TimeSpan.FromMilliseconds(900));
 
-        Assert.False(store.TryGetSnapshot(SlowQueryFingerprintAggregator.Create("SELECT * FROM Parcels WHERE Id = 1").Fingerprint, out _));
-        Assert.True(store.TryGetSnapshot(SlowQueryFingerprintAggregator.Create("SELECT * FROM ParcelHistory WHERE Id = 2").Fingerprint, out _));
+        Assert.False(store.TryGetProfile(SlowQueryFingerprintAggregator.Create("SELECT * FROM Parcels WHERE Id = 1").Fingerprint, out _));
+        Assert.True(store.TryGetProfile(SlowQueryFingerprintAggregator.Create("SELECT * FROM ParcelHistory WHERE Id = 2").Fingerprint, out _));
     }
 
     /// <summary>

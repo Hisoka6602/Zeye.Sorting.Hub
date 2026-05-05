@@ -1,6 +1,6 @@
 using NLog;
+using Zeye.Sorting.Hub.Application.Abstractions.Diagnostics;
 using Zeye.Sorting.Hub.Contracts.Models.Diagnostics;
-using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 
 namespace Zeye.Sorting.Hub.Application.Services.Diagnostics;
 
@@ -16,14 +16,14 @@ public sealed class GetSlowQueryProfileQueryService {
     /// <summary>
     /// 慢查询画像存储。
     /// </summary>
-    private readonly SlowQueryProfileStore _profileStore;
+    private readonly ISlowQueryProfileReader _profileReader;
 
     /// <summary>
     /// 初始化慢查询画像查询应用服务。
     /// </summary>
-    /// <param name="profileStore">画像存储。</param>
-    public GetSlowQueryProfileQueryService(SlowQueryProfileStore profileStore) {
-        _profileStore = profileStore ?? throw new ArgumentNullException(nameof(profileStore));
+    /// <param name="profileReader">画像读取器。</param>
+    public GetSlowQueryProfileQueryService(ISlowQueryProfileReader profileReader) {
+        _profileReader = profileReader ?? throw new ArgumentNullException(nameof(profileReader));
     }
 
     /// <summary>
@@ -32,7 +32,7 @@ public sealed class GetSlowQueryProfileQueryService {
     /// <returns>画像列表响应。</returns>
     public SlowQueryProfileListResponse Execute() {
         try {
-            var (snapshots, totalFingerprintCount) = _profileStore.GetTopSnapshots();
+            var (snapshots, totalFingerprintCount) = _profileReader.GetTopProfiles();
             return new SlowQueryProfileListResponse {
                 GeneratedAtLocal = DateTime.Now,
                 TotalFingerprintCount = totalFingerprintCount,
@@ -56,12 +56,12 @@ public sealed class GetSlowQueryProfileQueryService {
         }
 
         var normalizedFingerprint = fingerprint.Trim().ToLowerInvariant();
-        if (!SlowQueryFingerprintAggregator.IsValidFingerprint(normalizedFingerprint)) {
+        if (normalizedFingerprint.Length != 16 || !normalizedFingerprint.All(static character => Uri.IsHexDigit(character))) {
             throw new ArgumentException("fingerprint 必须为 16 位十六进制字符串。", nameof(fingerprint));
         }
 
         try {
-            return _profileStore.TryGetSnapshot(normalizedFingerprint, out var snapshot)
+            return _profileReader.TryGetProfile(normalizedFingerprint, out var snapshot)
                 ? MapToResponse(snapshot!)
                 : null;
         }
@@ -76,7 +76,7 @@ public sealed class GetSlowQueryProfileQueryService {
     /// </summary>
     /// <param name="snapshot">内部快照。</param>
     /// <returns>响应合同。</returns>
-    private static SlowQueryProfileResponse MapToResponse(SlowQueryProfileSnapshot snapshot) {
+    private static SlowQueryProfileResponse MapToResponse(SlowQueryProfileReadModel snapshot) {
         return new SlowQueryProfileResponse {
             Fingerprint = snapshot.Fingerprint,
             NormalizedSql = snapshot.NormalizedSql,

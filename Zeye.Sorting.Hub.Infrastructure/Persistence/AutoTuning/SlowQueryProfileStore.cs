@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Configuration;
+using Zeye.Sorting.Hub.Application.Abstractions.Diagnostics;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
@@ -6,7 +7,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 /// <summary>
 /// 慢查询画像内存快照存储。
 /// </summary>
-public sealed class SlowQueryProfileStore {
+public sealed class SlowQueryProfileStore : ISlowQueryProfileReader {
     /// <summary>
     /// 样本存取同步锁。
     /// </summary>
@@ -131,7 +132,7 @@ public sealed class SlowQueryProfileStore {
     /// 获取 TopN 画像快照。
     /// </summary>
     /// <returns>画像快照列表与总量。</returns>
-    public (IReadOnlyList<SlowQueryProfileSnapshot> Snapshots, int TotalFingerprintCount) GetTopSnapshots() {
+    public (IReadOnlyList<SlowQueryProfileReadModel> Items, int TotalFingerprintCount) GetTopProfiles() {
         lock (_sync) {
             TrimExpiredEntries(DateTime.Now);
             var snapshots = BuildSnapshotsCore()
@@ -140,6 +141,7 @@ public sealed class SlowQueryProfileStore {
                 .ThenByDescending(static snapshot => snapshot.CallCount)
                 .ThenBy(static snapshot => snapshot.Fingerprint, StringComparer.Ordinal)
                 .Take(_topN)
+                .Select(MapToReadModel)
                 .ToArray();
             return (snapshots, _samplesByFingerprint.Count);
         }
@@ -151,7 +153,7 @@ public sealed class SlowQueryProfileStore {
     /// <param name="fingerprint">慢查询指纹。</param>
     /// <param name="snapshot">画像快照。</param>
     /// <returns>是否命中。</returns>
-    public bool TryGetSnapshot(string fingerprint, out SlowQueryProfileSnapshot? snapshot) {
+    public bool TryGetProfile(string fingerprint, out SlowQueryProfileReadModel? profile) {
         ArgumentException.ThrowIfNullOrWhiteSpace(fingerprint);
 
         lock (_sync) {
@@ -159,11 +161,11 @@ public sealed class SlowQueryProfileStore {
             if (!_samplesByFingerprint.TryGetValue(fingerprint, out var queue)
                 || queue.Count == 0
                 || !_fingerprints.TryGetValue(fingerprint, out var slowQueryFingerprint)) {
-                snapshot = null;
+                profile = null;
                 return false;
             }
 
-            snapshot = SlowQueryFingerprintAggregator.BuildSnapshot(slowQueryFingerprint, queue.ToArray());
+            profile = MapToReadModel(SlowQueryFingerprintAggregator.BuildSnapshot(slowQueryFingerprint, queue.ToArray()));
             return true;
         }
     }
@@ -242,6 +244,30 @@ public sealed class SlowQueryProfileStore {
         }
 
         return snapshots;
+    }
+
+    /// <summary>
+    /// 将内部快照映射为应用层读模型。
+    /// </summary>
+    /// <param name="snapshot">内部快照。</param>
+    /// <returns>应用层读模型。</returns>
+    private static SlowQueryProfileReadModel MapToReadModel(SlowQueryProfileSnapshot snapshot) {
+        return new SlowQueryProfileReadModel(
+            Fingerprint: snapshot.Fingerprint,
+            NormalizedSql: snapshot.NormalizedSql,
+            SampleSql: snapshot.SampleSql,
+            CallCount: snapshot.CallCount,
+            AverageElapsedMilliseconds: snapshot.AverageElapsedMilliseconds,
+            P95Milliseconds: snapshot.P95Milliseconds,
+            P99Milliseconds: snapshot.P99Milliseconds,
+            MaxMilliseconds: snapshot.MaxMilliseconds,
+            TimeoutCount: snapshot.TimeoutCount,
+            ErrorCount: snapshot.ErrorCount,
+            DeadlockCount: snapshot.DeadlockCount,
+            TotalAffectedRows: snapshot.TotalAffectedRows,
+            WindowStartedAtLocal: snapshot.WindowStartedAtLocal,
+            WindowEndedAtLocal: snapshot.WindowEndedAtLocal,
+            LastOccurredAtLocal: snapshot.LastOccurredAtLocal);
     }
 
     /// <summary>

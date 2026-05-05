@@ -44,10 +44,15 @@
 │   ├── PR-长期数据库底座E-检查台账.md（长期数据库底座 PR-E 台账：记录归档任务 dry-run、后台执行、查询/重试 API 与下一 PR 入口）
 │   ├── PR-长期数据库底座F-检查台账.md （长期数据库底座 PR-F 台账：记录数据库底座 CI 门禁增强、规则脚本与下一 PR 入口）
 │   ├── PR-长期数据库底座G-检查台账.md（长期数据库底座 PR-G 台账：记录迁移治理、脚本归档、健康检查与下一 PR 入口）
-│   └── PR-长期数据库底座H-检查台账.md（长期数据库底座 PR-H 台账：记录基线数据校验、配置一致性校验、可选种子入口与下一 PR 入口）
+│   ├── PR-长期数据库底座H-检查台账.md（长期数据库底座 PR-H 台账：记录基线数据校验、配置一致性校验、可选种子入口与下一 PR 入口）
+│   └── PR-长期数据库底座I-检查台账.md（长期数据库底座 PR-I 台账：记录慢查询指纹聚合、查询画像 API 与下一 PR 入口）
 ├── Zeye.Sorting.Hub.Analytics（分析与报表子域，占位工程）
 │   └── Zeye.Sorting.Hub.Analytics.csproj（Analytics 项目定义）
 ├── Zeye.Sorting.Hub.Application（应用层）
+│   ├── Abstractions（应用层抽象目录）
+│   │   └── Diagnostics（慢查询画像只读抽象目录）
+│   │       ├── ISlowQueryProfileReader.cs（慢查询画像只读接口：向 Application 暴露只读画像读取能力）
+│   │       └── SlowQueryProfileReadModel.cs（慢查询画像读模型：承载指纹、标准 SQL 与窗口聚合指标）
 │   ├── Services（应用服务目录）
 │   │   ├── AuditLogs（审计日志应用服务目录）
 │   │   │   ├── GetWebRequestAuditLogByIdQueryService.cs（Web 请求审计日志详情查询应用服务）
@@ -59,6 +64,8 @@
 │   │   │   ├── CreateArchiveTaskCommandService.cs（归档 dry-run 任务创建应用服务）
 │   │   │   ├── GetArchiveTaskPagedQueryService.cs（归档任务分页查询应用服务）
 │   │   │   └── RetryArchiveTaskCommandService.cs（归档任务重试应用服务）
+│   │   ├── Diagnostics（诊断应用服务目录）
+│   │   │   └── GetSlowQueryProfileQueryService.cs（慢查询画像查询应用服务：读取内存快照并映射外部合同）
 │   │   └── Parcels（Parcel 查询应用服务目录）
 │   │       ├── CleanupExpiredParcelsCommandService.cs（过期包裹清理应用服务（治理型，调用仓储隔离器，不可绕过））
 │   │       ├── CreateParcelCommandService.cs（管理端新增包裹应用服务）
@@ -97,6 +104,9 @@
 │   │   │   ├── ArchiveTaskListRequest.cs（归档任务列表查询请求合同）
 │   │   │   ├── ArchiveTaskListResponse.cs（归档任务分页响应合同）
 │   │   │   └── ArchiveTaskResponse.cs（归档任务详情响应合同）
+│   │   ├── Diagnostics（诊断合同目录）
+│   │   │   ├── SlowQueryProfileListResponse.cs（慢查询画像列表响应合同）
+│   │   │   └── SlowQueryProfileResponse.cs（慢查询画像详情响应合同）
 │   │   └── Parcels（Parcel 合同目录）
 │   │       ├── Admin（管理端写接口合同目录）
 │   │       │   ├── ParcelBatchBufferedCreateRequest.cs（Parcel 批量缓冲写入请求合同）
@@ -238,7 +248,8 @@
 │   │   ├── ParcelReadOnlyApiRouteExtensions.cs（Parcel 只读 API 路由扩展：含偏移分页、游标分页、详情与邻近查询）
 │   │   ├── ParcelAdminApiRouteExtensions.cs（Parcel 管理端 API 路由扩展：含同步写接口、cleanup-expired 与 batch-buffer 缓冲写入接口）
 │   │   ├── AuditReadOnlyApiRouteExtensions.cs（Web 请求审计日志只读 API 路由扩展）
-│   │   └── DataGovernanceApiRouteExtensions.cs（归档任务 API 路由扩展：含创建、分页查询与重试入口）
+│   │   ├── DataGovernanceApiRouteExtensions.cs（归档任务 API 路由扩展：含创建、分页查询与重试入口）
+│   │   └── DiagnosticsApiRouteExtensions.cs（诊断 API 路由扩展：暴露慢查询画像列表与详情只读端点）
 │   ├── QueryParameters（路由参数绑定模型目录）
 │   │   ├── ParcelListQueryParameters.cs（Parcel 列表查询参数）
 │   │   ├── ParcelCursorListQueryParameters.cs（Parcel 游标分页查询参数）
@@ -285,6 +296,7 @@
 │   ├── DataArchiveTaskTests.cs（归档任务 dry-run 测试：覆盖创建、分页、后台执行、完成态重试与非法类型校验）
 │   ├── BaselineDataTests.cs（基线数据测试：覆盖配置校验、时区后缀拦截、健康检查、可选种子入口与 Degraded 模式异常隔离）
 │   ├── MigrationGovernanceTests.cs（迁移治理测试：覆盖健康检查、危险 SQL、dry-run 决策、脚本归档与预演异常记录）
+│   ├── SlowQueryFingerprintTests.cs（慢查询画像测试：覆盖 SQL 指纹归一化、窗口聚合、容量淘汰与查询服务读取）
 │   ├── BatchSelectiveMissingShardingPhysicalTableProbe.cs（批量物理表探测测试桩：选择性缺失与 schema 透传断言）
 │   ├── CountingPlanProbe.cs（执行计划探针测试桩：记录调用次数）
 │   ├── DomainEventArgsTests.cs（领域事件载荷单元测试：验证 ParcelScannedEventArgs/ParcelChuteAssignedEventArgs 业务字段赋值与值语义）
@@ -333,8 +345,12 @@
 │   │   ├── AutoTuning（自动调谐核心目录）
 │   │   │   ├── AutoTuningConfigurationReader.cs（配置读取与本地时间语义归一化/配置键拼装工具类，统一 AutoTuning 键名与时间语义）
 │   │   │   ├── MySqlSessionBootstrapConnectionInterceptor.cs（MySQL 连接会话初始化拦截器，直连类型判断，无额外转发）
-│   │   │   ├── SlowQueryAutoTuningPipeline.cs（慢查询采集、TopN 聚合、阈值告警（含基础防抖）与闭环自治结构化建议编排管道；新增主表提取公共方法供 AutoTuning 主链路复用）
-│   │   │   ├── SlowQueryCommandInterceptor.cs（EF Core 慢查询采集拦截器）
+│   │   │   ├── SlowQueryAutoTuningPipeline.cs（慢查询采集、TopN 聚合、阈值告警（含基础防抖）与闭环自治结构化建议编排管道；复用共享指纹聚合器）
+│   │   │   ├── SlowQueryCommandInterceptor.cs（EF Core 慢查询采集拦截器：同时向自动调优管道与画像快照存储写入样本）
+│   │   │   ├── SlowQueryFingerprint.cs（慢查询指纹模型：承载 16 位指纹与去参数化标准 SQL）
+│   │   │   ├── SlowQueryFingerprintAggregator.cs（慢查询指纹聚合器：统一 SQL 去参数化、指纹生成与画像快照构建）
+│   │   │   ├── SlowQueryProfileSnapshot.cs（慢查询画像内部快照模型）
+│   │   │   ├── SlowQueryProfileStore.cs（慢查询画像内存快照存储：维护窗口样本、TopN 排序与容量淘汰）
 │   │   │   └── SlowQuerySample.cs（慢查询采样记录模型）
 │   │   ├── Diagnostics（数据库连接诊断目录）
 │   │   │   ├── DatabaseConnectionDiagnosticsOptions.cs（数据库连接诊断配置模型：预热开关、探测超时、失败/恢复阈值）
@@ -482,6 +498,7 @@
   - `PR-长期数据库底座F-检查台账.md`： 长期数据库底座 PR-F 实施台账；记录数据库底座 CI 门禁增强、脚本与工作流交付清单、验证结果与下一 PR 入口。
   - `PR-长期数据库底座G-检查台账.md`：长期数据库底座 PR-G 实施台账；记录迁移治理预演、脚本归档、危险迁移识别、健康检查与下一 PR 入口。
   - `PR-长期数据库底座H-检查台账.md`：长期数据库底座 PR-H 实施台账；记录基线数据校验、配置一致性校验、可选幂等种子入口、健康检查与下一 PR 入口。
+  - `PR-长期数据库底座I-检查台账.md`：长期数据库底座 PR-I 实施台账；记录慢查询指纹聚合、查询画像只读 API、验证结果与下一 PR 入口。
 
 ### `.github/`：Copilot 仓库级指令目录
 - `DDD分层接口与实现放置规范.md`：DDD 分层接口定义与实现放置规范文档；明确依赖方向（Host→Infrastructure→Application→Domain）、接口定义归属规则（领域能力/应用编排/基础设施内部三类）、实现类放置约束、目录结构建议与禁止事项清单，供 Copilot 与开发人员统一执行。
@@ -506,6 +523,10 @@
 ### `Zeye.Sorting.Hub.Application/`：应用层（Use Case 编排层）
 - `Zeye.Sorting.Hub.Application.csproj`：Application 项目定义（引用 Domain + Contracts，承载应用服务实现）。
 
+#### `Zeye.Sorting.Hub.Application/Abstractions/Diagnostics/`：应用层诊断只读抽象目录
+- `ISlowQueryProfileReader.cs`：慢查询画像只读接口，定义获取 TopN 画像列表与按指纹读取详情的查询契约，保证 Application 不直接依赖 Infrastructure 实现。
+- `SlowQueryProfileReadModel.cs`：慢查询画像读模型，承载指纹、标准 SQL、平均耗时、P95/P99、异常次数与窗口起止时间。
+
 #### `Zeye.Sorting.Hub.Application/Utilities/`：应用层内部共享工具目录
 - `EnumGuard.cs`：枚举值合法性校验工具；统一封装 `Enum.IsDefined` 判断、Warn 日志记录与 `ArgumentOutOfRangeException` 抛出，消除各应用服务中重复的枚举验证模板代码；提供 `int` 和 `int?` 两个重载。
 - `Guard.cs`：基础参数边界守卫工具；提供 `ThrowIfZeroOrNegative`（Id 正数校验，有 long/int 两个重载）和 `ThrowIfNegative`（可选数量非负校验），统一记录 Warn 日志并抛出 `ArgumentOutOfRangeException`。
@@ -521,6 +542,9 @@
 - `CreateArchiveTaskCommandService.cs`：归档 dry-run 任务创建应用服务。
 - `GetArchiveTaskPagedQueryService.cs`：归档任务分页查询应用服务。
 - `RetryArchiveTaskCommandService.cs`：归档任务重试应用服务。
+
+#### `Zeye.Sorting.Hub.Application/Services/Diagnostics/`：诊断应用服务目录
+- `GetSlowQueryProfileQueryService.cs`：慢查询画像查询应用服务，消费 `ISlowQueryProfileReader` 返回的只读快照，并映射为 Diagnostics 合同响应。
 
 #### `Zeye.Sorting.Hub.Application/Services/Parcels/`：Parcel 应用服务目录（查询 + 管理端写命令）
 - `GetParcelByIdQueryService.cs`：按 Id 查询 Parcel 详情应用服务（仓储调用 + 合同映射 + 最小参数校验）。
@@ -567,6 +591,10 @@
 - `ArchiveTaskListRequest.cs`：归档任务分页查询请求合同。
 - `ArchiveTaskListResponse.cs`：归档任务分页响应合同。
 - `ArchiveTaskResponse.cs`：归档任务详情响应合同。
+
+#### `Zeye.Sorting.Hub.Contracts/Models/Diagnostics/`：诊断合同目录
+- `SlowQueryProfileResponse.cs`：慢查询画像详情响应合同，返回指纹、标准 SQL、样例 SQL、平均耗时、P95/P99、异常计数与窗口时间。
+- `SlowQueryProfileListResponse.cs`：慢查询画像列表响应合同，返回当前生成时间、追踪指纹总量与 TopN 画像条目。
 
 #### `Zeye.Sorting.Hub.Contracts/Models/Parcels/ValueObjects/`：Parcel 值对象响应合同目录
 - `ApiRequestInfoResponse.cs`：外部接口请求记录响应合同。
@@ -714,6 +742,7 @@
 - `Routing/ParcelAdminApiRouteExtensions.cs`：Parcel 管理端路由扩展（普通写接口 + cleanup-expired 治理接口 + `/api/admin/parcels/batch-buffer` 批量缓冲写入接口）。
 - `Routing/AuditReadOnlyApiRouteExtensions.cs`：Web 请求审计日志只读路由扩展（`GET /api/audit/web-requests`、`GET /api/audit/web-requests/{id}`）。
 - `Routing/DataGovernanceApiRouteExtensions.cs`：归档任务路由扩展（`POST /api/data-governance/archive-tasks`、`GET /api/data-governance/archive-tasks`、`POST /api/data-governance/archive-tasks/{id}/retry`）。
+- `Routing/DiagnosticsApiRouteExtensions.cs`：诊断路由扩展（`GET /api/diagnostics/slow-queries`、`GET /api/diagnostics/slow-queries/{fingerprint}`），只读取进程内画像快照，不触发数据库重查。
 - `QueryParameters/ParcelListQueryParameters.cs`：Parcel 列表查询参数模型（AsParameters 绑定）。
 - `QueryParameters/ParcelCursorListQueryParameters.cs`：Parcel 游标分页查询参数模型（AsParameters 绑定）。
 - `QueryParameters/ParcelAdjacentQueryParameters.cs`：Parcel 邻近查询参数模型（AsParameters 绑定）。
@@ -741,7 +770,7 @@
 - `Middleware/ResponseCaptureResult.cs`：响应正文采集结果值类型。
 - `Zeye.Sorting.Hub.Host.csproj`：Host 项目定义。
 - `nlog.config`：NLog 日志配置。
-- `appsettings.json`：默认运行配置（含 `WebRequestAuditLog.IncludeRequestBody/IncludeResponseBody`、`AuditReadOnlyApi:Enabled` 显式开关、`ResourceThresholds:MaxConnectionPoolSize/MemoryWarningThresholdMB` 资源阈值节、`Persistence:Diagnostics` 数据库连接诊断配置、`Persistence:WriteBuffering` 批量缓冲写入配置、`Persistence:Archiving` 归档 dry-run 配置、`Persistence:BaselineData` 基线数据校验配置、`Persistence:MigrationGovernance` 迁移治理配置、`Persistence:Sharding:RuntimeInspection/Prebuild` 分表巡检与预建配置、`Persistence:AutoTuning:MonthlyReportDay` 月报日期配置）。
+- `appsettings.json`：默认运行配置（含 `WebRequestAuditLog.IncludeRequestBody/IncludeResponseBody`、`AuditReadOnlyApi:Enabled` 显式开关、`ResourceThresholds:MaxConnectionPoolSize/MemoryWarningThresholdMB` 资源阈值节、`Persistence:Diagnostics` 数据库连接诊断配置、`Persistence:WriteBuffering` 批量缓冲写入配置、`Persistence:Archiving` 归档 dry-run 配置、`Persistence:BaselineData` 基线数据校验配置、`Persistence:MigrationGovernance` 迁移治理配置、`Persistence:Sharding:RuntimeInspection/Prebuild` 分表巡检与预建配置，以及 `Persistence:AutoTuning:SlowQueryProfile` 慢查询画像窗口配置）。
 - `appsettings.Development.json`：开发环境配置覆盖文件。
 
 #### `Zeye.Sorting.Hub.Host/Swagger/`：Swagger 扩展目录
@@ -856,8 +885,12 @@
 - `LoggingOnlyExecutionPlanRegressionProbe.cs`：默认 logging-only 计划探针实现。
 - `AutoTuningConfigurationReader.cs`：配置读取工具类，集中提供 `GetPositiveIntOrDefault`、`GetNonNegativeIntOrDefault`、`GetNonNegativeDecimalOrDefault`、`GetDecimalInRangeOrDefault`、`GetDecimalClampedOrDefault`、`GetBoolOrDefault`、`GetPositiveSecondsAsTimeSpanOrDefault`、`GetTimeOfDayOrDefault`，并统一 `BuildAutoTuningKey`、`BuildAutonomousKey` 与 `NormalizeToLocalTime`，消除重复键拼装与时间归一化实现。
 - `MySqlSessionBootstrapConnectionInterceptor.cs`：MySQL 连接会话初始化拦截器（类型判断逻辑内联，移除无意义 helper）。
-- `SlowQueryAutoTuningPipeline.cs`：慢查询采集、TopN 聚合、阈值告警（含基础防抖）与闭环自治结构化建议编排管道（配置键拼装复用 `AutoTuningConfigurationReader`，并提供主表提取公共方法供 HostedService 与建议编排共用）。
-- `SlowQueryCommandInterceptor.cs`：EF Core 慢查询采集拦截器。
+- `SlowQueryAutoTuningPipeline.cs`：慢查询采集、TopN 聚合、阈值告警（含基础防抖）与闭环自治结构化建议编排管道（配置键拼装复用 `AutoTuningConfigurationReader`，并改为复用共享指纹聚合器生成稳定 SQL 指纹）。
+- `SlowQueryCommandInterceptor.cs`：EF Core 慢查询采集拦截器，同时将样本写入自动调优主管道与慢查询画像快照存储。
+- `SlowQueryFingerprint.cs`：慢查询指纹模型，承载 16 位指纹与去参数化标准 SQL。
+- `SlowQueryFingerprintAggregator.cs`：慢查询指纹聚合器，统一执行 SQL 去参数化、指纹生成、P95/P99 计算与画像快照构建，避免重复实现。
+- `SlowQueryProfileSnapshot.cs`：慢查询画像内部快照模型，记录平均耗时、P95/P99、异常次数与窗口起止时间。
+- `SlowQueryProfileStore.cs`：慢查询画像内存快照存储，实现 `ISlowQueryProfileReader`，负责窗口裁剪、TopN 排序与最大指纹数量淘汰。
 - `SlowQuerySample.cs`：慢查询采样记录模型。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding/`：分表策略与治理决策目录
@@ -902,6 +935,7 @@
 ### `Zeye.Sorting.Hub.Host.Tests/`：API 与应用层测试层
 - `Zeye.Sorting.Hub.Host.Tests.csproj`：xUnit 测试项目定义。
 - `AutoTuningProductionControlTests.cs`：覆盖 dry-run、危险动作隔离、告警防抖与恢复、普通/严重回归、unavailable 指标处理、执行计划探针 available/unavailable 双路径、闭环链路与分表覆盖守卫校验、迁移失败策略分环境解析、结构化扩容计划解析、Time/Volume/Hybrid 分表策略评估、PerDay 预建守卫（配置+物理探测）与分表观测口径/自动索引过滤规则回归；新增 WebRequestAuditLog 治理解耦与历史保留治理语义回归；含配置键拼装参数化（Theory）覆盖。
+- `SlowQueryFingerprintTests.cs`：慢查询画像测试，覆盖 SQL 指纹去参数化、窗口聚合指标、最大指纹容量淘汰与查询服务读取详情。
 - `AlwaysExistsShardingPhysicalTableProbe.cs`：物理表探测测试桩，始终返回存在并记录调用次数。
 - `BaselineDataTests.cs`：基线数据测试，覆盖必要配置、Provider/连接字符串、本地时间配置、健康检查、可选种子入口与 Degraded 模式异常隔离。
 - `DataArchiveTaskTests.cs`：归档任务 dry-run 测试，覆盖创建、分页、后台执行、终态重试与非法类型校验。
@@ -949,19 +983,19 @@
 
 ## 本次更新内容
 
-- 继续实施《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》，在已完成 PR-G 的基础上继续补齐 PR-H“种子数据、基线数据与配置一致性校验”。
-- 新增 `Zeye.Sorting.Hub.Infrastructure/Persistence/Baseline/` 目录，补齐基线数据配置模型、校验结果模型、配置一致性校验器与可选幂等种子入口。
-- 新增 `BaselineDataValidationHostedService` 与 `BaselineDataHealthCheck`，让启动期基线校验、Degraded/FailFast 失败模式与 `/health/ready` 就绪状态联动。
-- 修复 `AutoTuningProductionControlTests` 中连接字符串示例，消除当前分支因无效连接字符串导致的解析失败测试。
-- 新增 `BaselineDataTests.cs`、`PR-长期数据库底座H-检查台账.md`，并同步更新 README、更新记录、数据库底座门禁说明与文件清单基线。
+- 继续实施《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》，先核对 PR-A~PR-H 已完成后，补齐 PR-I“慢查询指纹聚合与查询画像”。
+- 新增 `SlowQueryFingerprintAggregator`、`SlowQueryProfileStore` 与相关合同/应用服务，基于现有 EF Core 慢查询采集链路生成去参数化 SQL 指纹、窗口聚合画像与 TopN 只读快照。
+- 新增 `/api/diagnostics/slow-queries` 与 `/api/diagnostics/slow-queries/{fingerprint}` 两个诊断端点，仅返回进程内快照，不触发数据库重查询。
+- 通过应用层诊断只读抽象解耦 Infrastructure 与 Application，保持 `Host -> Infrastructure -> Application -> Domain` 依赖方向不被破坏。
+- 新增 `SlowQueryFingerprintTests.cs`、`PR-长期数据库底座I-检查台账.md`，并同步更新 README、更新记录与文件清单基线。
 
 ## 后续可完善点
 
-- 下一切片可按《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》进入 PR-I，补齐慢查询指纹聚合与查询画像。
-- 后续可将基线数据种子入口从当前幂等 no-op 升级为真实持久化默认数据写入，并接入更细粒度的审计与回滚边界。
+- 下一切片可按《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》进入 PR-J，补齐查询模板治理与索引建议闭环。
+- 后续可将慢查询画像从进程内快照扩展为可选轻量持久化缓存，支撑跨重启诊断留痕。
 - 可在后续“检查结果 PR”中按目录拆分台账附件，形成可直接追踪到文件与行号的持续治理闭环。
 - 可将其它日志输入清洗路径（如 query/header 维度）逐步迁移至 `LineBreakNormalizer`，进一步压缩重复实现面并统一观测口径。
-- 可扩展归档 dry-run 的候选样本维度（如租户/路径聚类），为后续真实冷热分层提供更细的决策证据。
+- 可扩展画像排序维度（如异常率、超时率、热点表聚类），为后续索引建议与查询模板治理提供更细的决策证据。
 
 ## Parcel API 发布门禁 / 使用边界说明
 
