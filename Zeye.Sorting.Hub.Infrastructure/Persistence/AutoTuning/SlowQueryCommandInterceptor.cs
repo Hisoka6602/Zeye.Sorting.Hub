@@ -5,33 +5,42 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
 
     /// <summary>EF Core 命令拦截器：采集慢查询样本</summary>
     public sealed class SlowQueryCommandInterceptor : DbCommandInterceptor {
-        /// <summary>
-        /// 自动调优流水线实例，用于采集和分析慢查询样本。
-        /// </summary>
-        private readonly SlowQueryAutoTuningPipeline _pipeline;
+    /// <summary>
+    /// 自动调优流水线实例，用于采集和分析慢查询样本。
+    /// </summary>
+    private readonly SlowQueryAutoTuningPipeline _pipeline;
 
-        /// <summary>初始化慢查询采集拦截器。</summary>
-        public SlowQueryCommandInterceptor(SlowQueryAutoTuningPipeline pipeline) {
-            _pipeline = pipeline;
-        }
+    /// <summary>
+    /// 慢查询画像快照存储。
+    /// </summary>
+    private readonly SlowQueryProfileStore _profileStore;
 
-        /// <summary>同步非查询命令执行后采集样本。</summary>
-        public override int NonQueryExecuted(DbCommand command, CommandExecutedEventData eventData, int result) {
-            _pipeline.Collect(command.CommandText, eventData.Duration, result);
-            return result;
-        }
+    /// <summary>初始化慢查询采集拦截器。</summary>
+    public SlowQueryCommandInterceptor(SlowQueryAutoTuningPipeline pipeline, SlowQueryProfileStore profileStore) {
+        _pipeline = pipeline;
+        _profileStore = profileStore;
+    }
 
-        /// <summary>同步标量命令执行后采集样本。</summary>
-        public override object? ScalarExecuted(DbCommand command, CommandExecutedEventData eventData, object? result) {
-            _pipeline.Collect(command.CommandText, eventData.Duration);
-            return result;
-        }
+    /// <summary>同步非查询命令执行后采集样本。</summary>
+    public override int NonQueryExecuted(DbCommand command, CommandExecutedEventData eventData, int result) {
+        _profileStore.Record(command.CommandText, eventData.Duration, result);
+        _pipeline.Collect(command.CommandText, eventData.Duration, result);
+        return result;
+    }
 
-        /// <summary>同步读取命令执行后采集样本。</summary>
-        public override DbDataReader ReaderExecuted(DbCommand command, CommandExecutedEventData eventData, DbDataReader result) {
-            _pipeline.Collect(command.CommandText, eventData.Duration);
-            return result;
-        }
+    /// <summary>同步标量命令执行后采集样本。</summary>
+    public override object? ScalarExecuted(DbCommand command, CommandExecutedEventData eventData, object? result) {
+        _profileStore.Record(command.CommandText, eventData.Duration);
+        _pipeline.Collect(command.CommandText, eventData.Duration);
+        return result;
+    }
+
+    /// <summary>同步读取命令执行后采集样本。</summary>
+    public override DbDataReader ReaderExecuted(DbCommand command, CommandExecutedEventData eventData, DbDataReader result) {
+        _profileStore.Record(command.CommandText, eventData.Duration);
+        _pipeline.Collect(command.CommandText, eventData.Duration);
+        return result;
+    }
 
         /// <summary>异步非查询命令执行后采集样本。</summary>
         public override ValueTask<int> NonQueryExecutedAsync(
@@ -39,6 +48,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             CommandExecutedEventData eventData,
             int result,
             CancellationToken cancellationToken = default) {
+            _profileStore.Record(command.CommandText, eventData.Duration, result);
             _pipeline.Collect(command.CommandText, eventData.Duration, result);
             return ValueTask.FromResult(result);
         }
@@ -49,6 +59,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             CommandExecutedEventData eventData,
             object? result,
             CancellationToken cancellationToken = default) {
+            _profileStore.Record(command.CommandText, eventData.Duration);
             _pipeline.Collect(command.CommandText, eventData.Duration);
             return ValueTask.FromResult(result);
         }
@@ -59,20 +70,23 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             CommandExecutedEventData eventData,
             DbDataReader result,
             CancellationToken cancellationToken = default) {
+            _profileStore.Record(command.CommandText, eventData.Duration);
             _pipeline.Collect(command.CommandText, eventData.Duration);
             return ValueTask.FromResult(result);
         }
 
-        /// <summary>同步命令失败时采集异常样本。</summary>
-        public override void CommandFailed(DbCommand command, CommandErrorEventData eventData) {
-            _pipeline.Collect(command.CommandText, eventData.Duration, exception: eventData.Exception);
-        }
+    /// <summary>同步命令失败时采集异常样本。</summary>
+    public override void CommandFailed(DbCommand command, CommandErrorEventData eventData) {
+        _profileStore.Record(command.CommandText, eventData.Duration, exception: eventData.Exception);
+        _pipeline.Collect(command.CommandText, eventData.Duration, exception: eventData.Exception);
+    }
 
         /// <summary>异步命令失败时采集异常样本。</summary>
         public override Task CommandFailedAsync(
             DbCommand command,
             CommandErrorEventData eventData,
             CancellationToken cancellationToken = default) {
+            _profileStore.Record(command.CommandText, eventData.Duration, exception: eventData.Exception);
             _pipeline.Collect(command.CommandText, eventData.Duration, exception: eventData.Exception);
             return Task.CompletedTask;
         }

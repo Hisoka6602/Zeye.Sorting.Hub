@@ -1,9 +1,7 @@
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.RegularExpressions;
 using Microsoft.Extensions.Configuration;
 using NLog;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
+using System.Text.RegularExpressions;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
 
@@ -21,18 +19,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         /// 告警状态跟踪上限，防止状态字典无限增长。
         /// </summary>
         private const int MaxAlertTrackingStates = 2048;
-        /// <summary>
-        /// 多空白折叠正则，用于 SQL 归一化。
-        /// </summary>
-        private static readonly Regex MultiWhitespaceRegex = new(@"\s+", RegexOptions.Compiled | RegexOptions.CultureInvariant);
-        /// <summary>
-        /// 参数占位符正则（@Param）。
-        /// </summary>
-        private static readonly Regex ParameterRegex = new(@"@[A-Za-z_][A-Za-z0-9_]*", RegexOptions.Compiled | RegexOptions.CultureInvariant);
-        /// <summary>
-        /// 字符串字面量正则（用于脱敏归一化）。
-        /// </summary>
-        private static readonly Regex StringLiteralRegex = new(@"'[^']*'", RegexOptions.Compiled | RegexOptions.CultureInvariant);
         /// <summary>
         /// FROM 子句表名提取正则。
         /// </summary>
@@ -204,8 +190,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
 
             var isTimeout = IsTimeoutException(exception);
             var isDeadlock = IsDeadlockException(exception);
-            var normalizedSql = NormalizeSql(commandText);
-            var sqlFingerprint = BuildSqlFingerprint(normalizedSql);
+            var slowQueryFingerprint = SlowQueryFingerprintAggregator.Create(commandText);
             lock (_queueSync) {
                 while (_slowQueries.Count >= _maxQueueSize && _slowQueries.TryDequeue(out _)) {
                     _droppedCount++;
@@ -213,7 +198,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
 
                 _slowQueries.Enqueue(new SlowQuerySample(
                     commandText: commandText,
-                    sqlFingerprint: sqlFingerprint,
+                    sqlFingerprint: slowQueryFingerprint.Fingerprint,
                     elapsedMilliseconds: elapsedMilliseconds,
                     affectedRows: Math.Max(affectedRows, 0),
                     isError: isError,
@@ -312,14 +297,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             lock (_queueSync) {
                 return _droppedCount;
             }
-        }
-
-        /// <summary>归一化 SQL 文本，消除参数与格式噪音。</summary>
-        private static string NormalizeSql(string sql) {
-            var withoutStringLiterals = StringLiteralRegex.Replace(sql, "?");
-            var withoutParameters = ParameterRegex.Replace(withoutStringLiterals, "?");
-            var normalized = MultiWhitespaceRegex.Replace(withoutParameters, " ").Trim();
-            return normalized.Length <= 512 ? normalized : normalized[..512];
         }
 
         /// <summary>基于聚合结果生成自动调优候选动作。</summary>
@@ -662,12 +639,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             var rank = (int)Math.Ceiling(percentile / 100d * sorted.Count);
             var index = Math.Clamp(rank - 1, 0, sorted.Count - 1);
             return sorted[index];
-        }
-
-        /// <summary>计算标准化 SQL 指纹。</summary>
-        private static string BuildSqlFingerprint(string normalizedSql) {
-            var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(normalizedSql));
-            return Convert.ToHexString(hashBytes[..8]).ToLowerInvariant();
         }
 
         /// <summary>判断异常是否属于超时类。</summary>
