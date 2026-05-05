@@ -30,7 +30,8 @@
 │   ├── PR-D-检查台账.md（PR-D 批次检查台账：覆盖 Infrastructure 层共 63 个文件的审查结论与问题清单）
 │   ├── PR-E-检查台账.md（PR-E 批次检查台账：覆盖 Host 层共 43 个文件的审查结论与问题清单）
 │   ├── PR-F-检查台账.md（PR-F 批次检查台账：覆盖 SharedKernel + Host.Tests + 占位子域共 45 个文件的审查结论与问题清单）
-│   └── PR-长期数据库底座A-检查台账.md（长期数据库底座 PR-A 台账：记录现状核对、数据库连接诊断切片交付与下一 PR 入口）
+│   ├── PR-长期数据库底座A-检查台账.md（长期数据库底座 PR-A 台账：记录现状核对、数据库连接诊断切片交付与下一 PR 入口）
+│   └── PR-长期数据库底座B-检查台账.md（长期数据库底座 PR-B 台账：记录查询保护、游标分页交付与下一 PR 入口）
 ├── Zeye.Sorting.Hub.Analytics（分析与报表子域，占位工程）
 │   └── Zeye.Sorting.Hub.Analytics.csproj（Analytics 项目定义）
 ├── Zeye.Sorting.Hub.Application（应用层）
@@ -47,7 +48,9 @@
 │   │       ├── GetAdjacentParcelsQueryService.cs（Parcel 邻近查询应用服务）
 │   │       ├── GetParcelByIdQueryService.cs（Parcel 详情查询应用服务）
 │   │       ├── GetParcelPagedQueryService.cs（Parcel 分页查询应用服务）
+│   │       ├── GetParcelCursorPagedQueryService.cs（Parcel 游标分页查询应用服务）
 │   │       ├── ParcelContractMapper.cs（Parcel 领域模型到 Contracts 模型映射器）
+│   │       ├── ParcelQueryRequestMapper.cs（Parcel 查询请求映射器：统一默认时间窗口与过滤模型构建）
 │   │       └── UpdateParcelStatusCommandService.cs（管理端更新包裹状态应用服务（仅支持领域允许的状态转换））
 │   ├── Utilities（应用层内部共享工具目录）
 │   │   ├── EnumGuard.cs（枚举值合法性校验工具：统一封装 Enum.IsDefined + Warn 日志 + 异常抛出）
@@ -73,6 +76,9 @@
 │   │       │   └── ParcelUpdateRequest.cs（管理端更新包裹状态请求合同）
 │   │       ├── ParcelAdjacentRequest.cs（Parcel 邻近查询请求合同）
 │   │       ├── ParcelAdjacentResponse.cs（Parcel 邻近查询响应合同）
+│   │       ├── ParcelCursorListRequest.cs（Parcel 游标分页查询请求合同）
+│   │       ├── ParcelCursorListResponse.cs（Parcel 游标分页查询响应合同）
+│   │       ├── ParcelCursorToken.cs（Parcel 游标令牌合同：编码上一页最后一条记录的 ScannedTime/Id）
 │   │       ├── ParcelDetailResponse.cs（Parcel 详情响应合同（包含所有联表值对象内容））
 │   │       ├── ParcelListItemResponse.cs（Parcel 列表项响应合同）
 │   │       ├── ParcelListRequest.cs（Parcel 列表查询请求合同）
@@ -156,6 +162,8 @@
 │   │       │   ├── ParcelQueryFilter.cs（Parcel 查询过滤模型）
 │   │       │   └── WebRequestAuditLogQueryFilter.cs（Web 请求审计日志查询过滤模型）
 │   │       ├── Paging（通用分页模型目录）
+│   │       │   ├── CursorPageRequest.cs（游标分页请求模型：携带页大小与上一页最后记录游标）
+│   │       │   ├── CursorPageResult.cs（游标分页结果模型：携带下一页游标位置与 HasMore 标识）
 │   │       │   ├── PageRequest.cs（通用分页请求模型）
 │   │       │   └── PageResult.cs（通用分页结果模型）
 │   │       ├── ReadModels（查询读模型目录）
@@ -184,11 +192,12 @@
 │   │   ├── TableCapacitySnapshot.cs（表容量快照模型）
 │   │   └── WebRequestAuditLogRetentionCandidates.cs（WebRequestAuditLog 历史分表保留候选模型：候选总数 + 物理表名清单）
 │   ├── Routing（路由扩展目录）
-│   │   ├── ParcelReadOnlyApiRouteExtensions.cs（Parcel 只读 API 路由扩展）
+│   │   ├── ParcelReadOnlyApiRouteExtensions.cs（Parcel 只读 API 路由扩展：含偏移分页、游标分页、详情与邻近查询）
 │   │   ├── ParcelAdminApiRouteExtensions.cs（Parcel 管理端 API 路由扩展）
 │   │   └── AuditReadOnlyApiRouteExtensions.cs（Web 请求审计日志只读 API 路由扩展）
 │   ├── QueryParameters（路由参数绑定模型目录）
 │   │   ├── ParcelListQueryParameters.cs（Parcel 列表查询参数）
+│   │   ├── ParcelCursorListQueryParameters.cs（Parcel 游标分页查询参数）
 │   │   ├── ParcelAdjacentQueryParameters.cs（Parcel 邻近查询参数）
 │   │   └── WebRequestAuditLogListQueryParameters.cs（审计日志列表查询参数）
 │   ├── Options（配置模型目录）
@@ -312,6 +321,7 @@
 │   │   └── WebRequestAuditLogIndexNames.cs（Web 请求审计日志关键索引名称常量）
 │   ├── Repositories（仓储基类与结果模型目录）
 │   │   ├── MemoryCacheRepositoryBase.cs（带内存缓存失效的仓储基类，使用 NLog 日志）
+│   │   ├── ParcelCursorQueryExtensions.cs（Parcel 游标分页查询扩展：统一稳定排序下的游标条件拼接）
 │   │   ├── ParcelRepository.cs（Parcel 仓储第一阶段实现，使用静态 NLog logger，无需 MEL ILogger 构造注入；BarCodeKeyword 检索按 Provider 分支：MySQL 走 FULLTEXT Boolean，其他 Provider 回退 Contains）
 │   │   ├── RepositoryBase.cs（通用仓储基类，接受 NLog.ILogger 构造参数，由派生类传入确保日志来源类名正确）
 │   │   └── WebRequestAuditLogRepository.cs（Web 请求审计日志仓储实现：热表+冷表写入与只读查询）
@@ -372,6 +382,7 @@
   - `PR-E-检查台账.md`：PR-E 批次检查台账，覆盖 `Zeye.Sorting.Hub.Host/` 共 43 个文件的审查结论、问题清单（0 P0 / 3 P1 / 13 P2）与修复 PR 规划（PR-FIX-E1～E4）。
   - `PR-F-检查台账.md`：PR-F 批次检查台账（最终批次），覆盖 `Zeye.Sorting.Hub.SharedKernel/`、`Zeye.Sorting.Hub.Host.Tests/` 及占位子域共 45 个文件的审查结论、问题清单（0 P0 / 0 P1 / 12 P2）与修复 PR 规划（PR-FIX-F1～F2）；同时提供全量 287 文件 100% 覆盖的总对账结果。
   - `PR-长期数据库底座A-检查台账.md`：长期数据库底座 PR-A 实施台账；记录多 PR 路线图现状核对、数据库连接诊断切片交付清单、验证结果与下一 PR 入口。
+  - `PR-长期数据库底座B-检查台账.md`：长期数据库底座 PR-B 实施台账；记录查询保护与游标分页交付清单、验证结果与下一 PR 入口。
 
 ### `.github/`：Copilot 仓库级指令目录
 - `DDD分层接口与实现放置规范.md`：DDD 分层接口定义与实现放置规范文档；明确依赖方向（Host→Infrastructure→Application→Domain）、接口定义归属规则（领域能力/应用编排/基础设施内部三类）、实现类放置约束、目录结构建议与禁止事项清单，供 Copilot 与开发人员统一执行。
@@ -402,9 +413,11 @@
 
 #### `Zeye.Sorting.Hub.Application/Services/Parcels/`：Parcel 应用服务目录（查询 + 管理端写命令）
 - `GetParcelByIdQueryService.cs`：按 Id 查询 Parcel 详情应用服务（仓储调用 + 合同映射 + 最小参数校验）。
-- `GetParcelPagedQueryService.cs`：分页查询 Parcel 列表应用服务（请求校验、过滤映射、分页结果映射）。
+- `GetParcelPagedQueryService.cs`：分页查询 Parcel 列表应用服务（请求校验、默认最近 24 小时时间窗口、最大页码保护、分页结果映射）。
+- `GetParcelCursorPagedQueryService.cs`：游标分页查询 Parcel 列表应用服务（游标解码、请求校验、默认最近 24 小时时间窗口、游标结果映射）。
 - `GetAdjacentParcelsQueryService.cs`：按包裹 Id 查询邻近 Parcel 应用服务（数量归一化至 `IParcelRepository.MaxAdjacentCountPerSide`、响应映射；锚点不存在抛 KeyNotFoundException 供 Host 映射 404）。
 - `ParcelContractMapper.cs`：Parcel 领域模型/读模型到 Contracts 模型的统一映射器，避免 Host 层重复映射。
+- `ParcelQueryRequestMapper.cs`：Parcel 查询请求映射器，统一普通分页与游标分页的过滤条件构建和默认最近 24 小时时间窗口。
 - `CreateParcelCommandService.cs`：管理端新增包裹应用服务（枚举验证、领域工厂 Parcel.Create、仓储 AddAsync、合同映射）。
 - `UpdateParcelStatusCommandService.cs`：管理端更新包裹状态应用服务（仅支持 MarkCompleted/MarkSortingException/UpdateRequestStatus 三种领域方法，不允许任意字段修改）。
 - `DeleteParcelCommandService.cs`：管理端删除单个包裹应用服务（先加载聚合根，不存在返回 false，再调用 RemoveAsync）。
@@ -417,6 +430,9 @@
 - `ParcelListRequest.cs`：Parcel 列表查询请求合同（分页 + 过滤参数）。
 - `ParcelListItemResponse.cs`：Parcel 列表项响应合同（扁平化字段，不暴露领域聚合根）。
 - `ParcelListResponse.cs`：Parcel 列表分页响应合同。
+- `ParcelCursorListRequest.cs`：Parcel 游标分页查询请求合同（游标 + 过滤参数）。
+- `ParcelCursorListResponse.cs`：Parcel 游标分页响应合同（Items、PageSize、HasMore、NextCursor）。
+- `ParcelCursorToken.cs`：Parcel 游标令牌合同，编码上一页最后一条记录的 `ScannedTime` 与 `Id`。
 - `ParcelDetailResponse.cs`：Parcel 详情响应合同（继承列表项扁平字段，并包含所有联表值对象内容）。
 - `ParcelAdjacentRequest.cs`：Parcel 邻近查询请求合同。
 - `ParcelAdjacentResponse.cs`：Parcel 邻近查询响应合同。
@@ -527,7 +543,7 @@
 - `AuditableEntity.cs`：可审计实体基类（创建/修改信息等）。
 
 #### `Zeye.Sorting.Hub.Domain/Repositories/`：领域仓储契约目录
-- `IParcelRepository.cs`：包裹仓储接口（第一阶段可落地契约：基础读写、分页查询、按 Id 邻近查询、过期清理危险动作治理结果返回；同时定义 `MaxAdjacentCountPerSide = 200` 常量，为 Application 层与 Infrastructure 层提供唯一权威数字来源，禁止各自硬编码）。
+- `IParcelRepository.cs`：包裹仓储接口（第一阶段可落地契约：基础读写、偏移分页、游标分页、按 Id 邻近查询、过期清理危险动作治理结果返回；同时定义 `MaxAdjacentCountPerSide = 200` 常量，为 Application 层与 Infrastructure 层提供唯一权威数字来源，禁止各自硬编码）。
 - `IWebRequestAuditLogQueryRepository.cs`：Web 请求审计日志只读查询仓储契约（分页列表与按 Id 详情）。
 - `IWebRequestAuditLogRepository.cs`：Web 请求审计日志仓储最小写入契约（`AddAsync`）。
 
@@ -538,6 +554,8 @@
 - `WebRequestAuditLogQueryFilter.cs`：Web 请求审计日志列表过滤参数模型（startedAt 区间、statusCode、isSuccess、traceId、correlationId、requestPathKeyword）。
 
 ###### `Zeye.Sorting.Hub.Domain/Repositories/Models/Paging/`：通用分页模型目录
+- `CursorPageRequest.cs`：游标分页请求参数（页大小、上一页最后记录的 `ScannedTime` 与 `Id`）。
+- `CursorPageResult.cs`：游标分页结果模型（Items、HasMore 与下一页游标位置）。
 - `PageRequest.cs`：通用分页请求参数（含页码/页大小归一化）。
 - `PageResult.cs`：通用分页结果模型（Items、页码、页大小、总数）。
 
@@ -556,11 +574,12 @@
 - `MaxTimeRangeAttribute.cs`：时间范围校验特性（限制起止时间跨度，默认不超过 3 个月）。
 
 ### `Zeye.Sorting.Hub.Host/`：宿主层（程序入口、后台服务、启动配置）
-- `Program.cs`：应用入口与 Host 构建流程（按 `AuditReadOnlyApi:Enabled` 显式开关控制审计只读路由映射）。
-- `Routing/ParcelReadOnlyApiRouteExtensions.cs`：Parcel 只读路由注册与处理逻辑。
+- `Program.cs`：应用入口与 Host 构建流程（按 `AuditReadOnlyApi:Enabled` 显式开关控制审计只读路由映射，并注册 Parcel 游标分页查询服务）。
+- `Routing/ParcelReadOnlyApiRouteExtensions.cs`：Parcel 只读路由注册与处理逻辑；新增 `/api/parcels/cursor` 游标分页接口，并为普通分页补充默认最近 24 小时与页码保护说明。
 - `Routing/ParcelAdminApiRouteExtensions.cs`：Parcel 管理端路由扩展（普通写接口 + cleanup-expired 治理接口）。
 - `Routing/AuditReadOnlyApiRouteExtensions.cs`：Web 请求审计日志只读路由扩展（`GET /api/audit/web-requests`、`GET /api/audit/web-requests/{id}`）。
 - `QueryParameters/ParcelListQueryParameters.cs`：Parcel 列表查询参数模型（AsParameters 绑定）。
+- `QueryParameters/ParcelCursorListQueryParameters.cs`：Parcel 游标分页查询参数模型（AsParameters 绑定）。
 - `QueryParameters/ParcelAdjacentQueryParameters.cs`：Parcel 邻近查询参数模型（AsParameters 绑定）。
 - `QueryParameters/WebRequestAuditLogListQueryParameters.cs`：审计日志列表查询参数模型（AsParameters 绑定）。
 - `Options/HostingOptions.cs`：`Hosting` 主配置模型及地址/Swagger 拼装逻辑。
@@ -669,7 +688,8 @@
 #### `Zeye.Sorting.Hub.Infrastructure/Repositories/`：仓储基类与结果模型目录
 - `RepositoryBase.cs`：通用仓储基类（增删改查 + 自动持久化实现）；接受 `NLog.ILogger` 构造参数，由派生类传入，确保日志来源类名为实际仓储类而非基类名。
 - `MemoryCacheRepositoryBase.cs`：带内存缓存失效逻辑的仓储基类，继承 `RepositoryBase`，同样使用 NLog 日志。
-- `ParcelRepository.cs`：Parcel 仓储第一阶段实现（复用 `RepositoryBase`、`IDbContextFactory`，使用静态 `NLog.ILogger`，已移除 MEL `ILogger<ParcelRepository>` 构造依赖；提供基础读写、分页查询、按 Id 邻近查询与过期清理；条码检索按 Provider 分支（MySQL FULLTEXT Boolean、其他 Provider Contains）；过期清理纳入隔离器开关 + dry-run + 审计 + 补偿边界声明）。
+- `ParcelCursorQueryExtensions.cs`：Parcel 游标分页查询扩展，集中封装 `ScannedTime DESC, Id DESC` 稳定排序下的游标条件，避免仓储内重复拼接。
+- `ParcelRepository.cs`：Parcel 仓储第一阶段实现（复用 `RepositoryBase`、`IDbContextFactory`，使用静态 `NLog.ILogger`，已移除 MEL `ILogger<ParcelRepository>` 构造依赖；提供基础读写、偏移分页、游标分页、按 Id 邻近查询与过期清理；条码检索按 Provider 分支（MySQL FULLTEXT Boolean、其他 Provider Contains）；过期清理纳入隔离器开关 + dry-run + 审计 + 补偿边界声明）。
 - `WebRequestAuditLogRepository.cs`：Web 请求审计日志仓储实现，负责热表与冷表详情同事务写入，以及分页列表/按 Id 详情只读查询。
 
 ### `Zeye.Sorting.Hub.Realtime/`：实时通信子域（当前为占位工程）
@@ -706,6 +726,7 @@
 - `ObservabilityEntry.cs`：自动调优观测记录模型，承载名称/值/标签快照。
 - `ParcelAdminApiTests.cs`：Parcel 管理端写接口测试，覆盖新增成功路径、创建请求 `id<=0` 返回 400、重复 Id 返回 409、UTC 时间拒绝、更新状态成功路径 + 不存在 404 + 非法操作码 400、删除成功路径 + 不存在 404、cleanup-expired blocked/dry-run/execute 三态 + UTC 时间与非法参数拒绝。
 - `ParcelReadOnlyApiTests.cs`：Parcel 只读 API 端点测试，覆盖列表查询、详情查询、详情不存在返回 404、`/api/parcels/adjacent` 按 `id` 查询的 400/404/稳定排序回归。
+- `ParcelCursorQueryTests.cs`：Parcel 游标分页与查询保护回归测试，覆盖首页、翻页、非法游标、页大小归一化、默认最近 24 小时窗口、普通分页页码保护与仓储稳定排序。
 - `DatabaseConnectionDiagnosticsTests.cs`：数据库连接诊断回归测试，覆盖默认配置、非法配置、失败快照、失败阈值、本地时间语义与健康检查 Data 输出。
 - `AuditReadOnlyApiTests.cs`：Web 请求审计日志只读 API 端点测试，覆盖默认分页、过滤组合、非法分页 400、非法时间格式 400、详情 200/404 全字段断言、中间件写读联动。
 - `SortingHubTestDbContextFactory.cs`：Host.Tests 通用 InMemory `DbContextFactory`，供查询服务测试与仓储测试复用。
@@ -730,25 +751,16 @@
 
 ## 本次更新内容
 
-- 先核对《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》与仓库现状，确认当前优先补全切片为 PR-A“数据库连接诊断与就绪状态增强”。
-- 新增 `Zeye.Sorting.Hub.Infrastructure/Persistence/Diagnostics/` 目录，补齐数据库连接诊断配置、健康快照、诊断服务与启动预热服务。
-- 新增 `DatabaseConnectionDetailedHealthCheck.cs` 与 `DatabaseConnectionWarmupHostedService.cs`，并将 `/health/ready` 升级为可输出详细数据库诊断数据的就绪探针。
-- 新增 `DatabaseConnectionDiagnosticsTests.cs`，覆盖默认配置、非法配置、失败快照、阈值状态与健康检查 Data 输出。
-- 同步新增 `检查台账/PR-长期数据库底座A-检查台账.md`，记录本次 PR-A 现状核对、交付清单与下一 PR 入口。
-- 新增 `逐文件检查方案.md`，提供逐文件质量检查流程：检查项模板、问题分级、证据要求、分批（多 PR）执行策略与防遗漏对账机制。
-- 同步更新 README 根目录文件职责说明，补充新方案文档的用途与边界。
-- 修复审查项：全局异常处理日志器改为注册期单例复用，避免异常回调热路径重复获取 logger。
-- 修复审查项：全局异常日志补充 `Path + TraceId` 诊断上下文，并对路径执行单行化与长度限制（256 字符）。
-- 修复审查项：新增 `LineBreakNormalizer` 共享工具，统一替换 `GuardedAuthenticationHandler` 与 `DatabaseAutoTuningHostedService` 的重复换行清洗实现。
-- 同步更新 README 文件树与“各层级与各文件作用说明（逐项）”章节，确保新增共享工具文件职责与仓库结构一致。
-- 日志清理服务由顶层扫描调整为目录栈递归扫描：覆盖日志根目录及全部子目录 `*.log` 清理，不再遗漏深层目录日志文件。
-- 日志清理取消与异常日志定位修正为“当前实际扫描目录”，删除失败日志补充“文件绝对路径 + 实际目录”定位信息，便于排障。
-- 新增 `LogCleanupServiceTests` 回归测试，验证递归扫描行为与过期删除边界（仅删除过期日志，保留最近日志）。
-- 同步更新 README 文件树与“各层级与各文件作用说明（逐项）”章节，确保新增测试文件职责与仓库结构一致。
+- 继续实施《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》，完成 PR-B“查询保护与游标分页”切片。
+- 新增游标分页领域模型、合同模型、游标令牌、应用服务、仓储扩展与 `/api/parcels/cursor` 只读接口。
+- 普通分页查询新增默认最近 24 小时时间窗口与最大页码 10000 保护，避免无边界全表扫描。
+- 新增 `ParcelQueryRequestMapper`，统一普通分页与游标分页的过滤映射与默认时间窗口规则，消除重复实现。
+- 新增 `ParcelCursorQueryTests.cs`，覆盖首页、翻页、非法游标、默认时间范围与稳定排序。
+- 同步新增 `检查台账/PR-长期数据库底座B-检查台账.md`，记录本次 PR-B 现状核对、交付清单与下一 PR 入口。
 
 ## 后续可完善点
 
-- 下一切片可按《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》进入 PR-B，补齐查询保护与游标分页。
+- 下一切片可按《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》进入 PR-C，补齐批量写入缓冲与死信隔离。
 - 可在后续“检查结果 PR”中按目录拆分台账附件，形成可直接追踪到文件与行号的持续治理闭环。
 - 可将其它日志输入清洗路径（如 query/header 维度）逐步迁移至 `LineBreakNormalizer`，进一步压缩重复实现面并统一观测口径。
 - 可为日志清理服务补充“扫描目录无权限/文件被占用”场景测试，进一步验证失败计数与日志观测一致性。

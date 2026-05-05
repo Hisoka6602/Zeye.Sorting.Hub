@@ -13,6 +13,7 @@
 "\346\243\200\346\237\245\345\217\260\350\264\246/PR-D-\346\243\200\346\237\245\345\217\260\350\264\246.md"
 "\346\243\200\346\237\245\345\217\260\350\264\246/PR-E-\346\243\200\346\237\245\345\217\260\350\264\246.md"
 "\346\243\200\346\237\245\345\217\260\350\264\246/PR-F-\346\243\200\346\237\245\345\217\260\350\264\246.md"
+"\346\243\200\346\237\245\345\217\260\350\264\246/PR-\351\225\277\346\234\237\346\225\260\346\215\256\345\272\223\345\272\225\345\272\247A-\346\243\200\346\237\245\345\217\260\350\264\246.md"
 "\346\243\200\346\237\245\345\217\260\350\264\246/\346\226\207\344\273\266\346\270\205\345\215\225\345\237\272\347\272\277.txt"
 "\351\200\220\346\226\207\344\273\266\346\243\200\346\237\245\346\226\271\346\241\210.md"
 "\351\225\277\346\234\237\350\277\220\350\241\214\344\274\230\345\214\226\344\270\216\347\203\255\346\233\264\346\226\260\346\224\257\346\214\201\346\270\205\345\215\225.md"
@@ -36,8 +37,10 @@ Zeye.Sorting.Hub.Application/Services/Parcels/CreateParcelCommandService.cs
 Zeye.Sorting.Hub.Application/Services/Parcels/DeleteParcelCommandService.cs
 Zeye.Sorting.Hub.Application/Services/Parcels/GetAdjacentParcelsQueryService.cs
 Zeye.Sorting.Hub.Application/Services/Parcels/GetParcelByIdQueryService.cs
+Zeye.Sorting.Hub.Application/Services/Parcels/GetParcelCursorPagedQueryService.cs
 Zeye.Sorting.Hub.Application/Services/Parcels/GetParcelPagedQueryService.cs
 Zeye.Sorting.Hub.Application/Services/Parcels/ParcelContractMapper.cs
+Zeye.Sorting.Hub.Application/Services/Parcels/ParcelQueryRequestMapper.cs
 Zeye.Sorting.Hub.Application/Services/Parcels/ParcelResponseArgs.cs
 Zeye.Sorting.Hub.Application/Services/Parcels/UpdateParcelStatusCommandService.cs
 Zeye.Sorting.Hub.Application/Utilities/EnumGuard.cs
@@ -53,6 +56,9 @@ Zeye.Sorting.Hub.Contracts/Models/Parcels/Admin/ParcelCreateRequest.cs
 Zeye.Sorting.Hub.Contracts/Models/Parcels/Admin/ParcelUpdateRequest.cs
 Zeye.Sorting.Hub.Contracts/Models/Parcels/ParcelAdjacentRequest.cs
 Zeye.Sorting.Hub.Contracts/Models/Parcels/ParcelAdjacentResponse.cs
+Zeye.Sorting.Hub.Contracts/Models/Parcels/ParcelCursorListRequest.cs
+Zeye.Sorting.Hub.Contracts/Models/Parcels/ParcelCursorListResponse.cs
+Zeye.Sorting.Hub.Contracts/Models/Parcels/ParcelCursorToken.cs
 Zeye.Sorting.Hub.Contracts/Models/Parcels/ParcelDetailResponse.cs
 Zeye.Sorting.Hub.Contracts/Models/Parcels/ParcelListItemResponse.cs
 Zeye.Sorting.Hub.Contracts/Models/Parcels/ParcelListRequest.cs
@@ -129,6 +135,8 @@ Zeye.Sorting.Hub.Domain/Repositories/IWebRequestAuditLogQueryRepository.cs
 Zeye.Sorting.Hub.Domain/Repositories/IWebRequestAuditLogRepository.cs
 Zeye.Sorting.Hub.Domain/Repositories/Models/Filters/ParcelQueryFilter.cs
 Zeye.Sorting.Hub.Domain/Repositories/Models/Filters/WebRequestAuditLogQueryFilter.cs
+Zeye.Sorting.Hub.Domain/Repositories/Models/Paging/CursorPageRequest.cs
+Zeye.Sorting.Hub.Domain/Repositories/Models/Paging/CursorPageResult.cs
 Zeye.Sorting.Hub.Domain/Repositories/Models/Paging/PageRequest.cs
 Zeye.Sorting.Hub.Domain/Repositories/Models/Paging/PageResult.cs
 Zeye.Sorting.Hub.Domain/Repositories/Models/ReadModels/ParcelSummaryReadModel.cs
@@ -161,6 +169,7 @@ Zeye.Sorting.Hub.Host.Tests/NullScope.cs
 Zeye.Sorting.Hub.Host.Tests/ObservabilityEntry.cs
 Zeye.Sorting.Hub.Host.Tests/OptionsMonitorSubscription.cs
 Zeye.Sorting.Hub.Host.Tests/ParcelAdminApiTests.cs
+Zeye.Sorting.Hub.Host.Tests/ParcelCursorQueryTests.cs
 Zeye.Sorting.Hub.Host.Tests/ParcelQueryServicesTests.cs
 Zeye.Sorting.Hub.Host.Tests/ParcelReadOnlyApiTests.cs
 Zeye.Sorting.Hub.Host.Tests/ParcelRepositoryTests.cs
@@ -212,6 +221,7 @@ Zeye.Sorting.Hub.Host/Options/SwaggerOptions.cs
 Zeye.Sorting.Hub.Host/Program.cs
 Zeye.Sorting.Hub.Host/Properties/launchSettings.json
 Zeye.Sorting.Hub.Host/QueryParameters/ParcelAdjacentQueryParameters.cs
+Zeye.Sorting.Hub.Host/QueryParameters/ParcelCursorListQueryParameters.cs
 Zeye.Sorting.Hub.Host/QueryParameters/ParcelListQueryParameters.cs
 Zeye.Sorting.Hub.Host/QueryParameters/WebRequestAuditLogListQueryParameters.cs
 Zeye.Sorting.Hub.Host/Routing/AuditReadOnlyApiRouteExtensions.cs
@@ -287,6 +297,7 @@ Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding/ParcelShardingVolumeObserva
 Zeye.Sorting.Hub.Infrastructure/Persistence/SortingHubDbContext.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/WebRequestAuditLogIndexNames.cs
 Zeye.Sorting.Hub.Infrastructure/Repositories/MemoryCacheRepositoryBase.cs
+Zeye.Sorting.Hub.Infrastructure/Repositories/ParcelCursorQueryExtensions.cs
 Zeye.Sorting.Hub.Infrastructure/Repositories/ParcelRepository.cs
 Zeye.Sorting.Hub.Infrastructure/Repositories/RepositoryBase.cs
 Zeye.Sorting.Hub.Infrastructure/Repositories/WebRequestAuditLogRepository.cs
