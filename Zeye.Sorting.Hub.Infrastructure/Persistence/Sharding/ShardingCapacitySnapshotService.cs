@@ -7,6 +7,16 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 /// </summary>
 public sealed class ShardingCapacitySnapshotService {
     /// <summary>
+    /// 容量预警阈值比例。
+    /// </summary>
+    private const decimal CapacityWarningThresholdRatio = 0.8m;
+
+    /// <summary>
+    /// 热点比例预警阈值比例。
+    /// </summary>
+    private const decimal HotRatioWarningThresholdRatio = 0.8m;
+
+    /// <summary>
     /// 配置根。
     /// </summary>
     private readonly IConfiguration _configuration;
@@ -38,13 +48,13 @@ public sealed class ShardingCapacitySnapshotService {
 
         var maxRowsPerShard = decision.ConfigSnapshot.MaxRowsPerShard;
         var estimatedRowsPerShard = decision.VolumeObservation.EstimatedRowsPerShard;
-        if (maxRowsPerShard.HasValue && estimatedRowsPerShard.HasValue && estimatedRowsPerShard.Value >= maxRowsPerShard.Value * 8 / 10) {
+        if (maxRowsPerShard.HasValue && estimatedRowsPerShard.HasValue && estimatedRowsPerShard.Value >= maxRowsPerShard.Value * CapacityWarningThresholdRatio) {
             warnings.Add($"Parcel 单分表估算行数接近阈值：EstimatedRowsPerShard={estimatedRowsPerShard.Value}, MaxRowsPerShard={maxRowsPerShard.Value}");
         }
 
         var hotThresholdRatio = decision.ConfigSnapshot.HotThresholdRatio;
         var observedHotRatio = decision.VolumeObservation.ObservedHotRatio;
-        if (hotThresholdRatio.HasValue && observedHotRatio.HasValue && observedHotRatio.Value >= hotThresholdRatio.Value * 0.8m) {
+        if (hotThresholdRatio.HasValue && observedHotRatio.HasValue && observedHotRatio.Value >= hotThresholdRatio.Value * HotRatioWarningThresholdRatio) {
             warnings.Add($"Parcel 分表热点比例接近阈值：ObservedHotRatio={observedHotRatio.Value:F2}, HotThresholdRatio={hotThresholdRatio.Value:F2}");
         }
 

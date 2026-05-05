@@ -101,7 +101,7 @@ public sealed class ShardingTablePrebuildService {
             var plan = BuildPlan(
                 plannedTableNames,
                 missingTables,
-                _options.DryRun ? "分表预建 dry-run 计划已生成；未执行任何 DDL。" : "分表预建计划已生成；真实执行入口待危险动作隔离器放行。",
+                _options.DryRun ? "分表预建 dry-run 计划已生成；未执行任何 DDL。" : "分表预建计划已生成；真实执行需接入危险动作隔离器。",
                 true);
             Volatile.Write(ref _lastPlan, plan);
             Logger.Info(

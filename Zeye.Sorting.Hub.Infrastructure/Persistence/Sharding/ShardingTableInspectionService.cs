@@ -10,6 +10,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 /// </summary>
 public sealed class ShardingTableInspectionService {
     /// <summary>
+    /// 当前周期巡检向前规划小时数。
+    /// </summary>
+    private const int CurrentPeriodAheadHours = 0;
+
+    /// <summary>
     /// NLog 日志器。
     /// </summary>
     private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
@@ -107,7 +112,7 @@ public sealed class ShardingTableInspectionService {
             var plannedTableNames = _tablePlanBuilder.BuildExpectedPhysicalTableNames(
                 dbContext,
                 DateTime.Now,
-                0,
+                CurrentPeriodAheadHours,
                 _options.ShouldCheckNextPeriodTables);
             var missingPhysicalTables = await _physicalTableProbe.FindMissingTablesAsync(
                 dbContext,
