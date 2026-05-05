@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Linq;
 using Microsoft.Extensions.Configuration;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
@@ -47,7 +48,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
         private static void AppendEnvironmentVariableOverrides(IConfigurationBuilder builder) {
             var overrides = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
             var environmentVariables = Environment.GetEnvironmentVariables();
-            foreach (string key in environmentVariables.Keys) {
+            foreach (var key in environmentVariables.Keys.OfType<string>()) {
                 if (!key.Contains("__", StringComparison.Ordinal)) {
                     continue;
                 }
