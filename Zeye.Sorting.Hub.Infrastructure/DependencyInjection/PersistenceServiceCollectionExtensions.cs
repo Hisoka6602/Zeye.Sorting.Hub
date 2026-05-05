@@ -11,10 +11,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using NLog;
 using Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests;
+using Zeye.Sorting.Hub.Domain.Aggregates.DataGovernance;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects;
 using Zeye.Sorting.Hub.Domain.Repositories;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Archiving;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Diagnostics;
@@ -100,6 +102,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             RegisterDatabaseConnectionDiagnostics(services, configuration);
             RegisterBufferedWriteServices(services, configuration);
             RegisterShardingGovernanceServices(services, configuration);
+            RegisterDataArchiveServices(services, configuration);
             var provider = configuration["Persistence:Provider"];
             var commandTimeoutSeconds = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
             var minCommandElapsedMilliseconds = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:MinCommandElapsedMilliseconds", 50);
@@ -187,6 +190,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             }
 
             services.AddScoped<IParcelRepository, ParcelRepository>();
+            services.AddScoped<ArchiveTaskRepository>();
+            services.AddScoped<IArchiveTaskRepository>(serviceProvider =>
+                serviceProvider.GetRequiredService<ArchiveTaskRepository>());
             services.AddScoped<WebRequestAuditLogRepository>();
             services.AddScoped<IWebRequestAuditLogRepository>(serviceProvider =>
                 serviceProvider.GetRequiredService<WebRequestAuditLogRepository>());
@@ -295,6 +301,28 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         }
 
         /// <summary>
+        /// 注册数据归档 dry-run 服务。
+        /// </summary>
+        /// <param name="services">服务集合。</param>
+        /// <param name="configuration">配置根。</param>
+        private static void RegisterDataArchiveServices(IServiceCollection services, IConfiguration configuration) {
+            services.AddOptions<DataArchiveOptions>()
+                .Configure(options => ApplyDataArchiveOptions(options, configuration))
+                .Validate(
+                    static options => options.WorkerPollIntervalSeconds is >= DataArchiveOptions.MinWorkerPollIntervalSeconds and <= DataArchiveOptions.MaxWorkerPollIntervalSeconds,
+                    $"WorkerPollIntervalSeconds 必须在 {DataArchiveOptions.MinWorkerPollIntervalSeconds}~{DataArchiveOptions.MaxWorkerPollIntervalSeconds} 之间")
+                .Validate(
+                    static options => options.SampleItemLimit is >= DataArchiveOptions.MinSampleItemLimit and <= DataArchiveOptions.MaxSampleItemLimit,
+                    $"SampleItemLimit 必须在 {DataArchiveOptions.MinSampleItemLimit}~{DataArchiveOptions.MaxSampleItemLimit} 之间")
+                .ValidateOnStart();
+
+            services.AddScoped<DataArchivePlanner>();
+            services.AddScoped<DataArchiveCheckpointStore>();
+            services.AddScoped<DataArchiveExecutor>();
+            services.AddScoped<DataArchiveHostedWorker>();
+        }
+
+        /// <summary>
         /// 应用批量缓冲写入配置。
         /// </summary>
         /// <param name="options">配置实例。</param>
@@ -307,6 +335,17 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             options.MaxRetryCount = ReadIntSetting(configuration, $"{BufferedWriteOptions.SectionPath}:MaxRetryCount", options.MaxRetryCount);
             options.BackpressureRejectThreshold = ReadIntSetting(configuration, $"{BufferedWriteOptions.SectionPath}:BackpressureRejectThreshold", options.BackpressureRejectThreshold);
             options.DeadLetterCapacity = ReadIntSetting(configuration, $"{BufferedWriteOptions.SectionPath}:DeadLetterCapacity", options.DeadLetterCapacity);
+        }
+
+        /// <summary>
+        /// 应用数据归档 dry-run 配置。
+        /// </summary>
+        /// <param name="options">配置实例。</param>
+        /// <param name="configuration">配置根。</param>
+        private static void ApplyDataArchiveOptions(DataArchiveOptions options, IConfiguration configuration) {
+            options.IsEnabled = ReadBooleanSetting(configuration, "Persistence:Archiving:IsEnabled", options.IsEnabled);
+            options.WorkerPollIntervalSeconds = ReadIntSetting(configuration, "Persistence:Archiving:WorkerPollIntervalSeconds", options.WorkerPollIntervalSeconds);
+            options.SampleItemLimit = ReadIntSetting(configuration, "Persistence:Archiving:SampleItemLimit", options.SampleItemLimit);
         }
 
         /// <summary>
