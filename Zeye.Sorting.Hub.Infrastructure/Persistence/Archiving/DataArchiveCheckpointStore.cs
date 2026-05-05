@@ -37,23 +37,6 @@ public sealed class DataArchiveCheckpointStore {
     }
 
     /// <summary>
-    /// 标记任务进入执行中。
-    /// </summary>
-    /// <param name="taskId">任务主键。</param>
-    /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>归档任务；不存在时返回 null。</returns>
-    public async Task<ArchiveTask?> MarkRunningAsync(long taskId, CancellationToken cancellationToken) {
-        var archiveTask = await _archiveTaskRepository.GetByIdAsync(taskId, cancellationToken);
-        if (archiveTask is null) {
-            return null;
-        }
-
-        archiveTask.MarkRunning();
-        await PersistAsync(archiveTask, cancellationToken);
-        return archiveTask;
-    }
-
-    /// <summary>
     /// 标记任务执行完成。
     /// </summary>
     /// <param name="taskId">任务主键。</param>
@@ -63,7 +46,7 @@ public sealed class DataArchiveCheckpointStore {
     /// <param name="cancellationToken">取消令牌。</param>
     public async Task MarkCompletedAsync(
         long taskId,
-        int plannedItemCount,
+        long plannedItemCount,
         string planSummary,
         string checkpointPayload,
         CancellationToken cancellationToken) {

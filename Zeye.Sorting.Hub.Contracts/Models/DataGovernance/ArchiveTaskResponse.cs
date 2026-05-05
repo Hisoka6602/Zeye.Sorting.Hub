@@ -32,12 +32,12 @@ public sealed record ArchiveTaskResponse {
     /// <summary>
     /// 计划候选数量。
     /// </summary>
-    public int PlannedItemCount { get; init; }
+    public long PlannedItemCount { get; init; }
 
     /// <summary>
     /// 已处理数量。
     /// </summary>
-    public int ProcessedItemCount { get; init; }
+    public long ProcessedItemCount { get; init; }
 
     /// <summary>
     /// 发起人。

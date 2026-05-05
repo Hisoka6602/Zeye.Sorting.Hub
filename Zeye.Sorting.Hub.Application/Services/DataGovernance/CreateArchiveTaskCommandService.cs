@@ -11,6 +11,16 @@ namespace Zeye.Sorting.Hub.Application.Services.DataGovernance;
 /// </summary>
 public sealed class CreateArchiveTaskCommandService {
     /// <summary>
+    /// 归档保留天数最小值。
+    /// </summary>
+    private const int MinRetentionDays = ArchiveTask.MinRetentionDays;
+
+    /// <summary>
+    /// 归档保留天数最大值。
+    /// </summary>
+    private const int MaxRetentionDays = ArchiveTask.MaxRetentionDays;
+
+    /// <summary>
     /// NLog 日志器。
     /// </summary>
     private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
@@ -37,6 +47,7 @@ public sealed class CreateArchiveTaskCommandService {
     public async Task<ArchiveTaskResponse> ExecuteAsync(ArchiveTaskCreateRequest request, CancellationToken cancellationToken) {
         ArgumentNullException.ThrowIfNull(request);
 
+        ValidateRetentionDays(request.RetentionDays);
         var taskType = ParseTaskType(request.TaskType);
         var archiveTask = ArchiveTask.CreateDryRun(taskType, request.RetentionDays, request.RequestedBy, request.Remark);
         var result = await _archiveTaskRepository.AddAsync(archiveTask, cancellationToken);
@@ -60,5 +71,15 @@ public sealed class CreateArchiveTaskCommandService {
         }
 
         return taskType;
+    }
+
+    /// <summary>
+    /// 校验归档保留天数范围。
+    /// </summary>
+    /// <param name="retentionDays">保留天数。</param>
+    private static void ValidateRetentionDays(int retentionDays) {
+        if (retentionDays is < MinRetentionDays or > MaxRetentionDays) {
+            throw new ArgumentOutOfRangeException(nameof(retentionDays), $"retentionDays 必须在 {MinRetentionDays}~{MaxRetentionDays} 之间。");
+        }
     }
 }

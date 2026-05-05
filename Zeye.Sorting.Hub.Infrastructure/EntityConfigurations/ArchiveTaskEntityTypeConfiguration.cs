@@ -12,12 +12,13 @@ public sealed class ArchiveTaskEntityTypeConfiguration : IEntityTypeConfiguratio
     /// 执行实体字段映射。
     /// </summary>
     /// <param name="builder">实体构建器。</param>
-    public void Configure(EntityTypeBuilder<ArchiveTask> builder) {
-        builder.ToTable("ArchiveTasks");
-        builder.HasKey(x => x.Id);
-        builder.Property(x => x.RequestedBy).HasMaxLength(64);
-        builder.Property(x => x.Remark).HasMaxLength(512);
-        builder.Property(x => x.PlanSummary).HasMaxLength(1024);
+        public void Configure(EntityTypeBuilder<ArchiveTask> builder) {
+            builder.ToTable("ArchiveTasks");
+            builder.HasKey(x => x.Id);
+            builder.Property(x => x.Status).IsConcurrencyToken();
+            builder.Property(x => x.RequestedBy).HasMaxLength(64);
+            builder.Property(x => x.Remark).HasMaxLength(512);
+            builder.Property(x => x.PlanSummary).HasMaxLength(1024);
         builder.Property(x => x.FailureMessage).HasMaxLength(2048);
         builder.Property(x => x.CheckpointPayload);
         builder.HasIndex(x => new { x.Status, x.CreatedAt });

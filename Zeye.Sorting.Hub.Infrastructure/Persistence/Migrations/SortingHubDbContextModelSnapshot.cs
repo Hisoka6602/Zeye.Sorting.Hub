@@ -377,11 +377,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                         .HasMaxLength(1024)
                         .HasColumnType("varchar(1024)");
 
-                    b.Property<int>("PlannedItemCount")
-                        .HasColumnType("int");
+                    b.Property<long>("PlannedItemCount")
+                        .HasColumnType("bigint");
 
-                    b.Property<int>("ProcessedItemCount")
-                        .HasColumnType("int");
+                    b.Property<long>("ProcessedItemCount")
+                        .HasColumnType("bigint");
 
                     b.Property<string>("Remark")
                         .IsRequired()
@@ -400,6 +400,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                         .HasColumnType("int");
 
                     b.Property<int>("Status")
+                        .IsConcurrencyToken()
                         .HasColumnType("int");
 
                     b.Property<int>("TaskType")

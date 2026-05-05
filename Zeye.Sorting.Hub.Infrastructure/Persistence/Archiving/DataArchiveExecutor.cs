@@ -1,4 +1,5 @@
 using NLog;
+using Zeye.Sorting.Hub.Domain.Aggregates.DataGovernance;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Archiving;
 
@@ -36,26 +37,22 @@ public sealed class DataArchiveExecutor {
     /// <summary>
     /// 执行指定归档任务。
     /// </summary>
-    /// <param name="taskId">任务主键。</param>
+    /// <param name="archiveTask">已领取的归档任务。</param>
     /// <param name="cancellationToken">取消令牌。</param>
-    public async Task ExecuteAsync(long taskId, CancellationToken cancellationToken) {
-        var archiveTask = await _checkpointStore.MarkRunningAsync(taskId, cancellationToken);
-        if (archiveTask is null) {
-            return;
-        }
-
+    public async Task ExecuteAsync(ArchiveTask archiveTask, CancellationToken cancellationToken) {
+        ArgumentNullException.ThrowIfNull(archiveTask);
         try {
             var plan = await _dataArchivePlanner.BuildPlanAsync(archiveTask, cancellationToken);
-            await _checkpointStore.MarkCompletedAsync(taskId, plan.PlannedItemCount, plan.PlanSummary, plan.CheckpointPayload, cancellationToken);
-            Logger.Info("归档 dry-run 任务执行完成，TaskId={TaskId}, PlannedItemCount={PlannedItemCount}", taskId, plan.PlannedItemCount);
+            await _checkpointStore.MarkCompletedAsync(archiveTask.Id, plan.PlannedItemCount, plan.PlanSummary, plan.CheckpointPayload, cancellationToken);
+            Logger.Info("归档 dry-run 任务执行完成，TaskId={TaskId}, PlannedItemCount={PlannedItemCount}", archiveTask.Id, plan.PlannedItemCount);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
-            Logger.Warn("归档 dry-run 任务收到取消信号，TaskId={TaskId}", taskId);
+            Logger.Warn("归档 dry-run 任务收到取消信号，TaskId={TaskId}", archiveTask.Id);
             throw;
         }
         catch (Exception ex) {
-            Logger.Error(ex, "归档 dry-run 任务执行失败，TaskId={TaskId}", taskId);
-            await _checkpointStore.MarkFailedAsync(taskId, ex.Message, cancellationToken);
+            Logger.Error(ex, "归档 dry-run 任务执行失败，TaskId={TaskId}", archiveTask.Id);
+            await _checkpointStore.MarkFailedAsync(archiveTask.Id, ex.Message, cancellationToken);
         }
     }
 }

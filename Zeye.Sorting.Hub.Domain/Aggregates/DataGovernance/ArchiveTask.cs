@@ -9,6 +9,16 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.DataGovernance;
 /// </summary>
 public sealed class ArchiveTask : IEntity<long> {
     /// <summary>
+    /// 归档保留天数最小值。
+    /// </summary>
+    public const int MinRetentionDays = 1;
+
+    /// <summary>
+    /// 归档保留天数最大值。
+    /// </summary>
+    public const int MaxRetentionDays = 3650;
+
+    /// <summary>
     /// 任务主键。
     /// </summary>
     public long Id { get; set; }
@@ -36,12 +46,12 @@ public sealed class ArchiveTask : IEntity<long> {
     /// <summary>
     /// 计划命中的候选数量。
     /// </summary>
-    public int PlannedItemCount { get; private set; }
+    public long PlannedItemCount { get; private set; }
 
     /// <summary>
     /// dry-run 执行完成时记录的处理数量。
     /// </summary>
-    public int ProcessedItemCount { get; private set; }
+    public long ProcessedItemCount { get; private set; }
 
     /// <summary>
     /// 请求发起人。
@@ -112,8 +122,8 @@ public sealed class ArchiveTask : IEntity<long> {
         int retentionDays,
         string? requestedBy,
         string? remark) {
-        if (retentionDays <= 0) {
-            throw new ArgumentOutOfRangeException(nameof(retentionDays), "保留天数必须大于 0。");
+        if (retentionDays is < MinRetentionDays or > MaxRetentionDays) {
+            throw new ArgumentOutOfRangeException(nameof(retentionDays), $"保留天数必须在 {MinRetentionDays}~{MaxRetentionDays} 之间。");
         }
 
         var now = DateTime.Now;
@@ -145,7 +155,7 @@ public sealed class ArchiveTask : IEntity<long> {
     /// <param name="plannedItemCount">计划数量。</param>
     /// <param name="planSummary">计划摘要。</param>
     /// <param name="checkpointPayload">检查点 JSON。</param>
-    public void MarkCompleted(int plannedItemCount, string planSummary, string checkpointPayload) {
+    public void MarkCompleted(long plannedItemCount, string planSummary, string checkpointPayload) {
         if (plannedItemCount < 0) {
             throw new ArgumentOutOfRangeException(nameof(plannedItemCount), "计划数量不能为负数。");
         }
@@ -165,10 +175,11 @@ public sealed class ArchiveTask : IEntity<long> {
     /// </summary>
     /// <param name="failureMessage">失败消息。</param>
     public void MarkFailed(string failureMessage) {
+        var terminalAt = DateTime.Now;
         Status = ArchiveTaskStatus.Failed;
         FailureMessage = string.IsNullOrWhiteSpace(failureMessage) ? "归档任务执行失败。" : failureMessage.Trim();
-        CompletedAt = null;
-        UpdatedAt = DateTime.Now;
+        CompletedAt = terminalAt;
+        UpdatedAt = terminalAt;
     }
 
     /// <summary>

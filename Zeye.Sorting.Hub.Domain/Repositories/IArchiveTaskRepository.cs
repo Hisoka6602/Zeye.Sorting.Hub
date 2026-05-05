@@ -40,11 +40,11 @@ public interface IArchiveTaskRepository {
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// 获取最早创建的待执行任务。
+    /// 原子领取最早创建的待执行任务，并将其标记为执行中。
     /// </summary>
     /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>待执行任务；不存在时返回 null。</returns>
-    Task<ArchiveTask?> GetNextPendingAsync(CancellationToken cancellationToken);
+    /// <returns>成功领取的任务；不存在时返回 null。</returns>
+    Task<ArchiveTask?> TryAcquireNextPendingAsync(CancellationToken cancellationToken);
 
     /// <summary>
     /// 更新归档任务。

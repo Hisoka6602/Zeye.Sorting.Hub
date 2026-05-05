@@ -22,8 +22,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                     Status = table.Column<int>(type: "int", nullable: false),
                     IsDryRun = table.Column<bool>(type: "tinyint(1)", nullable: false),
                     RetentionDays = table.Column<int>(type: "int", nullable: false),
-                    PlannedItemCount = table.Column<int>(type: "int", nullable: false),
-                    ProcessedItemCount = table.Column<int>(type: "int", nullable: false),
+                    PlannedItemCount = table.Column<long>(type: "bigint", nullable: false),
+                    ProcessedItemCount = table.Column<long>(type: "bigint", nullable: false),
                     RequestedBy = table.Column<string>(type: "varchar(64)", maxLength: 64, nullable: false)
                         .Annotation("MySql:CharSet", "utf8mb4"),
                     Remark = table.Column<string>(type: "varchar(512)", maxLength: 512, nullable: false)

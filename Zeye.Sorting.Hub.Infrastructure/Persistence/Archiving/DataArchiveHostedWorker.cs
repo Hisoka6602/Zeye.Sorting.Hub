@@ -61,13 +61,13 @@ public sealed class DataArchiveHostedWorker {
             return false;
         }
 
-        var nextTask = await _archiveTaskRepository.GetNextPendingAsync(cancellationToken);
+        var nextTask = await _archiveTaskRepository.TryAcquireNextPendingAsync(cancellationToken);
         if (nextTask is null) {
             return false;
         }
 
         Logger.Info("归档 Worker 获取到待执行任务，TaskId={TaskId}, TaskType={TaskType}", nextTask.Id, nextTask.TaskType);
-        await _dataArchiveExecutor.ExecuteAsync(nextTask.Id, cancellationToken);
+        await _dataArchiveExecutor.ExecuteAsync(nextTask, cancellationToken);
         return true;
     }
 }

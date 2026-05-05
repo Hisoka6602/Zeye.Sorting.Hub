@@ -105,6 +105,22 @@ public sealed class DataArchiveTaskTests {
     }
 
     /// <summary>
+    /// 验证场景：保留天数超过合同范围时返回 400。
+    /// </summary>
+    [Fact]
+    public async Task CreateArchiveTask_WithTooLargeRetentionDays_ShouldReturnBadRequest() {
+        await using var app = await BuildTestAppAsync();
+        using var client = app.GetTestClient();
+
+        using var response = await client.PostAsJsonAsync("/api/data-governance/archive-tasks", new ArchiveTaskCreateRequest {
+            TaskType = "WebRequestAuditLogHistory",
+            RetentionDays = ArchiveTask.MaxRetentionDays + 1
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    /// <summary>
     /// 验证场景：非法任务类型返回 400。
     /// </summary>
     [Fact]
@@ -118,6 +134,47 @@ public sealed class DataArchiveTaskTests {
         });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    /// <summary>
+    /// 验证场景：同一待执行任务只能被领取一次。
+    /// </summary>
+    [Fact]
+    public async Task TryAcquireNextPendingAsync_WhenCalledTwice_ShouldOnlyAcquireOnce() {
+        await using var app = await BuildTestAppAsync();
+        using var scope = app.Services.CreateScope();
+        var repository = scope.ServiceProvider.GetRequiredService<IArchiveTaskRepository>();
+        var archiveTask = ArchiveTask.CreateDryRun(
+            Zeye.Sorting.Hub.Domain.Enums.DataGovernance.ArchiveTaskType.WebRequestAuditLogHistory,
+            7,
+            "acquire-test",
+            null);
+        await repository.AddAsync(archiveTask, CancellationToken.None);
+
+        var firstAcquire = await repository.TryAcquireNextPendingAsync(CancellationToken.None);
+        var secondAcquire = await repository.TryAcquireNextPendingAsync(CancellationToken.None);
+
+        Assert.NotNull(firstAcquire);
+        Assert.Equal(Zeye.Sorting.Hub.Domain.Enums.DataGovernance.ArchiveTaskStatus.Running, firstAcquire!.Status);
+        Assert.Null(secondAcquire);
+    }
+
+    /// <summary>
+    /// 验证场景：任务失败后仍记录终态完成时间。
+    /// </summary>
+    [Fact]
+    public void ArchiveTask_MarkFailed_ShouldSetTerminalCompletedAt() {
+        var archiveTask = ArchiveTask.CreateDryRun(
+            Zeye.Sorting.Hub.Domain.Enums.DataGovernance.ArchiveTaskType.WebRequestAuditLogHistory,
+            7,
+            "failure-test",
+            null);
+
+        archiveTask.MarkFailed("dry-run 失败");
+
+        Assert.NotNull(archiveTask.CompletedAt);
+        LocalTimeTestConstraint.AssertIsLocalTime(archiveTask.CompletedAt!.Value);
+        Assert.Equal(archiveTask.CompletedAt, archiveTask.UpdatedAt);
     }
 
     /// <summary>

@@ -45,7 +45,7 @@ public sealed class DataArchivePlanner {
     /// <param name="archiveTask">归档任务。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>计划数量、摘要与检查点载荷。</returns>
-    public async Task<(int PlannedItemCount, string PlanSummary, string CheckpointPayload)> BuildPlanAsync(
+    public async Task<(long PlannedItemCount, string PlanSummary, string CheckpointPayload)> BuildPlanAsync(
         ArchiveTask archiveTask,
         CancellationToken cancellationToken) {
         ArgumentNullException.ThrowIfNull(archiveTask);
@@ -59,7 +59,7 @@ public sealed class DataArchivePlanner {
             var baseQuery = dbContext.Set<WebRequestAuditLog>()
                 .AsNoTracking()
                 .Where(x => x.StartedAt < cutoffTime);
-            var plannedItemCount = await baseQuery.CountAsync(cancellationToken);
+            var plannedItemCount = await baseQuery.LongCountAsync(cancellationToken);
             var summarySample = await baseQuery
                 .OrderBy(x => x.StartedAt)
                 .ThenBy(x => x.Id)

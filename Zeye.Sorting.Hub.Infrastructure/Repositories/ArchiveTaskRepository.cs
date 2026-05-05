@@ -14,6 +14,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories;
 /// </summary>
 public sealed class ArchiveTaskRepository : RepositoryBase<ArchiveTask, SortingHubDbContext>, IArchiveTaskRepository {
     /// <summary>
+    /// 原子领取待执行任务的最大重试次数。
+    /// </summary>
+    private const int MaxAcquireAttempts = 8;
+
+    /// <summary>
     /// 初始化归档任务仓储。
     /// </summary>
     /// <param name="contextFactory">数据库上下文工厂。</param>
@@ -116,19 +121,40 @@ public sealed class ArchiveTaskRepository : RepositoryBase<ArchiveTask, SortingH
     }
 
     /// <summary>
-    /// 获取最早创建的待执行任务。
+    /// 原子领取最早创建的待执行任务，并将其标记为执行中。
     /// </summary>
     /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>待执行任务；不存在时返回 null。</returns>
-    public async Task<ArchiveTask?> GetNextPendingAsync(CancellationToken cancellationToken) {
+    /// <returns>成功领取的任务；不存在时返回 null。</returns>
+    public async Task<ArchiveTask?> TryAcquireNextPendingAsync(CancellationToken cancellationToken) {
         try {
             await using var dbContext = await ContextFactory.CreateDbContextAsync(cancellationToken);
-            return await dbContext.Set<ArchiveTask>()
-                .AsNoTracking()
-                .Where(x => x.Status == ArchiveTaskStatus.Pending)
-                .OrderBy(x => x.CreatedAt)
-                .ThenBy(x => x.Id)
-                .FirstOrDefaultAsync(cancellationToken);
+            for (var attempt = 0; attempt < MaxAcquireAttempts; attempt++) {
+                // 步骤 1：按最早创建顺序读取一个 Pending 任务，保持跟踪状态以便并发令牌参与更新。
+                var nextPendingTask = await dbContext.Set<ArchiveTask>()
+                    .Where(x => x.Status == ArchiveTaskStatus.Pending)
+                    .OrderBy(x => x.CreatedAt)
+                    .ThenBy(x => x.Id)
+                    .FirstOrDefaultAsync(cancellationToken);
+                if (nextPendingTask is null) {
+                    return null;
+                }
+
+                try {
+                    // 步骤 2：直接在同一上下文内切换到 Running。
+                    //         Status 被配置为并发令牌，最终 UPDATE 会自动附带原始 Status=Pending 条件，
+                    //         从而保证只有一个执行器能成功领取该任务。
+                    nextPendingTask.MarkRunning();
+                    await dbContext.SaveChangesAsync(cancellationToken);
+                    return nextPendingTask;
+                }
+                catch (DbUpdateConcurrencyException ex) {
+                    Logger.Warn(ex, "归档任务领取发生并发冲突，TaskId={TaskId}, Attempt={Attempt}", nextPendingTask.Id, attempt + 1);
+                    dbContext.ChangeTracker.Clear();
+                }
+            }
+
+            Logger.Warn("归档任务领取重试次数已耗尽，未成功获取可执行任务。");
+            return null;
         }
         catch (Exception ex) {
             Logger.Error(ex, "获取待执行归档任务失败。");
@@ -149,9 +175,19 @@ public sealed class ArchiveTaskRepository : RepositoryBase<ArchiveTask, SortingH
 
         try {
             await using var dbContext = await ContextFactory.CreateDbContextAsync(cancellationToken);
-            dbContext.Set<ArchiveTask>().Update(archiveTask);
+            var persistedTask = await dbContext.Set<ArchiveTask>()
+                .FirstOrDefaultAsync(x => x.Id == archiveTask.Id, cancellationToken);
+            if (persistedTask is null) {
+                return RepositoryResult.Fail("归档任务不存在。");
+            }
+
+            dbContext.Entry(persistedTask).CurrentValues.SetValues(archiveTask);
             await dbContext.SaveChangesAsync(cancellationToken);
             return RepositoryResult.Success();
+        }
+        catch (DbUpdateConcurrencyException ex) {
+            Logger.Warn(ex, "更新归档任务发生并发冲突，TaskId={TaskId}, Status={Status}", archiveTask.Id, archiveTask.Status);
+            return RepositoryResult.Fail("归档任务状态已发生变化，请刷新后重试。");
         }
         catch (Exception ex) {
             Logger.Error(ex, "更新归档任务失败，TaskId={TaskId}, Status={Status}", archiveTask.Id, archiveTask.Status);
