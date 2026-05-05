@@ -40,11 +40,11 @@ ensure_base_ref_ready() {
 list_changed_name_status() {
   if is_pull_request_context; then
     ensure_base_ref_ready
-    git --no-pager diff --name-status "origin/${GITHUB_BASE_REF}...HEAD" || true
+    git -c core.quotePath=false --no-pager diff --name-status "origin/${GITHUB_BASE_REF}...HEAD" || true
     return
   fi
 
-  git --no-pager diff --name-status HEAD || true
+  git -c core.quotePath=false --no-pager diff --name-status HEAD || true
 }
 
 list_changed_files() {
@@ -52,11 +52,11 @@ list_changed_files() {
 
   if is_pull_request_context; then
     ensure_base_ref_ready
-    git --no-pager diff --name-only --diff-filter="${diff_filter}" "origin/${GITHUB_BASE_REF}...HEAD" || true
+    git -c core.quotePath=false --no-pager diff --name-only --diff-filter="${diff_filter}" "origin/${GITHUB_BASE_REF}...HEAD" || true
     return
   fi
 
-  git --no-pager diff --name-only --diff-filter="${diff_filter}" HEAD || true
+  git -c core.quotePath=false --no-pager diff --name-only --diff-filter="${diff_filter}" HEAD || true
 }
 
 collect_changed_files() {

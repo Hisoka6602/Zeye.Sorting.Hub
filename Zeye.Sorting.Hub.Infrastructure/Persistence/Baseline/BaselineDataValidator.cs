@@ -6,6 +6,7 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using MySqlConnector;
+using NLog;
 using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Enums.DataGovernance;
 using Zeye.Sorting.Hub.Domain.Enums.Sharding;
@@ -16,6 +17,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Baseline;
 /// 基线数据与配置一致性校验器。
 /// </summary>
 public sealed partial class BaselineDataValidator {
+    /// <summary>
+    /// NLog 日志器。
+    /// </summary>
+    private static readonly Logger NLogLogger = LogManager.GetCurrentClassLogger();
+
     /// <summary>
     /// 归档任务类型参考数据目录名称。
     /// </summary>
@@ -118,7 +124,6 @@ public sealed partial class BaselineDataValidator {
         ValidateShardingStartTime(errors);
         ValidateEnumDescriptions(errors);
         ValidateDefaultReferenceData(errors);
-        ValidateConfiguredTableAndFieldConventions(warnings);
 
         var failureMode = options.ResolveFailureMode();
         var result = new BaselineDataValidationResult {
@@ -196,6 +201,7 @@ public sealed partial class BaselineDataValidator {
                 }
             }
             catch (Exception ex) {
+                NLogLogger.Error(ex, "MySql 连接字符串解析失败。");
                 errors.Add($"MySql 连接字符串格式非法：{ex.Message}");
             }
 
@@ -216,6 +222,7 @@ public sealed partial class BaselineDataValidator {
                 }
             }
             catch (Exception ex) {
+                NLogLogger.Error(ex, "SqlServer 连接字符串解析失败。");
                 errors.Add($"SqlServer 连接字符串格式非法：{ex.Message}");
             }
 
@@ -278,13 +285,13 @@ public sealed partial class BaselineDataValidator {
     }
 
     /// <summary>
-    /// 校验默认参考数据目录是否存在且无重复。
+    /// 校验默认参考数据定义是否完整且无重复。
     /// </summary>
     /// <param name="errors">错误集合。</param>
     private static void ValidateDefaultReferenceData(List<string> errors) {
         var definitions = BuildReferenceDataDefinitions();
         if (definitions.Count == 0) {
-            errors.Add("默认参考数据目录为空，无法建立基线。");
+            errors.Add("默认参考数据定义为空，无法建立基线。");
             return;
         }
 
@@ -305,14 +312,6 @@ public sealed partial class BaselineDataValidator {
         if (duplicateValues.Length > 0) {
             errors.Add($"默认参考数据存在重复数值：{string.Join("、", duplicateValues)}。");
         }
-    }
-
-    /// <summary>
-    /// 校验配置中的表名、字段名约定。
-    /// </summary>
-    /// <param name="warnings">告警集合。</param>
-    private static void ValidateConfiguredTableAndFieldConventions(List<string> warnings) {
-        warnings.Add("当前版本未提供可配置表名/字段名映射节点，已按代码约定清单完成基线自检。");
     }
 
     /// <summary>

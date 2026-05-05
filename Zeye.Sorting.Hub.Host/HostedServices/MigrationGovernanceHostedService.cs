@@ -237,6 +237,16 @@ public sealed class MigrationGovernanceHostedService : IHostedService {
                 archivedForwardScriptPath ?? "未归档",
                 archivedRollbackScriptPath ?? "未归档");
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            _migrationGovernanceStateStore.SetLatestPlan(null);
+            _migrationGovernanceStateStore.SetLatestExecutionRecord(
+                MigrationExecutionRecord.CreateSkipped(
+                    providerName,
+                    environmentName,
+                    isDryRun,
+                    "迁移治理预演已取消，本次启动跳过迁移治理。"));
+            NLogLogger.Info("迁移治理预演已取消，Provider={Provider}, Environment={Environment}", providerName, environmentName);
+        }
         catch (Exception ex) {
             _migrationGovernanceStateStore.SetLatestPlan(null);
             _migrationGovernanceStateStore.SetLatestExecutionRecord(MigrationExecutionRecord.CreateFailed(

@@ -24,6 +24,7 @@ public sealed class BaselineDataTests {
 
         Assert.True(result.IsValid);
         Assert.Empty(result.Errors);
+        Assert.Empty(result.Warnings);
     }
 
     /// <summary>
@@ -56,7 +57,7 @@ public sealed class BaselineDataTests {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Provider"] = "MySql",
-                ["ConnectionStrings:MySql"] = "Server=127.0.0.1;Port=3306;Database=zeye_sorting_hub;User Id=baseline_user;Password=placeholder;",
+                ["ConnectionStrings:MySql"] = "Server=127.0.0.1;Port=3306;Database=zeye_sorting_hub;User Id=baseline_user;Password=******;",
                 ["Persistence:Sharding:ParcelStartTime"] = "2026-01-01T00:00:00Z",
                 [BaselineDataOptions.FailureModeConfigKey] = "Degraded"
             })
@@ -189,7 +190,7 @@ public sealed class BaselineDataTests {
         return new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Provider"] = "MySql",
-                ["ConnectionStrings:MySql"] = "Server=127.0.0.1;Port=3306;Database=zeye_sorting_hub;User Id=baseline_user;Password=placeholder;",
+                ["ConnectionStrings:MySql"] = "Server=127.0.0.1;Port=3306;Database=zeye_sorting_hub;User Id=baseline_user;Password=******;",
                 ["Persistence:Sharding:ParcelStartTime"] = "2026-01-01T00:00:00",
                 [BaselineDataOptions.FailureModeConfigKey] = "Degraded"
             })

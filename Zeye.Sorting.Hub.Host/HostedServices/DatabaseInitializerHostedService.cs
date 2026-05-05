@@ -364,6 +364,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                                 MigrationExecutionRecord.CreateFailed(migrationPlan, ex.Message, "数据库迁移执行失败。"));
                         }
 
+                        NLogLogger.Error(ex, "数据库迁移执行失败，Provider={Provider}", _dialect.ProviderName);
+
                         throw;
                     }
 

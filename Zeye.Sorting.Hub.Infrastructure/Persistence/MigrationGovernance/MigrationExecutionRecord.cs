@@ -142,6 +142,29 @@ public sealed record class MigrationExecutionRecord {
     }
 
     /// <summary>
+    /// 创建“已跳过”记录（无迁移计划版本）。
+    /// </summary>
+    /// <param name="providerName">数据库提供器名称。</param>
+    /// <param name="environmentName">宿主环境名称。</param>
+    /// <param name="isDryRun">是否 dry-run。</param>
+    /// <param name="summary">摘要。</param>
+    /// <returns>执行记录。</returns>
+    public static MigrationExecutionRecord CreateSkipped(string providerName, string environmentName, bool isDryRun, string summary) {
+        return new MigrationExecutionRecord {
+            RecordedAtLocal = DateTime.Now,
+            ProviderName = providerName,
+            EnvironmentName = environmentName,
+            IsEnabled = true,
+            IsDryRun = isDryRun,
+            Status = SkippedStatus,
+            ShouldApplyMigrations = false,
+            Summary = summary,
+            PendingMigrationCount = 0,
+            DangerousOperationCount = 0
+        };
+    }
+
+    /// <summary>
     /// 创建“执行成功”记录。
     /// </summary>
     /// <param name="plan">迁移计划。</param>

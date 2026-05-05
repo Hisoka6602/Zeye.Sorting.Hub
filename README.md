@@ -487,11 +487,11 @@
 - `DDD分层接口与实现放置规范.md`：DDD 分层接口定义与实现放置规范文档；明确依赖方向（Host→Infrastructure→Application→Domain）、接口定义归属规则（领域能力/应用编排/基础设施内部三类）、实现类放置约束、目录结构建议与禁止事项清单，供 Copilot 与开发人员统一执行。
 - `copilot-instructions.md`：Copilot 自定义指令，硬性要求禁止 UTC 时间 API，统一使用本地时间语义。
 - `scripts/validate-copilot-rules.sh`：Copilot 限制规则校验脚本；从 `copilot-instructions.md` 解析“Copilot 限制规则”逐条执行，已映射规则做自动校验，未映射规则直接失败，确保规则文档更新后 CI 校验逻辑同步更新。
-- `scripts/validate-database-foundation-rules.sh`： 数据库底座门禁主脚本；统一执行 UTC/时区后缀、README 文件树同步、敏感配置、影分身代码与结构性底座规则检查，并支持按模式拆分调用。
-- `scripts/validate-no-utc.sh`： 数据库底座 UTC 校验脚本；复用主脚本检查新增/修改代码中的 UTC API 与配置时间时区后缀。
-- `scripts/validate-readme-file-tree.sh`： 数据库底座 README 对账脚本；复用主脚本检查新增/删除文件是否同步更新 README 职责说明。
-- `scripts/validate-sensitive-config.sh`： 数据库底座敏感配置校验脚本；复用主脚本拦截新增/修改文件中的高风险连接串片段与密钥字段。
-- `scripts/validate-no-shadow-code.sh`： 数据库底座影分身代码校验脚本；复用主脚本检查新增/修改 C# 文件内重复方法签名。
+- `validate-database-foundation-rules.sh`：数据库底座门禁主脚本；位于 `.github/scripts/`，统一执行 UTC/时区后缀、README 文件树同步、敏感配置、影分身代码与结构性底座规则检查，并支持按模式拆分调用。
+- `validate-no-utc.sh`：数据库底座 UTC 校验脚本；位于 `.github/scripts/`，复用主脚本检查新增/修改代码中的 UTC API 与配置时间时区后缀。
+- `validate-readme-file-tree.sh`：数据库底座 README 对账脚本；位于 `.github/scripts/`，复用主脚本检查新增/删除文件是否同步更新 README 职责说明。
+- `validate-sensitive-config.sh`：数据库底座敏感配置校验脚本；位于 `.github/scripts/`，复用主脚本拦截新增/修改文件中的高风险连接串片段与密钥字段。
+- `validate-no-shadow-code.sh`：数据库底座影分身代码校验脚本；位于 `.github/scripts/`，复用主脚本检查新增/修改 C# 文件内重复方法签名。
 
 ### `.github/workflows/`：CI 工作流目录
 - `copilot-instructions-validation.yml`：Copilot 限制规则校验流水线；每次 PR 触发并执行 `validate-copilot-rules.sh`，对规则自动门禁。
@@ -727,8 +727,8 @@
 - `HealthChecks/ShardingGovernanceHealthCheck.cs`：分表治理健康检查，输出缺表、缺索引、容量风险、热表/详情表一致性与预建计划状态。
 - `HealthChecks/DatabaseConnectionDetailedHealthCheck.cs`：数据库详细健康检查探针，当前挂载于 `/health/ready`，输出 provider、database、连续失败/成功次数与恢复状态。
 - `HealthChecks/DatabaseReadinessHealthCheck.cs`：数据库基础就绪健康检查探针，保留原始直接连通性探测实现。
-- `HealthChecks/BaselineDataHealthCheck.cs`：基线数据健康检查，输出校验结果、失败模式、错误/告警数量与种子执行状态，挂载于 `/health/ready`。
-- `HealthChecks/MigrationGovernanceHealthCheck.cs`：迁移治理健康检查，输出待执行迁移数、危险 SQL 命中、归档路径与当前执行状态，挂载于 `/health/ready`。
+- `BaselineDataHealthCheck.cs`：基线数据健康检查；位于 `Zeye.Sorting.Hub.Host/HealthChecks/`，输出校验结果、失败模式、错误/告警数量与种子执行状态，挂载于 `/health/ready`。
+- `MigrationGovernanceHealthCheck.cs`：迁移治理健康检查；位于 `Zeye.Sorting.Hub.Host/HealthChecks/`，输出待执行迁移数、危险 SQL 命中、归档路径与当前执行状态，挂载于 `/health/ready`。
 - `HealthChecks/HealthCheckResponseWriter.cs`：健康检查 JSON 响应序列化工具，输出结构化 JSON，并支持附加 Data 诊断数据。
 - `Utilities/LocalDateTimeParsing.cs`：本地时间解析与 API 问题响应工厂共享工具。
 - `Middleware/WebRequestAuditLogOptions.cs`：Web 请求审计中间件配置模型。
