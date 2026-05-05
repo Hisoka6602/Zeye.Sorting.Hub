@@ -34,6 +34,41 @@ public sealed class QueryIndexRecommendationService {
     private const double MillisecondComparisonTolerance = 0.01d;
 
     /// <summary>
+    /// 建议置信度基线值。
+    /// </summary>
+    private const decimal BaseConfidence = 0.35m;
+
+    /// <summary>
+    /// 匹配覆盖度分母。
+    /// </summary>
+    private const decimal CoverageNormalizationFactor = 200m;
+
+    /// <summary>
+    /// 调用次数权重。
+    /// </summary>
+    private const decimal CallCountWeight = 0.25m;
+
+    /// <summary>
+    /// 延迟权重。
+    /// </summary>
+    private const decimal LatencyWeight = 0.15m;
+
+    /// <summary>
+    /// 置信度上限。
+    /// </summary>
+    private const decimal MaxConfidence = 0.99m;
+
+    /// <summary>
+    /// 调用次数归一化上限。
+    /// </summary>
+    private const decimal MaxNormalizedCallCount = 20m;
+
+    /// <summary>
+    /// 延迟归一化上限（毫秒）。
+    /// </summary>
+    private const decimal MaxNormalizedLatencyMilliseconds = 2000m;
+
+    /// <summary>
     /// 初始化查询治理索引建议服务。
     /// </summary>
     /// <param name="slowQueryProfileReader">慢查询画像读取器。</param>
@@ -46,13 +81,14 @@ public sealed class QueryIndexRecommendationService {
         ArgumentNullException.ThrowIfNull(configuration);
         _slowQueryProfileReader = slowQueryProfileReader ?? throw new ArgumentNullException(nameof(slowQueryProfileReader));
         _queryTemplateRegistry = queryTemplateRegistry ?? throw new ArgumentNullException(nameof(queryTemplateRegistry));
+        var slowQueryThresholdMilliseconds = AutoTuningConfigurationReader.GetPositiveIntOrDefault(
+            configuration,
+            AutoTuningConfigurationReader.BuildAutoTuningKey("SlowQueryThresholdMilliseconds"),
+            500);
         _recommendationP99Milliseconds = AutoTuningConfigurationReader.GetPositiveIntOrDefault(
             configuration,
             AutoTuningConfigurationReader.BuildAutoTuningKey("QueryGovernance:RecommendationP99Milliseconds"),
-            AutoTuningConfigurationReader.GetPositiveIntOrDefault(
-                configuration,
-                AutoTuningConfigurationReader.BuildAutoTuningKey("SlowQueryThresholdMilliseconds"),
-                500));
+            slowQueryThresholdMilliseconds);
         _minimumCallCount = AutoTuningConfigurationReader.GetPositiveIntOrDefault(
             configuration,
             AutoTuningConfigurationReader.BuildAutoTuningKey("QueryGovernance:MinimumCallCount"),
@@ -75,9 +111,11 @@ public sealed class QueryIndexRecommendationService {
             }
 
             matchedFingerprints.Add(profile.Fingerprint);
-            if (!matchedProfilesByTemplateName.TryGetValue(bestTemplate.TemplateName, out var currentProfile)
-                || profile.P99Milliseconds > currentProfile.P99Milliseconds
-                || (Math.Abs(profile.P99Milliseconds - currentProfile.P99Milliseconds) < MillisecondComparisonTolerance && profile.CallCount > currentProfile.CallCount)) {
+            var hasCurrentProfile = matchedProfilesByTemplateName.TryGetValue(bestTemplate.TemplateName, out var currentProfile);
+            var isP99Greater = hasCurrentProfile && profile.P99Milliseconds > currentProfile!.P99Milliseconds;
+            var isP99Equal = hasCurrentProfile && Math.Abs(profile.P99Milliseconds - currentProfile!.P99Milliseconds) < MillisecondComparisonTolerance;
+            var hasMoreCalls = hasCurrentProfile && profile.CallCount > currentProfile!.CallCount;
+            if (!hasCurrentProfile || isP99Greater || (isP99Equal && hasMoreCalls)) {
                 matchedProfilesByTemplateName[bestTemplate.TemplateName] = profile;
             }
         }
@@ -237,7 +275,7 @@ public sealed class QueryIndexRecommendationService {
         SlowQueryProfileReadModel profile) {
         var recommendedIndex = template.RecommendedIndexes.Count > 0
             ? template.RecommendedIndexes[0]
-            : $"{template.TableNames[0]}({string.Join(", ", template.FilterColumns.Concat(template.SortColumns).Distinct(StringComparer.OrdinalIgnoreCase))})";
+            : BuildFallbackIndexExpression(template);
         var confidence = CalculateConfidence(template, profile);
         return new QueryIndexRecommendation {
             TemplateName = template.TemplateName,
@@ -255,6 +293,19 @@ public sealed class QueryIndexRecommendationService {
     }
 
     /// <summary>
+    /// 构建回退索引表达式。
+    /// </summary>
+    /// <param name="template">模板描述。</param>
+    /// <returns>索引表达式。</returns>
+    private static string BuildFallbackIndexExpression(QueryTemplateDescriptor template) {
+        var tableName = template.TableNames[0];
+        var columns = template.FilterColumns
+            .Concat(template.SortColumns)
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+        return $"{tableName}({string.Join(", ", columns)})";
+    }
+
+    /// <summary>
     /// 计算建议置信度。
     /// </summary>
     /// <param name="template">模板描述。</param>
@@ -262,8 +313,11 @@ public sealed class QueryIndexRecommendationService {
     /// <returns>置信度。</returns>
     private static decimal CalculateConfidence(QueryTemplateDescriptor template, SlowQueryProfileReadModel profile) {
         var coverage = CalculateMatchScore(template, profile.NormalizedSql);
-        var callCountFactor = Math.Min(profile.CallCount, 20) / 20m;
-        var latencyFactor = Math.Min((decimal)profile.P99Milliseconds, 2000m) / 2000m;
-        return decimal.Clamp(0.35m + coverage / 200m + callCountFactor * 0.25m + latencyFactor * 0.15m, 0m, 0.99m);
+        var callCountFactor = Math.Min(profile.CallCount, (int)MaxNormalizedCallCount) / MaxNormalizedCallCount;
+        var latencyFactor = Math.Min((decimal)profile.P99Milliseconds, MaxNormalizedLatencyMilliseconds) / MaxNormalizedLatencyMilliseconds;
+        return decimal.Clamp(
+            BaseConfidence + coverage / CoverageNormalizationFactor + callCountFactor * CallCountWeight + latencyFactor * LatencyWeight,
+            0m,
+            MaxConfidence);
     }
 }
