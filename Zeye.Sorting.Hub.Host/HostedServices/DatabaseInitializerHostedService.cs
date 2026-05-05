@@ -19,6 +19,7 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.MigrationGovernance;
 
 namespace Zeye.Sorting.Hub.Host.HostedServices {
 
@@ -234,18 +235,29 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <summary>Polly 异步重试策略，用于迁移及 DDL 操作的瞬态故障恢复。</summary>
         private readonly AsyncRetryPolicy _retryPolicy;
 
+        /// <summary>迁移治理运行期状态存储。</summary>
+        private readonly MigrationGovernanceStateStore _migrationGovernanceStateStore;
+
         /// <summary>
         /// 初始化数据库初始化器后台服务及其启动参数。
         /// </summary>
+        /// <param name="serviceProvider">服务提供器。</param>
+        /// <param name="dialect">数据库方言。</param>
+        /// <param name="shardingPhysicalTableProbe">物理分表探测器。</param>
+        /// <param name="hostEnvironment">宿主环境。</param>
+        /// <param name="configuration">应用配置。</param>
+        /// <param name="migrationGovernanceStateStore">迁移治理状态存储。</param>
         public DatabaseInitializerHostedService(
             IServiceProvider serviceProvider,
             IDatabaseDialect dialect,
             IShardingPhysicalTableProbe shardingPhysicalTableProbe,
             IHostEnvironment hostEnvironment,
-            IConfiguration configuration) {
+            IConfiguration configuration,
+            MigrationGovernanceStateStore? migrationGovernanceStateStore = null) {
             _serviceProvider = serviceProvider;
             _configuration = configuration;
             _dialect = dialect;
+            _migrationGovernanceStateStore = migrationGovernanceStateStore ?? new MigrationGovernanceStateStore();
             _environmentName = hostEnvironment.EnvironmentName;
             _isProductionEnvironment = hostEnvironment.IsProduction();
             _migrationFailureMode = ResolveMigrationFailureMode(configuration, _isProductionEnvironment);
@@ -299,14 +311,16 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <param name="shardingPhysicalTableProbe">物理分表探测器。</param>
         /// <param name="hostEnvironment">宿主环境。</param>
         /// <param name="configuration">应用配置。</param>
+        /// <param name="migrationGovernanceStateStore">迁移治理状态存储。</param>
         public DatabaseInitializerHostedService(
             IServiceProvider serviceProvider,
             object legacyLogger,
             IDatabaseDialect dialect,
             IShardingPhysicalTableProbe shardingPhysicalTableProbe,
             IHostEnvironment hostEnvironment,
-            IConfiguration configuration)
-            : this(serviceProvider, dialect, shardingPhysicalTableProbe, hostEnvironment, configuration) {
+            IConfiguration configuration,
+            MigrationGovernanceStateStore? migrationGovernanceStateStore = null)
+            : this(serviceProvider, dialect, shardingPhysicalTableProbe, hostEnvironment, configuration, migrationGovernanceStateStore) {
             ArgumentNullException.ThrowIfNull(legacyLogger);
         }
 
@@ -318,12 +332,40 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 await _retryPolicy.ExecuteAsync(async (ct) => {
                     await EnsureDatabaseExistsAsync(ct);
                     await ValidateShardingGovernanceGuardAsync(ct);
+                    var migrationPlan = _migrationGovernanceStateStore.GetLatestPlan();
+                    var migrationExecutionRecord = _migrationGovernanceStateStore.GetLatestExecutionRecord();
+                    if (migrationExecutionRecord is not null
+                        && migrationExecutionRecord.IsEnabled
+                        && !migrationExecutionRecord.ShouldApplyMigrations) {
+                        NLogLogger.Warn(
+                            "数据库迁移已由迁移治理拦截，Provider={Provider}, Environment={Environment}, Status={Status}, Reason={Reason}",
+                            _dialect.ProviderName,
+                            _environmentName,
+                            migrationExecutionRecord.Status,
+                            migrationExecutionRecord.SkipReason ?? migrationExecutionRecord.Summary);
+                        return;
+                    }
+
                     await using var scope = _serviceProvider.CreateAsyncScope();
                     var db = scope.ServiceProvider.GetRequiredService<SortingHubDbContext>();
 
-                    NLogLogger.Info("开始执行数据库迁移，Provider={Provider}", _dialect.ProviderName);
-                    await db.Database.MigrateAsync(ct);
-                    NLogLogger.Info("数据库迁移完成，Provider={Provider}", _dialect.ProviderName);
+                    try {
+                        NLogLogger.Info("开始执行数据库迁移，Provider={Provider}", _dialect.ProviderName);
+                        await db.Database.MigrateAsync(ct);
+                        NLogLogger.Info("数据库迁移完成，Provider={Provider}", _dialect.ProviderName);
+                        if (migrationPlan is not null && migrationPlan.IsEnabled) {
+                            _migrationGovernanceStateStore.SetLatestExecutionRecord(
+                                MigrationExecutionRecord.CreateSucceeded(migrationPlan, "数据库迁移执行完成。"));
+                        }
+                    }
+                    catch (Exception ex) {
+                        if (migrationPlan is not null && migrationPlan.IsEnabled) {
+                            _migrationGovernanceStateStore.SetLatestExecutionRecord(
+                                MigrationExecutionRecord.CreateFailed(migrationPlan, ex.Message, "数据库迁移执行失败。"));
+                        }
+
+                        throw;
+                    }
 
                     await AssertMigrationConsistencyAsync(db, ct);
 

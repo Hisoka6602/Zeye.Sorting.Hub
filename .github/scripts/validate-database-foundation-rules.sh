@@ -183,7 +183,7 @@ check_sensitive_config() {
       continue
     fi
 
-    if echo "${line_content}" | grep -Eq 'Password=<请通过环境变量注入>'; then
+    if echo "${line_content}" | grep -Eq 'Password=<请通过环境变量注入>|[\*]{6,}'; then
       continue
     fi
 

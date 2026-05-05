@@ -42,7 +42,8 @@
 │   ├── PR-长期数据库底座C-检查台账.md（长期数据库底座 PR-C 台账：记录批量缓冲写入、死信隔离交付与下一 PR 入口）
 │   ├── PR-长期数据库底座D-检查台账.md（长期数据库底座 PR-D 台账：记录分表巡检、预建计划、索引检查与下一 PR 入口）
 │   ├── PR-长期数据库底座E-检查台账.md（长期数据库底座 PR-E 台账：记录归档任务 dry-run、后台执行、查询/重试 API 与下一 PR 入口）
-│   └── PR-长期数据库底座F-检查台账.md （长期数据库底座 PR-F 台账：记录数据库底座 CI 门禁增强、规则脚本与下一 PR 入口）
+│   ├── PR-长期数据库底座F-检查台账.md （长期数据库底座 PR-F 台账：记录数据库底座 CI 门禁增强、规则脚本与下一 PR 入口）
+│   └── PR-长期数据库底座G-检查台账.md（长期数据库底座 PR-G 台账：记录迁移治理、脚本归档、健康检查与下一 PR 入口）
 ├── Zeye.Sorting.Hub.Analytics（分析与报表子域，占位工程）
 │   └── Zeye.Sorting.Hub.Analytics.csproj（Analytics 项目定义）
 ├── Zeye.Sorting.Hub.Application（应用层）
@@ -219,6 +220,7 @@
 │   │   ├── DatabaseInitializerHostedService.cs（数据库初始化与迁移托管服务：迁移前自动建库检查（隔离器+审计）并继续迁移链路）
 │   │   ├── DatabaseConnectionWarmupHostedService.cs（数据库连接预热托管服务：启动期按配置预热短生命周期连接）
 │   │   ├── DataArchiveHostedService.cs（归档 dry-run 后台托管服务：按轮询间隔拉起归档 Worker 执行待处理任务）
+│   │   ├── MigrationGovernanceHostedService.cs（迁移治理托管服务：启动期预演迁移计划、归档脚本并写入治理状态）
 │   │   ├── ParcelBatchWriteFlushHostedService.cs（Parcel 批量缓冲写入后台 Flush 托管服务）
 │   │   ├── ShardingInspectionHostedService.cs（分表运行期巡检托管服务）
 │   │   ├── ShardingPrebuildHostedService.cs（分表预建计划托管服务）
@@ -251,6 +253,7 @@
 │   │   ├── ShardingGovernanceHealthCheck.cs（分表治理健康检查：输出缺表、缺索引、容量与预建计划状态）
 │   │   ├── DatabaseConnectionDetailedHealthCheck.cs（数据库详细就绪探针：输出 provider、database、连续失败/成功次数等诊断数据）
 │   │   ├── DatabaseReadinessHealthCheck.cs（数据库基础就绪探针：保留兼容实现）
+│   │   ├── MigrationGovernanceHealthCheck.cs（迁移治理健康检查：输出待执行迁移、危险 SQL、归档脚本与执行状态）
 │   │   └── HealthCheckResponseWriter.cs（健康检查 JSON 响应序列化工具，支持输出 Data 诊断数据）
 │   ├── Utilities（工具目录）
 │   │   └── LocalDateTimeParsing.cs（本地时间解析与 API 问题响应工厂共享工具）
@@ -277,6 +280,7 @@
 │   ├── AutoTuningProductionControlTests.cs（自动调优生产可控能力测试：dry-run/隔离器/告警恢复/普通与严重回归/探针双路径/闭环链路；含分表策略评估与 PerDay 预建守卫联动测试；新增 WebRequestAuditLog 治理解耦/保留治理三态/逻辑表索引分发/配置错误键指向回归；配置键拼装参数化覆盖（Theory））
 │   ├── AlwaysExistsShardingPhysicalTableProbe.cs（物理表探测测试桩：始终存在场景，支撑分表守卫探测调用断言）
 │   ├── DataArchiveTaskTests.cs（归档任务 dry-run 测试：覆盖创建、分页、后台执行、完成态重试与非法类型校验）
+│   ├── MigrationGovernanceTests.cs（迁移治理测试：覆盖健康检查、危险 SQL、dry-run 决策、脚本归档与预演异常记录）
 │   ├── BatchSelectiveMissingShardingPhysicalTableProbe.cs（批量物理表探测测试桩：选择性缺失与 schema 透传断言）
 │   ├── CountingPlanProbe.cs（执行计划探针测试桩：记录调用次数）
 │   ├── DomainEventArgsTests.cs（领域事件载荷单元测试：验证 ParcelScannedEventArgs/ParcelChuteAssignedEventArgs 业务字段赋值与值语义）
@@ -340,6 +344,13 @@
 │   │   │   ├── DataArchiveCheckpointStore.cs（归档任务检查点存储器：统一写入 Running/Completed/Failed 状态）
 │   │   │   ├── DataArchiveExecutor.cs（归档 dry-run 执行器：串联状态流转与计划生成）
 │   │   │   └── DataArchiveHostedWorker.cs（归档后台 Worker：拉取待执行任务并调用执行器）
+│   │   ├── MigrationGovernance（迁移治理目录）
+│   │   │   ├── MigrationExecutionRecord.cs（迁移治理执行记录模型：记录预演/执行结果、待执行数量、危险 SQL 数与归档路径）
+│   │   │   ├── MigrationGovernanceStateStore.cs（迁移治理运行期状态存储：缓存最近一次迁移计划与执行记录）
+│   │   │   ├── MigrationPlan.cs（迁移治理预演计划模型：记录全部/已应用/待执行迁移、危险操作与执行决策）
+│   │   │   ├── MigrationRollbackScriptProvider.cs（迁移回滚参考脚本生成器：仅归档人工回滚说明，不直接执行回滚）
+│   │   │   ├── MigrationSafetyEvaluator.cs（迁移脚本危险 SQL 识别器：识别 DROP/TRUNCATE/DELETE/无 WHERE UPDATE 等高风险语句）
+│   │   │   └── MigrationScriptArchiveService.cs（迁移脚本归档服务：落盘正向迁移脚本与回滚参考脚本）
 │   │   ├── Sharding（分表策略与治理决策目录）
 │   │   │   ├── ParcelShardingStrategyEvaluator.cs（Parcel 分表策略评估器：配置解析、结构化校验、容量观测输入收敛、阈值决策、finer-granularity 扩展规划与统一决策快照）
 │   │   │   ├── ShardingCapacitySnapshotService.cs（分表容量与热点风险快照服务）
@@ -460,6 +471,7 @@
   - `PR-长期数据库底座D-检查台账.md`：长期数据库底座 PR-D 实施台账；记录分表巡检、预建计划、索引检查、健康检查交付清单、验证结果与下一 PR 入口。
   - `PR-长期数据库底座E-检查台账.md`：长期数据库底座 PR-E 实施台账；记录归档任务 dry-run、后台执行、查询/重试 API 与下一 PR 入口。
   - `PR-长期数据库底座F-检查台账.md`： 长期数据库底座 PR-F 实施台账；记录数据库底座 CI 门禁增强、脚本与工作流交付清单、验证结果与下一 PR 入口。
+  - `PR-长期数据库底座G-检查台账.md`：长期数据库底座 PR-G 实施台账；记录迁移治理预演、脚本归档、危险迁移识别、健康检查与下一 PR 入口。
 
 ### `.github/`：Copilot 仓库级指令目录
 - `DDD分层接口与实现放置规范.md`：DDD 分层接口定义与实现放置规范文档；明确依赖方向（Host→Infrastructure→Application→Domain）、接口定义归属规则（领域能力/应用编排/基础设施内部三类）、实现类放置约束、目录结构建议与禁止事项清单，供 Copilot 与开发人员统一执行。
@@ -705,6 +717,7 @@
 - `HealthChecks/ShardingGovernanceHealthCheck.cs`：分表治理健康检查，输出缺表、缺索引、容量风险、热表/详情表一致性与预建计划状态。
 - `HealthChecks/DatabaseConnectionDetailedHealthCheck.cs`：数据库详细健康检查探针，当前挂载于 `/health/ready`，输出 provider、database、连续失败/成功次数与恢复状态。
 - `HealthChecks/DatabaseReadinessHealthCheck.cs`：数据库基础就绪健康检查探针，保留原始直接连通性探测实现。
+- `HealthChecks/MigrationGovernanceHealthCheck.cs`：迁移治理健康检查，输出待执行迁移数、危险 SQL 命中、归档路径与当前执行状态，挂载于 `/health/ready`。
 - `HealthChecks/HealthCheckResponseWriter.cs`：健康检查 JSON 响应序列化工具，输出结构化 JSON，并支持附加 Data 诊断数据。
 - `Utilities/LocalDateTimeParsing.cs`：本地时间解析与 API 问题响应工厂共享工具。
 - `Middleware/WebRequestAuditLogOptions.cs`：Web 请求审计中间件配置模型。
@@ -717,7 +730,7 @@
 - `Middleware/ResponseCaptureResult.cs`：响应正文采集结果值类型。
 - `Zeye.Sorting.Hub.Host.csproj`：Host 项目定义。
 - `nlog.config`：NLog 日志配置。
-- `appsettings.json`：默认运行配置（含 `WebRequestAuditLog.IncludeRequestBody/IncludeResponseBody`、`AuditReadOnlyApi:Enabled` 显式开关、`ResourceThresholds:MaxConnectionPoolSize/MemoryWarningThresholdMB` 资源阈值节、`Persistence:Diagnostics` 数据库连接诊断配置、`Persistence:WriteBuffering` 批量缓冲写入配置、`Persistence:Archiving` 归档 dry-run 配置、`Persistence:Sharding:RuntimeInspection/Prebuild` 分表巡检与预建配置、`Persistence:AutoTuning:MonthlyReportDay` 月报日期配置）。
+- `appsettings.json`：默认运行配置（含 `WebRequestAuditLog.IncludeRequestBody/IncludeResponseBody`、`AuditReadOnlyApi:Enabled` 显式开关、`ResourceThresholds:MaxConnectionPoolSize/MemoryWarningThresholdMB` 资源阈值节、`Persistence:Diagnostics` 数据库连接诊断配置、`Persistence:WriteBuffering` 批量缓冲写入配置、`Persistence:Archiving` 归档 dry-run 配置、`Persistence:MigrationGovernance` 迁移治理配置、`Persistence:Sharding:RuntimeInspection/Prebuild` 分表巡检与预建配置、`Persistence:AutoTuning:MonthlyReportDay` 月报日期配置）。
 - `appsettings.Development.json`：开发环境配置覆盖文件。
 
 #### `Zeye.Sorting.Hub.Host/Swagger/`：Swagger 扩展目录
@@ -730,6 +743,7 @@
 - `DatabaseInitializerHostedService.cs`：数据库初始化与迁移托管服务主流程（迁移前执行自动建库检查，复用隔离器输出治理审计并衔接 FailFast/Degraded 失败策略）。
 - `DatabaseConnectionWarmupHostedService.cs`：数据库连接预热托管服务，启动期调用基础设施诊断服务完成非阻塞预热并兜底异常日志。
 - `DataArchiveHostedService.cs`：归档 dry-run 后台托管服务，按轮询间隔创建作用域并驱动 Worker 处理待执行任务。
+- `MigrationGovernanceHostedService.cs`：迁移治理托管服务，启动期读取当前 EF 迁移、生成待执行计划、归档正向/回滚参考脚本、识别危险 SQL 并写入运行期状态。
 - `ParcelBatchWriteFlushHostedService.cs`：Parcel 批量缓冲写入后台 Flush 托管服务，持续消费有界队列并批量落库。
 - `ShardingInspectionHostedService.cs`：分表运行期巡检托管服务，按配置周期执行缺表、缺索引与容量风险巡检。
 - `ShardingPrebuildHostedService.cs`：分表预建计划托管服务，启动期生成未来窗口 dry-run 预建计划。
@@ -743,7 +757,7 @@
 - `Zeye.Sorting.Hub.Infrastructure.csproj`：Infrastructure 项目定义。
 
 #### `Zeye.Sorting.Hub.Infrastructure/DependencyInjection/`：依赖注入扩展目录
-- `PersistenceServiceCollectionExtensions.cs`：持久化服务注册扩展（数据库提供器选择、连接字符串校验、DbContext 注册、数据库连接诊断/预热、批量缓冲写入、归档 dry-run、分表运行期巡检与预建服务注册、Parcel 主表保持按 `CreatedTime` 分表；分表时间粒度由 Time/Volume/Hybrid 统一策略决策驱动，Parcel 关联值对象规则继续复用声明式清单与覆盖守卫）。
+- `PersistenceServiceCollectionExtensions.cs`：持久化服务注册扩展（数据库提供器选择、连接字符串校验、DbContext 注册、数据库连接诊断/预热、批量缓冲写入、归档 dry-run、迁移治理、分表运行期巡检与预建服务注册、Parcel 主表保持按 `CreatedTime` 分表；分表时间粒度由 Time/Volume/Hybrid 统一策略决策驱动，Parcel 关联值对象规则继续复用声明式清单与覆盖守卫）。
 
 #### `Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/`：EF Core 实体映射配置目录
 - `ArchiveTaskEntityTypeConfiguration.cs`：归档任务实体映射配置。
@@ -793,6 +807,14 @@
 - `DataArchiveCheckpointStore.cs`：归档任务检查点存储器，统一写入 Running/Completed/Failed 状态。
 - `DataArchiveExecutor.cs`：归档 dry-run 执行器，串联状态流转与计划生成。
 - `DataArchiveHostedWorker.cs`：归档后台 Worker，拉取待执行任务并调用执行器。
+
+##### `Zeye.Sorting.Hub.Infrastructure/Persistence/MigrationGovernance/`：迁移治理目录
+- `MigrationPlan.cs`：迁移治理预演计划模型，记录全部/已应用/待执行迁移、危险 SQL 命中、归档路径与是否允许执行真实迁移。
+- `MigrationExecutionRecord.cs`：迁移治理执行记录模型，记录预演/跳过/成功/失败状态、待执行迁移数、危险 SQL 数与摘要。
+- `MigrationGovernanceStateStore.cs`：迁移治理运行期状态存储，缓存最近一次迁移计划与执行记录，供初始化流程与健康检查复用。
+- `MigrationSafetyEvaluator.cs`：迁移脚本危险 SQL 识别器，覆盖 `DROP TABLE`、`DROP COLUMN`、`TRUNCATE`、`ALTER COLUMN`、`RENAME`、`DELETE FROM` 与 `UPDATE without WHERE`。
+- `MigrationRollbackScriptProvider.cs`：迁移回滚参考脚本生成器，仅输出人工审核与资产归档所需说明，不直接执行不可逆回滚。
+- `MigrationScriptArchiveService.cs`：迁移脚本归档服务，按 Provider + 时间戳落盘正向迁移脚本与回滚参考脚本。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/DatabaseDialects/`：数据库方言抽象与实现目录
 - `DatabaseProviderOperations.cs`：数据库提供器操作类（异常错误码提取 `TryGetProviderErrorNumber`、WHERE 列归一化 `NormalizeWhereColumns`、稳定索引名构造 `BuildIndexName`）。
@@ -864,6 +886,7 @@
 - `AutoTuningProductionControlTests.cs`：覆盖 dry-run、危险动作隔离、告警防抖与恢复、普通/严重回归、unavailable 指标处理、执行计划探针 available/unavailable 双路径、闭环链路与分表覆盖守卫校验、迁移失败策略分环境解析、结构化扩容计划解析、Time/Volume/Hybrid 分表策略评估、PerDay 预建守卫（配置+物理探测）与分表观测口径/自动索引过滤规则回归；新增 WebRequestAuditLog 治理解耦与历史保留治理语义回归；含配置键拼装参数化（Theory）覆盖。
 - `AlwaysExistsShardingPhysicalTableProbe.cs`：物理表探测测试桩，始终返回存在并记录调用次数。
 - `DataArchiveTaskTests.cs`：归档任务 dry-run 测试，覆盖创建、分页、后台执行、终态重试与非法类型校验。
+- `MigrationGovernanceTests.cs`：迁移治理测试，覆盖健康检查状态、危险 SQL 识别、dry-run 决策、脚本归档路径与预演异常记录。
 - `BatchSelectiveMissingShardingPhysicalTableProbe.cs`：批量物理表探测测试桩，支持选择性缺失结果与 schema 透传断言。
 - `CountingPlanProbe.cs`：执行计划探针测试桩，记录探针调用次数并返回固定快照。
 - `DomainEventArgsTests.cs`：领域事件载荷单元测试，验证 `ParcelScannedEventArgs`/`ParcelChuteAssignedEventArgs` 业务字段赋值、值语义相等与不等、本地时间约束。
@@ -907,16 +930,16 @@
 
 ## 本次更新内容
 
-- 继续实施《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》，先核对当前已完成到 PR-E，再补齐 PR-F“数据库底座 CI 门禁增强”缺失交付。
-- 新增 `database-foundation-gates.yml`，补齐数据库底座专用 Release 构建 / 测试门禁与规则门禁作业。
-- 新增 `validate-database-foundation-rules.sh` 及四个薄包装脚本，集中拦截 UTC/时区后缀、README 文件树同步、敏感配置、影分身代码，以及枚举 Description、HostedService 异常捕获、后台循环取消、有界容量规则回归。
-- 新增 `数据库底座门禁说明.md` 与 `PR-长期数据库底座F-检查台账.md`，记录门禁组成、本地执行方式、当前完成度与下一 PR 入口。
-- 同步更新 README、更新记录与文件清单基线，保证新增文件职责说明与仓库实际结构一致。
+- 继续实施《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》，在已完成 PR-F 的基础上继续补齐 PR-G“数据库迁移治理与回滚资产”。
+- 新增迁移治理目录与运行期状态存储，补齐迁移计划、危险 SQL 识别、脚本归档、回滚参考脚本与结构化执行记录。
+- 新增 `MigrationGovernanceHostedService` 与 `MigrationGovernanceHealthCheck`，让启动期迁移预演、dry-run / 危险迁移阻断与 `/health/ready` 就绪状态联动。
+- 调整 `DatabaseInitializerHostedService`，复用迁移治理预演结果，避免重复迁移检测；当处于 dry-run 或生产危险迁移阻断状态时跳过真实迁移执行。
+- 新增 `MigrationGovernanceTests.cs`、`PR-长期数据库底座G-检查台账.md`，并同步更新 README、更新记录与文件清单基线。
 
 ## 后续可完善点
 
-- 下一切片可按《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》进入 PR-G，补齐数据库迁移治理、脚本归档与回滚资产。
-- 后续可将数据库底座门禁从当前增量扫描进一步升级为语义级校验，逐步清理历史遗留的敏感配置与结构性风险项。
+- 下一切片可按《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》进入 PR-H，补齐种子数据、基线数据与配置一致性校验。
+- 后续可将迁移治理脚本归档进一步接入 CI artifact / DBA 审批节点，形成更完整的发布审计链路。
 - 可在后续“检查结果 PR”中按目录拆分台账附件，形成可直接追踪到文件与行号的持续治理闭环。
 - 可将其它日志输入清洗路径（如 query/header 维度）逐步迁移至 `LineBreakNormalizer`，进一步压缩重复实现面并统一观测口径。
 - 可扩展归档 dry-run 的候选样本维度（如租户/路径聚类），为后续真实冷热分层提供更细的决策证据。

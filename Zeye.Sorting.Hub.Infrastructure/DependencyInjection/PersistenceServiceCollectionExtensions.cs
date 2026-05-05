@@ -20,6 +20,7 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.Archiving;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Diagnostics;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.MigrationGovernance;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 using Zeye.Sorting.Hub.Domain.Enums.Sharding;
 using Zeye.Sorting.Hub.Application.Services.WriteBuffers;
@@ -103,6 +104,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             RegisterBufferedWriteServices(services, configuration);
             RegisterShardingGovernanceServices(services, configuration);
             RegisterDataArchiveServices(services, configuration);
+            RegisterMigrationGovernanceServices(services);
             var provider = configuration["Persistence:Provider"];
             var commandTimeoutSeconds = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
             var minCommandElapsedMilliseconds = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:MinCommandElapsedMilliseconds", 50);
@@ -224,6 +226,17 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
 
             services.TryAddSingleton<IDatabaseConnectionDiagnostics, DatabaseConnectionDiagnosticsService>();
             services.TryAddSingleton<DatabaseConnectionWarmupService>();
+        }
+
+        /// <summary>
+        /// 注册数据库迁移治理能力。
+        /// </summary>
+        /// <param name="services">服务集合。</param>
+        private static void RegisterMigrationGovernanceServices(IServiceCollection services) {
+            services.TryAddSingleton<MigrationSafetyEvaluator>();
+            services.TryAddSingleton<MigrationRollbackScriptProvider>();
+            services.TryAddSingleton<MigrationScriptArchiveService>();
+            services.TryAddSingleton<MigrationGovernanceStateStore>();
         }
 
         /// <summary>
