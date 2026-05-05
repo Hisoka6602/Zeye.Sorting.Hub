@@ -1,5 +1,4 @@
 using System.Collections;
-using System.Linq;
 using Microsoft.Extensions.Configuration;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
