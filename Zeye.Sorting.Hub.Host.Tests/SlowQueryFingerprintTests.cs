@@ -21,6 +21,16 @@ public sealed class SlowQueryFingerprintTests {
     }
 
     /// <summary>
+    /// 验证场景：字符串字面量归一化应正确处理 SQL 单引号转义。
+    /// </summary>
+    [Fact]
+    public void SlowQueryFingerprintAggregator_ShouldHandleEscapedQuoteLiteral() {
+        var fingerprint = SlowQueryFingerprintAggregator.Create("SELECT * FROM Parcels WHERE ReceiverName = 'O''Reilly' AND Id = 1");
+
+        Assert.Equal("select * from parcels where receivername = ? and id = ?", fingerprint.NormalizedSql);
+    }
+
+    /// <summary>
     /// 验证场景：画像存储应聚合同一指纹并输出 TopN 快照。
     /// </summary>
     [Fact]
@@ -41,6 +51,7 @@ public sealed class SlowQueryFingerprintTests {
         Assert.Equal(1200d, snapshot.MaxMilliseconds, 3);
         Assert.Equal(1200d, snapshot.P99Milliseconds, 3);
         Assert.Equal("select * from parcels where id = ?", snapshot.NormalizedSql);
+        Assert.Equal(snapshot.NormalizedSql, snapshot.SampleSql);
     }
 
     /// <summary>
@@ -79,6 +90,27 @@ public sealed class SlowQueryFingerprintTests {
     }
 
     /// <summary>
+    /// 验证场景：单指纹样本数量超过上限时应裁剪最旧样本。
+    /// </summary>
+    [Fact]
+    public void SlowQueryProfileStore_ShouldTrimOldSamples_WhenPerFingerprintCapacityExceeded() {
+        var store = new SlowQueryProfileStore(BuildConfiguration(new Dictionary<string, string?> {
+            ["Persistence:AutoTuning:SlowQueryProfile:MaxSampleCountPerFingerprint"] = "2"
+        }));
+
+        store.Record("SELECT * FROM Parcels WHERE Id = 1", TimeSpan.FromMilliseconds(600));
+        store.Record("SELECT * FROM Parcels WHERE Id = 2", TimeSpan.FromMilliseconds(700));
+        store.Record("SELECT * FROM Parcels WHERE Id = 3", TimeSpan.FromMilliseconds(900));
+
+        var (snapshots, _) = store.GetTopProfiles();
+
+        var snapshot = Assert.Single(snapshots);
+        Assert.Equal(2, snapshot.CallCount);
+        Assert.Equal(900d, snapshot.P99Milliseconds, 3);
+        Assert.Equal(800d, snapshot.AverageElapsedMilliseconds, 3);
+    }
+
+    /// <summary>
     /// 构建测试配置。
     /// </summary>
     /// <param name="overrides">覆盖项。</param>
@@ -89,7 +121,8 @@ public sealed class SlowQueryFingerprintTests {
             ["Persistence:AutoTuning:SlowQueryProfile:IsEnabled"] = "true",
             ["Persistence:AutoTuning:SlowQueryProfile:WindowMinutes"] = "30",
             ["Persistence:AutoTuning:SlowQueryProfile:TopN"] = "50",
-            ["Persistence:AutoTuning:SlowQueryProfile:MaxFingerprintCount"] = "1000"
+            ["Persistence:AutoTuning:SlowQueryProfile:MaxFingerprintCount"] = "1000",
+            ["Persistence:AutoTuning:SlowQueryProfile:MaxSampleCountPerFingerprint"] = "256"
         };
         if (overrides is not null) {
             foreach (var pair in overrides) {

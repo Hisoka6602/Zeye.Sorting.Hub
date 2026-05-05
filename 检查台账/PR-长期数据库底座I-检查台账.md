@@ -55,8 +55,8 @@
 
 ## 三、本次实现结果
 
-1. 新增 `SlowQueryFingerprintAggregator`，统一完成 SQL 去参数化、16 位指纹生成、P95/P99 计算与画像快照构建，避免自动调优与诊断链路重复实现。
-2. 新增 `SlowQueryProfileStore`，按配置维护最近窗口的慢查询样本，提供 TopN 排序、窗口裁剪与最大指纹数量淘汰能力。
+1. 新增 `SlowQueryFingerprintAggregator`，统一完成 SQL 去参数化、16 位指纹生成、P95/P99 计算与画像快照构建，并正确处理 SQL 单引号转义与样例 SQL 脱敏，避免自动调优与诊断链路重复实现。
+2. 新增 `SlowQueryProfileStore`，按配置维护最近窗口的慢查询样本，提供 TopN 排序、窗口裁剪、最大指纹数量淘汰与单指纹样本上限控制能力。
 3. 新增应用层诊断抽象 `ISlowQueryProfileReader` 与 `GetSlowQueryProfileQueryService`，保证 Application 通过只读抽象消费画像快照，不直接依赖 Infrastructure。
 4. 新增 `DiagnosticsApiRouteExtensions`，暴露 `/api/diagnostics/slow-queries` 与 `/api/diagnostics/slow-queries/{fingerprint}` 两个只读端点，明确仅返回进程内快照，不触发数据库重查询。
 5. 调整 `SlowQueryCommandInterceptor` 与 `SlowQueryAutoTuningPipeline`，复用现有慢查询采集链路同步写入画像快照并统一指纹计算逻辑。

@@ -54,6 +54,11 @@ public sealed class SlowQueryProfileStore : ISlowQueryProfileReader {
     private readonly int _maxFingerprintCount;
 
     /// <summary>
+    /// 单指纹保留的最大样本数量。
+    /// </summary>
+    private readonly int _maxSampleCountPerFingerprint;
+
+    /// <summary>
     /// 初始化慢查询画像存储。
     /// </summary>
     /// <param name="configuration">配置根。</param>
@@ -81,6 +86,13 @@ public sealed class SlowQueryProfileStore : ISlowQueryProfileReader {
                 1000),
             1,
             5000);
+        _maxSampleCountPerFingerprint = Math.Clamp(
+            AutoTuningConfigurationReader.GetPositiveIntOrDefault(
+                configuration,
+                AutoTuningConfigurationReader.BuildAutoTuningKey("SlowQueryProfile:MaxSampleCountPerFingerprint"),
+                256),
+            1,
+            4096);
         _topN = Math.Clamp(
             AutoTuningConfigurationReader.GetPositiveIntOrDefault(
                 configuration,
@@ -122,6 +134,10 @@ public sealed class SlowQueryProfileStore : ISlowQueryProfileReader {
         lock (_sync) {
             var queue = GetOrCreateQueue(fingerprint);
             queue.Enqueue(sample);
+            while (queue.Count > _maxSampleCountPerFingerprint) {
+                queue.Dequeue();
+            }
+
             _lastSeenAtLocalByFingerprint[fingerprint.Fingerprint] = now;
             TrimExpiredEntries(now);
             TrimOverflowFingerprints();

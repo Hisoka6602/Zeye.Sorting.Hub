@@ -9,13 +9,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 /// </summary>
 public static class SlowQueryFingerprintAggregator {
     /// <summary>
-    /// 指纹合法性正则。
-    /// </summary>
-    private static readonly Regex FingerprintRegex = new(
-        "^[0-9a-f]{16}$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    /// <summary>
     /// 多空白折叠正则。
     /// </summary>
     private static readonly Regex MultiWhitespaceRegex = new(
@@ -40,7 +33,7 @@ public static class SlowQueryFingerprintAggregator {
     /// 字符串字面量正则。
     /// </summary>
     private static readonly Regex StringLiteralRegex = new(
-        @"'[^']*'",
+        @"'(?:''|[^'])*'",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     /// <summary>
@@ -53,16 +46,6 @@ public static class SlowQueryFingerprintAggregator {
         return new SlowQueryFingerprint(
             Fingerprint: BuildFingerprintId(normalizedSql),
             NormalizedSql: normalizedSql);
-    }
-
-    /// <summary>
-    /// 判断指纹格式是否合法。
-    /// </summary>
-    /// <param name="fingerprint">指纹文本。</param>
-    /// <returns>是否合法。</returns>
-    public static bool IsValidFingerprint(string? fingerprint) {
-        return !string.IsNullOrWhiteSpace(fingerprint)
-            && FingerprintRegex.IsMatch(fingerprint.Trim());
     }
 
     /// <summary>
@@ -110,7 +93,7 @@ public static class SlowQueryFingerprintAggregator {
             throw new ArgumentException("慢查询画像快照至少需要一个样本。", nameof(samples));
         }
 
-        // 步骤 1：按耗时升序准备分位点数组。
+        // 步骤 1：按发生时间升序准备窗口样本，并单独提取耗时升序数组用于分位点计算。
         var orderedSamples = samples
             .OrderBy(static sample => sample.OccurredTime)
             .ToArray();
@@ -144,11 +127,11 @@ public static class SlowQueryFingerprintAggregator {
 
         var averageElapsedMilliseconds = orderedSamples.Average(static sample => sample.ElapsedMilliseconds);
 
-        // 步骤 3：输出窗口起止、样例 SQL 与高位分位数，供 API 直接返回只读快照。
+        // 步骤 3：输出窗口起止、脱敏样例 SQL 与高位分位数，供 API 直接返回只读快照。
         return new SlowQueryProfileSnapshot(
             Fingerprint: fingerprint.Fingerprint,
             NormalizedSql: fingerprint.NormalizedSql,
-            SampleSql: latestSample.CommandText,
+            SampleSql: NormalizeSql(latestSample.CommandText),
             CallCount: callCount,
             AverageElapsedMilliseconds: averageElapsedMilliseconds,
             P95Milliseconds: CalculatePercentile(orderedElapsed, 95),

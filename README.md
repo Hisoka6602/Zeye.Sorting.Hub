@@ -770,7 +770,7 @@
 - `Middleware/ResponseCaptureResult.cs`：响应正文采集结果值类型。
 - `Zeye.Sorting.Hub.Host.csproj`：Host 项目定义。
 - `nlog.config`：NLog 日志配置。
-- `appsettings.json`：默认运行配置（含 `WebRequestAuditLog.IncludeRequestBody/IncludeResponseBody`、`AuditReadOnlyApi:Enabled` 显式开关、`ResourceThresholds:MaxConnectionPoolSize/MemoryWarningThresholdMB` 资源阈值节、`Persistence:Diagnostics` 数据库连接诊断配置、`Persistence:WriteBuffering` 批量缓冲写入配置、`Persistence:Archiving` 归档 dry-run 配置、`Persistence:BaselineData` 基线数据校验配置、`Persistence:MigrationGovernance` 迁移治理配置、`Persistence:Sharding:RuntimeInspection/Prebuild` 分表巡检与预建配置，以及 `Persistence:AutoTuning:SlowQueryProfile` 慢查询画像窗口配置）。
+- `appsettings.json`：默认运行配置（含 `WebRequestAuditLog.IncludeRequestBody/IncludeResponseBody`、`AuditReadOnlyApi:Enabled` 显式开关、`ResourceThresholds:MaxConnectionPoolSize/MemoryWarningThresholdMB` 资源阈值节、`Persistence:Diagnostics` 数据库连接诊断配置、`Persistence:WriteBuffering` 批量缓冲写入配置、`Persistence:Archiving` 归档 dry-run 配置、`Persistence:BaselineData` 基线数据校验配置、`Persistence:MigrationGovernance` 迁移治理配置、`Persistence:Sharding:RuntimeInspection/Prebuild` 分表巡检与预建配置，以及 `Persistence:AutoTuning:SlowQueryProfile` 慢查询画像窗口/单指纹样本上限配置）。
 - `appsettings.Development.json`：开发环境配置覆盖文件。
 
 #### `Zeye.Sorting.Hub.Host/Swagger/`：Swagger 扩展目录
@@ -888,9 +888,9 @@
 - `SlowQueryAutoTuningPipeline.cs`：慢查询采集、TopN 聚合、阈值告警（含基础防抖）与闭环自治结构化建议编排管道（配置键拼装复用 `AutoTuningConfigurationReader`，并改为复用共享指纹聚合器生成稳定 SQL 指纹）。
 - `SlowQueryCommandInterceptor.cs`：EF Core 慢查询采集拦截器，同时将样本写入自动调优主管道与慢查询画像快照存储。
 - `SlowQueryFingerprint.cs`：慢查询指纹模型，承载 16 位指纹与去参数化标准 SQL。
-- `SlowQueryFingerprintAggregator.cs`：慢查询指纹聚合器，统一执行 SQL 去参数化、指纹生成、P95/P99 计算与画像快照构建，避免重复实现。
+- `SlowQueryFingerprintAggregator.cs`：慢查询指纹聚合器，统一执行 SQL 去参数化、指纹生成、P95/P99 计算与画像快照构建，并正确处理 SQL 单引号转义与样例 SQL 脱敏，避免重复实现。
 - `SlowQueryProfileSnapshot.cs`：慢查询画像内部快照模型，记录平均耗时、P95/P99、异常次数与窗口起止时间。
-- `SlowQueryProfileStore.cs`：慢查询画像内存快照存储，实现 `ISlowQueryProfileReader`，负责窗口裁剪、TopN 排序与最大指纹数量淘汰。
+- `SlowQueryProfileStore.cs`：慢查询画像内存快照存储，实现 `ISlowQueryProfileReader`，负责窗口裁剪、TopN 排序、最大指纹数量淘汰与单指纹样本上限控制。
 - `SlowQuerySample.cs`：慢查询采样记录模型。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding/`：分表策略与治理决策目录
@@ -987,6 +987,7 @@
 - 新增 `SlowQueryFingerprintAggregator`、`SlowQueryProfileStore` 与相关合同/应用服务，基于现有 EF Core 慢查询采集链路生成去参数化 SQL 指纹、窗口聚合画像与 TopN 只读快照。
 - 新增 `/api/diagnostics/slow-queries` 与 `/api/diagnostics/slow-queries/{fingerprint}` 两个诊断端点，仅返回进程内快照，不触发数据库重查询。
 - 通过应用层诊断只读抽象解耦 Infrastructure 与 Application，保持 `Host -> Infrastructure -> Application -> Domain` 依赖方向不被破坏。
+- 根据审查意见补强字符串字面量转义处理、样例 SQL 脱敏与单指纹样本上限，降低指纹漂移、敏感信息泄露与热点 SQL 内存膨胀风险。
 - 新增 `SlowQueryFingerprintTests.cs`、`PR-长期数据库底座I-检查台账.md`，并同步更新 README、更新记录与文件清单基线。
 
 ## 后续可完善点
