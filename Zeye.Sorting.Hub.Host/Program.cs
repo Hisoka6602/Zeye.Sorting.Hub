@@ -16,8 +16,10 @@ using Zeye.Sorting.Hub.Contracts.Models.Parcels;
 using Zeye.Sorting.Hub.Domain.Options.LogCleanup;
 using Zeye.Sorting.Hub.Application.Services.Parcels;
 using Zeye.Sorting.Hub.Application.Services.AuditLogs;
+using Zeye.Sorting.Hub.Application.Services.DataGovernance;
 using Zeye.Sorting.Hub.Application.Services.WriteBuffers;
 using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Archiving;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.WriteBuffering;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -67,6 +69,7 @@ try {
     builder.Services.AddHostedService<ParcelBatchWriteFlushHostedService>();
     builder.Services.AddHostedService<ShardingPrebuildHostedService>();
     builder.Services.AddHostedService<ShardingInspectionHostedService>();
+    builder.Services.AddHostedService<DataArchiveHostedService>();
     builder.Services.AddSingleton<SafeExecutor>();
     builder.Services.AddSingleton<ConfigChangeHistoryStore<LogCleanupSettings>>();
     builder.Services.AddSortingHubPersistence(builder.Configuration);
@@ -127,6 +130,9 @@ try {
     builder.Services.AddScoped<WriteWebRequestAuditLogCommandService>();
     builder.Services.AddScoped<GetWebRequestAuditLogPagedQueryService>();
     builder.Services.AddScoped<GetWebRequestAuditLogByIdQueryService>();
+    builder.Services.AddScoped<CreateArchiveTaskCommandService>();
+    builder.Services.AddScoped<GetArchiveTaskPagedQueryService>();
+    builder.Services.AddScoped<RetryArchiveTaskCommandService>();
     builder.Services.AddWebRequestAuditLogging(builder.Configuration);
 
     // Host 启动时执行持久化初始化
@@ -243,6 +249,8 @@ try {
     if (auditReadOnlyApiOptions.Enabled) {
         app.MapAuditReadOnlyApis(auditReadOnlyApiOptions.RequireAuthorization);
     }
+
+    app.MapDataGovernanceApis();
 
     app.Run();
 }
