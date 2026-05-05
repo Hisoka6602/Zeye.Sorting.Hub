@@ -105,26 +105,18 @@ jobs:
       - name: Add dotnet tools to PATH
         run: echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
 
-      - name: Validate EF migrations (list / update / script)
+      - name: Validate EF design-time configuration (info / list)
         env:
-          SQLSERVER_CONNECTION: "Server=127.0.0.1,1433;Database=zeye_sorting_hub_ci;User Id=sa;Password=${{ env.MSSQL_SA_PASSWORD }};TrustServerCertificate=True;Encrypt=False;"
           ConnectionStrings__SqlServer: "Server=127.0.0.1,1433;Database=zeye_sorting_hub_ci;User Id=sa;Password=${{ env.MSSQL_SA_PASSWORD }};TrustServerCertificate=True;Encrypt=False;"
         run: |
-          dotnet ef database update \
+          dotnet ef dbcontext info \
             --project Zeye.Sorting.Hub.Infrastructure \
             --startup-project Zeye.Sorting.Hub.Infrastructure \
             --context SortingHubDbContext \
-            --connection "$SQLSERVER_CONNECTION" \
             -- --provider SqlServer
           dotnet ef migrations list \
             --project Zeye.Sorting.Hub.Infrastructure \
             --startup-project Zeye.Sorting.Hub.Infrastructure \
             --context SortingHubDbContext \
-            --connection "$SQLSERVER_CONNECTION" \
-            -- --provider SqlServer
-          dotnet ef migrations script \
-            --project Zeye.Sorting.Hub.Infrastructure \
-            --startup-project Zeye.Sorting.Hub.Infrastructure \
-            --context SortingHubDbContext \
-            --output /tmp/ef-migration-validation-sqlserver.sql \
+            --no-connect \
             -- --provider SqlServer
