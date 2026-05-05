@@ -17,6 +17,10 @@ Zeye.Sorting.Hub.Application/Services/AuditLogs/GetWebRequestAuditLogByIdQuerySe
 Zeye.Sorting.Hub.Application/Services/AuditLogs/GetWebRequestAuditLogPagedQueryService.cs
 Zeye.Sorting.Hub.Application/Services/AuditLogs/WebRequestAuditLogContractMapper.cs
 Zeye.Sorting.Hub.Application/Services/AuditLogs/WriteWebRequestAuditLogCommandService.cs
+Zeye.Sorting.Hub.Application/Services/DataGovernance/ArchiveTaskContractMapper.cs
+Zeye.Sorting.Hub.Application/Services/DataGovernance/CreateArchiveTaskCommandService.cs
+Zeye.Sorting.Hub.Application/Services/DataGovernance/GetArchiveTaskPagedQueryService.cs
+Zeye.Sorting.Hub.Application/Services/DataGovernance/RetryArchiveTaskCommandService.cs
 Zeye.Sorting.Hub.Application/Services/Parcels/CleanupExpiredParcelsCommandService.cs
 Zeye.Sorting.Hub.Application/Services/Parcels/CreateParcelCommandService.cs
 Zeye.Sorting.Hub.Application/Services/Parcels/DeleteParcelCommandService.cs
@@ -38,6 +42,10 @@ Zeye.Sorting.Hub.Contracts/Models/AuditLogs/WebRequests/WebRequestAuditLogDetail
 Zeye.Sorting.Hub.Contracts/Models/AuditLogs/WebRequests/WebRequestAuditLogListItemResponse.cs
 Zeye.Sorting.Hub.Contracts/Models/AuditLogs/WebRequests/WebRequestAuditLogListRequest.cs
 Zeye.Sorting.Hub.Contracts/Models/AuditLogs/WebRequests/WebRequestAuditLogListResponse.cs
+Zeye.Sorting.Hub.Contracts/Models/DataGovernance/ArchiveTaskCreateRequest.cs
+Zeye.Sorting.Hub.Contracts/Models/DataGovernance/ArchiveTaskListRequest.cs
+Zeye.Sorting.Hub.Contracts/Models/DataGovernance/ArchiveTaskListResponse.cs
+Zeye.Sorting.Hub.Contracts/Models/DataGovernance/ArchiveTaskResponse.cs
 Zeye.Sorting.Hub.Contracts/Models/Parcels/Admin/ParcelBatchBufferedCreateRequest.cs
 Zeye.Sorting.Hub.Contracts/Models/Parcels/Admin/ParcelBatchBufferedCreateResponse.cs
 Zeye.Sorting.Hub.Contracts/Models/Parcels/Admin/ParcelCleanupExpiredRequest.cs
@@ -72,6 +80,7 @@ Zeye.Sorting.Hub.Domain/Abstractions/IEntity.cs
 Zeye.Sorting.Hub.Domain/Abstractions/IParcelSummaryView.cs
 Zeye.Sorting.Hub.Domain/Aggregates/AuditLogs/WebRequests/WebRequestAuditLog.cs
 Zeye.Sorting.Hub.Domain/Aggregates/AuditLogs/WebRequests/WebRequestAuditLogDetail.cs
+Zeye.Sorting.Hub.Domain/Aggregates/DataGovernance/ArchiveTask.cs
 Zeye.Sorting.Hub.Domain/Aggregates/Parcels/Parcel.cs
 Zeye.Sorting.Hub.Domain/Aggregates/Parcels/ValueObjects/ApiRequestInfo.cs
 Zeye.Sorting.Hub.Domain/Aggregates/Parcels/ValueObjects/BagInfo.cs
@@ -100,6 +109,8 @@ Zeye.Sorting.Hub.Domain/Enums/AutoTuningUnavailableReason.cs
 Zeye.Sorting.Hub.Domain/Enums/AutoTuningUnavailableReasonExtensions.cs
 Zeye.Sorting.Hub.Domain/Enums/BarCodeType.cs
 Zeye.Sorting.Hub.Domain/Enums/CommandDirection.cs
+Zeye.Sorting.Hub.Domain/Enums/DataGovernance/ArchiveTaskStatus.cs
+Zeye.Sorting.Hub.Domain/Enums/DataGovernance/ArchiveTaskType.cs
 Zeye.Sorting.Hub.Domain/Enums/ImageCaptureType.cs
 Zeye.Sorting.Hub.Domain/Enums/ImageType.cs
 Zeye.Sorting.Hub.Domain/Enums/MigrationFailureMode.cs
@@ -120,6 +131,7 @@ Zeye.Sorting.Hub.Domain/Events/Parcels/ParcelChuteAssignedEventArgs.cs
 Zeye.Sorting.Hub.Domain/Events/Parcels/ParcelScannedEventArgs.cs
 Zeye.Sorting.Hub.Domain/Options/LogCleanup/LogCleanupSettings.cs
 Zeye.Sorting.Hub.Domain/Primitives/AuditableEntity.cs
+Zeye.Sorting.Hub.Domain/Repositories/IArchiveTaskRepository.cs
 Zeye.Sorting.Hub.Domain/Repositories/IParcelRepository.cs
 Zeye.Sorting.Hub.Domain/Repositories/IWebRequestAuditLogQueryRepository.cs
 Zeye.Sorting.Hub.Domain/Repositories/IWebRequestAuditLogRepository.cs
@@ -145,6 +157,7 @@ Zeye.Sorting.Hub.Host.Tests/BatchSelectiveMissingShardingPhysicalTableProbe.cs
 Zeye.Sorting.Hub.Host.Tests/ConfigChangeHistoryStoreTests.cs
 Zeye.Sorting.Hub.Host.Tests/ConfigurableShardingPhysicalTableProbe.cs
 Zeye.Sorting.Hub.Host.Tests/CountingPlanProbe.cs
+Zeye.Sorting.Hub.Host.Tests/DataArchiveTaskTests.cs
 Zeye.Sorting.Hub.Host.Tests/DatabaseConnectionDiagnosticsTests.cs
 Zeye.Sorting.Hub.Host.Tests/DomainEventArgsTests.cs
 Zeye.Sorting.Hub.Host.Tests/EmptyServiceScope.cs
@@ -187,6 +200,7 @@ Zeye.Sorting.Hub.Host/HealthChecks/DatabaseReadinessHealthCheck.cs
 Zeye.Sorting.Hub.Host/HealthChecks/HealthCheckResponseWriter.cs
 Zeye.Sorting.Hub.Host/HealthChecks/ShardingGovernanceHealthCheck.cs
 Zeye.Sorting.Hub.Host/HostedServices/AutoTuningLoggerObservability.cs
+Zeye.Sorting.Hub.Host/HostedServices/DataArchiveHostedService.cs
 Zeye.Sorting.Hub.Host/HostedServices/DatabaseAutoTuningHostedService.cs
 Zeye.Sorting.Hub.Host/HostedServices/DatabaseConnectionWarmupHostedService.cs
 Zeye.Sorting.Hub.Host/HostedServices/DatabaseInitializerHostedService.cs
@@ -223,6 +237,7 @@ Zeye.Sorting.Hub.Host/QueryParameters/ParcelCursorListQueryParameters.cs
 Zeye.Sorting.Hub.Host/QueryParameters/ParcelListQueryParameters.cs
 Zeye.Sorting.Hub.Host/QueryParameters/WebRequestAuditLogListQueryParameters.cs
 Zeye.Sorting.Hub.Host/Routing/AuditReadOnlyApiRouteExtensions.cs
+Zeye.Sorting.Hub.Host/Routing/DataGovernanceApiRouteExtensions.cs
 Zeye.Sorting.Hub.Host/Routing/ParcelAdminApiRouteExtensions.cs
 Zeye.Sorting.Hub.Host/Routing/ParcelReadOnlyApiRouteExtensions.cs
 Zeye.Sorting.Hub.Host/Swagger/EnumDescriptionSchemaFilter.cs
@@ -233,10 +248,16 @@ Zeye.Sorting.Hub.Host/appsettings.json
 Zeye.Sorting.Hub.Host/nlog.config
 Zeye.Sorting.Hub.Infrastructure/DependencyInjection/ParcelAggregateShardingRule.cs
 Zeye.Sorting.Hub.Infrastructure/DependencyInjection/PersistenceServiceCollectionExtensions.cs
+Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/ArchiveTaskEntityTypeConfiguration.cs
 Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/BagInfoEntityTypeConfiguration.cs
 Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/ParcelEntityTypeConfiguration.cs
 Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/WebRequestAuditLogDetailEntityTypeConfiguration.cs
 Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/WebRequestAuditLogEntityTypeConfiguration.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Archiving/DataArchiveCheckpointStore.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Archiving/DataArchiveExecutor.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Archiving/DataArchiveHostedWorker.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Archiving/DataArchiveOptions.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Archiving/DataArchivePlanner.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/ActionIsolationPolicy.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/AlertTrackingState.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/AutoRollbackDecisionEngine.cs
@@ -282,6 +303,8 @@ Zeye.Sorting.Hub.Infrastructure/Persistence/Diagnostics/DatabaseConnectionWarmup
 Zeye.Sorting.Hub.Infrastructure/Persistence/Diagnostics/IDatabaseConnectionDiagnostics.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/20260324094539_RebuildBaseline20260324.Designer.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/20260324094539_RebuildBaseline20260324.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/AddArchiveTaskDryRunSupport.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/AddArchiveTaskDryRunSupportDesigner.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/MigrationSchemaResolver.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/SortingHubDbContextModelSnapshot.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/ParcelIndexNames.cs
@@ -310,6 +333,7 @@ Zeye.Sorting.Hub.Infrastructure/Persistence/WriteBuffering/DeadLetterWriteEntry.
 Zeye.Sorting.Hub.Infrastructure/Persistence/WriteBuffering/DeadLetterWriteStore.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/WriteBuffering/ParcelBatchWriteFlushService.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/WriteBuffering/ParcelBufferedWriteService.cs
+Zeye.Sorting.Hub.Infrastructure/Repositories/ArchiveTaskRepository.cs
 Zeye.Sorting.Hub.Infrastructure/Repositories/MemoryCacheRepositoryBase.cs
 Zeye.Sorting.Hub.Infrastructure/Repositories/ParcelCursorQueryExtensions.cs
 Zeye.Sorting.Hub.Infrastructure/Repositories/ParcelRepository.cs
@@ -339,6 +363,7 @@ Zeye.Sorting.Hub.sln
 "\346\243\200\346\237\245\345\217\260\350\264\246/PR-\351\225\277\346\234\237\346\225\260\346\215\256\345\272\223\345\272\225\345\272\247B-\346\243\200\346\237\245\345\217\260\350\264\246.md"
 "\346\243\200\346\237\245\345\217\260\350\264\246/PR-\351\225\277\346\234\237\346\225\260\346\215\256\345\272\223\345\272\225\345\272\247C-\346\243\200\346\237\245\345\217\260\350\264\246.md"
 "\346\243\200\346\237\245\345\217\260\350\264\246/PR-\351\225\277\346\234\237\346\225\260\346\215\256\345\272\223\345\272\225\345\272\247D-\346\243\200\346\237\245\345\217\260\350\264\246.md"
+"\346\243\200\346\237\245\345\217\260\350\264\246/PR-\351\225\277\346\234\237\346\225\260\346\215\256\345\272\223\345\272\225\345\272\247E-\346\243\200\346\237\245\345\217\260\350\264\246.md"
 "\346\243\200\346\237\245\345\217\260\350\264\246/\346\226\207\344\273\266\346\270\205\345\215\225\345\237\272\347\272\277.txt"
 "\351\200\220\346\226\207\344\273\266\346\243\200\346\237\245\346\226\271\346\241\210.md"
 "\351\225\277\346\234\237\350\277\220\350\241\214\344\274\230\345\214\226\344\270\216\347\203\255\346\233\264\346\226\260\346\224\257\346\214\201\346\270\205\345\215\225.md"

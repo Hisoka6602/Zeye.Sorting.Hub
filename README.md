@@ -10,9 +10,15 @@
 │   ├── DDD分层接口与实现放置规范.md（DDD 分层接口定义与实现放置规范：依赖方向约束、接口归属原则、禁止项清单）
 │   ├── copilot-instructions.md（Copilot 自定义指令：禁止 UTC、统一本地时间）
 │   ├── scripts（CI 校验脚本目录）
-│   │   └── validate-copilot-rules.sh（Copilot 限制规则校验脚本：从 copilot-instructions.md 解析规则并执行自动校验）
+│   │   ├── validate-copilot-rules.sh（Copilot 限制规则校验脚本：从 copilot-instructions.md 解析规则并执行自动校验）
+│   │   ├── validate-database-foundation-rules.sh（数据库底座门禁主脚本：集中执行 UTC、README、敏感配置、影分身代码与结构性规则校验）
+│   │   ├── validate-no-shadow-code.sh（数据库底座影分身代码校验脚本：复用主脚本执行重复方法签名拦截）
+│   │   ├── validate-no-utc.sh（数据库底座 UTC/时区后缀校验脚本：复用主脚本执行本地时间语义门禁）
+│   │   ├── validate-readme-file-tree.sh（数据库底座 README 对账脚本：复用主脚本检查新增/删除文件职责同步）
+│   │   └── validate-sensitive-config.sh（数据库底座敏感配置校验脚本：复用主脚本拦截高风险凭据与密钥片段）
 │   └── workflows（CI 工作流目录）
 │       ├── copilot-instructions-validation.yml（Copilot 限制规则 PR 校验流水线：每次 PR 运行规则校验脚本）
+│       ├── database-foundation-gates.yml（数据库底座门禁流水线：构建+测试、UTC/README/敏感配置/影分身代码与结构性底座规则校验）
 │       ├── ef-migration-validation.yml（EF 迁移验收流水线：MySQL+SQL Server 双 Provider 执行 dotnet ef list/update/script）
 │       └── stability-gates.yml（长期运行稳定性门禁：构建+测试、配置合法性、隔离器边界、回滚资产、健康探针端点、契约兼容性、蓝绿部署验证、演练记录（强制阻断）、分表预建校验、迁移归档验证共 10 项门禁）
 ├── .gitattributes（Git 属性配置）
@@ -20,6 +26,7 @@
 ├── 待完善事项.md（待完善事项列表，仅记录代码中尚未实现的可完善点）
 ├── 更新记录.md（更新记录，按时间倒序记录每次 PR 更新内容）
 ├── README.md（仓库总览、结构清单与维护规范）
+├── 数据库底座门禁说明.md（数据库底座门禁说明文档：记录 PR-F 门禁组成、本地执行命令、增量扫描边界与下一阶段入口）
 ├── 长期运行优化与热更新支持清单.md（面向一年无人值守运行的优化与热更新治理清单）
 ├── drill-records/（季度/年度稳定性演练记录目录，供演练记录门禁检查；每次演练后在此新增记录文件）
 ├── 检查台账/（逐文件全量审查台账目录；存放文件清单基线与各批次检查结果，按 PR-A/B/C… 分批递增）
@@ -34,7 +41,8 @@
 │   ├── PR-长期数据库底座B-检查台账.md（长期数据库底座 PR-B 台账：记录查询保护、游标分页交付与下一 PR 入口）
 │   ├── PR-长期数据库底座C-检查台账.md（长期数据库底座 PR-C 台账：记录批量缓冲写入、死信隔离交付与下一 PR 入口）
 │   ├── PR-长期数据库底座D-检查台账.md（长期数据库底座 PR-D 台账：记录分表巡检、预建计划、索引检查与下一 PR 入口）
-│   └── PR-长期数据库底座E-检查台账.md（长期数据库底座 PR-E 台账：记录归档任务 dry-run、后台执行、查询/重试 API 与下一 PR 入口）
+│   ├── PR-长期数据库底座E-检查台账.md（长期数据库底座 PR-E 台账：记录归档任务 dry-run、后台执行、查询/重试 API 与下一 PR 入口）
+│   └── PR-长期数据库底座F-检查台账.md（长期数据库底座 PR-F 台账：记录数据库底座 CI 门禁增强、规则脚本与下一 PR 入口）
 ├── Zeye.Sorting.Hub.Analytics（分析与报表子域，占位工程）
 │   └── Zeye.Sorting.Hub.Analytics.csproj（Analytics 项目定义）
 ├── Zeye.Sorting.Hub.Application（应用层）
@@ -427,6 +435,7 @@
 - `README.md`：仓库总览、结构清单与维护规范文档。
 - `更新记录.md`：更新记录，按时间倒序记录每次 PR 更新内容（从 README 独立拆分）。
 - `待完善事项.md`：待完善事项列表，仅记录代码中尚未实现的可完善点（从 README 独立拆分，已实现项不记录）。
+- `数据库底座门禁说明.md`：数据库底座门禁说明文档，记录 PR-F 当前交付的 CI 门禁组成、本地执行命令、增量扫描边界与下一阶段入口。
 - `Zeye.Sorting.Hub.sln`：.NET 解决方案入口，聚合全部项目。
 - `Parcel属性新增操作指南.md`：当 Parcel 聚合需要新增属性时，需要修改哪些文件、如何修改的操作指南（含三种情形：主表标量属性、现有值对象属性、新增值对象）。
 - `项目完成度与推进计划.md`：项目阶段评估与路线图文档。
@@ -450,14 +459,21 @@
   - `PR-长期数据库底座C-检查台账.md`：长期数据库底座 PR-C 实施台账；记录批量缓冲写入、死信隔离、健康检查交付清单、验证结果与下一 PR 入口。
   - `PR-长期数据库底座D-检查台账.md`：长期数据库底座 PR-D 实施台账；记录分表巡检、预建计划、索引检查、健康检查交付清单、验证结果与下一 PR 入口。
   - `PR-长期数据库底座E-检查台账.md`：长期数据库底座 PR-E 实施台账；记录归档任务 dry-run、后台执行、查询/重试 API 与下一 PR 入口。
+  - `PR-长期数据库底座F-检查台账.md`：长期数据库底座 PR-F 实施台账；记录数据库底座 CI 门禁增强、脚本与工作流交付清单、验证结果与下一 PR 入口。
 
 ### `.github/`：Copilot 仓库级指令目录
 - `DDD分层接口与实现放置规范.md`：DDD 分层接口定义与实现放置规范文档；明确依赖方向（Host→Infrastructure→Application→Domain）、接口定义归属规则（领域能力/应用编排/基础设施内部三类）、实现类放置约束、目录结构建议与禁止事项清单，供 Copilot 与开发人员统一执行。
 - `copilot-instructions.md`：Copilot 自定义指令，硬性要求禁止 UTC 时间 API，统一使用本地时间语义。
 - `scripts/validate-copilot-rules.sh`：Copilot 限制规则校验脚本；从 `copilot-instructions.md` 解析“Copilot 限制规则”逐条执行，已映射规则做自动校验，未映射规则直接失败，确保规则文档更新后 CI 校验逻辑同步更新。
+- `scripts/validate-database-foundation-rules.sh`：数据库底座门禁主脚本；统一执行 UTC/时区后缀、README 文件树同步、敏感配置、影分身代码与结构性底座规则检查，并支持按模式拆分调用。
+- `scripts/validate-no-utc.sh`：数据库底座 UTC 校验脚本；复用主脚本检查新增/修改代码中的 UTC API 与配置时间时区后缀。
+- `scripts/validate-readme-file-tree.sh`：数据库底座 README 对账脚本；复用主脚本检查新增/删除文件是否同步更新 README 职责说明。
+- `scripts/validate-sensitive-config.sh`：数据库底座敏感配置校验脚本；复用主脚本拦截新增/修改文件中的高风险连接串片段与密钥字段。
+- `scripts/validate-no-shadow-code.sh`：数据库底座影分身代码校验脚本；复用主脚本检查新增/修改 C# 文件内重复方法签名。
 
 ### `.github/workflows/`：CI 工作流目录
 - `copilot-instructions-validation.yml`：Copilot 限制规则校验流水线；每次 PR 触发并执行 `validate-copilot-rules.sh`，对规则自动门禁。
+- `database-foundation-gates.yml`：数据库底座门禁流水线；新增独立的 PR-F 门禁，执行 Release 构建与测试，并串行校验 UTC/配置时区后缀、README 文件树同步、敏感配置、影分身代码、枚举 Description、HostedService 异常捕获、后台循环取消与有界容量规则。
 - `ef-migration-validation.yml`：EF 迁移验收流水线（MySQL + SQL Server 容器环境），真实执行 `dotnet ef migrations list`、`dotnet ef database update`、`dotnet ef migrations script` 三项门禁命令。
 - `stability-gates.yml`：长期运行稳定性门禁流水线；包含构建+单元测试、配置合法性验证（含分表预建配置检查）、隔离器边界检查、回滚资产检查、健康探针端点注册检查、契约兼容性验证、蓝绿/滚动部署验证、演练记录门禁（强制阻断）、分表预建校验门禁、迁移脚本归档验证门禁共 10 个 job/门禁；其中 `deploy-validation` 依赖 `build-and-test`、`health-probe`、`rollback-asset`，并非全部 job 同时并行执行。
 
@@ -891,16 +907,16 @@
 
 ## 本次更新内容
 
-- 继续实施《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》，当前 PR 累计覆盖连接诊断/预热、游标分页、批量缓冲写入、死信隔离、分表治理与归档 dry-run 切片。
-- 新增归档任务聚合、仓储、EF 映射与 `ArchiveTasks` 迁移，支持 dry-run 状态记录、计划摘要、检查点与重试。
-- 新增 `POST /api/data-governance/archive-tasks`、`GET /api/data-governance/archive-tasks`、`POST /api/data-governance/archive-tasks/{id}/retry` 三个数据治理 API，并接入后台 `DataArchiveHostedService` / `DataArchiveHostedWorker` 自动处理待执行任务。
-- 新增 `DataArchivePlanner`、`DataArchiveExecutor`、`DataArchiveCheckpointStore`，当前针对 `WebRequestAuditLogHistory` 统计历史候选并生成检查点 JSON，不执行真实删除或迁移。
-- 同步新增 PR-A 至 PR-E 长期数据库底座检查台账，记录各切片现状核对、交付清单与下一 PR 入口。
+- 继续实施《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》，先核对当前已完成到 PR-E，再补齐 PR-F“数据库底座 CI 门禁增强”缺失交付。
+- 新增 `database-foundation-gates.yml`，补齐数据库底座专用 Release 构建 / 测试门禁与规则门禁作业。
+- 新增 `validate-database-foundation-rules.sh` 及四个薄包装脚本，集中拦截 UTC/时区后缀、README 文件树同步、敏感配置、影分身代码，以及枚举 Description、HostedService 异常捕获、后台循环取消、有界容量规则回归。
+- 新增 `数据库底座门禁说明.md` 与 `PR-长期数据库底座F-检查台账.md`，记录门禁组成、本地执行方式、当前完成度与下一 PR 入口。
+- 同步更新 README、更新记录与文件清单基线，保证新增文件职责说明与仓库实际结构一致。
 
 ## 后续可完善点
 
-- 下一切片可按《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》进入 PR-F，补齐数据库底座 CI 门禁增强与仓库规则自动校验。
-- 后续可在 PR-E 基础上增加真实冷库迁移执行器，但必须先接入危险动作隔离器、审计与回滚资产。
+- 下一切片可按《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》进入 PR-G，补齐数据库迁移治理、脚本归档与回滚资产。
+- 后续可将数据库底座门禁从当前增量扫描进一步升级为语义级校验，逐步清理历史遗留的敏感配置与结构性风险项。
 - 可在后续“检查结果 PR”中按目录拆分台账附件，形成可直接追踪到文件与行号的持续治理闭环。
 - 可将其它日志输入清洗路径（如 query/header 维度）逐步迁移至 `LineBreakNormalizer`，进一步压缩重复实现面并统一观测口径。
 - 可扩展归档 dry-run 的候选样本维度（如租户/路径聚类），为后续真实冷热分层提供更细的决策证据。

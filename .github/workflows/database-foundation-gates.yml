@@ -1,0 +1,70 @@
+name: database-foundation-gates
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/scripts/**"
+      - ".github/workflows/**"
+      - "README.md"
+      - "数据库底座门禁说明.md"
+      - "检查台账/**"
+      - "更新记录.md"
+      - "Zeye.Sorting.Hub.Application/**"
+      - "Zeye.Sorting.Hub.Contracts/**"
+      - "Zeye.Sorting.Hub.Domain/**"
+      - "Zeye.Sorting.Hub.Host/**"
+      - "Zeye.Sorting.Hub.Host.Tests/**"
+      - "Zeye.Sorting.Hub.Infrastructure/**"
+      - "Zeye.Sorting.Hub.SharedKernel/**"
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: 数据库底座构建与测试
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore Zeye.Sorting.Hub.sln
+
+      - name: Build
+        run: dotnet build Zeye.Sorting.Hub.sln --no-restore -c Release
+
+      - name: Test
+        run: dotnet test Zeye.Sorting.Hub.sln --no-build -c Release --logger "console;verbosity=normal"
+
+  foundation-rules:
+    name: 数据库底座规则门禁
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 禁止 UTC / 时区后缀
+        run: ./.github/scripts/validate-no-utc.sh
+
+      - name: README 文件树对账
+        run: ./.github/scripts/validate-readme-file-tree.sh
+
+      - name: 敏感配置拦截
+        run: ./.github/scripts/validate-sensitive-config.sh
+
+      - name: 影分身代码拦截
+        run: ./.github/scripts/validate-no-shadow-code.sh
+
+      - name: 枚举 / HostedService / 后台循环 / 有界容量校验
+        run: ./.github/scripts/validate-database-foundation-rules.sh --check advanced
