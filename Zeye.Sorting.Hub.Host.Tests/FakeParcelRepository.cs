@@ -43,6 +43,11 @@ internal sealed class FakeParcelRepository : IParcelRepository {
     public bool ShouldFailOnAddRange { get; set; }
 
     /// <summary>
+    /// 批量新增返回结果前执行的回调，用于模拟取消信号与仓储结果竞态。
+    /// </summary>
+    public Action? BeforeAddRangeResult { get; set; }
+
+    /// <summary>
     /// 批量新增调用次数。
     /// </summary>
     public int AddRangeCallCount { get; private set; }
@@ -278,6 +283,7 @@ internal sealed class FakeParcelRepository : IParcelRepository {
     public Task<RepositoryResult> AddRangeAsync(IReadOnlyCollection<Parcel> parcels, CancellationToken cancellationToken) {
         AddRangeCallCount++;
         LastAddRangeCount = parcels.Count;
+        BeforeAddRangeResult?.Invoke();
         if (ShouldFailOnAddRange) {
             return Task.FromResult(RepositoryResult.Fail("模拟批量写入失败：数据库不可用。"));
         }

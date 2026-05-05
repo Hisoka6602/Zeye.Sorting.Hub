@@ -4,6 +4,7 @@ using NLog;
 using System.Diagnostics;
 using Zeye.Sorting.Hub.Application.Services.WriteBuffers;
 using Zeye.Sorting.Hub.Domain.Repositories;
+using Zeye.Sorting.Hub.Domain.Repositories.Models.Results;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.WriteBuffering;
 
@@ -196,7 +197,17 @@ public sealed class ParcelBatchWriteFlushService {
         using var scope = _serviceScopeFactory.CreateScope();
         var parcelRepository = scope.ServiceProvider.GetRequiredService<IParcelRepository>();
         var parcels = batch.Select(static item => item.Parcel).ToArray();
-        var repositoryResult = await parcelRepository.AddRangeAsync(parcels, cancellationToken);
+        RepositoryResult repositoryResult;
+        try {
+            repositoryResult = await parcelRepository.AddRangeAsync(parcels, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            var cancellationMessage = "批量新增取消，失败批次已进入死信隔离。";
+            RecordFailedBatch(batch.Count, cancellationMessage);
+            MoveBatchToDeadLetter(batch, cancellationMessage);
+            return;
+        }
+
         if (repositoryResult.IsSuccess) {
             _lastSuccessfulFlushAtLocal = DateTime.Now;
             Interlocked.Increment(ref _successfulFlushCount);
@@ -204,14 +215,29 @@ public sealed class ParcelBatchWriteFlushService {
             return;
         }
 
+        var failureMessage = repositoryResult.ErrorMessage ?? "批量新增失败。";
+        RecordFailedBatch(batch.Count, failureMessage);
+        if (cancellationToken.IsCancellationRequested) {
+            MoveBatchToDeadLetter(batch, $"{failureMessage}；取消期间进入死信隔离。");
+            return;
+        }
+
+        HandleFailedBatch(batch, failureMessage);
+    }
+
+    /// <summary>
+    /// 记录失败批次指标与异常日志。
+    /// </summary>
+    /// <param name="batchCount">批次数量。</param>
+    /// <param name="errorMessage">失败消息。</param>
+    private void RecordFailedBatch(int batchCount, string errorMessage) {
         _lastFailedFlushAtLocal = DateTime.Now;
-        _lastFailureMessage = repositoryResult.ErrorMessage ?? "批量新增失败。";
+        _lastFailureMessage = errorMessage;
         Interlocked.Increment(ref _failedFlushCount);
         Logger.Error(
             "Parcel 批量缓冲写入失败。BatchCount={BatchCount}, ErrorMessage={ErrorMessage}",
-            batch.Count,
+            batchCount,
             _lastFailureMessage);
-        await HandleFailedBatchAsync(batch, _lastFailureMessage, cancellationToken);
     }
 
     /// <summary>
@@ -219,13 +245,9 @@ public sealed class ParcelBatchWriteFlushService {
     /// </summary>
     /// <param name="batch">失败批次。</param>
     /// <param name="errorMessage">失败消息。</param>
-    /// <param name="cancellationToken">取消令牌。</param>
-    private Task HandleFailedBatchAsync(
+    private void HandleFailedBatch(
         List<BufferedParcelWriteItem> batch,
-        string errorMessage,
-        CancellationToken cancellationToken) {
-        cancellationToken.ThrowIfCancellationRequested();
-
+        string errorMessage) {
         // 步骤 1：优先重试；超过最大重试次数后转死信，确保失败项可观测且不阻塞后续批次。
         foreach (var batchItem in batch) {
             var nextRetryCount = batchItem.RetryCount + 1;
@@ -255,7 +277,21 @@ public sealed class ParcelBatchWriteFlushService {
                 ErrorMessage: $"{errorMessage}；重试回写队列失败。",
                 LastRetryAtLocal: retryItem.LastRetryAtLocal));
         }
+    }
 
-        return Task.CompletedTask;
+    /// <summary>
+    /// 将批次整体写入死信存储。
+    /// </summary>
+    /// <param name="batch">失败批次。</param>
+    /// <param name="errorMessage">失败消息。</param>
+    private void MoveBatchToDeadLetter(List<BufferedParcelWriteItem> batch, string errorMessage) {
+        foreach (var batchItem in batch) {
+            _deadLetterWriteStore.Add(new DeadLetterWriteEntry(
+                Parcel: batchItem.Parcel,
+                FailedAtLocal: DateTime.Now,
+                RetryCount: batchItem.RetryCount,
+                ErrorMessage: errorMessage,
+                LastRetryAtLocal: batchItem.LastRetryAtLocal));
+        }
     }
 }

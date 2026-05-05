@@ -145,6 +145,61 @@ public sealed class ParcelBufferedWriteTests {
     }
 
     /// <summary>
+    /// 验证场景：批量落库返回失败且取消信号已触发时，已出队批次进入死信避免丢失。
+    /// </summary>
+    [Fact]
+    public async Task ParcelBatchWriteFlushService_WhenCanceledFailureReturned_ShouldMoveDequeuedBatchToDeadLetter() {
+        using var cancellationTokenSource = new CancellationTokenSource();
+        var options = CreateBufferedWriteOptions(maxRetryCount: 3, deadLetterCapacity: 10);
+        var writeChannel = new BoundedWriteChannel<BufferedParcelWriteItem>(options.ChannelCapacity);
+        var deadLetterStore = new DeadLetterWriteStore(options.DeadLetterCapacity);
+        var fakeRepository = new FakeParcelRepository {
+            ShouldFailOnAddRange = true,
+            BeforeAddRangeResult = cancellationTokenSource.Cancel
+        };
+        var serviceProvider = BuildRepositoryServiceProvider(fakeRepository);
+        var flushService = new ParcelBatchWriteFlushService(
+            writeChannel,
+            deadLetterStore,
+            serviceProvider.GetRequiredService<IServiceScopeFactory>(),
+            Microsoft.Extensions.Options.Options.Create(options));
+        writeChannel.TryEnqueue(new BufferedParcelWriteItem(
+            Parcel: CreateParcel(1351, LocalTimeTestConstraint.CreateLocalTime(2026, 4, 3, 10, 0, 0)),
+            EnqueuedAt: LocalTimeTestConstraint.CreateLocalTime(2026, 4, 3, 10, 0, 1),
+            RetryCount: 0,
+            LastErrorMessage: null,
+            LastRetryAtLocal: null));
+
+        var exception = await Record.ExceptionAsync(() => flushService.FlushOnceAsync(cancellationTokenSource.Token));
+
+        Assert.Null(exception);
+        Assert.Equal(0, writeChannel.Depth);
+        Assert.Equal(1, deadLetterStore.Count);
+        var deadLetter = Assert.Single(deadLetterStore.GetSnapshot());
+        Assert.Equal(1351, deadLetter.Parcel.Id);
+        Assert.Contains("取消期间进入死信隔离", deadLetter.ErrorMessage, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// 验证场景：有界写入通道达到容量后拒绝写入且深度不超过容量。
+    /// </summary>
+    [Fact]
+    public void BoundedWriteChannel_WhenCapacityReached_ShouldRejectAndKeepDepthBounded() {
+        var writeChannel = new BoundedWriteChannel<int>(capacity: 1);
+
+        var firstAccepted = writeChannel.TryEnqueue(1);
+        var secondAccepted = writeChannel.TryEnqueue(2);
+
+        Assert.True(firstAccepted);
+        Assert.False(secondAccepted);
+        Assert.Equal(1, writeChannel.Depth);
+        Assert.Equal(1, writeChannel.DroppedCount);
+        Assert.True(writeChannel.TryDequeue(out var item));
+        Assert.Equal(1, item);
+        Assert.Equal(0, writeChannel.Depth);
+    }
+
+    /// <summary>
     /// 验证场景：死信存在时健康检查返回 Degraded。
     /// </summary>
     [Fact]

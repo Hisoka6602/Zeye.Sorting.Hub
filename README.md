@@ -826,12 +826,11 @@
 
 ## 本次更新内容
 
-- 继续实施《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》，完成 PR-D“分表巡检、预建与索引检查”切片。
-- 新增分表物理表规划、运行期巡检、预建 dry-run 计划、关键索引巡检与容量风险快照服务。
-- 新增 `ShardingInspectionHostedService`、`ShardingPrebuildHostedService` 与 `ShardingGovernanceHealthCheck`，并接入 `/health/ready`。
-- 新增 `Persistence:Sharding:RuntimeInspection` 与 `Persistence:Sharding:Prebuild` 配置节，当前真实预建保持 dry-run 强制保护。
-- 新增 `ShardingInspectionTests.cs`，覆盖物理表规划、预建计划、缺索引、缺表与健康检查状态。
-- 同步新增 `检查台账/PR-长期数据库底座D-检查台账.md`，记录本次 PR-D 现状核对、交付清单与下一 PR 入口。
+- 继续实施《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》，当前 PR 累计覆盖连接诊断/预热、游标分页、批量缓冲写入、死信隔离与分表治理切片。
+- 新增 Parcel 游标分页查询、普通分页默认最近 24 小时窗口与页码上限保护。
+- 新增 Parcel 批量缓冲写入、有界通道、后台 Flush、失败重试、死信隔离、队列健康检查与管理端批量入队接口。
+- 新增数据库连接诊断/预热、分表物理表规划、运行期巡检、预建 dry-run 计划、关键索引巡检、容量风险快照与分表治理健康检查。
+- 同步新增 PR-A 至 PR-D 长期数据库底座检查台账，记录各切片现状核对、交付清单与下一 PR 入口。
 
 ## 后续可完善点
 

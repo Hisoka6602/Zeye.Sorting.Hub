@@ -29,7 +29,7 @@ public sealed class BoundedWriteChannel<TItem> {
     public BoundedWriteChannel(int capacity) {
         Capacity = Math.Max(1, capacity);
         _channel = Channel.CreateBounded<TItem>(new BoundedChannelOptions(Capacity) {
-            FullMode = BoundedChannelFullMode.DropWrite,
+            FullMode = BoundedChannelFullMode.Wait,
             SingleReader = true,
             SingleWriter = false
         });
@@ -56,11 +56,23 @@ public sealed class BoundedWriteChannel<TItem> {
     /// <param name="item">通道项。</param>
     /// <returns>写入成功返回 true。</returns>
     public bool TryEnqueue(TItem item) {
+        while (true) {
+            var currentDepth = Volatile.Read(ref _depth);
+            if (currentDepth >= Capacity) {
+                Interlocked.Increment(ref _droppedCount);
+                return false;
+            }
+
+            if (Interlocked.CompareExchange(ref _depth, currentDepth + 1, currentDepth) == currentDepth) {
+                break;
+            }
+        }
+
         if (_channel.Writer.TryWrite(item)) {
-            Interlocked.Increment(ref _depth);
             return true;
         }
 
+        Interlocked.Decrement(ref _depth);
         Interlocked.Increment(ref _droppedCount);
         return false;
     }
