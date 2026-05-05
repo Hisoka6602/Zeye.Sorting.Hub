@@ -30,6 +30,7 @@
 .gitignore
 README.md
 Zeye.Sorting.Hub.Analytics/Zeye.Sorting.Hub.Analytics.csproj
+Zeye.Sorting.Hub.Application/Mappers/Parcels/ParcelCreateRequestMapper.cs
 Zeye.Sorting.Hub.Application/Services/AuditLogs/GetWebRequestAuditLogByIdQueryService.cs
 Zeye.Sorting.Hub.Application/Services/AuditLogs/GetWebRequestAuditLogPagedQueryService.cs
 Zeye.Sorting.Hub.Application/Services/AuditLogs/WebRequestAuditLogContractMapper.cs
@@ -42,7 +43,6 @@ Zeye.Sorting.Hub.Application/Services/Parcels/GetParcelByIdQueryService.cs
 Zeye.Sorting.Hub.Application/Services/Parcels/GetParcelCursorPagedQueryService.cs
 Zeye.Sorting.Hub.Application/Services/Parcels/GetParcelPagedQueryService.cs
 Zeye.Sorting.Hub.Application/Services/Parcels/ParcelContractMapper.cs
-Zeye.Sorting.Hub.Application/Services/Parcels/ParcelCreateRequestMapper.cs
 Zeye.Sorting.Hub.Application/Services/Parcels/ParcelQueryRequestMapper.cs
 Zeye.Sorting.Hub.Application/Services/Parcels/ParcelResponseArgs.cs
 Zeye.Sorting.Hub.Application/Services/Parcels/UpdateParcelStatusCommandService.cs
@@ -161,6 +161,7 @@ Zeye.Sorting.Hub.Host.Tests/AuditReadOnlyApiTests.cs
 Zeye.Sorting.Hub.Host.Tests/AutoTuningProductionControlTests.cs
 Zeye.Sorting.Hub.Host.Tests/BatchSelectiveMissingShardingPhysicalTableProbe.cs
 Zeye.Sorting.Hub.Host.Tests/ConfigChangeHistoryStoreTests.cs
+Zeye.Sorting.Hub.Host.Tests/ConfigurableShardingPhysicalTableProbe.cs
 Zeye.Sorting.Hub.Host.Tests/CountingPlanProbe.cs
 Zeye.Sorting.Hub.Host.Tests/DatabaseConnectionDiagnosticsTests.cs
 Zeye.Sorting.Hub.Host.Tests/DomainEventArgsTests.cs
@@ -183,6 +184,7 @@ Zeye.Sorting.Hub.Host.Tests/ParcelQueryServicesTests.cs
 Zeye.Sorting.Hub.Host.Tests/ParcelReadOnlyApiTests.cs
 Zeye.Sorting.Hub.Host.Tests/ParcelRepositoryTests.cs
 Zeye.Sorting.Hub.Host.Tests/SelectiveMissingShardingPhysicalTableProbe.cs
+Zeye.Sorting.Hub.Host.Tests/ShardingInspectionTests.cs
 Zeye.Sorting.Hub.Host.Tests/SortingHubTestDbContextFactory.cs
 Zeye.Sorting.Hub.Host.Tests/SwaggerDocumentationTests.cs
 Zeye.Sorting.Hub.Host.Tests/TestDialect.cs
@@ -201,6 +203,7 @@ Zeye.Sorting.Hub.Host/HealthChecks/BufferedWriteQueueHealthCheck.cs
 Zeye.Sorting.Hub.Host/HealthChecks/DatabaseConnectionDetailedHealthCheck.cs
 Zeye.Sorting.Hub.Host/HealthChecks/DatabaseReadinessHealthCheck.cs
 Zeye.Sorting.Hub.Host/HealthChecks/HealthCheckResponseWriter.cs
+Zeye.Sorting.Hub.Host/HealthChecks/ShardingGovernanceHealthCheck.cs
 Zeye.Sorting.Hub.Host/HostedServices/AutoTuningLoggerObservability.cs
 Zeye.Sorting.Hub.Host/HostedServices/DatabaseAutoTuningHostedService.cs
 Zeye.Sorting.Hub.Host/HostedServices/DatabaseConnectionWarmupHostedService.cs
@@ -213,6 +216,8 @@ Zeye.Sorting.Hub.Host/HostedServices/PendingRollbackAction.cs
 Zeye.Sorting.Hub.Host/HostedServices/PerDayGovernanceGroup.cs
 Zeye.Sorting.Hub.Host/HostedServices/PolicyDecision.cs
 Zeye.Sorting.Hub.Host/HostedServices/ShardingGovernanceGuardException.cs
+Zeye.Sorting.Hub.Host/HostedServices/ShardingInspectionHostedService.cs
+Zeye.Sorting.Hub.Host/HostedServices/ShardingPrebuildHostedService.cs
 Zeye.Sorting.Hub.Host/HostedServices/TableCapacitySnapshot.cs
 Zeye.Sorting.Hub.Host/HostedServices/WebRequestAuditLogRetentionCandidates.cs
 Zeye.Sorting.Hub.Host/Middleware/CapturedBody.cs
@@ -305,6 +310,15 @@ Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding/ParcelShardingStrategyDecis
 Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding/ParcelShardingStrategyEvaluation.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding/ParcelShardingStrategyEvaluator.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding/ParcelShardingVolumeObservation.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding/ShardingCapacitySnapshotService.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding/ShardingIndexInspectionService.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding/ShardingInspectionReport.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding/ShardingPhysicalTablePlanBuilder.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding/ShardingPrebuildOptions.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding/ShardingPrebuildPlan.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding/ShardingRuntimeInspectionOptions.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding/ShardingTableInspectionService.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding/ShardingTablePrebuildService.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/SortingHubDbContext.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/WebRequestAuditLogIndexNames.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/WriteBuffering/BatchWriteMetricsSnapshot.cs
