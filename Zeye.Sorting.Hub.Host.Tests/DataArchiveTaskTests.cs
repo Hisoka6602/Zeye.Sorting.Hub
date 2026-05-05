@@ -138,7 +138,7 @@ public sealed class DataArchiveTaskTests {
                 options.SampleItemLimit = 3;
             });
         builder.Services.AddScoped<IArchiveTaskRepository, ArchiveTaskRepository>();
-        builder.Services.AddSingleton<DataArchivePlanner>();
+        builder.Services.AddScoped<DataArchivePlanner>();
         builder.Services.AddScoped<DataArchiveCheckpointStore>();
         builder.Services.AddScoped<DataArchiveExecutor>();
         builder.Services.AddScoped<DataArchiveHostedWorker>();
