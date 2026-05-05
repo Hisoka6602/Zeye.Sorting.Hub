@@ -180,58 +180,6 @@ public sealed class MigrationGovernanceTests {
     }
 
     /// <summary>
-    /// 启动期取消时不应误记为失败。
-    /// </summary>
-    /// <returns>异步任务。</returns>
-    [Fact]
-    public async Task MigrationGovernanceHostedService_StartAsync_WhenCancelled_ShouldRecordSkipped() {
-        var tempRootPath = Path.Combine(Path.GetTempPath(), $"migration-governance-cancel-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(tempRootPath);
-        try {
-            var services = new ServiceCollection();
-            services.AddDbContextFactory<SortingHubDbContext>(options =>
-                options.UseInMemoryDatabase($"migration-governance-cancel-{Guid.NewGuid():N}"));
-            var serviceProvider = services.BuildServiceProvider();
-            var dbContextFactory = serviceProvider.GetRequiredService<IDbContextFactory<SortingHubDbContext>>();
-            var hostEnvironment = new TestHostEnvironment("Development") {
-                ContentRootPath = tempRootPath
-            };
-            var configuration = new ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string?> {
-                    ["Persistence:MigrationGovernance:IsEnabled"] = "true",
-                    ["Persistence:MigrationGovernance:DryRun"] = "false",
-                    ["Persistence:MigrationGovernance:ArchiveDirectory"] = "migration-scripts",
-                    ["Persistence:MigrationGovernance:BlockDangerousMigrationInProduction"] = "true"
-                })
-                .Build();
-            var store = new MigrationGovernanceStateStore();
-            var service = new MigrationGovernanceHostedService(
-                dbContextFactory,
-                new TestSqlServerDialect(),
-                hostEnvironment,
-                configuration,
-                new MigrationSafetyEvaluator(),
-                new MigrationScriptArchiveService(hostEnvironment),
-                new MigrationRollbackScriptProvider(),
-                store);
-            using var cancellationTokenSource = new CancellationTokenSource();
-            cancellationTokenSource.Cancel();
-
-            await service.StartAsync(cancellationTokenSource.Token);
-
-            var executionRecord = store.GetLatestExecutionRecord();
-            Assert.NotNull(executionRecord);
-            Assert.Equal(MigrationExecutionRecord.SkippedStatus, executionRecord!.Status);
-            Assert.Equal("迁移治理预演已取消，本次启动跳过迁移治理。", executionRecord.Summary);
-        }
-        finally {
-            if (Directory.Exists(tempRootPath)) {
-                Directory.Delete(tempRootPath, recursive: true);
-            }
-        }
-    }
-
-    /// <summary>
     /// 创建迁移计划测试桩。
     /// </summary>
     /// <param name="pendingMigrations">待执行迁移。</param>

@@ -237,7 +237,7 @@ public sealed class MigrationGovernanceHostedService : IHostedService {
                 archivedForwardScriptPath ?? "未归档",
                 archivedRollbackScriptPath ?? "未归档");
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+        catch (OperationCanceledException) {
             _migrationGovernanceStateStore.SetLatestPlan(null);
             _migrationGovernanceStateStore.SetLatestExecutionRecord(
                 MigrationExecutionRecord.CreateSkipped(

@@ -20,7 +20,7 @@ public sealed partial class BaselineDataValidator {
     /// <summary>
     /// NLog 日志器。
     /// </summary>
-    private static readonly Logger NLogLogger = LogManager.GetCurrentClassLogger();
+    private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
 
     /// <summary>
     /// 归档任务类型参考数据目录名称。
@@ -201,7 +201,7 @@ public sealed partial class BaselineDataValidator {
                 }
             }
             catch (Exception ex) {
-                NLogLogger.Error(ex, "MySql 连接字符串解析失败。");
+                Logger.Error(ex, "MySql 连接字符串解析失败。");
                 errors.Add($"MySql 连接字符串格式非法：{ex.Message}");
             }
 
@@ -222,7 +222,7 @@ public sealed partial class BaselineDataValidator {
                 }
             }
             catch (Exception ex) {
-                NLogLogger.Error(ex, "SqlServer 连接字符串解析失败。");
+                Logger.Error(ex, "SqlServer 连接字符串解析失败。");
                 errors.Add($"SqlServer 连接字符串格式非法：{ex.Message}");
             }
 
