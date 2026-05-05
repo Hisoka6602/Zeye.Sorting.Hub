@@ -29,7 +29,8 @@
 │   ├── PR-C-检查台账.md（PR-C 批次检查台账：覆盖 Application + Contracts 层共 45 个文件的审查结论与问题清单）
 │   ├── PR-D-检查台账.md（PR-D 批次检查台账：覆盖 Infrastructure 层共 63 个文件的审查结论与问题清单）
 │   ├── PR-E-检查台账.md（PR-E 批次检查台账：覆盖 Host 层共 43 个文件的审查结论与问题清单）
-│   └── PR-F-检查台账.md（PR-F 批次检查台账：覆盖 SharedKernel + Host.Tests + 占位子域共 45 个文件的审查结论与问题清单）
+│   ├── PR-F-检查台账.md（PR-F 批次检查台账：覆盖 SharedKernel + Host.Tests + 占位子域共 45 个文件的审查结论与问题清单）
+│   └── PR-长期数据库底座A-检查台账.md（长期数据库底座 PR-A 台账：记录现状核对、数据库连接诊断切片交付与下一 PR 入口）
 ├── Zeye.Sorting.Hub.Analytics（分析与报表子域，占位工程）
 │   └── Zeye.Sorting.Hub.Analytics.csproj（Analytics 项目定义）
 ├── Zeye.Sorting.Hub.Application（应用层）
@@ -173,6 +174,7 @@
 │   │   ├── AutoTuningLoggerObservability.cs（自动调优观测默认日志实现）
 │   │   ├── DatabaseAutoTuningHostedService.cs（数据库自动调谐托管服务）
 │   │   ├── DatabaseInitializerHostedService.cs（数据库初始化与迁移托管服务：迁移前自动建库检查（隔离器+审计）并继续迁移链路）
+│   │   ├── DatabaseConnectionWarmupHostedService.cs（数据库连接预热托管服务：启动期按配置预热短生命周期连接）
 │   │   ├── DevelopmentBrowserLauncherHostedService.cs（Development 启动浏览器隔离器）
 │   │   ├── ShardingGovernanceGuardException.cs（分表治理守卫异常类型）
 │   │   ├── EvidenceContext.cs（自动调优证据上下文）
@@ -196,8 +198,9 @@
 │   │   ├── AuditReadOnlyApiOptions.cs（AuditReadOnlyApi 显式开关配置）
 │   │   └── ResourceThresholdsOptions.cs（运行时资源阈值告警配置）
 │   ├── HealthChecks（健康检查目录）
-│   │   ├── DatabaseReadinessHealthCheck.cs（数据库就绪探针：/health/ready）
-│   │   └── HealthCheckResponseWriter.cs（健康检查 JSON 响应序列化工具）
+│   │   ├── DatabaseConnectionDetailedHealthCheck.cs（数据库详细就绪探针：输出 provider、database、连续失败/成功次数等诊断数据）
+│   │   ├── DatabaseReadinessHealthCheck.cs（数据库基础就绪探针：保留兼容实现）
+│   │   └── HealthCheckResponseWriter.cs（健康检查 JSON 响应序列化工具，支持输出 Data 诊断数据）
 │   ├── Utilities（工具目录）
 │   │   └── LocalDateTimeParsing.cs（本地时间解析与 API 问题响应工厂共享工具）
 │   ├── Middleware（请求审计中间件目录）
@@ -239,6 +242,7 @@
 │   ├── ParcelAdminApiTests.cs（Parcel 管理端写接口测试：新增/更新状态/删除成功路径 + cleanup-expired 三态 + 参数非法校验）
 │   ├── AuditReadOnlyApiTests.cs（Web 请求审计日志只读 API 端点测试：分页、过滤、参数校验、详情全字段、写读联动）
 │   ├── ParcelReadOnlyApiTests.cs（Parcel 只读 API 端点测试：列表/详情/404/邻近参数异常）
+│   ├── DatabaseConnectionDiagnosticsTests.cs（数据库连接诊断测试：配置合法性、失败快照、健康检查阈值与 Data 输出）
 │   ├── ParcelQueryServicesTests.cs（Parcel 应用层查询服务测试：列表/详情/邻近查询映射与最小校验；多重过滤条件联合成功路径；ExceptionType 筛选覆盖）
 │   ├── ParcelRepositoryTests.cs（Parcel 仓储第一阶段能力测试：分页过滤、详情与邻近查询、写操作与过期清理；含阻断/dry-run/显式放开的危险动作治理回归）
 │   ├── SelectiveMissingShardingPhysicalTableProbe.cs（物理表探测测试桩：选择性缺失场景）
@@ -269,6 +273,12 @@
 │   │   │   ├── SlowQueryAutoTuningPipeline.cs（慢查询采集、TopN 聚合、阈值告警（含基础防抖）与闭环自治结构化建议编排管道；新增主表提取公共方法供 AutoTuning 主链路复用）
 │   │   │   ├── SlowQueryCommandInterceptor.cs（EF Core 慢查询采集拦截器）
 │   │   │   └── SlowQuerySample.cs（慢查询采样记录模型）
+│   │   ├── Diagnostics（数据库连接诊断目录）
+│   │   │   ├── DatabaseConnectionDiagnosticsOptions.cs（数据库连接诊断配置模型：预热开关、探测超时、失败/恢复阈值）
+│   │   │   ├── DatabaseConnectionHealthSnapshot.cs（数据库连接诊断快照：记录最近一次探测结果与连续成功/失败计数）
+│   │   │   ├── IDatabaseConnectionDiagnostics.cs（数据库连接诊断服务抽象）
+│   │   │   ├── DatabaseConnectionDiagnosticsService.cs（数据库连接诊断服务：执行短生命周期探测并缓存快照）
+│   │   │   └── DatabaseConnectionWarmupService.cs（数据库连接预热服务：启动期按配置预热多个连接）
 │   │   ├── Sharding（分表策略与治理决策目录）
 │   │   │   ├── ParcelShardingStrategyEvaluator.cs（Parcel 分表策略评估器：配置解析、结构化校验、容量观测输入收敛、阈值决策、finer-granularity 扩展规划与统一决策快照）
 │   │   │   └── Enums（分表策略枚举目录）
@@ -361,6 +371,7 @@
   - `PR-D-检查台账.md`：PR-D 批次检查台账，覆盖 `Zeye.Sorting.Hub.Infrastructure/` 共 63 个文件的审查结论、问题清单（0 P0 / 1 P1 / 11 P2）与修复 PR 规划（PR-FIX-D1～D2）。
   - `PR-E-检查台账.md`：PR-E 批次检查台账，覆盖 `Zeye.Sorting.Hub.Host/` 共 43 个文件的审查结论、问题清单（0 P0 / 3 P1 / 13 P2）与修复 PR 规划（PR-FIX-E1～E4）。
   - `PR-F-检查台账.md`：PR-F 批次检查台账（最终批次），覆盖 `Zeye.Sorting.Hub.SharedKernel/`、`Zeye.Sorting.Hub.Host.Tests/` 及占位子域共 45 个文件的审查结论、问题清单（0 P0 / 0 P1 / 12 P2）与修复 PR 规划（PR-FIX-F1～F2）；同时提供全量 287 文件 100% 覆盖的总对账结果。
+  - `PR-长期数据库底座A-检查台账.md`：长期数据库底座 PR-A 实施台账；记录多 PR 路线图现状核对、数据库连接诊断切片交付清单、验证结果与下一 PR 入口。
 
 ### `.github/`：Copilot 仓库级指令目录
 - `DDD分层接口与实现放置规范.md`：DDD 分层接口定义与实现放置规范文档；明确依赖方向（Host→Infrastructure→Application→Domain）、接口定义归属规则（领域能力/应用编排/基础设施内部三类）、实现类放置约束、目录结构建议与禁止事项清单，供 Copilot 与开发人员统一执行。
@@ -557,8 +568,9 @@
 - `Options/BrowserAutoOpenOptions.cs`：Development 浏览器自动打开配置模型。
 - `Options/AuditReadOnlyApiOptions.cs`：审计只读 API 开关配置模型（`AuditReadOnlyApi:Enabled`）。
 - `Options/ResourceThresholdsOptions.cs`：运行时资源阈值告警配置模型（`ResourceThresholds:MaxConnectionPoolSize`、`MemoryWarningThresholdMB` 等）。
-- `HealthChecks/DatabaseReadinessHealthCheck.cs`：数据库就绪健康检查探针，挂载于 `/health/ready`，探测数据库连接可用性。
-- `HealthChecks/HealthCheckResponseWriter.cs`：健康检查 JSON 响应序列化工具，输出结构化 JSON 包含所有检查项状态。
+- `HealthChecks/DatabaseConnectionDetailedHealthCheck.cs`：数据库详细健康检查探针，当前挂载于 `/health/ready`，输出 provider、database、连续失败/成功次数与恢复状态。
+- `HealthChecks/DatabaseReadinessHealthCheck.cs`：数据库基础就绪健康检查探针，保留原始直接连通性探测实现。
+- `HealthChecks/HealthCheckResponseWriter.cs`：健康检查 JSON 响应序列化工具，输出结构化 JSON，并支持附加 Data 诊断数据。
 - `Utilities/LocalDateTimeParsing.cs`：本地时间解析与 API 问题响应工厂共享工具。
 - `Middleware/WebRequestAuditLogOptions.cs`：Web 请求审计中间件配置模型。
 - `Middleware/WebRequestAuditLogMiddleware.cs`：Web 请求审计中间件实现（主请求零阻塞：仅负责采集与入队，不等待写库；补齐 Request/Response Body 采集与可回放 Curl 拼装）。
@@ -570,7 +582,7 @@
 - `Middleware/ResponseCaptureResult.cs`：响应正文采集结果值类型。
 - `Zeye.Sorting.Hub.Host.csproj`：Host 项目定义。
 - `nlog.config`：NLog 日志配置。
-- `appsettings.json`：默认运行配置（含 `WebRequestAuditLog.IncludeRequestBody/IncludeResponseBody`、`AuditReadOnlyApi:Enabled` 显式开关、`ResourceThresholds:MaxConnectionPoolSize/MemoryWarningThresholdMB` 资源阈值节、`Persistence:AutoTuning:MonthlyReportDay` 月报日期配置）。
+- `appsettings.json`：默认运行配置（含 `WebRequestAuditLog.IncludeRequestBody/IncludeResponseBody`、`AuditReadOnlyApi:Enabled` 显式开关、`ResourceThresholds:MaxConnectionPoolSize/MemoryWarningThresholdMB` 资源阈值节、`Persistence:Diagnostics` 数据库连接诊断配置、`Persistence:AutoTuning:MonthlyReportDay` 月报日期配置）。
 - `appsettings.Development.json`：开发环境配置覆盖文件。
 
 #### `Zeye.Sorting.Hub.Host/Swagger/`：Swagger 扩展目录
@@ -581,6 +593,7 @@
 - `DatabaseAutoTuningHostedService.cs`：数据库自动调谐托管服务主流程（已移除 `ILogger<>` 注入，改为静态 `NLog.Logger`）。
 - `PendingRollbackAction.cs` / `TableCapacitySnapshot.cs` / `EvidenceContext.cs` / `PolicyDecision.cs`：自动调谐内部模型与决策类型。
 - `DatabaseInitializerHostedService.cs`：数据库初始化与迁移托管服务主流程（迁移前执行自动建库检查，复用隔离器输出治理审计并衔接 FailFast/Degraded 失败策略）。
+- `DatabaseConnectionWarmupHostedService.cs`：数据库连接预热托管服务，启动期调用基础设施诊断服务完成非阻塞预热并兜底异常日志。
 - `ShardingGovernanceGuardException.cs`：分表治理守卫异常类型。
 - `DevelopmentBrowserLauncherHostedService.cs`：Development 浏览器启动隔离器。
 
@@ -591,7 +604,7 @@
 - `Zeye.Sorting.Hub.Infrastructure.csproj`：Infrastructure 项目定义。
 
 #### `Zeye.Sorting.Hub.Infrastructure/DependencyInjection/`：依赖注入扩展目录
-- `PersistenceServiceCollectionExtensions.cs`：持久化服务注册扩展（数据库提供器选择、连接字符串校验、DbContext 注册、Parcel 主表保持按 `CreatedTime` 分表；分表时间粒度由 Time/Volume/Hybrid 统一策略决策驱动，Parcel 关联值对象规则继续复用声明式清单与覆盖守卫）。
+- `PersistenceServiceCollectionExtensions.cs`：持久化服务注册扩展（数据库提供器选择、连接字符串校验、DbContext 注册、数据库连接诊断/预热注册、Parcel 主表保持按 `CreatedTime` 分表；分表时间粒度由 Time/Volume/Hybrid 统一策略决策驱动，Parcel 关联值对象规则继续复用声明式清单与覆盖守卫）。
 
 #### `Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/`：EF Core 实体映射配置目录
 - `BagInfoEntityTypeConfiguration.cs`：BagInfo 映射配置。
@@ -605,6 +618,13 @@
 - `ConfiguredProviderNames.cs`：配置层 provider key 常量（`MySql` / `SqlServer`），用于 `Persistence:Provider`、`ConnectionStrings` key 与设计时 CLI `--provider` 参数值，避免配置语义与 EF providerName 语义混用。
 - `ParcelIndexNames.cs`：Parcel 关键索引名称常量（供分表治理审计与测试复用，避免多处硬编码漂移；包含 BagCode/ActualChuteId/TargetChuteId 三条 ScannedTime 复合索引及 MySQL FULLTEXT 索引名）。
 - `WebRequestAuditLogIndexNames.cs`：Web 请求审计日志关键索引名称常量（供关键索引审计与映射复用）。
+
+##### `Zeye.Sorting.Hub.Infrastructure/Persistence/Diagnostics/`：数据库连接诊断目录
+- `DatabaseConnectionDiagnosticsOptions.cs`：数据库连接诊断配置模型，约束预热开关、连接数、探测超时、失败阈值与恢复阈值。
+- `DatabaseConnectionHealthSnapshot.cs`：数据库连接诊断快照，记录最近一次探测时间、耗时、成功/失败状态与连续计数。
+- `IDatabaseConnectionDiagnostics.cs`：数据库连接诊断抽象，提供主动探测与最近一次快照读取能力。
+- `DatabaseConnectionDiagnosticsService.cs`：数据库连接诊断服务，使用 `IDbContextFactory<SortingHubDbContext>` 执行短生命周期探测并缓存最近一次快照。
+- `DatabaseConnectionWarmupService.cs`：数据库连接预热服务，按配置在启动期并发预热多个短生命周期连接。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/DatabaseDialects/`：数据库方言抽象与实现目录
 - `DatabaseProviderOperations.cs`：数据库提供器操作类（异常错误码提取 `TryGetProviderErrorNumber`、WHERE 列归一化 `NormalizeWhereColumns`、稳定索引名构造 `BuildIndexName`）。
@@ -686,6 +706,7 @@
 - `ObservabilityEntry.cs`：自动调优观测记录模型，承载名称/值/标签快照。
 - `ParcelAdminApiTests.cs`：Parcel 管理端写接口测试，覆盖新增成功路径、创建请求 `id<=0` 返回 400、重复 Id 返回 409、UTC 时间拒绝、更新状态成功路径 + 不存在 404 + 非法操作码 400、删除成功路径 + 不存在 404、cleanup-expired blocked/dry-run/execute 三态 + UTC 时间与非法参数拒绝。
 - `ParcelReadOnlyApiTests.cs`：Parcel 只读 API 端点测试，覆盖列表查询、详情查询、详情不存在返回 404、`/api/parcels/adjacent` 按 `id` 查询的 400/404/稳定排序回归。
+- `DatabaseConnectionDiagnosticsTests.cs`：数据库连接诊断回归测试，覆盖默认配置、非法配置、失败快照、失败阈值、本地时间语义与健康检查 Data 输出。
 - `AuditReadOnlyApiTests.cs`：Web 请求审计日志只读 API 端点测试，覆盖默认分页、过滤组合、非法分页 400、非法时间格式 400、详情 200/404 全字段断言、中间件写读联动。
 - `SortingHubTestDbContextFactory.cs`：Host.Tests 通用 InMemory `DbContextFactory`，供查询服务测试与仓储测试复用。
 - `WebRequestAuditLogRepositoryTests.cs`：Web 请求审计日志仓储测试，覆盖 DI 解析、冷热一对一落库与最小写入服务入口。
@@ -709,6 +730,11 @@
 
 ## 本次更新内容
 
+- 先核对《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》与仓库现状，确认当前优先补全切片为 PR-A“数据库连接诊断与就绪状态增强”。
+- 新增 `Zeye.Sorting.Hub.Infrastructure/Persistence/Diagnostics/` 目录，补齐数据库连接诊断配置、健康快照、诊断服务与启动预热服务。
+- 新增 `DatabaseConnectionDetailedHealthCheck.cs` 与 `DatabaseConnectionWarmupHostedService.cs`，并将 `/health/ready` 升级为可输出详细数据库诊断数据的就绪探针。
+- 新增 `DatabaseConnectionDiagnosticsTests.cs`，覆盖默认配置、非法配置、失败快照、阈值状态与健康检查 Data 输出。
+- 同步新增 `检查台账/PR-长期数据库底座A-检查台账.md`，记录本次 PR-A 现状核对、交付清单与下一 PR 入口。
 - 新增 `逐文件检查方案.md`，提供逐文件质量检查流程：检查项模板、问题分级、证据要求、分批（多 PR）执行策略与防遗漏对账机制。
 - 同步更新 README 根目录文件职责说明，补充新方案文档的用途与边界。
 - 修复审查项：全局异常处理日志器改为注册期单例复用，避免异常回调热路径重复获取 logger。
@@ -722,6 +748,7 @@
 
 ## 后续可完善点
 
+- 下一切片可按《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》进入 PR-B，补齐查询保护与游标分页。
 - 可在后续“检查结果 PR”中按目录拆分台账附件，形成可直接追踪到文件与行号的持续治理闭环。
 - 可将其它日志输入清洗路径（如 query/header 维度）逐步迁移至 `LineBreakNormalizer`，进一步压缩重复实现面并统一观测口径。
 - 可为日志清理服务补充“扫描目录无权限/文件被占用”场景测试，进一步验证失败计数与日志观测一致性。

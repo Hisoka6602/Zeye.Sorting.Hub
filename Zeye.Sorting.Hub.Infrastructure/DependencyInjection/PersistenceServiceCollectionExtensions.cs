@@ -195,35 +195,62 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// <param name="configuration">配置根。</param>
         private static void RegisterDatabaseConnectionDiagnostics(IServiceCollection services, IConfiguration configuration) {
             services.AddOptions<DatabaseConnectionDiagnosticsOptions>()
-                .Configure(options => {
-                    if (bool.TryParse(configuration[$"{DatabaseConnectionDiagnosticsOptions.SectionPath}:IsWarmupEnabled"], out var isWarmupEnabled)) {
-                        options.IsWarmupEnabled = isWarmupEnabled;
-                    }
-
-                    if (int.TryParse(configuration[$"{DatabaseConnectionDiagnosticsOptions.SectionPath}:WarmupConnectionCount"], out var warmupConnectionCount)) {
-                        options.WarmupConnectionCount = warmupConnectionCount;
-                    }
-
-                    if (int.TryParse(configuration[$"{DatabaseConnectionDiagnosticsOptions.SectionPath}:ProbeTimeoutMilliseconds"], out var probeTimeoutMilliseconds)) {
-                        options.ProbeTimeoutMilliseconds = probeTimeoutMilliseconds;
-                    }
-
-                    if (int.TryParse(configuration[$"{DatabaseConnectionDiagnosticsOptions.SectionPath}:FailureThreshold"], out var failureThreshold)) {
-                        options.FailureThreshold = failureThreshold;
-                    }
-
-                    if (int.TryParse(configuration[$"{DatabaseConnectionDiagnosticsOptions.SectionPath}:RecoveryThreshold"], out var recoveryThreshold)) {
-                        options.RecoveryThreshold = recoveryThreshold;
-                    }
-                })
-                .Validate(static options => options.WarmupConnectionCount is >= 1 and <= 64, "WarmupConnectionCount 必须在 1~64 之间")
-                .Validate(static options => options.ProbeTimeoutMilliseconds is >= 100 and <= 60000, "ProbeTimeoutMilliseconds 必须在 100~60000 之间")
-                .Validate(static options => options.FailureThreshold is >= 1 and <= 20, "FailureThreshold 必须在 1~20 之间")
-                .Validate(static options => options.RecoveryThreshold is >= 1 and <= 20, "RecoveryThreshold 必须在 1~20 之间")
+                .Configure(options => ApplyDatabaseConnectionDiagnosticsOptions(options, configuration))
+                .Validate(
+                    static options => options.WarmupConnectionCount is >= DatabaseConnectionDiagnosticsOptions.MinWarmupConnectionCount and <= DatabaseConnectionDiagnosticsOptions.MaxWarmupConnectionCount,
+                    $"WarmupConnectionCount 必须在 {DatabaseConnectionDiagnosticsOptions.MinWarmupConnectionCount}~{DatabaseConnectionDiagnosticsOptions.MaxWarmupConnectionCount} 之间")
+                .Validate(
+                    static options => options.ProbeTimeoutMilliseconds is >= DatabaseConnectionDiagnosticsOptions.MinProbeTimeoutMilliseconds and <= DatabaseConnectionDiagnosticsOptions.MaxProbeTimeoutMilliseconds,
+                    $"ProbeTimeoutMilliseconds 必须在 {DatabaseConnectionDiagnosticsOptions.MinProbeTimeoutMilliseconds}~{DatabaseConnectionDiagnosticsOptions.MaxProbeTimeoutMilliseconds} 之间")
+                .Validate(
+                    static options => options.FailureThreshold is >= DatabaseConnectionDiagnosticsOptions.MinFailureThreshold and <= DatabaseConnectionDiagnosticsOptions.MaxFailureThreshold,
+                    $"FailureThreshold 必须在 {DatabaseConnectionDiagnosticsOptions.MinFailureThreshold}~{DatabaseConnectionDiagnosticsOptions.MaxFailureThreshold} 之间")
+                .Validate(
+                    static options => options.RecoveryThreshold is >= DatabaseConnectionDiagnosticsOptions.MinRecoveryThreshold and <= DatabaseConnectionDiagnosticsOptions.MaxRecoveryThreshold,
+                    $"RecoveryThreshold 必须在 {DatabaseConnectionDiagnosticsOptions.MinRecoveryThreshold}~{DatabaseConnectionDiagnosticsOptions.MaxRecoveryThreshold} 之间")
                 .ValidateOnStart();
 
             services.TryAddSingleton<IDatabaseConnectionDiagnostics, DatabaseConnectionDiagnosticsService>();
             services.TryAddSingleton<DatabaseConnectionWarmupService>();
+        }
+
+        /// <summary>
+        /// 应用数据库连接诊断配置。
+        /// </summary>
+        /// <param name="options">诊断配置实例。</param>
+        /// <param name="configuration">配置根。</param>
+        private static void ApplyDatabaseConnectionDiagnosticsOptions(DatabaseConnectionDiagnosticsOptions options, IConfiguration configuration) {
+            options.IsWarmupEnabled = ReadBooleanSetting(configuration, $"{DatabaseConnectionDiagnosticsOptions.SectionPath}:IsWarmupEnabled", options.IsWarmupEnabled);
+            options.WarmupConnectionCount = ReadIntSetting(configuration, $"{DatabaseConnectionDiagnosticsOptions.SectionPath}:WarmupConnectionCount", options.WarmupConnectionCount);
+            options.ProbeTimeoutMilliseconds = ReadIntSetting(configuration, $"{DatabaseConnectionDiagnosticsOptions.SectionPath}:ProbeTimeoutMilliseconds", options.ProbeTimeoutMilliseconds);
+            options.FailureThreshold = ReadIntSetting(configuration, $"{DatabaseConnectionDiagnosticsOptions.SectionPath}:FailureThreshold", options.FailureThreshold);
+            options.RecoveryThreshold = ReadIntSetting(configuration, $"{DatabaseConnectionDiagnosticsOptions.SectionPath}:RecoveryThreshold", options.RecoveryThreshold);
+        }
+
+        /// <summary>
+        /// 读取布尔配置，无法解析时保留默认值。
+        /// </summary>
+        /// <param name="configuration">配置根。</param>
+        /// <param name="key">配置键。</param>
+        /// <param name="fallbackValue">回退值。</param>
+        /// <returns>布尔配置值。</returns>
+        private static bool ReadBooleanSetting(IConfiguration configuration, string key, bool fallbackValue) {
+            return bool.TryParse(configuration[key], out var parsedValue)
+                ? parsedValue
+                : fallbackValue;
+        }
+
+        /// <summary>
+        /// 读取整数配置，无法解析时保留默认值。
+        /// </summary>
+        /// <param name="configuration">配置根。</param>
+        /// <param name="key">配置键。</param>
+        /// <param name="fallbackValue">回退值。</param>
+        /// <returns>整数配置值。</returns>
+        private static int ReadIntSetting(IConfiguration configuration, string key, int fallbackValue) {
+            return int.TryParse(configuration[key], out var parsedValue)
+                ? parsedValue
+                : fallbackValue;
         }
 
         /// <summary>

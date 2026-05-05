@@ -10,6 +10,46 @@ public sealed class DatabaseConnectionDiagnosticsOptions {
     public const string SectionPath = "Persistence:Diagnostics";
 
     /// <summary>
+    /// 预热连接数最小值。
+    /// </summary>
+    public const int MinWarmupConnectionCount = 1;
+
+    /// <summary>
+    /// 预热连接数最大值。
+    /// </summary>
+    public const int MaxWarmupConnectionCount = 64;
+
+    /// <summary>
+    /// 探测超时最小值（毫秒）。
+    /// </summary>
+    public const int MinProbeTimeoutMilliseconds = 100;
+
+    /// <summary>
+    /// 探测超时最大值（毫秒）。
+    /// </summary>
+    public const int MaxProbeTimeoutMilliseconds = 60000;
+
+    /// <summary>
+    /// 失败阈值最小值。
+    /// </summary>
+    public const int MinFailureThreshold = 1;
+
+    /// <summary>
+    /// 失败阈值最大值。
+    /// </summary>
+    public const int MaxFailureThreshold = 20;
+
+    /// <summary>
+    /// 恢复阈值最小值。
+    /// </summary>
+    public const int MinRecoveryThreshold = 1;
+
+    /// <summary>
+    /// 恢复阈值最大值。
+    /// </summary>
+    public const int MaxRecoveryThreshold = 20;
+
+    /// <summary>
     /// 是否启用启动期连接预热。
     /// 可填写范围：true / false。
     /// </summary>
