@@ -1,4 +1,5 @@
 using NLog;
+using Zeye.Sorting.Hub.Application.Mappers.Parcels;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.Admin;
 using Zeye.Sorting.Hub.Domain.Repositories;

@@ -3,7 +3,7 @@ using Zeye.Sorting.Hub.Contracts.Models.Parcels.Admin;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Domain.Enums;
 
-namespace Zeye.Sorting.Hub.Application.Services.Parcels;
+namespace Zeye.Sorting.Hub.Application.Mappers.Parcels;
 
 /// <summary>
 /// Parcel 新增请求映射器。

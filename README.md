@@ -51,12 +51,13 @@
 │   │       ├── GetParcelPagedQueryService.cs（Parcel 分页查询应用服务）
 │   │       ├── GetParcelCursorPagedQueryService.cs（Parcel 游标分页查询应用服务）
 │   │       ├── ParcelContractMapper.cs（Parcel 领域模型到 Contracts 模型映射器）
-│   │       ├── ParcelCreateRequestMapper.cs（Parcel 新增请求映射器：统一同步新增与缓冲写入的聚合构建）
 │   │       ├── ParcelQueryRequestMapper.cs（Parcel 查询请求映射器：统一默认时间窗口与过滤模型构建）
 │   │       └── UpdateParcelStatusCommandService.cs（管理端更新包裹状态应用服务（仅支持领域允许的状态转换））
 │   ├── Utilities（应用层内部共享工具目录）
 │   │   ├── EnumGuard.cs（枚举值合法性校验工具：统一封装 Enum.IsDefined + Warn 日志 + 异常抛出）
 │   │   └── Guard.cs（基础参数边界守卫工具：ThrowIfZeroOrNegative / ThrowIfNegative，消除各服务重复检查代码）
+│   ├── Mappers/Parcels（应用层 Parcel 映射目录）
+│   │   └── ParcelCreateRequestMapper.cs（Parcel 新增请求映射器：统一同步新增与缓冲写入的聚合构建）
 │   ├── Services/WriteBuffers（批量缓冲写入应用抽象目录）
 │   │   ├── BufferedWriteOptions.cs（批量缓冲写入配置模型）
 │   │   ├── BufferedWriteResult.cs（批量缓冲写入结果模型）
@@ -438,10 +439,12 @@
 - `ParcelContractMapper.cs`：Parcel 领域模型/读模型到 Contracts 模型的统一映射器，避免 Host 层重复映射。
 - `ParcelQueryRequestMapper.cs`：Parcel 查询请求映射器，统一普通分页与游标分页的过滤条件构建和默认最近 24 小时时间窗口。
 - `CreateParcelCommandService.cs`：管理端新增包裹应用服务（复用 `ParcelCreateRequestMapper` 构建聚合、仓储 AddAsync、合同映射）。
-- `ParcelCreateRequestMapper.cs`：Parcel 新增请求映射器，统一同步新增与批量缓冲写入的聚合构建与枚举校验。
 - `UpdateParcelStatusCommandService.cs`：管理端更新包裹状态应用服务（仅支持 MarkCompleted/MarkSortingException/UpdateRequestStatus 三种领域方法，不允许任意字段修改）。
 - `DeleteParcelCommandService.cs`：管理端删除单个包裹应用服务（先加载聚合根，不存在返回 false，再调用 RemoveAsync）。
 - `CleanupExpiredParcelsCommandService.cs`：过期包裹清理应用服务（治理型，调用仓储 RemoveExpiredAsync，不绕过隔离器，映射 DangerousBatchActionResult 为外部合同响应）。
+
+#### `Zeye.Sorting.Hub.Application/Mappers/Parcels/`：应用层 Parcel 映射目录
+- `ParcelCreateRequestMapper.cs`：Parcel 新增请求映射器，统一同步新增与批量缓冲写入的聚合构建与枚举校验。
 
 #### `Zeye.Sorting.Hub.Application/Services/WriteBuffers/`：批量缓冲写入应用抽象目录
 - `BufferedWriteOptions.cs`：批量缓冲写入配置模型，定义开关、容量、批次、重试与死信容量范围。

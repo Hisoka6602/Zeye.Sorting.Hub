@@ -22,7 +22,7 @@
 ## 二、本次新增与修改文件
 
 ### 新增文件
-- `Zeye.Sorting.Hub.Application/Services/Parcels/ParcelCreateRequestMapper.cs`
+- `Zeye.Sorting.Hub.Application/Mappers/Parcels/ParcelCreateRequestMapper.cs`
 - `Zeye.Sorting.Hub.Application/Services/WriteBuffers/BufferedWriteOptions.cs`
 - `Zeye.Sorting.Hub.Application/Services/WriteBuffers/BufferedWriteResult.cs`
 - `Zeye.Sorting.Hub.Application/Services/WriteBuffers/IBufferedWriteService.cs`

@@ -1,9 +1,11 @@
 using Microsoft.AspNetCore.Mvc;
 using NLog;
+using Zeye.Sorting.Hub.Application.Mappers.Parcels;
 using Zeye.Sorting.Hub.Application.Services.Parcels;
 using Zeye.Sorting.Hub.Application.Services.WriteBuffers;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.Admin;
+using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Host.Utilities;
 
 namespace Zeye.Sorting.Hub.Host.Routing;
@@ -148,7 +150,7 @@ public static class ParcelAdminApiRouteExtensions {
 
         try {
             // 步骤 1：逐条解析本地时间并复用应用层映射器构建聚合，保持同步新增与缓冲写入语义一致。
-            var parcels = new global::Zeye.Sorting.Hub.Domain.Aggregates.Parcels.Parcel[request.Parcels.Length];
+            var parcels = new Parcel[request.Parcels.Length];
             for (var index = 0; index < request.Parcels.Length; index++) {
                 var parcelRequest = request.Parcels[index];
                 if (parcelRequest.Id <= 0) {

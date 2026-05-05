@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using NLog;
+using System.Diagnostics;
 using Zeye.Sorting.Hub.Application.Services.WriteBuffers;
 using Zeye.Sorting.Hub.Domain.Repositories;
 
@@ -160,13 +161,15 @@ public sealed class ParcelBatchWriteFlushService {
     /// <param name="batch">当前批次。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     private async Task FillBatchAsync(List<BufferedParcelWriteItem> batch, CancellationToken cancellationToken) {
-        var flushDeadlineLocal = DateTime.Now.AddMilliseconds(_options.FlushIntervalMilliseconds);
+        var batchCollectStartTimestamp = Stopwatch.GetTimestamp();
+        var flushWindow = TimeSpan.FromMilliseconds(_options.FlushIntervalMilliseconds);
         while (batch.Count < _options.BatchSize) {
-            while (batch.Count < _options.BatchSize && _writeChannel.TryDequeue(out var bufferedItem)) {
+            if (_writeChannel.TryDequeue(out var bufferedItem)) {
                 batch.Add(bufferedItem);
+                continue;
             }
 
-            var remainingTime = flushDeadlineLocal - DateTime.Now;
+            var remainingTime = flushWindow - Stopwatch.GetElapsedTime(batchCollectStartTimestamp);
             if (remainingTime <= TimeSpan.Zero) {
                 break;
             }

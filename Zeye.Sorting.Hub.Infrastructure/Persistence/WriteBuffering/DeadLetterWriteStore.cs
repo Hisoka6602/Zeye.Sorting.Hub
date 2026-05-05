@@ -60,14 +60,20 @@ public sealed class DeadLetterWriteStore {
     /// </summary>
     /// <param name="entry">死信记录。</param>
     public void Add(DeadLetterWriteEntry entry) {
+        var shouldLogDropped = false;
+        long droppedCount = 0;
         lock (_syncRoot) {
             if (_entries.Count >= Capacity) {
                 _entries.Dequeue();
-                var droppedCount = Interlocked.Increment(ref _droppedCount);
-                Logger.Warn("Parcel 死信存储已满，覆盖最旧记录。DroppedCount={DroppedCount}", droppedCount);
+                droppedCount = Interlocked.Increment(ref _droppedCount);
+                shouldLogDropped = true;
             }
 
             _entries.Enqueue(entry);
+        }
+
+        if (shouldLogDropped) {
+            Logger.Warn("Parcel 死信存储已满，覆盖最旧记录。DroppedCount={DroppedCount}", droppedCount);
         }
     }
 
