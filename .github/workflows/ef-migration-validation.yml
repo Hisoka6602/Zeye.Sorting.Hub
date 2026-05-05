@@ -120,6 +120,7 @@ jobs:
             --project Zeye.Sorting.Hub.Infrastructure \
             --startup-project Zeye.Sorting.Hub.Infrastructure \
             --context SortingHubDbContext \
+            --connection "$SQLSERVER_CONNECTION" \
             -- --provider SqlServer
           dotnet ef migrations script \
             --project Zeye.Sorting.Hub.Infrastructure \
