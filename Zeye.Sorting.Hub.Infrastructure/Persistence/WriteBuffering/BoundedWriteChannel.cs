@@ -80,7 +80,8 @@ public sealed class BoundedWriteChannel<TItem> {
     /// <param name="item">读取到的通道项。</param>
     /// <returns>读取成功返回 true。</returns>
     public bool TryDequeue(out TItem item) {
-        if (_channel.Reader.TryRead(out item)) {
+        if (_channel.Reader.TryRead(out var readItem)) {
+            item = readItem;
             Interlocked.Decrement(ref _depth);
             return true;
         }
