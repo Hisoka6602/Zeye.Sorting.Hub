@@ -60,7 +60,7 @@ public sealed class BaselineDataHealthCheck : IHealthCheck {
             return data;
         }
 
-        data["validatedAtLocal"] = result.ValidatedAtLocal.ToString("yyyy-MM-dd HH:mm:ss");
+        data["validatedAtLocal"] = result.ValidatedAtLocal.ToString(HealthCheckResponseWriter.LocalDateTimeFormat);
         data["failureMode"] = result.FailureMode.ToString();
         data["isValid"] = result.IsValid;
         data["errorCount"] = result.Errors.Count;

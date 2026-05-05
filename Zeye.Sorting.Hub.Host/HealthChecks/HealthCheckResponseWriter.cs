@@ -8,6 +8,11 @@ namespace Zeye.Sorting.Hub.Host.HealthChecks;
 /// </summary>
 internal static class HealthCheckResponseWriter {
     /// <summary>
+    /// 健康检查统一本地时间格式。
+    /// </summary>
+    internal const string LocalDateTimeFormat = "yyyy-MM-dd HH:mm:ss";
+
+    /// <summary>
     /// 健康状态文本映射（避免反射 Enum.GetName 开销）。
     /// </summary>
     private static readonly IReadOnlyDictionary<HealthStatus, string> StatusText = new Dictionary<HealthStatus, string> {
@@ -32,7 +37,7 @@ internal static class HealthCheckResponseWriter {
         await using var writer = new Utf8JsonWriter(context.Response.BodyWriter, options);
         writer.WriteStartObject();
         writer.WriteString("status", StatusText.GetValueOrDefault(report.Status, "Unknown"));
-        writer.WriteString("generatedAt", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")); // 本地时间语义
+        writer.WriteString("generatedAt", DateTime.Now.ToString(LocalDateTimeFormat)); // 本地时间语义
         writer.WriteStartObject("entries");
         foreach (var (key, value) in report.Entries) {
             writer.WriteStartObject(key);

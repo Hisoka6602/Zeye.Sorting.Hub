@@ -83,10 +83,10 @@ public sealed partial class MigrationSafetyEvaluator {
     /// </summary>
     /// <param name="label">危险类型。</param>
     /// <param name="statement">原始语句。</param>
-    /// <returns>危险操作说明。</returns>
+        /// <returns>危险操作说明。</returns>
     private static string BuildDangerousOperationMessage(string label, string statement) {
         var normalizedStatement = string.Join(' ', statement
-            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+            .Split(default(char[]), StringSplitOptions.RemoveEmptyEntries));
         if (normalizedStatement.Length > MaxStatementPreviewLength) {
             normalizedStatement = normalizedStatement[..MaxStatementPreviewLength];
         }

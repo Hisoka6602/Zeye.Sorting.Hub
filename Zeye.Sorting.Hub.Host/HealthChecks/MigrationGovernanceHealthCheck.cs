@@ -66,7 +66,7 @@ public sealed class MigrationGovernanceHealthCheck : IHealthCheck {
         };
 
         if (plan is not null) {
-            data["generatedAtLocal"] = plan.GeneratedAtLocal.ToString("yyyy-MM-dd HH:mm:ss");
+            data["generatedAtLocal"] = plan.GeneratedAtLocal.ToString(HealthCheckResponseWriter.LocalDateTimeFormat);
             data["provider"] = plan.ProviderName;
             data["environment"] = plan.EnvironmentName;
             data["allMigrationCount"] = plan.AllMigrations.Count;
@@ -89,7 +89,7 @@ public sealed class MigrationGovernanceHealthCheck : IHealthCheck {
         }
 
         if (record is not null) {
-            data["recordedAtLocal"] = record.RecordedAtLocal.ToString("yyyy-MM-dd HH:mm:ss");
+            data["recordedAtLocal"] = record.RecordedAtLocal.ToString(HealthCheckResponseWriter.LocalDateTimeFormat);
             data["status"] = record.Status;
             data["summary"] = record.Summary;
             data["recordPendingMigrationCount"] = record.PendingMigrationCount;

@@ -17,6 +17,21 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Baseline;
 /// </summary>
 public sealed partial class BaselineDataValidator {
     /// <summary>
+    /// 归档任务类型参考数据目录名称。
+    /// </summary>
+    private const string ArchiveTaskTypeCatalogName = nameof(ArchiveTaskType);
+
+    /// <summary>
+    /// 归档任务状态参考数据目录名称。
+    /// </summary>
+    private const string ArchiveTaskStatusCatalogName = nameof(ArchiveTaskStatus);
+
+    /// <summary>
+    /// 失败模式参考数据目录名称。
+    /// </summary>
+    private const string FailureModeCatalogName = nameof(MigrationFailureMode);
+
+    /// <summary>
     /// 本地时间配置键集合。
     /// </summary>
     private static readonly string[] LocalTimeConfigurationKeys = [
@@ -306,9 +321,9 @@ public sealed partial class BaselineDataValidator {
     /// <returns>参考数据定义集合。</returns>
     private static IReadOnlyList<(string Catalog, string Code, int Value)> BuildReferenceDataDefinitions() {
         var definitions = new List<(string Catalog, string Code, int Value)>();
-        AppendEnumDefinitions<ArchiveTaskType>("ArchiveTaskType", definitions);
-        AppendEnumDefinitions<ArchiveTaskStatus>("ArchiveTaskStatus", definitions);
-        AppendEnumDefinitions<MigrationFailureMode>("FailureMode", definitions);
+        AppendEnumDefinitions<ArchiveTaskType>(ArchiveTaskTypeCatalogName, definitions);
+        AppendEnumDefinitions<ArchiveTaskStatus>(ArchiveTaskStatusCatalogName, definitions);
+        AppendEnumDefinitions<MigrationFailureMode>(FailureModeCatalogName, definitions);
         return definitions;
     }
 
