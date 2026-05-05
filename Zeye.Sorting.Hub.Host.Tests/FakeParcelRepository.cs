@@ -43,7 +43,7 @@ internal sealed class FakeParcelRepository : IParcelRepository {
     public bool ShouldFailOnAddRange { get; set; }
 
     /// <summary>
-    /// 批量新增返回结果前执行的回调，用于模拟取消信号与仓储结果竞态。
+    /// 批量新增在 ShouldFailOnAddRange 判断前执行的回调，用于模拟取消信号与仓储结果竞态。
     /// </summary>
     public Action? BeforeAddRangeResult { get; set; }
 

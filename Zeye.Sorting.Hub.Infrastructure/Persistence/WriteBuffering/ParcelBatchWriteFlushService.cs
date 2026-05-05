@@ -205,7 +205,7 @@ public sealed class ParcelBatchWriteFlushService {
             var cancellationMessage = "批量新增取消，失败批次已进入死信隔离。";
             RecordFailedBatch(batch.Count, cancellationMessage);
             MoveBatchToDeadLetter(batch, cancellationMessage);
-            return;
+            throw;
         }
 
         if (repositoryResult.IsSuccess) {
@@ -219,7 +219,7 @@ public sealed class ParcelBatchWriteFlushService {
         RecordFailedBatch(batch.Count, failureMessage);
         if (cancellationToken.IsCancellationRequested) {
             MoveBatchToDeadLetter(batch, $"{failureMessage}；取消期间进入死信隔离。");
-            return;
+            throw new OperationCanceledException(cancellationToken);
         }
 
         HandleFailedBatch(batch, failureMessage);

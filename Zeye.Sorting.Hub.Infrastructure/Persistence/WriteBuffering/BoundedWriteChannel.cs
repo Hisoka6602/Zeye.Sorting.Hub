@@ -56,6 +56,7 @@ public sealed class BoundedWriteChannel<TItem> {
     /// <param name="item">通道项。</param>
     /// <returns>写入成功返回 true。</returns>
     public bool TryEnqueue(TItem item) {
+        var spinWait = new SpinWait();
         while (true) {
             var currentDepth = Volatile.Read(ref _depth);
             if (currentDepth >= Capacity) {
@@ -66,6 +67,8 @@ public sealed class BoundedWriteChannel<TItem> {
             if (Interlocked.CompareExchange(ref _depth, currentDepth + 1, currentDepth) == currentDepth) {
                 break;
             }
+
+            spinWait.SpinOnce();
         }
 
         if (_channel.Writer.TryWrite(item)) {

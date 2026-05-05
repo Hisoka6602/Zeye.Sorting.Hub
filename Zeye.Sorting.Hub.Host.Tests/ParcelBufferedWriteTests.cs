@@ -148,7 +148,7 @@ public sealed class ParcelBufferedWriteTests {
     /// 验证场景：批量落库返回失败且取消信号已触发时，已出队批次进入死信避免丢失。
     /// </summary>
     [Fact]
-    public async Task ParcelBatchWriteFlushService_WhenCanceledFailureReturned_ShouldMoveDequeuedBatchToDeadLetter() {
+    public async Task ParcelBatchWriteFlushService_WhenRepositoryFailsAndTokenCanceled_ShouldMoveDequeuedBatchToDeadLetter() {
         using var cancellationTokenSource = new CancellationTokenSource();
         var options = CreateBufferedWriteOptions(maxRetryCount: 3, deadLetterCapacity: 10);
         var writeChannel = new BoundedWriteChannel<BufferedParcelWriteItem>(options.ChannelCapacity);
@@ -172,7 +172,7 @@ public sealed class ParcelBufferedWriteTests {
 
         var exception = await Record.ExceptionAsync(() => flushService.FlushOnceAsync(cancellationTokenSource.Token));
 
-        Assert.Null(exception);
+        Assert.IsType<OperationCanceledException>(exception);
         Assert.Equal(0, writeChannel.Depth);
         Assert.Equal(1, deadLetterStore.Count);
         var deadLetter = Assert.Single(deadLetterStore.GetSnapshot());
