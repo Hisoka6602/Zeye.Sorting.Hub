@@ -22,6 +22,7 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.Baseline;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Diagnostics;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.MigrationGovernance;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.QueryGovernance;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 using Zeye.Sorting.Hub.Domain.Enums.Sharding;
 using Zeye.Sorting.Hub.Application.Services.WriteBuffers;
@@ -124,6 +125,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             services.AddSingleton<SlowQueryProfileStore>();
             services.AddSingleton<Zeye.Sorting.Hub.Application.Abstractions.Diagnostics.ISlowQueryProfileReader>(static serviceProvider =>
                 serviceProvider.GetRequiredService<SlowQueryProfileStore>());
+            services.TryAddSingleton<QueryTemplateRegistry>();
+            services.TryAddSingleton<QueryIndexRecommendationService>();
             services.AddSingleton<SlowQueryCommandInterceptor>();
             services.AddSingleton<MySqlSessionBootstrapConnectionInterceptor>();
             services.TryAddSingleton<IAutoTuningObservability, NullAutoTuningObservability>();
