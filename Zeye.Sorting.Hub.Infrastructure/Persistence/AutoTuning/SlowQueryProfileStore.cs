@@ -134,7 +134,8 @@ public sealed class SlowQueryProfileStore : ISlowQueryProfileReader {
         lock (_sync) {
             var queue = GetOrCreateQueue(fingerprint);
             queue.Enqueue(sample);
-            while (queue.Count > _maxSampleCountPerFingerprint) {
+            var overflowSampleCount = queue.Count - _maxSampleCountPerFingerprint;
+            for (var index = 0; index < overflowSampleCount; index++) {
                 queue.Dequeue();
             }
 

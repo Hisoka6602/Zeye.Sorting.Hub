@@ -25,7 +25,8 @@ public sealed class SlowQueryFingerprintTests {
     /// </summary>
     [Fact]
     public void SlowQueryFingerprintAggregator_ShouldHandleEscapedQuoteLiteral() {
-        var fingerprint = SlowQueryFingerprintAggregator.Create("SELECT * FROM Parcels WHERE ReceiverName = 'O''Reilly' AND Id = 1");
+        const string sql = "SELECT * FROM Parcels WHERE ReceiverName = 'O''Reilly' AND Id = 1";
+        var fingerprint = SlowQueryFingerprintAggregator.Create(sql);
 
         Assert.Equal("select * from parcels where receivername = ? and id = ?", fingerprint.NormalizedSql);
     }
@@ -37,7 +38,7 @@ public sealed class SlowQueryFingerprintTests {
     public void SlowQueryProfileStore_ShouldAggregateMetricsByFingerprint() {
         var store = new SlowQueryProfileStore(BuildConfiguration());
 
-        store.Record("SELECT * FROM Parcels WHERE Id = @__id_0", TimeSpan.FromMilliseconds(600));
+        store.Record("SELECT * FROM Parcels WHERE Id = 123", TimeSpan.FromMilliseconds(600));
         store.Record("SELECT * FROM Parcels WHERE Id = @__id_1", TimeSpan.FromMilliseconds(900));
         store.Record("SELECT * FROM Parcels WHERE Id = @__id_2", TimeSpan.FromMilliseconds(1200), exception: new TimeoutException("超时"));
 

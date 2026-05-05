@@ -93,7 +93,7 @@ public static class SlowQueryFingerprintAggregator {
             throw new ArgumentException("慢查询画像快照至少需要一个样本。", nameof(samples));
         }
 
-        // 步骤 1：按发生时间升序准备窗口样本，并单独提取耗时升序数组用于分位点计算。
+        // 步骤 1：按发生时间升序准备窗口样本，同时单独提取耗时升序数组用于分位点计算。
         var orderedSamples = samples
             .OrderBy(static sample => sample.OccurredTime)
             .ToArray();
@@ -127,7 +127,7 @@ public static class SlowQueryFingerprintAggregator {
 
         var averageElapsedMilliseconds = orderedSamples.Average(static sample => sample.ElapsedMilliseconds);
 
-        // 步骤 3：输出窗口起止、脱敏样例 SQL 与高位分位数，供 API 直接返回只读快照。
+        // 步骤 3：输出窗口起止、脱敏样例 SQL 及高位分位数，供 API 直接返回只读快照。
         return new SlowQueryProfileSnapshot(
             Fingerprint: fingerprint.Fingerprint,
             NormalizedSql: fingerprint.NormalizedSql,
