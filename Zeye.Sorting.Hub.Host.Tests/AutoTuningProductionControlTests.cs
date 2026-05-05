@@ -424,7 +424,7 @@ public sealed class AutoTuningProductionControlTests {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Provider"] = "MySql",
-                ["ConnectionStrings:MySql"] = "Server=127.0.0.1;Port=3306;Database=test;Uid=root;******;",
+                ["ConnectionStrings:MySql"] = "Server=127.0.0.1;Port=3306;Database=test;Uid=validation_user;Password=placeholder;",
                 ["Persistence:Sharding:Strategy:Mode"] = "9"
             })
             .Build();
@@ -1157,8 +1157,8 @@ public sealed class AutoTuningProductionControlTests {
     [Fact]
     public void Dialect_ExtractDatabaseNameAndAdminConnection_ShouldFollowProviderSemantics() {
         // 仅用于单元测试的本地示例连接字符串，不用于生产环境。
-        var mySqlConnectionString = "Server=127.0.0.1;Port=3306;Database=zeye_sorting_hub;User Id=root;******;";
-        var sqlServerConnectionString = "Server=127.0.0.1,1433;Database=zeye_sorting_hub;User Id=sa;******;TrustServerCertificate=True;Encrypt=False;";
+        var mySqlConnectionString = "Server=127.0.0.1;Port=3306;Database=zeye_sorting_hub;User Id=validation_user;Password=placeholder;";
+        var sqlServerConnectionString = "Server=127.0.0.1,1433;Database=zeye_sorting_hub;User Id=validation_user;Password=placeholder;TrustServerCertificate=True;Encrypt=False;";
 
         var mySqlDialect = new MySqlDialect();
         var sqlServerDialect = new SqlServerDialect();
@@ -2013,7 +2013,7 @@ public sealed class AutoTuningProductionControlTests {
 
         var resolved = PersistenceServiceCollectionExtensions.ResolveMySqlServerVersion(
             configuration,
-            "server=127.0.0.1;port=3306;database=zeye_sorting_hub;uid=root;******;SslMode=None;",
+            "server=127.0.0.1;port=3306;database=zeye_sorting_hub;uid=validation_user;password=placeholder;SslMode=None;",
             warningMessages.Add);
 
         Assert.IsType<MySqlServerVersion>(resolved);

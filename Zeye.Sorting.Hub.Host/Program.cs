@@ -71,6 +71,7 @@ try {
     builder.Services.AddHostedService<ShardingPrebuildHostedService>();
     builder.Services.AddHostedService<ShardingInspectionHostedService>();
     builder.Services.AddHostedService<DataArchiveHostedService>();
+    builder.Services.AddHostedService<BaselineDataValidationHostedService>();
     builder.Services.AddSingleton<MigrationGovernanceHostedService>();
     builder.Services.AddHostedService(static serviceProvider =>
         serviceProvider.GetRequiredService<MigrationGovernanceHostedService>());
@@ -91,6 +92,9 @@ try {
             tags: ["ready"])
         .AddCheck<BufferedWriteQueueHealthCheck>(
             name: "parcel-buffered-write",
+            tags: ["ready"])
+        .AddCheck<BaselineDataHealthCheck>(
+            name: "baseline-data",
             tags: ["ready"])
         .AddCheck<MigrationGovernanceHealthCheck>(
             name: "migration-governance",
