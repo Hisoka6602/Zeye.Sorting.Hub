@@ -366,8 +366,8 @@
 │   │   ├── Migrations（EF Core 迁移文件目录）
 │   │   │   ├── 20260324094539_RebuildBaseline20260324.cs（全新基线迁移：空库初始化全量建表/索引/约束）
 │   │   │   ├── 20260324094539_RebuildBaseline20260324.Designer.cs（迁移元数据，自动生成）
-│   │   │   ├── 20260505072309_AddArchiveTaskDryRunSupport.cs（归档任务基线迁移：新增 ArchiveTasks 表与索引）
-│   │   │   ├── 20260505072309_AddArchiveTaskDryRunSupport.Designer.cs（归档任务迁移元数据，自动生成）
+│   │   │   ├── AddArchiveTaskDryRunSupport.cs（归档任务基线迁移：新增 ArchiveTasks 表与索引）
+│   │   │   ├── AddArchiveTaskDryRunSupport.Designer.cs（归档任务迁移元数据，自动生成）
 │   │   │   ├── MigrationSchemaResolver.cs（迁移 schema 解析器）
 │   │   │   └── SortingHubDbContextModelSnapshot.cs（当前模型快照，自动生成）
 │   │   ├── WriteBuffering（批量缓冲写入基础设施目录）
@@ -815,8 +815,8 @@
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/`：EF Core 迁移文件目录
 - `20260324094539_RebuildBaseline20260324.cs`：全新基线迁移（清空历史后重建，支持空库初始化）。
 - `20260324094539_RebuildBaseline20260324.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
-- `20260505072309_AddArchiveTaskDryRunSupport.cs`：归档任务基线迁移，新增 `ArchiveTasks` 表与索引。
-- `20260505072309_AddArchiveTaskDryRunSupport.Designer.cs`：归档任务迁移元数据文件（自动生成，勿手动修改）。
+- `AddArchiveTaskDryRunSupport.cs`：归档任务基线迁移，新增 `ArchiveTasks` 表与索引。
+- `AddArchiveTaskDryRunSupport.Designer.cs`：归档任务迁移元数据文件（自动生成，勿手动修改）。
 - `MigrationSchemaResolver.cs`：迁移共享 schema 解析器。
 - `SortingHubDbContextModelSnapshot.cs`：当前模型快照（自动生成，勿手动修改）。
 

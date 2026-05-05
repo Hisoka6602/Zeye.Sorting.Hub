@@ -47,6 +47,7 @@ public sealed class DataArchiveHostedService : BackgroundService {
                 await worker.RunOnceAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) {
+                Logger.Info("数据归档后台托管服务收到停止信号，准备结束轮询循环。");
                 break;
             }
             catch (Exception ex) {
@@ -57,6 +58,7 @@ public sealed class DataArchiveHostedService : BackgroundService {
                 await Task.Delay(pollDelay, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) {
+                Logger.Info("数据归档后台托管服务延迟等待被取消，准备退出。");
                 break;
             }
         }

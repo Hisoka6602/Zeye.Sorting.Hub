@@ -42,8 +42,8 @@
 - `Zeye.Sorting.Hub.Infrastructure/Persistence/Archiving/DataArchiveHostedWorker.cs`
 - `Zeye.Sorting.Hub.Infrastructure/Repositories/ArchiveTaskRepository.cs`
 - `Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/ArchiveTaskEntityTypeConfiguration.cs`
-- `Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/20260505072309_AddArchiveTaskDryRunSupport.cs`
-- `Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/20260505072309_AddArchiveTaskDryRunSupport.Designer.cs`
+- `Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/AddArchiveTaskDryRunSupport.cs`
+- `Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/AddArchiveTaskDryRunSupport.Designer.cs`
 - `Zeye.Sorting.Hub.Host/Routing/DataGovernanceApiRouteExtensions.cs`
 - `Zeye.Sorting.Hub.Host/HostedServices/DataArchiveHostedService.cs`
 - `Zeye.Sorting.Hub.Host.Tests/DataArchiveTaskTests.cs`
