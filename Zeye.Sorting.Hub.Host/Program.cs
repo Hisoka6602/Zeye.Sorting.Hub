@@ -16,8 +16,10 @@ using Zeye.Sorting.Hub.Contracts.Models.Parcels;
 using Zeye.Sorting.Hub.Domain.Options.LogCleanup;
 using Zeye.Sorting.Hub.Application.Services.Parcels;
 using Zeye.Sorting.Hub.Application.Services.AuditLogs;
+using Zeye.Sorting.Hub.Application.Services.WriteBuffers;
 using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.WriteBuffering;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 // ──────────────────────────────────────────────────────────
@@ -61,6 +63,10 @@ try {
     builder.Services.Configure<ResourceThresholdsOptions>(builder.Configuration.GetSection(ResourceThresholdsOptions.SectionName));
     builder.Services.AddHostedService<LogCleanupService>();
     builder.Services.AddHostedService<DevelopmentBrowserLauncherHostedService>();
+    builder.Services.AddHostedService<DatabaseConnectionWarmupHostedService>();
+    builder.Services.AddHostedService<ParcelBatchWriteFlushHostedService>();
+    builder.Services.AddHostedService<ShardingPrebuildHostedService>();
+    builder.Services.AddHostedService<ShardingInspectionHostedService>();
     builder.Services.AddSingleton<SafeExecutor>();
     builder.Services.AddSingleton<ConfigChangeHistoryStore<LogCleanupSettings>>();
     builder.Services.AddSortingHubPersistence(builder.Configuration);
@@ -73,8 +79,14 @@ try {
     //   - /health/ready  包含数据库可用性探测，用于流量接入决策
     // ──────────────────────────────────────────────────────
     builder.Services.AddHealthChecks()
-        .AddCheck<DatabaseReadinessHealthCheck>(
+        .AddCheck<DatabaseConnectionDetailedHealthCheck>(
             name: "database",
+            tags: ["ready"])
+        .AddCheck<BufferedWriteQueueHealthCheck>(
+            name: "parcel-buffered-write",
+            tags: ["ready"])
+        .AddCheck<ShardingGovernanceHealthCheck>(
+            name: "sharding-governance",
             tags: ["ready"]);
     builder.Services.AddProblemDetails();
     builder.Services
@@ -105,6 +117,7 @@ try {
         options.SchemaFilter<EnumDescriptionSchemaFilter>();
     });
     builder.Services.AddScoped<GetParcelPagedQueryService>();
+    builder.Services.AddScoped<GetParcelCursorPagedQueryService>();
     builder.Services.AddScoped<GetParcelByIdQueryService>();
     builder.Services.AddScoped<GetAdjacentParcelsQueryService>();
     builder.Services.AddScoped<CreateParcelCommandService>();

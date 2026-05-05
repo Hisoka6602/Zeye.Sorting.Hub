@@ -17,9 +17,12 @@ using Zeye.Sorting.Hub.Domain.Repositories;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Diagnostics;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 using Zeye.Sorting.Hub.Domain.Enums.Sharding;
+using Zeye.Sorting.Hub.Application.Services.WriteBuffers;
 using Zeye.Sorting.Hub.Infrastructure.Repositories;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.WriteBuffering;
 
 namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
 
@@ -94,6 +97,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// EF Core 运行时 providerName 语义由 <see cref="DbProviderNames"/> 统一定义。
         /// </summary>
         public static IServiceCollection AddSortingHubPersistence(this IServiceCollection services, IConfiguration configuration) {
+            RegisterDatabaseConnectionDiagnostics(services, configuration);
+            RegisterBufferedWriteServices(services, configuration);
+            RegisterShardingGovernanceServices(services, configuration);
             var provider = configuration["Persistence:Provider"];
             var commandTimeoutSeconds = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
             var minCommandElapsedMilliseconds = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:MinCommandElapsedMilliseconds", 50);
@@ -144,6 +150,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 services.AddSingleton<IDatabaseDialect, MySqlDialect>();
                 services.AddSingleton<IShardingPhysicalTableProbe>(sp =>
                     (IShardingPhysicalTableProbe)sp.GetRequiredService<IDatabaseDialect>());
+                services.AddSingleton<IBatchShardingPhysicalTableProbe>(sp =>
+                    (IBatchShardingPhysicalTableProbe)sp.GetRequiredService<IDatabaseDialect>());
             }
             else if (string.Equals(provider, ConfiguredProviderNames.SqlServer, StringComparison.OrdinalIgnoreCase)) {
                 var connectionString = configuration.GetConnectionString(ConfiguredProviderNames.SqlServer);
@@ -171,6 +179,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 services.AddSingleton<IDatabaseDialect, SqlServerDialect>();
                 services.AddSingleton<IShardingPhysicalTableProbe>(sp =>
                     (IShardingPhysicalTableProbe)sp.GetRequiredService<IDatabaseDialect>());
+                services.AddSingleton<IBatchShardingPhysicalTableProbe>(sp =>
+                    (IBatchShardingPhysicalTableProbe)sp.GetRequiredService<IDatabaseDialect>());
             }
             else {
                 throw new InvalidOperationException($"不支持的数据库类型：{provider}，可选值：{ConfiguredProviderNames.MySql} / {ConfiguredProviderNames.SqlServer}");
@@ -184,6 +194,182 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 serviceProvider.GetRequiredService<WebRequestAuditLogRepository>());
 
             return services;
+        }
+
+        /// <summary>
+        /// 注册数据库连接诊断与预热能力。
+        /// </summary>
+        /// <param name="services">服务集合。</param>
+        /// <param name="configuration">配置根。</param>
+        private static void RegisterDatabaseConnectionDiagnostics(IServiceCollection services, IConfiguration configuration) {
+            services.AddOptions<DatabaseConnectionDiagnosticsOptions>()
+                .Configure(options => ApplyDatabaseConnectionDiagnosticsOptions(options, configuration))
+                .Validate(
+                    static options => options.WarmupConnectionCount is >= DatabaseConnectionDiagnosticsOptions.MinWarmupConnectionCount and <= DatabaseConnectionDiagnosticsOptions.MaxWarmupConnectionCount,
+                    $"WarmupConnectionCount 必须在 {DatabaseConnectionDiagnosticsOptions.MinWarmupConnectionCount}~{DatabaseConnectionDiagnosticsOptions.MaxWarmupConnectionCount} 之间")
+                .Validate(
+                    static options => options.ProbeTimeoutMilliseconds is >= DatabaseConnectionDiagnosticsOptions.MinProbeTimeoutMilliseconds and <= DatabaseConnectionDiagnosticsOptions.MaxProbeTimeoutMilliseconds,
+                    $"ProbeTimeoutMilliseconds 必须在 {DatabaseConnectionDiagnosticsOptions.MinProbeTimeoutMilliseconds}~{DatabaseConnectionDiagnosticsOptions.MaxProbeTimeoutMilliseconds} 之间")
+                .Validate(
+                    static options => options.FailureThreshold is >= DatabaseConnectionDiagnosticsOptions.MinFailureThreshold and <= DatabaseConnectionDiagnosticsOptions.MaxFailureThreshold,
+                    $"FailureThreshold 必须在 {DatabaseConnectionDiagnosticsOptions.MinFailureThreshold}~{DatabaseConnectionDiagnosticsOptions.MaxFailureThreshold} 之间")
+                .Validate(
+                    static options => options.RecoveryThreshold is >= DatabaseConnectionDiagnosticsOptions.MinRecoveryThreshold and <= DatabaseConnectionDiagnosticsOptions.MaxRecoveryThreshold,
+                    $"RecoveryThreshold 必须在 {DatabaseConnectionDiagnosticsOptions.MinRecoveryThreshold}~{DatabaseConnectionDiagnosticsOptions.MaxRecoveryThreshold} 之间")
+                .ValidateOnStart();
+
+            services.TryAddSingleton<IDatabaseConnectionDiagnostics, DatabaseConnectionDiagnosticsService>();
+            services.TryAddSingleton<DatabaseConnectionWarmupService>();
+        }
+
+        /// <summary>
+        /// 注册分表运行期治理能力。
+        /// </summary>
+        /// <param name="services">服务集合。</param>
+        /// <param name="configuration">配置根。</param>
+        private static void RegisterShardingGovernanceServices(IServiceCollection services, IConfiguration configuration) {
+            var parcelShardingStrategyEvaluation = ParcelShardingStrategyEvaluator.Evaluate(configuration);
+            services.AddOptions<ShardingRuntimeInspectionOptions>()
+                .Configure(options => ApplyShardingRuntimeInspectionOptions(options, configuration))
+                .Validate(
+                    static options => options.InspectionIntervalMinutes is >= ShardingRuntimeInspectionOptions.MinInspectionIntervalMinutes and <= ShardingRuntimeInspectionOptions.MaxInspectionIntervalMinutes,
+                    $"InspectionIntervalMinutes 必须在 {ShardingRuntimeInspectionOptions.MinInspectionIntervalMinutes}~{ShardingRuntimeInspectionOptions.MaxInspectionIntervalMinutes} 之间")
+                .ValidateOnStart();
+            services.AddOptions<ShardingPrebuildOptions>()
+                .Configure(options => ApplyShardingPrebuildOptions(options, configuration))
+                .Validate(
+                    static options => options.PrebuildAheadHours is >= ShardingPrebuildOptions.MinPrebuildAheadHours and <= ShardingPrebuildOptions.MaxPrebuildAheadHours,
+                    $"PrebuildAheadHours 必须在 {ShardingPrebuildOptions.MinPrebuildAheadHours}~{ShardingPrebuildOptions.MaxPrebuildAheadHours} 之间")
+                .Validate(
+                    static options => options.DryRun,
+                    "当前版本仅允许 Persistence:Sharding:Prebuild:DryRun=true；真实预建需先接入危险动作隔离器")
+                .ValidateOnStart();
+
+            services.TryAddSingleton(new ShardingPhysicalTablePlanBuilder(parcelShardingStrategyEvaluation.Decision));
+            services.TryAddSingleton<ShardingCapacitySnapshotService>();
+            services.TryAddSingleton<ShardingIndexInspectionService>();
+            services.TryAddSingleton<ShardingTableInspectionService>();
+            services.TryAddSingleton<ShardingTablePrebuildService>();
+        }
+
+        /// <summary>
+        /// 注册批量缓冲写入服务。
+        /// </summary>
+        /// <param name="services">服务集合。</param>
+        /// <param name="configuration">配置根。</param>
+        private static void RegisterBufferedWriteServices(IServiceCollection services, IConfiguration configuration) {
+            services.AddOptions<BufferedWriteOptions>()
+                .Configure(options => ApplyBufferedWriteOptions(options, configuration))
+                .Validate(
+                    static options => options.ChannelCapacity is >= BufferedWriteOptions.MinChannelCapacity and <= BufferedWriteOptions.MaxChannelCapacity,
+                    $"ChannelCapacity 必须在 {BufferedWriteOptions.MinChannelCapacity}~{BufferedWriteOptions.MaxChannelCapacity} 之间")
+                .Validate(
+                    static options => options.BatchSize is >= BufferedWriteOptions.MinBatchSize and <= BufferedWriteOptions.MaxBatchSize,
+                    $"BatchSize 必须在 {BufferedWriteOptions.MinBatchSize}~{BufferedWriteOptions.MaxBatchSize} 之间")
+                .Validate(
+                    static options => options.FlushIntervalMilliseconds is >= BufferedWriteOptions.MinFlushIntervalMilliseconds and <= BufferedWriteOptions.MaxFlushIntervalMilliseconds,
+                    $"FlushIntervalMilliseconds 必须在 {BufferedWriteOptions.MinFlushIntervalMilliseconds}~{BufferedWriteOptions.MaxFlushIntervalMilliseconds} 之间")
+                .Validate(
+                    static options => options.MaxRetryCount is >= BufferedWriteOptions.MinMaxRetryCount and <= BufferedWriteOptions.MaxMaxRetryCount,
+                    $"MaxRetryCount 必须在 {BufferedWriteOptions.MinMaxRetryCount}~{BufferedWriteOptions.MaxMaxRetryCount} 之间")
+                .Validate(
+                    static options => options.DeadLetterCapacity is >= BufferedWriteOptions.MinDeadLetterCapacity and <= BufferedWriteOptions.MaxDeadLetterCapacity,
+                    $"DeadLetterCapacity 必须在 {BufferedWriteOptions.MinDeadLetterCapacity}~{BufferedWriteOptions.MaxDeadLetterCapacity} 之间")
+                .Validate(
+                    static options => options.BackpressureRejectThreshold > 0 && options.BackpressureRejectThreshold <= options.ChannelCapacity,
+                    "BackpressureRejectThreshold 必须在 1~ChannelCapacity 之间")
+                .Validate(
+                    static options => options.BatchSize <= options.ChannelCapacity,
+                    "BatchSize 不能大于 ChannelCapacity")
+                .ValidateOnStart();
+
+            services.TryAddSingleton(sp =>
+                new BoundedWriteChannel<BufferedParcelWriteItem>(
+                    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<BufferedWriteOptions>>().Value.ChannelCapacity));
+            services.TryAddSingleton(sp =>
+                new DeadLetterWriteStore(
+                    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<BufferedWriteOptions>>().Value.DeadLetterCapacity));
+            services.TryAddSingleton<ParcelBufferedWriteService>();
+            services.TryAddSingleton<ParcelBatchWriteFlushService>();
+            services.TryAddSingleton<IBufferedWriteService>(sp => sp.GetRequiredService<ParcelBufferedWriteService>());
+        }
+
+        /// <summary>
+        /// 应用批量缓冲写入配置。
+        /// </summary>
+        /// <param name="options">配置实例。</param>
+        /// <param name="configuration">配置根。</param>
+        private static void ApplyBufferedWriteOptions(BufferedWriteOptions options, IConfiguration configuration) {
+            options.IsEnabled = ReadBooleanSetting(configuration, $"{BufferedWriteOptions.SectionPath}:IsEnabled", options.IsEnabled);
+            options.ChannelCapacity = ReadIntSetting(configuration, $"{BufferedWriteOptions.SectionPath}:ChannelCapacity", options.ChannelCapacity);
+            options.BatchSize = ReadIntSetting(configuration, $"{BufferedWriteOptions.SectionPath}:BatchSize", options.BatchSize);
+            options.FlushIntervalMilliseconds = ReadIntSetting(configuration, $"{BufferedWriteOptions.SectionPath}:FlushIntervalMilliseconds", options.FlushIntervalMilliseconds);
+            options.MaxRetryCount = ReadIntSetting(configuration, $"{BufferedWriteOptions.SectionPath}:MaxRetryCount", options.MaxRetryCount);
+            options.BackpressureRejectThreshold = ReadIntSetting(configuration, $"{BufferedWriteOptions.SectionPath}:BackpressureRejectThreshold", options.BackpressureRejectThreshold);
+            options.DeadLetterCapacity = ReadIntSetting(configuration, $"{BufferedWriteOptions.SectionPath}:DeadLetterCapacity", options.DeadLetterCapacity);
+        }
+
+        /// <summary>
+        /// 应用分表运行期巡检配置。
+        /// </summary>
+        /// <param name="options">配置实例。</param>
+        /// <param name="configuration">配置根。</param>
+        private static void ApplyShardingRuntimeInspectionOptions(ShardingRuntimeInspectionOptions options, IConfiguration configuration) {
+            options.IsEnabled = ReadBooleanSetting(configuration, $"{ShardingRuntimeInspectionOptions.SectionPath}:IsEnabled", options.IsEnabled);
+            options.InspectionIntervalMinutes = ReadIntSetting(configuration, $"{ShardingRuntimeInspectionOptions.SectionPath}:InspectionIntervalMinutes", options.InspectionIntervalMinutes);
+            options.ShouldCheckIndexes = ReadBooleanSetting(configuration, $"{ShardingRuntimeInspectionOptions.SectionPath}:ShouldCheckIndexes", options.ShouldCheckIndexes);
+            options.ShouldCheckNextPeriodTables = ReadBooleanSetting(configuration, $"{ShardingRuntimeInspectionOptions.SectionPath}:ShouldCheckNextPeriodTables", options.ShouldCheckNextPeriodTables);
+            options.ShouldCheckCapacity = ReadBooleanSetting(configuration, $"{ShardingRuntimeInspectionOptions.SectionPath}:ShouldCheckCapacity", options.ShouldCheckCapacity);
+        }
+
+        /// <summary>
+        /// 应用分表预建计划配置。
+        /// </summary>
+        /// <param name="options">配置实例。</param>
+        /// <param name="configuration">配置根。</param>
+        private static void ApplyShardingPrebuildOptions(ShardingPrebuildOptions options, IConfiguration configuration) {
+            options.IsEnabled = ReadBooleanSetting(configuration, $"{ShardingPrebuildOptions.SectionPath}:IsEnabled", options.IsEnabled);
+            options.DryRun = ReadBooleanSetting(configuration, $"{ShardingPrebuildOptions.SectionPath}:DryRun", options.DryRun);
+            options.PrebuildAheadHours = ReadIntSetting(configuration, $"{ShardingPrebuildOptions.SectionPath}:PrebuildAheadHours", options.PrebuildAheadHours);
+        }
+
+        /// <summary>
+        /// 应用数据库连接诊断配置。
+        /// </summary>
+        /// <param name="options">诊断配置实例。</param>
+        /// <param name="configuration">配置根。</param>
+        private static void ApplyDatabaseConnectionDiagnosticsOptions(DatabaseConnectionDiagnosticsOptions options, IConfiguration configuration) {
+            options.IsWarmupEnabled = ReadBooleanSetting(configuration, $"{DatabaseConnectionDiagnosticsOptions.SectionPath}:IsWarmupEnabled", options.IsWarmupEnabled);
+            options.WarmupConnectionCount = ReadIntSetting(configuration, $"{DatabaseConnectionDiagnosticsOptions.SectionPath}:WarmupConnectionCount", options.WarmupConnectionCount);
+            options.ProbeTimeoutMilliseconds = ReadIntSetting(configuration, $"{DatabaseConnectionDiagnosticsOptions.SectionPath}:ProbeTimeoutMilliseconds", options.ProbeTimeoutMilliseconds);
+            options.FailureThreshold = ReadIntSetting(configuration, $"{DatabaseConnectionDiagnosticsOptions.SectionPath}:FailureThreshold", options.FailureThreshold);
+            options.RecoveryThreshold = ReadIntSetting(configuration, $"{DatabaseConnectionDiagnosticsOptions.SectionPath}:RecoveryThreshold", options.RecoveryThreshold);
+        }
+
+        /// <summary>
+        /// 读取布尔配置，无法解析时保留默认值。
+        /// </summary>
+        /// <param name="configuration">配置根。</param>
+        /// <param name="key">配置键。</param>
+        /// <param name="fallbackValue">回退值。</param>
+        /// <returns>布尔配置值。</returns>
+        private static bool ReadBooleanSetting(IConfiguration configuration, string key, bool fallbackValue) {
+            return bool.TryParse(configuration[key], out var parsedValue)
+                ? parsedValue
+                : fallbackValue;
+        }
+
+        /// <summary>
+        /// 读取整数配置，无法解析时保留默认值。
+        /// </summary>
+        /// <param name="configuration">配置根。</param>
+        /// <param name="key">配置键。</param>
+        /// <param name="fallbackValue">回退值。</param>
+        /// <returns>整数配置值。</returns>
+        private static int ReadIntSetting(IConfiguration configuration, string key, int fallbackValue) {
+            return int.TryParse(configuration[key], out var parsedValue)
+                ? parsedValue
+                : fallbackValue;
         }
 
         /// <summary>

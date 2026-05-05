@@ -28,8 +28,15 @@ public static class ParcelReadOnlyApiRouteExtensions {
         group.MapGet(string.Empty, GetParcelListAsync)
             .WithName("GetParcelList")
             .WithSummary("分页查询 Parcel 列表")
-            .WithDescription("按页码、分页大小与可选过滤条件（条码检索词、集包号、状态、异常类型、格口、扫码时间范围）查询包裹摘要列表。时间参数必须为本地时间字符串，不允许 UTC 或时区偏移。\n\nBarCodeKeyword Provider 语义：MySQL 使用 FULLTEXT Boolean 模式，其他 Provider 使用 Contains 子串匹配。")
+            .WithDescription("按页码、分页大小与可选过滤条件（条码检索词、集包号、状态、异常类型、格口、扫码时间范围）查询包裹摘要列表。时间参数必须为本地时间字符串，不允许 UTC 或时区偏移。未指定时间范围时默认仅查询最近 24 小时；页码最大限制为 10000。\n\nBarCodeKeyword Provider 语义：MySQL 使用 FULLTEXT Boolean 模式，其他 Provider 使用 Contains 子串匹配。")
             .Produces<ParcelListResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status400BadRequest);
+
+        group.MapGet("/cursor", GetParcelCursorListAsync)
+            .WithName("GetParcelCursorList")
+            .WithSummary("游标分页查询 Parcel 列表")
+            .WithDescription("按固定排序键 ScannedTime DESC、Id DESC 执行游标分页查询。未指定时间范围时默认仅查询最近 24 小时；页大小最大为 200。时间参数必须为本地时间字符串，不允许 UTC 或时区偏移。")
+            .Produces<ParcelCursorListResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest);
 
         group.MapGet("/{id:long}", GetParcelByIdAsync)
@@ -86,6 +93,45 @@ public static class ParcelReadOnlyApiRouteExtensions {
         }
         catch (ArgumentException exception) {
             Logger.Warn(exception, "Parcel 列表查询参数校验失败。");
+            return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", exception.Message);
+        }
+    }
+
+    /// <summary>
+    /// 处理游标分页查询请求。
+    /// </summary>
+    /// <param name="query">游标分页查询参数。</param>
+    /// <param name="queryService">应用层游标查询服务。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>查询结果。</returns>
+    private static async Task<IResult> GetParcelCursorListAsync(
+        [AsParameters] ParcelCursorListQueryParameters query,
+        GetParcelCursorPagedQueryService queryService,
+        CancellationToken cancellationToken) {
+        if (!LocalDateTimeParsing.TryParseOptionalLocalDateTime(query.ScannedTimeStart, out var scannedTimeStart)
+            || !LocalDateTimeParsing.TryParseOptionalLocalDateTime(query.ScannedTimeEnd, out var scannedTimeEnd)) {
+            return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", "scannedTimeStart/scannedTimeEnd 必须是本地时间格式，且不允许包含 UTC 或时区偏移。");
+        }
+
+        try {
+            var request = new ParcelCursorListRequest {
+                Cursor = query.Cursor,
+                PageSize = query.PageSize,
+                BarCodeKeyword = query.BarCodeKeyword,
+                BagCode = query.BagCode,
+                WorkstationName = query.WorkstationName,
+                Status = query.Status,
+                ExceptionType = query.ExceptionType,
+                ActualChuteId = query.ActualChuteId,
+                TargetChuteId = query.TargetChuteId,
+                ScannedTimeStart = scannedTimeStart,
+                ScannedTimeEnd = scannedTimeEnd
+            };
+            var response = await queryService.ExecuteAsync(request, cancellationToken);
+            return Results.Ok(response);
+        }
+        catch (ArgumentException exception) {
+            Logger.Warn(exception, "Parcel 游标分页查询参数校验失败。");
             return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", exception.Message);
         }
     }

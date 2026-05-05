@@ -1,9 +1,7 @@
 using NLog;
-using Zeye.Sorting.Hub.Application.Utilities;
+using Zeye.Sorting.Hub.Application.Mappers.Parcels;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.Admin;
-using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
-using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Repositories;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.Results;
 
@@ -53,47 +51,18 @@ public sealed class CreateParcelCommandService {
             throw new ArgumentNullException(nameof(request));
         }
 
-        // 步骤 1：验证并映射枚举类型，拒绝无效的整型枚举值。
-        EnumGuard.ThrowIfUndefined<ParcelType>(request.Type, nameof(request.Type), "包裹类型无效。", "新增包裹");
-        EnumGuard.ThrowIfUndefined<ApiRequestStatus>(request.RequestStatus, nameof(request.RequestStatus), "接口访问状态无效。", "新增包裹");
-        EnumGuard.ThrowIfUndefined<NoReadType>(request.NoReadType, nameof(request.NoReadType), "NoRead 类型无效。", "新增包裹");
-
         try {
-            // 步骤 2：通过领域工厂方法构建聚合根，由领域层统一做字段合法性校验。
-            var parcel = Parcel.Create(
-                id: request.Id,
-                parcelTimestamp: request.ParcelTimestamp,
-                type: (ParcelType)request.Type,
-                barCodes: request.BarCodes,
-                weight: request.Weight,
-                workstationName: request.WorkstationName,
-                scannedTime: scannedTime,
-                dischargeTime: dischargeTime,
-                targetChuteId: request.TargetChuteId,
-                actualChuteId: request.ActualChuteId,
-                requestStatus: (ApiRequestStatus)request.RequestStatus,
-                bagCode: request.BagCode,
-                isSticking: request.IsSticking,
-                length: request.Length,
-                width: request.Width,
-                height: request.Height,
-                volume: request.Volume,
-                hasImages: request.HasImages,
-                hasVideos: request.HasVideos,
-                coordinate: request.Coordinate,
-                noReadType: (NoReadType)request.NoReadType,
-                sorterCarrierId: request.SorterCarrierId,
-                segmentCodes: request.SegmentCodes,
-                lifecycleMilliseconds: request.LifecycleMilliseconds);
+            // 步骤 1：通过共享映射器构建聚合根，由领域层统一做字段合法性校验。
+            var parcel = ParcelCreateRequestMapper.MapToParcel(request, scannedTime, dischargeTime);
 
-            // 步骤 3：调用仓储持久化（包裹 Id 由调用方传入并由领域工厂赋值）。
+            // 步骤 2：调用仓储持久化（包裹 Id 由调用方传入并由领域工厂赋值）。
             var result = await _parcelRepository.AddAsync(parcel, cancellationToken);
             if (!result.IsSuccess) {
                 Logger.Error("新增包裹失败，BarCodes={BarCodes}, ErrorMessage={ErrorMessage}", request.BarCodes, result.ErrorMessage);
                 ThrowCreateFailedException(result);
             }
 
-            // 步骤 4：映射领域对象到合同响应并返回。
+            // 步骤 3：映射领域对象到合同响应并返回。
             return ParcelContractMapper.ToDetail(parcel);
         }
         catch (Exception ex) when (ex is not ArgumentException && ex is not InvalidOperationException) {

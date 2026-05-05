@@ -43,9 +43,56 @@ internal static class HealthCheckResponseWriter {
             if (value.Duration != TimeSpan.Zero) {
                 writer.WriteNumber("durationMs", (long)value.Duration.TotalMilliseconds);
             }
+            if (value.Data.Count > 0) {
+                writer.WriteStartObject("data");
+                foreach (var (dataKey, dataValue) in value.Data) {
+                    WriteHealthData(writer, dataKey, dataValue);
+                }
+
+                writer.WriteEndObject();
+            }
             writer.WriteEndObject();
         }
         writer.WriteEndObject();
         writer.WriteEndObject();
+    }
+
+    /// <summary>
+    /// 写入健康检查附加数据，优先按常见标量类型输出，其他类型退回 JsonSerializer。
+    /// </summary>
+    /// <param name="writer">JSON 写入器。</param>
+    /// <param name="key">数据键。</param>
+    /// <param name="value">数据值。</param>
+    private static void WriteHealthData(Utf8JsonWriter writer, string key, object? value) {
+        switch (value) {
+            case null:
+                writer.WriteNull(key);
+                return;
+            case string text:
+                writer.WriteString(key, text);
+                return;
+            case bool boolValue:
+                writer.WriteBoolean(key, boolValue);
+                return;
+            case int intValue:
+                writer.WriteNumber(key, intValue);
+                return;
+            case long longValue:
+                writer.WriteNumber(key, longValue);
+                return;
+            case double doubleValue:
+                writer.WriteNumber(key, doubleValue);
+                return;
+            case float floatValue:
+                writer.WriteNumber(key, floatValue);
+                return;
+            case decimal decimalValue:
+                writer.WriteNumber(key, decimalValue);
+                return;
+            default:
+                writer.WritePropertyName(key);
+                JsonSerializer.Serialize(writer, value, value.GetType());
+                return;
+        }
     }
 }

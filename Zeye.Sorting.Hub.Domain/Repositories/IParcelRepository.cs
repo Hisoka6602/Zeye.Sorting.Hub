@@ -31,6 +31,14 @@ namespace Zeye.Sorting.Hub.Domain.Repositories {
             CancellationToken cancellationToken);
 
         /// <summary>
+        /// 按过滤条件执行游标分页查询（固定排序：ScannedTime DESC, Id DESC）。
+        /// </summary>
+        Task<CursorPageResult<ParcelSummaryReadModel>> GetCursorPagedAsync(
+            ParcelQueryFilter filter,
+            CursorPageRequest pageRequest,
+            CancellationToken cancellationToken);
+
+        /// <summary>
         /// 按集包号与扫码时间范围分页查询包裹摘要。
         /// </summary>
         Task<PageResult<ParcelSummaryReadModel>> GetByBagCodeAsync(
