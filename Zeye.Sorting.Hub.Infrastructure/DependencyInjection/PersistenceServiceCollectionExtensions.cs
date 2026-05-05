@@ -17,6 +17,7 @@ using Zeye.Sorting.Hub.Domain.Repositories;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Diagnostics;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 using Zeye.Sorting.Hub.Domain.Enums.Sharding;
 using Zeye.Sorting.Hub.Infrastructure.Repositories;
@@ -94,6 +95,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// EF Core 运行时 providerName 语义由 <see cref="DbProviderNames"/> 统一定义。
         /// </summary>
         public static IServiceCollection AddSortingHubPersistence(this IServiceCollection services, IConfiguration configuration) {
+            RegisterDatabaseConnectionDiagnostics(services, configuration);
             var provider = configuration["Persistence:Provider"];
             var commandTimeoutSeconds = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
             var minCommandElapsedMilliseconds = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:MinCommandElapsedMilliseconds", 50);
@@ -184,6 +186,44 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 serviceProvider.GetRequiredService<WebRequestAuditLogRepository>());
 
             return services;
+        }
+
+        /// <summary>
+        /// 注册数据库连接诊断与预热能力。
+        /// </summary>
+        /// <param name="services">服务集合。</param>
+        /// <param name="configuration">配置根。</param>
+        private static void RegisterDatabaseConnectionDiagnostics(IServiceCollection services, IConfiguration configuration) {
+            services.AddOptions<DatabaseConnectionDiagnosticsOptions>()
+                .Configure(options => {
+                    if (bool.TryParse(configuration[$"{DatabaseConnectionDiagnosticsOptions.SectionPath}:IsWarmupEnabled"], out var isWarmupEnabled)) {
+                        options.IsWarmupEnabled = isWarmupEnabled;
+                    }
+
+                    if (int.TryParse(configuration[$"{DatabaseConnectionDiagnosticsOptions.SectionPath}:WarmupConnectionCount"], out var warmupConnectionCount)) {
+                        options.WarmupConnectionCount = warmupConnectionCount;
+                    }
+
+                    if (int.TryParse(configuration[$"{DatabaseConnectionDiagnosticsOptions.SectionPath}:ProbeTimeoutMilliseconds"], out var probeTimeoutMilliseconds)) {
+                        options.ProbeTimeoutMilliseconds = probeTimeoutMilliseconds;
+                    }
+
+                    if (int.TryParse(configuration[$"{DatabaseConnectionDiagnosticsOptions.SectionPath}:FailureThreshold"], out var failureThreshold)) {
+                        options.FailureThreshold = failureThreshold;
+                    }
+
+                    if (int.TryParse(configuration[$"{DatabaseConnectionDiagnosticsOptions.SectionPath}:RecoveryThreshold"], out var recoveryThreshold)) {
+                        options.RecoveryThreshold = recoveryThreshold;
+                    }
+                })
+                .Validate(static options => options.WarmupConnectionCount is >= 1 and <= 64, "WarmupConnectionCount 必须在 1~64 之间")
+                .Validate(static options => options.ProbeTimeoutMilliseconds is >= 100 and <= 60000, "ProbeTimeoutMilliseconds 必须在 100~60000 之间")
+                .Validate(static options => options.FailureThreshold is >= 1 and <= 20, "FailureThreshold 必须在 1~20 之间")
+                .Validate(static options => options.RecoveryThreshold is >= 1 and <= 20, "RecoveryThreshold 必须在 1~20 之间")
+                .ValidateOnStart();
+
+            services.TryAddSingleton<IDatabaseConnectionDiagnostics, DatabaseConnectionDiagnosticsService>();
+            services.TryAddSingleton<DatabaseConnectionWarmupService>();
         }
 
         /// <summary>

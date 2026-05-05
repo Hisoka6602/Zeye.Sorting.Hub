@@ -61,6 +61,7 @@ try {
     builder.Services.Configure<ResourceThresholdsOptions>(builder.Configuration.GetSection(ResourceThresholdsOptions.SectionName));
     builder.Services.AddHostedService<LogCleanupService>();
     builder.Services.AddHostedService<DevelopmentBrowserLauncherHostedService>();
+    builder.Services.AddHostedService<DatabaseConnectionWarmupHostedService>();
     builder.Services.AddSingleton<SafeExecutor>();
     builder.Services.AddSingleton<ConfigChangeHistoryStore<LogCleanupSettings>>();
     builder.Services.AddSortingHubPersistence(builder.Configuration);
@@ -73,7 +74,7 @@ try {
     //   - /health/ready  包含数据库可用性探测，用于流量接入决策
     // ──────────────────────────────────────────────────────
     builder.Services.AddHealthChecks()
-        .AddCheck<DatabaseReadinessHealthCheck>(
+        .AddCheck<DatabaseConnectionDetailedHealthCheck>(
             name: "database",
             tags: ["ready"]);
     builder.Services.AddProblemDetails();
