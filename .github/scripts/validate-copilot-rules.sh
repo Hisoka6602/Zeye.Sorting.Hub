@@ -759,6 +759,9 @@ check_naming_conventions() {
     [[ -z "$file_path" ]] && continue
     local file_name
     file_name="$(basename "$file_path" .cs)"
+    if [[ "$file_path" == */Persistence/Migrations/* ]] && echo "$file_name" | grep -q -E '^[0-9]{14}_[A-Z][A-Za-z0-9_]*(\.Designer)?$'; then
+      continue
+    fi
     if ! echo "$file_name" | grep -q -E '^[A-Z][A-Za-z0-9_]*$'; then
       record_failure "新增 C# 文件未使用 PascalCase 命名，违反规则 21：$file_path"
     fi

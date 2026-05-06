@@ -178,6 +178,12 @@ public sealed class IdempotencyGuardService {
         }
         catch (Exception ex) {
             // 步骤 5：真实业务失败时记录 Failed 状态，保留失败原因，随后继续向上抛出原始异常。
+            Logger.Error(
+                ex,
+                "幂等请求执行失败，SourceSystem={SourceSystem}, OperationName={OperationName}, BusinessKey={BusinessKey}",
+                sourceSystem,
+                operationName,
+                businessKey);
             record.MarkFailed(ex.Message);
             await EnsureRecordStateUpdatedAsync(record, sourceSystem, operationName, businessKey, cancellationToken);
             throw;
