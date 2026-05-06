@@ -3,6 +3,7 @@ using Zeye.Sorting.Hub.Application.Services.Idempotency;
 using Zeye.Sorting.Hub.Application.Services.Parcels;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.Admin;
 using Zeye.Sorting.Hub.Domain.Aggregates.Idempotency;
+using Zeye.Sorting.Hub.Domain.Enums.Idempotency;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Idempotency;
 using Zeye.Sorting.Hub.Infrastructure.Repositories;
@@ -168,7 +169,7 @@ public sealed class IdempotencyTests {
             await using (var verificationContext = new SortingHubDbContext(options)) {
                 var canceledRecord = await verificationContext.Set<IdempotencyRecord>().SingleOrDefaultAsync();
                 Assert.NotNull(canceledRecord);
-                Assert.Equal(Zeye.Sorting.Hub.Domain.Enums.Idempotency.IdempotencyRecordStatus.Rejected, canceledRecord.Status);
+                Assert.Equal(IdempotencyRecordStatus.Rejected, canceledRecord.Status);
                 Assert.Equal(IdempotencyGuardService.RequestCanceledMessage, canceledRecord.FailureMessage);
             }
 
@@ -187,7 +188,7 @@ public sealed class IdempotencyTests {
             await using var finalContext = new SortingHubDbContext(options);
             var finalRecord = await finalContext.Set<IdempotencyRecord>().SingleOrDefaultAsync();
             Assert.NotNull(finalRecord);
-            Assert.Equal(Zeye.Sorting.Hub.Domain.Enums.Idempotency.IdempotencyRecordStatus.Completed, finalRecord.Status);
+            Assert.Equal(IdempotencyRecordStatus.Completed, finalRecord.Status);
         }
         finally {
             await CleanupDatabaseAsync(databaseName);
@@ -236,7 +237,7 @@ public sealed class IdempotencyTests {
 
             await using var verificationContext = new SortingHubDbContext(options);
             var repairedRecord = await verificationContext.Set<IdempotencyRecord>().SingleAsync();
-            Assert.Equal(Zeye.Sorting.Hub.Domain.Enums.Idempotency.IdempotencyRecordStatus.Completed, repairedRecord.Status);
+            Assert.Equal(IdempotencyRecordStatus.Completed, repairedRecord.Status);
         }
         finally {
             await CleanupDatabaseAsync(databaseName);

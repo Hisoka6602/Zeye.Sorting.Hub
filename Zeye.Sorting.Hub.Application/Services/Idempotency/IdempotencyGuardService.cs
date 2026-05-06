@@ -167,13 +167,13 @@ public sealed class IdempotencyGuardService {
                 operationName,
                 businessKey);
             record.MarkRejected(RequestCanceledMessage);
-            using var persistenceCancellationTokenSource = CreateCancellationPersistenceTokenSource(cancellationToken);
+            using var persistenceTokenSource = CreateCancellationPersistenceTokenSource(cancellationToken);
             await EnsureRecordStateUpdatedAsync(
                 record,
                 sourceSystem,
                 operationName,
                 businessKey,
-                persistenceCancellationTokenSource.Token);
+                persistenceTokenSource.Token);
             throw;
         }
         catch (Exception ex) {
