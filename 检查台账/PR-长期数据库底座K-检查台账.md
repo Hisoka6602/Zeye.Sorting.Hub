@@ -30,6 +30,7 @@
 - `Zeye.Sorting.Hub.Domain/Aggregates/Idempotency/IdempotencyRecord.cs`
 - `Zeye.Sorting.Hub.Domain/Enums/Idempotency/IdempotencyRecordStatus.cs`
 - `Zeye.Sorting.Hub.Domain/Repositories/IIdempotencyRepository.cs`
+- `Zeye.Sorting.Hub.Application/Services/Idempotency/IdempotencyGuardException.cs`
 - `Zeye.Sorting.Hub.Application/Services/Idempotency/IdempotencyGuardService.cs`
 - `Zeye.Sorting.Hub.Infrastructure/Persistence/Idempotency/IdempotencyKeyHasher.cs`
 - `Zeye.Sorting.Hub.Infrastructure/Persistence/DuplicateKeyExceptionDetector.cs`
@@ -62,11 +63,12 @@
 ## 三、本次实现结果
 
 1. 新增 `IdempotencyRecord` 聚合、`IdempotencyRecordStatus` 枚举与 `IIdempotencyRepository` 仓储契约，统一定义来源系统、操作名、业务键、SHA256 载荷哈希、执行状态与失败消息。
-2. 新增 `IdempotencyGuardService`、`IdempotencyRepository` 与 `IdempotencyKeyHasher`，形成“读取现有记录 → 竞争创建 Pending → 执行业务 → 更新 Completed/Failed”的可复用幂等守卫链路。
+2. 新增 `IdempotencyGuardService`、`IdempotencyGuardException`、`IdempotencyRepository` 与 `IdempotencyKeyHasher`，形成“读取现有记录 → 竞争创建 Pending → 执行业务 → 更新状态/回放恢复”的可复用幂等守卫链路。
 3. 调整 `CreateParcelCommandService` 与 `ParcelAdminApiRouteExtensions`，在管理端新增包裹入口基于规范化本地时间载荷计算哈希；相同请求重复提交返回已有结果，处理中请求返回明确冲突，不再直接落入重复主键异常。
-4. 提取 `DuplicateKeyExceptionDetector` 统一复用 MySQL/SQL Server 唯一键冲突识别逻辑，避免 `ParcelRepository` 与 `IdempotencyRepository` 出现重复实现。
-5. 新增 `IdempotencyRecordEntityTypeConfiguration` 与 EF 迁移 `20260506075656_AddIdempotencyRecordSupport.*`，补齐 `IdempotencyRecords` 表及唯一幂等键索引。
-6. 新增 `IdempotencyTests.cs`，覆盖 SHA256 哈希稳定性、重复请求回放与 Pending 状态拒绝，并同步修正管理端/缓冲写入测试应用的依赖注册。
+4. 根据审查意见补齐稳定错误码异常类型、取消请求可重试语义与 Pending 自恢复回放：取消会持久化为 `Rejected` 以允许后续重试；若真实结果已存在但幂等记录仍为 Pending，则重复请求会自动按重放语义恢复，避免长期卡死在 409。
+5. 提取 `DuplicateKeyExceptionDetector` 统一复用 MySQL/SQL Server 唯一键冲突识别逻辑，避免 `ParcelRepository` 与 `IdempotencyRepository` 出现重复实现。
+6. 新增 `IdempotencyRecordEntityTypeConfiguration` 与 EF 迁移 `20260506075656_AddIdempotencyRecordSupport.*`，补齐 `IdempotencyRecords` 表及唯一幂等键索引。
+7. 新增 `IdempotencyTests.cs`，覆盖 SHA256 哈希稳定性、重复请求回放、取消后重试与 Pending 自恢复回放，并同步修正管理端/缓冲写入测试应用的依赖注册。
 
 ---
 
@@ -74,6 +76,9 @@
 
 - `dotnet build Zeye.Sorting.Hub.sln -v quiet` ✅
 - `dotnet test Zeye.Sorting.Hub.sln --no-build -v quiet` ✅（267 通过）
+- `dotnet test Zeye.Sorting.Hub.Host.Tests/Zeye.Sorting.Hub.Host.Tests.csproj --no-build --filter 'FullyQualifiedName~Zeye.Sorting.Hub.Host.Tests.IdempotencyTests' -v minimal` ✅
+- `dotnet test Zeye.Sorting.Hub.Host.Tests/Zeye.Sorting.Hub.Host.Tests.csproj --no-build --filter 'FullyQualifiedName~Zeye.Sorting.Hub.Host.Tests.ParcelAdminApiTests' -v minimal` ✅
+- `dotnet test Zeye.Sorting.Hub.Host.Tests/Zeye.Sorting.Hub.Host.Tests.csproj --no-build --filter 'FullyQualifiedName~Zeye.Sorting.Hub.Host.Tests.ParcelBufferedWriteTests' -v minimal` ✅
 - `bash .github/scripts/validate-database-foundation-rules.sh` ✅
 - `bash .github/scripts/validate-copilot-rules.sh` ✅
 - `dotnet ef migrations list --project Zeye.Sorting.Hub.Infrastructure --startup-project Zeye.Sorting.Hub.Infrastructure --context SortingHubDbContext -- --provider MySql` ✅
@@ -91,7 +96,7 @@
 
 ### 保留能力
 - 幂等键固定由 `SourceSystem + OperationName + BusinessKey + PayloadHash(SHA256)` 组成
-- 当前已在管理端同步新增包裹入口落地重复请求回放与处理中拒绝
+- 当前已在管理端同步新增包裹入口落地重复请求回放、处理中拒绝与取消后重试
 - 唯一键冲突识别逻辑已抽取为共享工具，后续仓储可继续复用
 
 ### 未完成但已预留

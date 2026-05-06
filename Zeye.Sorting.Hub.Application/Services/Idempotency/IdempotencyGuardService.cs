@@ -16,6 +16,11 @@ public sealed class IdempotencyGuardService {
     public const string RequestInProgressMessage = "相同幂等请求正在处理中，请稍后重试。";
 
     /// <summary>
+    /// 幂等请求取消后允许重试的提示消息。
+    /// </summary>
+    public const string RequestCanceledMessage = "幂等请求已取消，可重新发起。";
+
+    /// <summary>
     /// 幂等记录仓储。
     /// </summary>
     private readonly IIdempotencyRepository _idempotencyRepository;
@@ -61,7 +66,7 @@ public sealed class IdempotencyGuardService {
         ArgumentNullException.ThrowIfNull(executeAsync);
         ArgumentNullException.ThrowIfNull(loadExistingAsync);
 
-        // 步骤 1：先读取当前幂等键是否已存在记录，命中时按状态决定回放或拒绝。
+        // 步骤 1：先读取当前幂等键是否已存在记录；若已存在，则按状态决定回放、拒绝或重试接管。
         var currentRecord = await _idempotencyRepository.GetByKeyAsync(
             sourceSystem,
             operationName,
@@ -69,7 +74,14 @@ public sealed class IdempotencyGuardService {
             payloadHash,
             cancellationToken);
         if (currentRecord is not null) {
-            return await ResolveExistingRecordAsync(currentRecord, sourceSystem, operationName, businessKey, loadExistingAsync, cancellationToken);
+            return await HandleExistingRecordAsync(
+                currentRecord,
+                sourceSystem,
+                operationName,
+                businessKey,
+                executeAsync,
+                loadExistingAsync,
+                cancellationToken);
         }
 
         // 步骤 2：创建 Pending 记录；若并发竞争导致唯一键冲突，则回退到“已存在记录”分支统一处理。
@@ -84,7 +96,14 @@ public sealed class IdempotencyGuardService {
                     payloadHash,
                     cancellationToken);
                 if (duplicatedRecord is not null) {
-                    return await ResolveExistingRecordAsync(duplicatedRecord, sourceSystem, operationName, businessKey, loadExistingAsync, cancellationToken);
+                    return await HandleExistingRecordAsync(
+                        duplicatedRecord,
+                        sourceSystem,
+                        operationName,
+                        businessKey,
+                        executeAsync,
+                        loadExistingAsync,
+                        cancellationToken);
                 }
             }
 
@@ -94,20 +113,62 @@ public sealed class IdempotencyGuardService {
                 operationName,
                 businessKey,
                 addResult.ErrorMessage);
-            throw new InvalidOperationException(addResult.ErrorMessage ?? "新增幂等记录失败。");
+            throw new IdempotencyGuardException(
+                IdempotencyGuardException.StatePersistenceFailedErrorCode,
+                addResult.ErrorMessage ?? "新增幂等记录失败。");
         }
 
+        return await ExecuteWithRecordAsync(
+            pendingRecord,
+            sourceSystem,
+            operationName,
+            businessKey,
+            executeAsync,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// 使用已持有的幂等记录执行业务。
+    /// </summary>
+    /// <typeparam name="TResponse">返回值类型。</typeparam>
+    /// <param name="record">幂等记录。</param>
+    /// <param name="sourceSystem">来源系统。</param>
+    /// <param name="operationName">操作名称。</param>
+    /// <param name="businessKey">业务键。</param>
+    /// <param name="executeAsync">首次执行委托。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>执行结果与是否为重放结果。</returns>
+    private async Task<(TResponse Response, bool IsReplay)> ExecuteWithRecordAsync<TResponse>(
+        IdempotencyRecord record,
+        string sourceSystem,
+        string operationName,
+        string businessKey,
+        Func<CancellationToken, Task<TResponse>> executeAsync,
+        CancellationToken cancellationToken)
+        where TResponse : class {
         try {
-            // 步骤 3：仅首次请求进入真实业务执行；成功后把 Pending 切换为 Completed。
+            // 步骤 3：仅持有 Pending 记录的请求进入真实业务执行；成功后把记录切换为 Completed。
             var response = await executeAsync(cancellationToken);
-            pendingRecord.MarkCompleted();
-            await TryUpdateRecordAsync(pendingRecord, sourceSystem, operationName, businessKey, cancellationToken);
+            record.MarkCompleted();
+            await EnsureRecordStateUpdatedAsync(record, sourceSystem, operationName, businessKey, cancellationToken);
             return (response, false);
         }
+        catch (OperationCanceledException ex) {
+            // 步骤 4：取消不应写成 Failed；转为 Rejected 以显式允许后续同请求重试。
+            Logger.Warn(
+                ex,
+                "幂等请求执行被取消，SourceSystem={SourceSystem}, OperationName={OperationName}, BusinessKey={BusinessKey}",
+                sourceSystem,
+                operationName,
+                businessKey);
+            record.MarkRejected(RequestCanceledMessage);
+            await EnsureRecordStateUpdatedAsync(record, sourceSystem, operationName, businessKey, CancellationToken.None);
+            throw;
+        }
         catch (Exception ex) {
-            // 步骤 4：真实业务抛错时记录失败状态，保留失败原因，随后继续向上抛出原始异常。
-            pendingRecord.MarkFailed(ex.Message);
-            await TryUpdateRecordAsync(pendingRecord, sourceSystem, operationName, businessKey, cancellationToken);
+            // 步骤 5：真实业务失败时记录 Failed 状态，保留失败原因，随后继续向上抛出原始异常。
+            record.MarkFailed(ex.Message);
+            await EnsureRecordStateUpdatedAsync(record, sourceSystem, operationName, businessKey, cancellationToken);
             throw;
         }
     }
@@ -120,64 +181,134 @@ public sealed class IdempotencyGuardService {
     /// <param name="sourceSystem">来源系统。</param>
     /// <param name="operationName">操作名称。</param>
     /// <param name="businessKey">业务键。</param>
+    /// <param name="executeAsync">首次执行委托。</param>
     /// <param name="loadExistingAsync">读取已有结果的委托。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>执行结果与是否为重放结果。</returns>
-    private static async Task<(TResponse Response, bool IsReplay)> ResolveExistingRecordAsync<TResponse>(
+    private async Task<(TResponse Response, bool IsReplay)> HandleExistingRecordAsync<TResponse>(
         IdempotencyRecord record,
         string sourceSystem,
         string operationName,
         string businessKey,
+        Func<CancellationToken, Task<TResponse>> executeAsync,
         Func<CancellationToken, Task<TResponse?>> loadExistingAsync,
         CancellationToken cancellationToken)
         where TResponse : class {
         switch (record.Status) {
             case IdempotencyRecordStatus.Completed:
-                var response = await loadExistingAsync(cancellationToken);
-                if (response is null) {
+                return await ReplayExistingResponseAsync(loadExistingAsync, sourceSystem, operationName, businessKey, cancellationToken);
+            case IdempotencyRecordStatus.Pending:
+                var pendingResponse = await loadExistingAsync(cancellationToken);
+                if (pendingResponse is not null) {
                     Logger.Error(
-                        "幂等记录已完成但未能读取已有结果，SourceSystem={SourceSystem}, OperationName={OperationName}, BusinessKey={BusinessKey}",
+                        "幂等记录仍为 Pending，但已检测到真实业务结果，尝试按重放语义恢复。SourceSystem={SourceSystem}, OperationName={OperationName}, BusinessKey={BusinessKey}",
                         sourceSystem,
                         operationName,
                         businessKey);
-                    throw new InvalidOperationException("幂等请求已完成，但未能读取已有结果。");
+                    record.MarkCompleted();
+                    await TryRepairCompletedStateAsync(record, sourceSystem, operationName, businessKey, cancellationToken);
+                    return (pendingResponse, true);
                 }
 
-                return (response, true);
-            case IdempotencyRecordStatus.Pending:
                 Logger.Warn(
                     "相同幂等请求仍在处理中，SourceSystem={SourceSystem}, OperationName={OperationName}, BusinessKey={BusinessKey}",
                     sourceSystem,
                     operationName,
                     businessKey);
-                throw new InvalidOperationException(RequestInProgressMessage);
+                throw new IdempotencyGuardException(
+                    IdempotencyGuardException.RequestInProgressErrorCode,
+                    RequestInProgressMessage);
             case IdempotencyRecordStatus.Rejected:
+                Logger.Warn(
+                    "相同幂等请求命中可重试拒绝记录，准备重新接管执行。SourceSystem={SourceSystem}, OperationName={OperationName}, BusinessKey={BusinessKey}",
+                    sourceSystem,
+                    operationName,
+                    businessKey);
+                record.ReopenPending();
+                await EnsureRecordStateUpdatedAsync(record, sourceSystem, operationName, businessKey, cancellationToken);
+                return await ExecuteWithRecordAsync(record, sourceSystem, operationName, businessKey, executeAsync, cancellationToken);
             case IdempotencyRecordStatus.Failed:
-                var message = string.IsNullOrWhiteSpace(record.FailureMessage)
-                    ? "相同幂等请求已被拒绝。"
+                var failedMessage = string.IsNullOrWhiteSpace(record.FailureMessage)
+                    ? "相同幂等请求已失败。"
                     : record.FailureMessage;
                 Logger.Warn(
-                    "相同幂等请求命中终态记录，SourceSystem={SourceSystem}, OperationName={OperationName}, BusinessKey={BusinessKey}, Status={Status}, Message={Message}",
+                    "相同幂等请求命中失败终态记录，SourceSystem={SourceSystem}, OperationName={OperationName}, BusinessKey={BusinessKey}, Message={Message}",
                     sourceSystem,
                     operationName,
                     businessKey,
-                    record.Status,
-                    message);
-                throw new InvalidOperationException(message);
+                    failedMessage);
+                throw new InvalidOperationException(failedMessage);
             default:
                 throw new InvalidOperationException("幂等记录状态无效。");
         }
     }
 
     /// <summary>
-    /// 尝试更新幂等记录状态。
+    /// 回放已存在结果。
+    /// </summary>
+    /// <typeparam name="TResponse">返回值类型。</typeparam>
+    /// <param name="loadExistingAsync">读取已有结果的委托。</param>
+    /// <param name="sourceSystem">来源系统。</param>
+    /// <param name="operationName">操作名称。</param>
+    /// <param name="businessKey">业务键。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>执行结果与是否为重放结果。</returns>
+    private static async Task<(TResponse Response, bool IsReplay)> ReplayExistingResponseAsync<TResponse>(
+        Func<CancellationToken, Task<TResponse?>> loadExistingAsync,
+        string sourceSystem,
+        string operationName,
+        string businessKey,
+        CancellationToken cancellationToken)
+        where TResponse : class {
+        var response = await loadExistingAsync(cancellationToken);
+        if (response is null) {
+            Logger.Error(
+                "幂等记录已完成但未能读取已有结果，SourceSystem={SourceSystem}, OperationName={OperationName}, BusinessKey={BusinessKey}",
+                sourceSystem,
+                operationName,
+                businessKey);
+            throw new InvalidOperationException("幂等请求已完成，但未能读取已有结果。");
+        }
+
+        return (response, true);
+    }
+
+    /// <summary>
+    /// 尝试修复已存在业务结果但记录仍为 Pending 的状态。
     /// </summary>
     /// <param name="record">幂等记录。</param>
     /// <param name="sourceSystem">来源系统。</param>
     /// <param name="operationName">操作名称。</param>
     /// <param name="businessKey">业务键。</param>
     /// <param name="cancellationToken">取消令牌。</param>
-    private async Task TryUpdateRecordAsync(
+    private async Task TryRepairCompletedStateAsync(
+        IdempotencyRecord record,
+        string sourceSystem,
+        string operationName,
+        string businessKey,
+        CancellationToken cancellationToken) {
+        var updateResult = await _idempotencyRepository.UpdateAsync(record, cancellationToken);
+        if (updateResult.IsSuccess) {
+            return;
+        }
+
+        Logger.Error(
+            "幂等记录恢复为 Completed 失败，将继续按重放语义返回结果。SourceSystem={SourceSystem}, OperationName={OperationName}, BusinessKey={BusinessKey}, ErrorMessage={ErrorMessage}",
+            sourceSystem,
+            operationName,
+            businessKey,
+            updateResult.ErrorMessage);
+    }
+
+    /// <summary>
+    /// 强制更新幂等记录状态。
+    /// </summary>
+    /// <param name="record">幂等记录。</param>
+    /// <param name="sourceSystem">来源系统。</param>
+    /// <param name="operationName">操作名称。</param>
+    /// <param name="businessKey">业务键。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    private async Task EnsureRecordStateUpdatedAsync(
         IdempotencyRecord record,
         string sourceSystem,
         string operationName,
@@ -195,5 +326,8 @@ public sealed class IdempotencyGuardService {
             businessKey,
             record.Status,
             updateResult.ErrorMessage);
+        throw new IdempotencyGuardException(
+            IdempotencyGuardException.StatePersistenceFailedErrorCode,
+            updateResult.ErrorMessage ?? "更新幂等记录失败。");
     }
 }

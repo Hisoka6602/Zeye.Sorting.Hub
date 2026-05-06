@@ -143,6 +143,18 @@ public sealed class IdempotencyRecord : IEntity<long> {
         var now = DateTime.Now;
         Status = IdempotencyRecordStatus.Rejected;
         FailureMessage = NormalizeFailureMessage(failureMessage);
+        CompletedAt = null;
+        UpdatedAt = now;
+    }
+
+    /// <summary>
+    /// 将可重试记录重新放回待处理状态。
+    /// </summary>
+    public void ReopenPending() {
+        var now = DateTime.Now;
+        Status = IdempotencyRecordStatus.Pending;
+        FailureMessage = string.Empty;
+        CompletedAt = null;
         UpdatedAt = now;
     }
 

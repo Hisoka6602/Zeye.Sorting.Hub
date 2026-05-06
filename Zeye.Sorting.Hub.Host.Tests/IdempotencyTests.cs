@@ -136,6 +136,112 @@ public sealed class IdempotencyTests {
     }
 
     /// <summary>
+    /// 首次请求取消后应保留可重试语义，并允许后续相同请求成功重试。
+    /// </summary>
+    /// <returns>异步任务。</returns>
+    [Fact]
+    public async Task CreateParcelCommandService_WhenFirstRequestIsCanceled_ShouldAllowLaterRetry() {
+        var databaseName = $"idempotency-cancel-{Guid.NewGuid():N}";
+        try {
+            var options = BuildOptions(databaseName);
+            var factory = new SortingHubTestDbContextFactory(options);
+            var idempotencyRepository = new IdempotencyRepository(factory);
+            var guardService = new IdempotencyGuardService(idempotencyRepository);
+            var request = CreateRequest(33001);
+            var scannedTime = DateTime.Now.AddMinutes(-8);
+            var dischargeTime = scannedTime.AddMinutes(1);
+            var hasher = new IdempotencyKeyHasher();
+            var payloadHash = BuildParcelCreatePayloadHash(hasher, request, scannedTime, dischargeTime);
+            using var cancellationTokenSource = new CancellationTokenSource();
+            await Assert.ThrowsAsync<OperationCanceledException>(() => guardService.ExecuteAsync(
+                ParcelCreateIdempotencySourceSystem,
+                ParcelCreateIdempotencyOperationName,
+                request.Id.ToString(),
+                payloadHash,
+                innerCancellationToken => {
+                    cancellationTokenSource.Cancel();
+                    throw new OperationCanceledException(innerCancellationToken);
+                },
+                static _ => Task.FromResult<string?>(null),
+                cancellationTokenSource.Token));
+
+            await using (var verificationContext = new SortingHubDbContext(options)) {
+                var canceledRecord = await verificationContext.Set<IdempotencyRecord>().SingleAsync();
+                Assert.Equal(Zeye.Sorting.Hub.Domain.Enums.Idempotency.IdempotencyRecordStatus.Rejected, canceledRecord.Status);
+                Assert.Equal(IdempotencyGuardService.RequestCanceledMessage, canceledRecord.FailureMessage);
+            }
+
+            var retryResult = await guardService.ExecuteAsync(
+                ParcelCreateIdempotencySourceSystem,
+                ParcelCreateIdempotencyOperationName,
+                request.Id.ToString(),
+                payloadHash,
+                static _ => Task.FromResult("retry-success"),
+                static _ => Task.FromResult<string?>(null),
+                CancellationToken.None);
+
+            Assert.False(retryResult.IsReplay);
+            Assert.Equal("retry-success", retryResult.Response);
+
+            await using var finalContext = new SortingHubDbContext(options);
+            var finalRecord = await finalContext.Set<IdempotencyRecord>().SingleAsync();
+            Assert.Equal(Zeye.Sorting.Hub.Domain.Enums.Idempotency.IdempotencyRecordStatus.Completed, finalRecord.Status);
+        }
+        finally {
+            await CleanupDatabaseAsync(databaseName);
+        }
+    }
+
+    /// <summary>
+    /// Pending 记录已存在真实结果时应按重放语义返回，避免长期卡死在处理中。
+    /// </summary>
+    /// <returns>异步任务。</returns>
+    [Fact]
+    public async Task CreateParcelCommandService_WhenPendingRecordAlreadyHasResult_ShouldReplayExistingResponse() {
+        var databaseName = $"idempotency-recover-pending-{Guid.NewGuid():N}";
+        try {
+            var options = BuildOptions(databaseName);
+            var factory = new SortingHubTestDbContextFactory(options);
+            var service = CreateCommandService(factory);
+            var request = CreateRequest(34001);
+            var scannedTime = DateTime.Now.AddMinutes(-6);
+            var dischargeTime = scannedTime.AddMinutes(1);
+            var hasher = new IdempotencyKeyHasher();
+            var payloadHash = BuildParcelCreatePayloadHash(hasher, request, scannedTime, dischargeTime);
+            var parcel = Zeye.Sorting.Hub.Application.Mappers.Parcels.ParcelCreateRequestMapper.MapToParcel(request, scannedTime, dischargeTime);
+
+            await using (var dbContext = new SortingHubDbContext(options)) {
+                await dbContext.Set<Zeye.Sorting.Hub.Domain.Aggregates.Parcels.Parcel>().AddAsync(parcel);
+                await dbContext.Set<IdempotencyRecord>().AddAsync(IdempotencyRecord.CreatePending(
+                    ParcelCreateIdempotencySourceSystem,
+                    ParcelCreateIdempotencyOperationName,
+                    request.Id.ToString(),
+                    payloadHash));
+                await dbContext.SaveChangesAsync();
+            }
+
+            var replayResult = await service.ExecuteAsync(
+                request,
+                scannedTime,
+                dischargeTime,
+                ParcelCreateIdempotencySourceSystem,
+                ParcelCreateIdempotencyOperationName,
+                payloadHash,
+                CancellationToken.None);
+
+            Assert.True(replayResult.IsReplay);
+            Assert.Equal(request.Id, replayResult.Response.Id);
+
+            await using var verificationContext = new SortingHubDbContext(options);
+            var repairedRecord = await verificationContext.Set<IdempotencyRecord>().SingleAsync();
+            Assert.Equal(Zeye.Sorting.Hub.Domain.Enums.Idempotency.IdempotencyRecordStatus.Completed, repairedRecord.Status);
+        }
+        finally {
+            await CleanupDatabaseAsync(databaseName);
+        }
+    }
+
+    /// <summary>
     /// 创建命令服务。
     /// </summary>
     /// <param name="factory">测试数据库工厂。</param>

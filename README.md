@@ -69,7 +69,8 @@
 │   │   ├── Diagnostics（诊断应用服务目录）
 │   │   │   └── GetSlowQueryProfileQueryService.cs（慢查询画像查询应用服务：读取内存快照并映射外部合同）
 │   │   ├── Idempotency（幂等应用服务目录）
-│   │   │   └── IdempotencyGuardService.cs（幂等守卫应用服务：统一协调重复请求回放与处理中拒绝）
+│   │   │   ├── IdempotencyGuardException.cs（幂等守卫异常：提供稳定错误码，避免调用方依赖消息文本判定）
+│   │   │   └── IdempotencyGuardService.cs（幂等守卫应用服务：统一协调重复请求回放、取消重试与处理中拒绝）
 │   │   └── Parcels（Parcel 查询应用服务目录）
 │   │       ├── CleanupExpiredParcelsCommandService.cs（过期包裹清理应用服务（治理型，调用仓储隔离器，不可绕过））
 │   │       ├── CreateParcelCommandService.cs（管理端新增包裹应用服务：接入幂等 Guard，支持重复请求回放）
@@ -574,7 +575,8 @@
 - `GetSlowQueryProfileQueryService.cs`：慢查询画像查询应用服务，消费 `ISlowQueryProfileReader` 返回的只读快照，并映射为 Diagnostics 合同响应。
 
 #### `Zeye.Sorting.Hub.Application/Services/Idempotency/`：幂等应用服务目录
-- `IdempotencyGuardService.cs`：幂等守卫应用服务，统一协调幂等记录读取、新增、处理中拒绝与已完成请求回放，供后续业务写命令复用。
+- `IdempotencyGuardException.cs`：幂等守卫异常，提供稳定错误码（如处理中、状态落库失败），避免调用方依赖异常消息文本判定。
+- `IdempotencyGuardService.cs`：幂等守卫应用服务，统一协调幂等记录读取、新增、处理中拒绝、取消后重试与已完成请求回放，供后续业务写命令复用。
 
 #### `Zeye.Sorting.Hub.Application/Services/Parcels/`：Parcel 应用服务目录（查询 + 管理端写命令）
 - `GetParcelByIdQueryService.cs`：按 Id 查询 Parcel 详情应用服务（仓储调用 + 合同映射 + 最小参数校验）。
@@ -583,7 +585,7 @@
 - `GetAdjacentParcelsQueryService.cs`：按包裹 Id 查询邻近 Parcel 应用服务（数量归一化至 `IParcelRepository.MaxAdjacentCountPerSide`、响应映射；锚点不存在抛 KeyNotFoundException 供 Host 映射 404）。
 - `ParcelContractMapper.cs`：Parcel 领域模型/读模型到 Contracts 模型的统一映射器，避免 Host 层重复映射。
 - `ParcelQueryRequestMapper.cs`：Parcel 查询请求映射器，统一普通分页与游标分页的过滤条件构建和默认最近 24 小时时间窗口。
-- `CreateParcelCommandService.cs`：管理端新增包裹应用服务（复用 `ParcelCreateRequestMapper` 构建聚合，并通过 `IdempotencyGuardService` 协调幂等记录、重复请求回放与真实写入）。
+- `CreateParcelCommandService.cs`：管理端新增包裹应用服务（复用 `ParcelCreateRequestMapper` 构建聚合，并通过 `IdempotencyGuardService` 协调幂等记录、重复请求回放、稳定错误码映射与真实写入）。
 - `UpdateParcelStatusCommandService.cs`：管理端更新包裹状态应用服务（仅支持 MarkCompleted/MarkSortingException/UpdateRequestStatus 三种领域方法，不允许任意字段修改）。
 - `DeleteParcelCommandService.cs`：管理端删除单个包裹应用服务（先加载聚合根，不存在返回 false，再调用 RemoveAsync）。
 - `CleanupExpiredParcelsCommandService.cs`：过期包裹清理应用服务（治理型，调用仓储 RemoveExpiredAsync，不绕过隔离器，映射 DangerousBatchActionResult 为外部合同响应）。
@@ -990,7 +992,7 @@
 - `AutoTuningProductionControlTests.cs`：覆盖 dry-run、危险动作隔离、告警防抖与恢复、普通/严重回归、unavailable 指标处理、执行计划探针 available/unavailable 双路径、闭环链路与分表覆盖守卫校验、迁移失败策略分环境解析、结构化扩容计划解析、Time/Volume/Hybrid 分表策略评估、PerDay 预建守卫（配置+物理探测）与分表观测口径/自动索引过滤规则回归；新增 WebRequestAuditLog 治理解耦与历史保留治理语义回归；含配置键拼装参数化（Theory）覆盖。
 - `SlowQueryFingerprintTests.cs`：慢查询画像测试，覆盖 SQL 指纹去参数化、窗口聚合指标、最大指纹容量淘汰与查询服务读取详情。
 - `QueryGovernanceTests.cs`：查询治理测试，覆盖强制模板登记、慢查询画像匹配模板、索引建议输出与未登记慢查询指纹缺口暴露。
-- `IdempotencyTests.cs`：幂等能力测试，覆盖 SHA256 载荷哈希稳定性、重复请求回放与处理中拒绝。
+- `IdempotencyTests.cs`：幂等能力测试，覆盖 SHA256 载荷哈希稳定性、重复请求回放、取消后重试与 Pending 记录自恢复回放。
 - `AlwaysExistsShardingPhysicalTableProbe.cs`：物理表探测测试桩，始终返回存在并记录调用次数。
 - `BaselineDataTests.cs`：基线数据测试，覆盖必要配置、Provider/连接字符串、本地时间配置、健康检查、可选种子入口与 Degraded 模式异常隔离。
 - `DataArchiveTaskTests.cs`：归档任务 dry-run 测试，覆盖创建、分页、后台执行、终态重试与非法类型校验。
@@ -1040,8 +1042,8 @@
 ## 本次更新内容
 
 - 继续实施《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》，执行前先核对现有台账，确认当前已完成到 PR-J，本次补齐 PR-K“写入幂等、去重与重复键治理”。
-- 新增 `IdempotencyRecord`、`IdempotencyRecordStatus`、`IIdempotencyRepository`、`IdempotencyGuardService`、`IdempotencyRepository` 与 `IdempotencyKeyHasher`，建立可复用的幂等记录底座与 SHA256 载荷哈希计算能力。
-- 将 `CreateParcelCommandService` 与管理端新增路由接入幂等 Guard，相同请求重复提交时可回放已有结果，处理中请求会明确拒绝；同时提取 `DuplicateKeyExceptionDetector` 统一复用唯一键冲突识别逻辑。
+- 新增 `IdempotencyRecord`、`IdempotencyRecordStatus`、`IIdempotencyRepository`、`IdempotencyGuardService`、`IdempotencyGuardException`、`IdempotencyRepository` 与 `IdempotencyKeyHasher`，建立可复用的幂等记录底座、稳定错误码与 SHA256 载荷哈希计算能力。
+- 将 `CreateParcelCommandService` 与管理端新增路由接入幂等 Guard，相同请求重复提交时可回放已有结果，处理中请求会明确拒绝；取消请求会落为可重试的 `Rejected` 状态，Pending 且已存在真实结果时可自动按重放语义恢复。
 - 新增 `IdempotencyRecordEntityTypeConfiguration`、EF 迁移 `20260506075656_AddIdempotencyRecordSupport.*`、`IdempotencyTests.cs` 与 `检查台账/PR-长期数据库底座K-检查台账.md`，同步更新 README、更新记录与文件清单基线，保证断点可延续。
 
 ## 后续可完善点

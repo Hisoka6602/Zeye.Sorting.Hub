@@ -22,11 +22,6 @@ public sealed class CreateParcelCommandService {
     public const string ErrorCodeDataKey = "ErrorCode";
 
     /// <summary>
-    /// 幂等请求处理中错误码。
-    /// </summary>
-    public const string IdempotencyInProgressErrorCode = "Idempotency.Request.InProgress";
-
-    /// <summary>
     /// NLog 日志器。
     /// </summary>
     private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
@@ -104,10 +99,17 @@ public sealed class CreateParcelCommandService {
             // 步骤 3：返回首写结果或重放结果。
             return executionResult;
         }
-        catch (InvalidOperationException ex) when (string.Equals(ex.Message, IdempotencyGuardService.RequestInProgressMessage, StringComparison.Ordinal)) {
-            ex.Data[ErrorCodeDataKey] = IdempotencyInProgressErrorCode;
-            Logger.Warn(ex, "新增包裹命中幂等处理中状态，ParcelId={ParcelId}", request.Id);
-            throw;
+        catch (IdempotencyGuardException ex) {
+            var wrappedException = new InvalidOperationException(ex.Message, ex);
+            wrappedException.Data[ErrorCodeDataKey] = ex.ErrorCode;
+            if (string.Equals(ex.ErrorCode, IdempotencyGuardException.RequestInProgressErrorCode, StringComparison.Ordinal)) {
+                Logger.Warn(ex, "新增包裹命中幂等处理中状态，ParcelId={ParcelId}", request.Id);
+            }
+            else {
+                Logger.Error(ex, "新增包裹幂等状态处理失败，ParcelId={ParcelId}, ErrorCode={ErrorCode}", request.Id, ex.ErrorCode);
+            }
+
+            throw wrappedException;
         }
         catch (Exception ex) when (ex is not ArgumentException && ex is not InvalidOperationException) {
             Logger.Error(ex, "新增包裹发生意外异常，BarCodes={BarCodes}", request.BarCodes);

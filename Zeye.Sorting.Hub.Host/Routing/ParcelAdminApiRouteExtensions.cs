@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using NLog;
 using Zeye.Sorting.Hub.Application.Mappers.Parcels;
+using Zeye.Sorting.Hub.Application.Services.Idempotency;
 using Zeye.Sorting.Hub.Application.Services.Parcels;
 using Zeye.Sorting.Hub.Application.Services.WriteBuffers;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels;
@@ -50,9 +51,11 @@ public static class ParcelAdminApiRouteExtensions {
             .WithName("AdminCreateParcel")
             .WithSummary("管理端新增 Parcel")
             .WithDescription("新增单个包裹记录。请求体必须传入 id（大于 0 且全局唯一）；scannedTime、dischargeTime 必须是本地时间字符串，不允许 UTC 或时区偏移。")
+            .Produces<ParcelDetailResponse>(StatusCodes.Status200OK)
             .Produces<ParcelDetailResponse>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status400BadRequest)
-            .ProducesProblem(StatusCodes.Status409Conflict);
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status500InternalServerError);
 
         group.MapPost("/batch-buffer", CreateBufferedParcelBatchAsync)
             .WithName("AdminCreateBufferedParcelBatch")
@@ -98,7 +101,7 @@ public static class ParcelAdminApiRouteExtensions {
     /// <param name="commandService">新增包裹应用服务。</param>
     /// <param name="idempotencyKeyHasher">幂等载荷哈希计算器。</param>
     /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>201 Created + 新增后的详情，或 400 Bad Request。</returns>
+    /// <returns>首次新增返回 201 Created；幂等重放返回 200 OK；参数错误返回 400；冲突返回 409；其他异常返回 500。</returns>
     private static async Task<IResult> CreateParcelAsync(
         [Microsoft.AspNetCore.Mvc.FromBody] ParcelCreateRequest request,
         CreateParcelCommandService commandService,
@@ -166,7 +169,7 @@ public static class ParcelAdminApiRouteExtensions {
             Logger.Error(ex, "新增 Parcel 业务逻辑异常。");
             var errorCode = ex.Data[CreateParcelCommandService.ErrorCodeDataKey] as string;
             if (string.Equals(errorCode, CreateParcelCommandService.ParcelIdConflictErrorCode, StringComparison.Ordinal)
-                || string.Equals(errorCode, CreateParcelCommandService.IdempotencyInProgressErrorCode, StringComparison.Ordinal)) {
+                || string.Equals(errorCode, IdempotencyGuardException.RequestInProgressErrorCode, StringComparison.Ordinal)) {
                 return Results.Problem(
                     title: "资源冲突",
                     detail: ex.Message,
