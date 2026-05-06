@@ -73,6 +73,7 @@ try {
     builder.Services.AddHostedService<ShardingInspectionHostedService>();
     builder.Services.AddHostedService<DataArchiveHostedService>();
     builder.Services.AddHostedService<BaselineDataValidationHostedService>();
+    builder.Services.AddHostedService<QueryGovernanceReportHostedService>();
     builder.Services.AddSingleton<MigrationGovernanceHostedService>();
     builder.Services.AddHostedService(static serviceProvider =>
         serviceProvider.GetRequiredService<MigrationGovernanceHostedService>());

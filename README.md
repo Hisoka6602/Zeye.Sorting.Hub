@@ -45,7 +45,8 @@
 │   ├── PR-长期数据库底座F-检查台账.md （长期数据库底座 PR-F 台账：记录数据库底座 CI 门禁增强、规则脚本与下一 PR 入口）
 │   ├── PR-长期数据库底座G-检查台账.md（长期数据库底座 PR-G 台账：记录迁移治理、脚本归档、健康检查与下一 PR 入口）
 │   ├── PR-长期数据库底座H-检查台账.md（长期数据库底座 PR-H 台账：记录基线数据校验、配置一致性校验、可选种子入口与下一 PR 入口）
-│   └── PR-长期数据库底座I-检查台账.md（长期数据库底座 PR-I 台账：记录慢查询指纹聚合、查询画像 API 与下一 PR 入口）
+│   ├── PR-长期数据库底座I-检查台账.md（长期数据库底座 PR-I 台账：记录慢查询指纹聚合、查询画像 API 与下一 PR 入口）
+│   └── PR-长期数据库底座J-检查台账.md（长期数据库底座 PR-J 台账：记录查询模板登记、索引建议闭环与下一 PR 入口）
 ├── Zeye.Sorting.Hub.Analytics（分析与报表子域，占位工程）
 │   └── Zeye.Sorting.Hub.Analytics.csproj（Analytics 项目定义）
 ├── Zeye.Sorting.Hub.Application（应用层）
@@ -233,6 +234,7 @@
 │   │   ├── DataArchiveHostedService.cs（归档 dry-run 后台托管服务：按轮询间隔拉起归档 Worker 执行待处理任务）
 │   │   ├── BaselineDataValidationHostedService.cs（基线数据校验托管服务：启动期执行配置一致性校验并按开关触发可选种子入口）
 │   │   ├── MigrationGovernanceHostedService.cs（迁移治理托管服务：启动期预演迁移计划、归档脚本并写入治理状态）
+│   │   ├── QueryGovernanceReportHostedService.cs（查询治理报告托管服务：周期输出模板登记、慢查询匹配与索引建议只读报告）
 │   │   ├── ParcelBatchWriteFlushHostedService.cs（Parcel 批量缓冲写入后台 Flush 托管服务）
 │   │   ├── ShardingInspectionHostedService.cs（分表运行期巡检托管服务）
 │   │   ├── ShardingPrebuildHostedService.cs（分表预建计划托管服务）
@@ -297,6 +299,7 @@
 │   ├── BaselineDataTests.cs（基线数据测试：覆盖配置校验、时区后缀拦截、健康检查、可选种子入口与 Degraded 模式异常隔离）
 │   ├── MigrationGovernanceTests.cs（迁移治理测试：覆盖健康检查、危险 SQL、dry-run 决策、脚本归档与预演异常记录）
 │   ├── SlowQueryFingerprintTests.cs（慢查询画像测试：覆盖 SQL 指纹归一化、窗口聚合、容量淘汰与查询服务读取）
+│   ├── QueryGovernanceTests.cs（查询治理测试：覆盖强制模板登记、模板匹配与未登记慢查询缺口暴露）
 │   ├── BatchSelectiveMissingShardingPhysicalTableProbe.cs（批量物理表探测测试桩：选择性缺失与 schema 透传断言）
 │   ├── CountingPlanProbe.cs（执行计划探针测试桩：记录调用次数）
 │   ├── DomainEventArgsTests.cs（领域事件载荷单元测试：验证 ParcelScannedEventArgs/ParcelChuteAssignedEventArgs 业务字段赋值与值语义）
@@ -352,6 +355,12 @@
 │   │   │   ├── SlowQueryProfileSnapshot.cs（慢查询画像内部快照模型）
 │   │   │   ├── SlowQueryProfileStore.cs（慢查询画像内存快照存储：维护窗口样本、TopN 排序与容量淘汰）
 │   │   │   └── SlowQuerySample.cs（慢查询采样记录模型）
+│   │   ├── QueryGovernance（查询治理目录）
+│   │   │   ├── QueryTemplateDescriptor.cs（查询模板描述模型：登记业务用途、过滤/排序字段与索引建议）
+│   │   │   ├── QueryTemplateRegistry.cs（查询模板注册表：集中维护当前阶段必须登记的高频查询模板）
+│   │   │   ├── QueryIndexRecommendation.cs（查询治理索引建议模型：承载模板、指纹、风险等级与置信度）
+│   │   │   ├── QueryIndexRecommendationService.cs（查询治理索引建议服务：复用慢查询画像匹配模板并输出只读建议）
+│   │   │   └── QueryGovernanceReport.cs（查询治理报告模型：汇总模板覆盖、索引建议与缺口指纹）
 │   │   ├── Diagnostics（数据库连接诊断目录）
 │   │   │   ├── DatabaseConnectionDiagnosticsOptions.cs（数据库连接诊断配置模型：预热开关、探测超时、失败/恢复阈值）
 │   │   │   ├── DatabaseConnectionHealthSnapshot.cs（数据库连接诊断快照：记录最近一次探测结果与连续成功/失败计数）
@@ -499,6 +508,7 @@
   - `PR-长期数据库底座G-检查台账.md`：长期数据库底座 PR-G 实施台账；记录迁移治理预演、脚本归档、危险迁移识别、健康检查与下一 PR 入口。
   - `PR-长期数据库底座H-检查台账.md`：长期数据库底座 PR-H 实施台账；记录基线数据校验、配置一致性校验、可选幂等种子入口、健康检查与下一 PR 入口。
   - `PR-长期数据库底座I-检查台账.md`：长期数据库底座 PR-I 实施台账；记录慢查询指纹聚合、查询画像只读 API、验证结果与下一 PR 入口。
+  - `PR-长期数据库底座J-检查台账.md`：长期数据库底座 PR-J 实施台账；记录查询模板登记、查询治理报告、只读索引建议闭环与下一 PR 入口。
 
 ### `.github/`：Copilot 仓库级指令目录
 - `DDD分层接口与实现放置规范.md`：DDD 分层接口定义与实现放置规范文档；明确依赖方向（Host→Infrastructure→Application→Domain）、接口定义归属规则（领域能力/应用编排/基础设施内部三类）、实现类放置约束、目录结构建议与禁止事项清单，供 Copilot 与开发人员统一执行。
@@ -770,7 +780,7 @@
 - `Middleware/ResponseCaptureResult.cs`：响应正文采集结果值类型。
 - `Zeye.Sorting.Hub.Host.csproj`：Host 项目定义。
 - `nlog.config`：NLog 日志配置。
-- `appsettings.json`：默认运行配置（含 `WebRequestAuditLog.IncludeRequestBody/IncludeResponseBody`、`AuditReadOnlyApi:Enabled` 显式开关、`ResourceThresholds:MaxConnectionPoolSize/MemoryWarningThresholdMB` 资源阈值节、`Persistence:Diagnostics` 数据库连接诊断配置、`Persistence:WriteBuffering` 批量缓冲写入配置、`Persistence:Archiving` 归档 dry-run 配置、`Persistence:BaselineData` 基线数据校验配置、`Persistence:MigrationGovernance` 迁移治理配置、`Persistence:Sharding:RuntimeInspection/Prebuild` 分表巡检与预建配置，以及 `Persistence:AutoTuning:SlowQueryProfile` 慢查询画像窗口/单指纹样本上限配置）。
+- `appsettings.json`：默认运行配置（含 `WebRequestAuditLog.IncludeRequestBody/IncludeResponseBody`、`AuditReadOnlyApi:Enabled` 显式开关、`ResourceThresholds:MaxConnectionPoolSize/MemoryWarningThresholdMB` 资源阈值节、`Persistence:Diagnostics` 数据库连接诊断配置、`Persistence:WriteBuffering` 批量缓冲写入配置、`Persistence:Archiving` 归档 dry-run 配置、`Persistence:BaselineData` 基线数据校验配置、`Persistence:MigrationGovernance` 迁移治理配置、`Persistence:Sharding:RuntimeInspection/Prebuild` 分表巡检与预建配置，以及 `Persistence:AutoTuning:SlowQueryProfile` 慢查询画像配置与 `Persistence:AutoTuning:QueryGovernance` 查询治理报告/索引建议阈值配置）。
 - `appsettings.Development.json`：开发环境配置覆盖文件。
 
 #### `Zeye.Sorting.Hub.Host/Swagger/`：Swagger 扩展目录
@@ -785,6 +795,7 @@
 - `DataArchiveHostedService.cs`：归档 dry-run 后台托管服务，按轮询间隔创建作用域并驱动 Worker 处理待执行任务。
 - `BaselineDataValidationHostedService.cs`：基线数据校验托管服务，启动期执行必要配置、Provider/连接字符串、关键枚举 Description、本地时间配置与默认参考数据目录校验，并按开关触发可选幂等种子入口。
 - `MigrationGovernanceHostedService.cs`：迁移治理托管服务，启动期读取当前 EF 迁移、生成待执行计划、归档正向/回滚参考脚本、识别危险 SQL 并写入运行期状态。
+- `QueryGovernanceReportHostedService.cs`：查询治理报告托管服务，启动后立即输出一次模板登记基线，并按固定周期复用慢查询画像生成模板覆盖与索引建议只读报告。
 - `ParcelBatchWriteFlushHostedService.cs`：Parcel 批量缓冲写入后台 Flush 托管服务，持续消费有界队列并批量落库。
 - `ShardingInspectionHostedService.cs`：分表运行期巡检托管服务，按配置周期执行缺表、缺索引与容量风险巡检。
 - `ShardingPrebuildHostedService.cs`：分表预建计划托管服务，启动期生成未来窗口 dry-run 预建计划。
@@ -893,6 +904,13 @@
 - `SlowQueryProfileStore.cs`：慢查询画像内存快照存储，实现 `ISlowQueryProfileReader`，负责窗口裁剪、TopN 排序、最大指纹数量淘汰与单指纹样本上限控制。
 - `SlowQuerySample.cs`：慢查询采样记录模型。
 
+##### `Zeye.Sorting.Hub.Infrastructure/Persistence/QueryGovernance/`：查询模板治理目录
+- `QueryTemplateDescriptor.cs`：查询模板描述模型，集中声明模板名称、用途、涉及表、过滤/排序字段、建议索引与分页边界。
+- `QueryTemplateRegistry.cs`：查询模板注册表，维护 PR-J 当前必须登记的高频查询模板清单，并提供按名称检索能力。
+- `QueryIndexRecommendation.cs`：查询治理索引建议模型，承载模板名称、慢查询指纹、建议索引、风险等级、置信度与样例 SQL。
+- `QueryIndexRecommendationService.cs`：查询治理索引建议服务，复用 `ISlowQueryProfileReader` 读取慢查询画像，按模板匹配输出只读索引建议并暴露未登记缺口。
+- `QueryGovernanceReport.cs`：查询治理报告模型，汇总当前模板覆盖数量、未命中模板、未登记慢查询指纹与索引建议。
+
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding/`：分表策略与治理决策目录
 - `ParcelShardingStrategyEvaluator.cs`：Parcel 分表策略评估器（分表模式/时间粒度/容量阈值/阈值动作配置解析，结构化校验，容量观测输入统一收敛为 Observation 对象，输出含 finer-granularity 扩展规划的统一决策结果，复用于注册入口与启动审计守卫）。
 
@@ -936,6 +954,7 @@
 - `Zeye.Sorting.Hub.Host.Tests.csproj`：xUnit 测试项目定义。
 - `AutoTuningProductionControlTests.cs`：覆盖 dry-run、危险动作隔离、告警防抖与恢复、普通/严重回归、unavailable 指标处理、执行计划探针 available/unavailable 双路径、闭环链路与分表覆盖守卫校验、迁移失败策略分环境解析、结构化扩容计划解析、Time/Volume/Hybrid 分表策略评估、PerDay 预建守卫（配置+物理探测）与分表观测口径/自动索引过滤规则回归；新增 WebRequestAuditLog 治理解耦与历史保留治理语义回归；含配置键拼装参数化（Theory）覆盖。
 - `SlowQueryFingerprintTests.cs`：慢查询画像测试，覆盖 SQL 指纹去参数化、窗口聚合指标、最大指纹容量淘汰与查询服务读取详情。
+- `QueryGovernanceTests.cs`：查询治理测试，覆盖强制模板登记、慢查询画像匹配模板、索引建议输出与未登记慢查询指纹缺口暴露。
 - `AlwaysExistsShardingPhysicalTableProbe.cs`：物理表探测测试桩，始终返回存在并记录调用次数。
 - `BaselineDataTests.cs`：基线数据测试，覆盖必要配置、Provider/连接字符串、本地时间配置、健康检查、可选种子入口与 Degraded 模式异常隔离。
 - `DataArchiveTaskTests.cs`：归档任务 dry-run 测试，覆盖创建、分页、后台执行、终态重试与非法类型校验。
@@ -983,20 +1002,16 @@
 
 ## 本次更新内容
 
-- 继续实施《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》，先核对 PR-A~PR-H 已完成后，补齐 PR-I“慢查询指纹聚合与查询画像”。
-- 新增 `SlowQueryFingerprintAggregator`、`SlowQueryProfileStore` 与相关合同/应用服务，基于现有 EF Core 慢查询采集链路生成去参数化 SQL 指纹、窗口聚合画像与 TopN 只读快照。
-- 新增 `/api/diagnostics/slow-queries` 与 `/api/diagnostics/slow-queries/{fingerprint}` 两个诊断端点，仅返回进程内快照，不触发数据库重查询。
-- 通过应用层诊断只读抽象解耦 Infrastructure 与 Application，保持 `Host -> Infrastructure -> Application -> Domain` 依赖方向不被破坏。
-- 根据审查意见补强字符串字面量转义处理、样例 SQL 脱敏与单指纹样本上限，降低指纹漂移、敏感信息泄露与热点 SQL 内存膨胀风险。
-- 新增 `SlowQueryFingerprintTests.cs`、`PR-长期数据库底座I-检查台账.md`，并同步更新 README、更新记录与文件清单基线。
+- 继续实施《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》，执行前先核对现有台账，确认当前已完成到 PR-I，本次补齐 PR-J“查询模板治理与索引建议闭环”。
+- 新增 `QueryTemplateRegistry`、`QueryIndexRecommendationService` 与 `QueryGovernanceReport`，集中登记 6 个高频查询模板，并复用慢查询画像只读抽象生成模板覆盖与索引建议报告。
+- 新增 `QueryGovernanceReportHostedService`，并在 `appsettings.json` 增补 `Persistence:AutoTuning:QueryGovernance` 配置节，在运行期周期输出查询模板登记、慢查询命中情况、未登记指纹缺口与只读索引建议，不自动执行任何 DDL。
+- 新增 `QueryGovernanceTests.cs` 与 `检查台账/PR-长期数据库底座J-检查台账.md`，同步更新 README、更新记录与文件清单基线，保证断点可延续。
 
 ## 后续可完善点
 
-- 下一切片可按《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》进入 PR-J，补齐查询模板治理与索引建议闭环。
-- 后续可将慢查询画像从进程内快照扩展为可选轻量持久化缓存，支撑跨重启诊断留痕。
-- 可在后续“检查结果 PR”中按目录拆分台账附件，形成可直接追踪到文件与行号的持续治理闭环。
-- 可将其它日志输入清洗路径（如 query/header 维度）逐步迁移至 `LineBreakNormalizer`，进一步压缩重复实现面并统一观测口径。
-- 可扩展画像排序维度（如异常率、超时率、热点表聚类），为后续索引建议与查询模板治理提供更细的决策证据。
+- 下一切片可按《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》进入 PR-K，补齐写入幂等、去重与重复键治理。
+- 后续可在查询模板描述中继续细化覆盖索引、Include 列与 Provider 差异建议，增强 MySQL/SQL Server 双栈治理精度。
+- 可将未登记慢查询指纹的告警级别与治理台账联动，进一步收紧高并发查询新增路径门禁。
 
 ## Parcel API 发布门禁 / 使用边界说明
 
