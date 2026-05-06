@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Zeye.Sorting.Hub.Application.Services.Events;
+using Zeye.Sorting.Hub.Domain.Repositories.Models.ReadModels;
 
 namespace Zeye.Sorting.Hub.Host.HealthChecks;
 
@@ -53,7 +54,7 @@ public sealed class OutboxHealthCheck : IHealthCheck {
     /// </summary>
     /// <param name="snapshot">健康快照。</param>
     /// <returns>附加数据字典。</returns>
-    private static IReadOnlyDictionary<string, object> BuildHealthData(Zeye.Sorting.Hub.Domain.Repositories.Models.ReadModels.OutboxMessageHealthSnapshotReadModel snapshot) {
+    private static IReadOnlyDictionary<string, object> BuildHealthData(OutboxMessageHealthSnapshotReadModel snapshot) {
         var data = new Dictionary<string, object> {
             ["pendingCount"] = snapshot.PendingCount,
             ["processingCount"] = snapshot.ProcessingCount,
