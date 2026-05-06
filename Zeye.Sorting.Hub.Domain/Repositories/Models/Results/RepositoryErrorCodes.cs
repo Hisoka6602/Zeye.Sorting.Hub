@@ -8,4 +8,9 @@ public static class RepositoryErrorCodes {
     /// Parcel 主键冲突错误码。
     /// </summary>
     public const string ParcelIdConflict = "Parcel.Id.Conflict";
+
+    /// <summary>
+    /// 幂等记录唯一键冲突错误码。
+    /// </summary>
+    public const string IdempotencyRecordConflict = "Idempotency.Record.Conflict";
 }

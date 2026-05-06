@@ -7,6 +7,7 @@ using Zeye.Sorting.Hub.Contracts.Models.Parcels;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.Admin;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Host.Utilities;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Idempotency;
 
 namespace Zeye.Sorting.Hub.Host.Routing;
 
@@ -19,6 +20,16 @@ namespace Zeye.Sorting.Hub.Host.Routing;
 ///   .RequireAuthorization("AdminPolicy") 即可统一覆盖本组所有端点。
 /// </summary>
 public static class ParcelAdminApiRouteExtensions {
+    /// <summary>
+    /// 管理端新增包裹幂等来源系统。
+    /// </summary>
+    private const string ParcelCreateIdempotencySourceSystem = "Host.ParcelAdminApi";
+
+    /// <summary>
+    /// 管理端新增包裹幂等操作名称。
+    /// </summary>
+    private const string ParcelCreateIdempotencyOperationName = "ParcelCreate";
+
     /// <summary>
     /// NLog 日志器。
     /// </summary>
@@ -85,11 +96,13 @@ public static class ParcelAdminApiRouteExtensions {
     /// </summary>
     /// <param name="request">新增包裹请求合同（JSON body）。</param>
     /// <param name="commandService">新增包裹应用服务。</param>
+    /// <param name="idempotencyKeyHasher">幂等载荷哈希计算器。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>201 Created + 新增后的详情，或 400 Bad Request。</returns>
     private static async Task<IResult> CreateParcelAsync(
         [Microsoft.AspNetCore.Mvc.FromBody] ParcelCreateRequest request,
         CreateParcelCommandService commandService,
+        IdempotencyKeyHasher idempotencyKeyHasher,
         CancellationToken cancellationToken) {
         if (request is null) {
             return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", "请求体不能为空。");
@@ -104,9 +117,46 @@ public static class ParcelAdminApiRouteExtensions {
         }
 
         try {
-            // 步骤 2：调用 Application 服务，传入已解析的本地时间（服务无需感知 HTTP 时间格式）。
-            var response = await commandService.ExecuteAsync(request, scannedTime, dischargeTime, cancellationToken);
-            return Results.Created($"/api/admin/parcels/{response.Id}", response);
+            // 步骤 2：在 Host 层基于规范化后的本地时间与业务字段计算载荷哈希，避免不同时间字符串格式导致幂等键漂移。
+            var payloadHash = idempotencyKeyHasher.ComputeHash(new {
+                request.Id,
+                request.ParcelTimestamp,
+                request.Type,
+                request.BarCodes,
+                request.Weight,
+                request.WorkstationName,
+                ScannedTime = scannedTime.ToString("yyyy-MM-dd HH:mm:ss.fffffff"),
+                DischargeTime = dischargeTime.ToString("yyyy-MM-dd HH:mm:ss.fffffff"),
+                request.TargetChuteId,
+                request.ActualChuteId,
+                request.RequestStatus,
+                request.BagCode,
+                request.IsSticking,
+                request.Length,
+                request.Width,
+                request.Height,
+                request.Volume,
+                request.HasImages,
+                request.HasVideos,
+                request.Coordinate,
+                request.NoReadType,
+                request.SorterCarrierId,
+                request.SegmentCodes,
+                request.LifecycleMilliseconds
+            });
+
+            // 步骤 3：调用 Application 服务，传入已解析的本地时间与幂等键组成部分。
+            var executionResult = await commandService.ExecuteAsync(
+                request,
+                scannedTime,
+                dischargeTime,
+                ParcelCreateIdempotencySourceSystem,
+                ParcelCreateIdempotencyOperationName,
+                payloadHash,
+                cancellationToken);
+            return executionResult.IsReplay
+                ? Results.Ok(executionResult.Response)
+                : Results.Created($"/api/admin/parcels/{executionResult.Response.Id}", executionResult.Response);
         }
         catch (ArgumentException ex) {
             Logger.Warn(ex, "新增 Parcel 参数校验失败。");
@@ -115,7 +165,8 @@ public static class ParcelAdminApiRouteExtensions {
         catch (InvalidOperationException ex) {
             Logger.Error(ex, "新增 Parcel 业务逻辑异常。");
             var errorCode = ex.Data[CreateParcelCommandService.ErrorCodeDataKey] as string;
-            if (string.Equals(errorCode, CreateParcelCommandService.ParcelIdConflictErrorCode, StringComparison.Ordinal)) {
+            if (string.Equals(errorCode, CreateParcelCommandService.ParcelIdConflictErrorCode, StringComparison.Ordinal)
+                || string.Equals(errorCode, CreateParcelCommandService.IdempotencyInProgressErrorCode, StringComparison.Ordinal)) {
                 return Results.Problem(
                     title: "资源冲突",
                     detail: ex.Message,

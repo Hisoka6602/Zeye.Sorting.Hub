@@ -46,7 +46,8 @@
 │   ├── PR-长期数据库底座G-检查台账.md（长期数据库底座 PR-G 台账：记录迁移治理、脚本归档、健康检查与下一 PR 入口）
 │   ├── PR-长期数据库底座H-检查台账.md（长期数据库底座 PR-H 台账：记录基线数据校验、配置一致性校验、可选种子入口与下一 PR 入口）
 │   ├── PR-长期数据库底座I-检查台账.md（长期数据库底座 PR-I 台账：记录慢查询指纹聚合、查询画像 API 与下一 PR 入口）
-│   └── PR-长期数据库底座J-检查台账.md（长期数据库底座 PR-J 台账：记录查询模板登记、索引建议闭环与下一 PR 入口）
+│   ├── PR-长期数据库底座J-检查台账.md（长期数据库底座 PR-J 台账：记录查询模板登记、索引建议闭环与下一 PR 入口）
+│   └── PR-长期数据库底座K-检查台账.md（长期数据库底座 PR-K 台账：记录写入幂等、重复键治理与下一 PR 入口）
 ├── Zeye.Sorting.Hub.Analytics（分析与报表子域，占位工程）
 │   └── Zeye.Sorting.Hub.Analytics.csproj（Analytics 项目定义）
 ├── Zeye.Sorting.Hub.Application（应用层）
@@ -67,9 +68,11 @@
 │   │   │   └── RetryArchiveTaskCommandService.cs（归档任务重试应用服务）
 │   │   ├── Diagnostics（诊断应用服务目录）
 │   │   │   └── GetSlowQueryProfileQueryService.cs（慢查询画像查询应用服务：读取内存快照并映射外部合同）
+│   │   ├── Idempotency（幂等应用服务目录）
+│   │   │   └── IdempotencyGuardService.cs（幂等守卫应用服务：统一协调重复请求回放与处理中拒绝）
 │   │   └── Parcels（Parcel 查询应用服务目录）
 │   │       ├── CleanupExpiredParcelsCommandService.cs（过期包裹清理应用服务（治理型，调用仓储隔离器，不可绕过））
-│   │       ├── CreateParcelCommandService.cs（管理端新增包裹应用服务）
+│   │       ├── CreateParcelCommandService.cs（管理端新增包裹应用服务：接入幂等 Guard，支持重复请求回放）
 │   │       ├── DeleteParcelCommandService.cs（管理端删除单个包裹应用服务）
 │   │       ├── GetAdjacentParcelsQueryService.cs（Parcel 邻近查询应用服务）
 │   │       ├── GetParcelByIdQueryService.cs（Parcel 详情查询应用服务）
@@ -152,6 +155,8 @@
 │   │   │       └── WebRequestAuditLogDetail.cs（Web 请求审计冷数据详情实体）
 │   │   ├── DataGovernance（数据治理聚合目录）
 │   │   │   └── ArchiveTask.cs（归档任务聚合根：记录 dry-run 状态、计划摘要、检查点与重试次数）
+│   │   ├── Idempotency（幂等聚合目录）
+│   │   │   └── IdempotencyRecord.cs（幂等记录聚合根：记录来源系统、操作名、业务键、载荷哈希与执行状态）
 │   │   └── Parcels（包裹聚合目录）
 │   │       ├── Parcel.cs（包裹聚合根）
 │   │       └── ValueObjects（包裹聚合值对象目录）
@@ -193,6 +198,8 @@
 │   │   ├── DataGovernance（数据治理枚举目录）
 │   │   │   ├── ArchiveTaskStatus.cs（归档任务状态枚举）
 │   │   │   └── ArchiveTaskType.cs（归档任务类型枚举）
+│   │   ├── Idempotency（幂等枚举目录）
+│   │   │   └── IdempotencyRecordStatus.cs（幂等记录状态枚举）
 │   │   └── AuditLogs（审计日志枚举目录）
 │   │       ├── AuditResourceType.cs（审计资源类型枚举）
 │   │       ├── FileOperationType.cs（文件操作类型枚举）
@@ -202,6 +209,7 @@
 │   │   └── AuditableEntity.cs（可审计实体基类）
 │   ├── Repositories（领域仓储契约目录）
 │   │   ├── IArchiveTaskRepository.cs（归档任务仓储契约：支持创建、分页查询、获取待执行任务与更新状态）
+│   │   ├── IIdempotencyRepository.cs（幂等记录仓储契约：支持按幂等键读取、新增与状态更新）
 │   │   ├── IParcelRepository.cs（包裹仓储接口，含过期清理危险动作治理结果契约）
 │   │   ├── IWebRequestAuditLogQueryRepository.cs（Web 请求审计日志只读查询仓储契约）
 │   │   ├── IWebRequestAuditLogRepository.cs（Web 请求审计日志仓储写入契约）
@@ -300,6 +308,7 @@
 │   ├── MigrationGovernanceTests.cs（迁移治理测试：覆盖健康检查、危险 SQL、dry-run 决策、脚本归档与预演异常记录）
 │   ├── SlowQueryFingerprintTests.cs（慢查询画像测试：覆盖 SQL 指纹归一化、窗口聚合、容量淘汰与查询服务读取）
 │   ├── QueryGovernanceTests.cs（查询治理测试：覆盖强制模板登记、模板匹配与未登记慢查询缺口暴露）
+│   ├── IdempotencyTests.cs（幂等能力测试：覆盖 SHA256 哈希、重复请求回放与处理中拒绝）
 │   ├── BatchSelectiveMissingShardingPhysicalTableProbe.cs（批量物理表探测测试桩：选择性缺失与 schema 透传断言）
 │   ├── CountingPlanProbe.cs（执行计划探针测试桩：记录调用次数）
 │   ├── DomainEventArgsTests.cs（领域事件载荷单元测试：验证 ParcelScannedEventArgs/ParcelChuteAssignedEventArgs 业务字段赋值与值语义）
@@ -341,6 +350,7 @@
 │   ├── EntityConfigurations（EF Core 映射配置目录）
 │   │   ├── ArchiveTaskEntityTypeConfiguration.cs（归档任务实体映射配置）
 │   │   ├── BagInfoEntityTypeConfiguration.cs（BagInfo 映射配置）
+│   │   ├── IdempotencyRecordEntityTypeConfiguration.cs（幂等记录映射配置：唯一幂等键索引与状态索引）
 │   │   ├── ParcelEntityTypeConfiguration.cs（Parcel 映射配置）
 │   │   ├── WebRequestAuditLogEntityTypeConfiguration.cs（Web 请求审计热表映射配置）
 │   │   └── WebRequestAuditLogDetailEntityTypeConfiguration.cs（Web 请求审计冷表映射配置）
@@ -361,6 +371,8 @@
 │   │   │   ├── QueryIndexRecommendation.cs（查询治理索引建议模型：承载模板、指纹、风险等级与置信度）
 │   │   │   ├── QueryIndexRecommendationService.cs（查询治理索引建议服务：复用慢查询画像匹配模板并输出只读建议）
 │   │   │   └── QueryGovernanceReport.cs（查询治理报告模型：汇总模板覆盖、索引建议与缺口指纹）
+│   │   ├── Idempotency（幂等目录）
+│   │   │   └── IdempotencyKeyHasher.cs（幂等键哈希计算器：对规范化载荷执行 SHA256 计算）
 │   │   ├── Diagnostics（数据库连接诊断目录）
 │   │   │   ├── DatabaseConnectionDiagnosticsOptions.cs（数据库连接诊断配置模型：预热开关、探测超时、失败/恢复阈值）
 │   │   │   ├── DatabaseConnectionHealthSnapshot.cs（数据库连接诊断快照：记录最近一次探测结果与连续成功/失败计数）
@@ -421,6 +433,8 @@
 │   │   │   ├── 20260324094539_RebuildBaseline20260324.Designer.cs（迁移元数据，自动生成）
 │   │   │   ├── AddArchiveTaskDryRunSupport.cs（归档任务基线迁移：新增 ArchiveTasks 表与索引）
 │   │   │   ├── AddArchiveTaskDryRunSupportDesigner.cs（归档任务迁移元数据，自动生成）
+│   │   │   ├── 20260506075656_AddIdempotencyRecordSupport.cs（幂等记录基线迁移）
+│   │   │   ├── 20260506075656_AddIdempotencyRecordSupport.Designer.cs（幂等记录迁移元数据，自动生成）
 │   │   │   ├── MigrationSchemaResolver.cs（迁移 schema 解析器）
 │   │   │   └── SortingHubDbContextModelSnapshot.cs（当前模型快照，自动生成）
 │   │   ├── WriteBuffering（批量缓冲写入基础设施目录）
@@ -431,12 +445,14 @@
 │   │   │   ├── DeadLetterWriteStore.cs（Parcel 死信有界存储）
 │   │   │   ├── ParcelBatchWriteFlushService.cs（Parcel 缓冲写入后台批量 Flush 服务）
 │   │   │   └── ParcelBufferedWriteService.cs（Parcel 缓冲写入服务实现）
-│   │   └── SortingHubDbContext.cs（EF Core DbContext）
+│   │   ├── SortingHubDbContext.cs（EF Core DbContext）
 │   │   ├── DbProviderNames.cs（EF Core 运行时/迁移 providerName 常量）
 │   │   ├── ConfiguredProviderNames.cs（配置层 provider key 常量：Persistence:Provider / ConnectionStrings key / CLI --provider）
+│   │   ├── DuplicateKeyExceptionDetector.cs（重复键异常检测工具：统一识别唯一键冲突）
 │   │   └── WebRequestAuditLogIndexNames.cs（Web 请求审计日志关键索引名称常量）
 │   ├── Repositories（仓储基类与结果模型目录）
 │   │   ├── ArchiveTaskRepository.cs（归档任务仓储实现：支持创建、分页、待执行任务拉取与状态更新）
+│   │   ├── IdempotencyRepository.cs（幂等记录仓储实现：按幂等键查询并处理唯一键冲突）
 │   │   ├── MemoryCacheRepositoryBase.cs（带内存缓存失效的仓储基类，使用 NLog 日志）
 │   │   ├── ParcelCursorQueryExtensions.cs（Parcel 游标分页查询扩展：统一稳定排序下的游标条件拼接）
 │   │   ├── ParcelRepository.cs（Parcel 仓储第一阶段实现，使用静态 NLog logger，无需 MEL ILogger 构造注入；BarCodeKeyword 检索按 Provider 分支：MySQL 走 FULLTEXT Boolean，其他 Provider 回退 Contains）
@@ -509,6 +525,7 @@
   - `PR-长期数据库底座H-检查台账.md`：长期数据库底座 PR-H 实施台账；记录基线数据校验、配置一致性校验、可选幂等种子入口、健康检查与下一 PR 入口。
   - `PR-长期数据库底座I-检查台账.md`：长期数据库底座 PR-I 实施台账；记录慢查询指纹聚合、查询画像只读 API、验证结果与下一 PR 入口。
   - `PR-长期数据库底座J-检查台账.md`：长期数据库底座 PR-J 实施台账；记录查询模板登记、查询治理报告、只读索引建议闭环与下一 PR 入口。
+  - `PR-长期数据库底座K-检查台账.md`：长期数据库底座 PR-K 实施台账；记录写入幂等、SHA256 载荷哈希、重复请求回放与下一 PR 入口。
 
 ### `.github/`：Copilot 仓库级指令目录
 - `DDD分层接口与实现放置规范.md`：DDD 分层接口定义与实现放置规范文档；明确依赖方向（Host→Infrastructure→Application→Domain）、接口定义归属规则（领域能力/应用编排/基础设施内部三类）、实现类放置约束、目录结构建议与禁止事项清单，供 Copilot 与开发人员统一执行。
@@ -556,6 +573,9 @@
 #### `Zeye.Sorting.Hub.Application/Services/Diagnostics/`：诊断应用服务目录
 - `GetSlowQueryProfileQueryService.cs`：慢查询画像查询应用服务，消费 `ISlowQueryProfileReader` 返回的只读快照，并映射为 Diagnostics 合同响应。
 
+#### `Zeye.Sorting.Hub.Application/Services/Idempotency/`：幂等应用服务目录
+- `IdempotencyGuardService.cs`：幂等守卫应用服务，统一协调幂等记录读取、新增、处理中拒绝与已完成请求回放，供后续业务写命令复用。
+
 #### `Zeye.Sorting.Hub.Application/Services/Parcels/`：Parcel 应用服务目录（查询 + 管理端写命令）
 - `GetParcelByIdQueryService.cs`：按 Id 查询 Parcel 详情应用服务（仓储调用 + 合同映射 + 最小参数校验）。
 - `GetParcelPagedQueryService.cs`：分页查询 Parcel 列表应用服务（请求校验、默认最近 24 小时时间窗口、最大页码保护、分页结果映射）。
@@ -563,7 +583,7 @@
 - `GetAdjacentParcelsQueryService.cs`：按包裹 Id 查询邻近 Parcel 应用服务（数量归一化至 `IParcelRepository.MaxAdjacentCountPerSide`、响应映射；锚点不存在抛 KeyNotFoundException 供 Host 映射 404）。
 - `ParcelContractMapper.cs`：Parcel 领域模型/读模型到 Contracts 模型的统一映射器，避免 Host 层重复映射。
 - `ParcelQueryRequestMapper.cs`：Parcel 查询请求映射器，统一普通分页与游标分页的过滤条件构建和默认最近 24 小时时间窗口。
-- `CreateParcelCommandService.cs`：管理端新增包裹应用服务（复用 `ParcelCreateRequestMapper` 构建聚合、仓储 AddAsync、合同映射）。
+- `CreateParcelCommandService.cs`：管理端新增包裹应用服务（复用 `ParcelCreateRequestMapper` 构建聚合，并通过 `IdempotencyGuardService` 协调幂等记录、重复请求回放与真实写入）。
 - `UpdateParcelStatusCommandService.cs`：管理端更新包裹状态应用服务（仅支持 MarkCompleted/MarkSortingException/UpdateRequestStatus 三种领域方法，不允许任意字段修改）。
 - `DeleteParcelCommandService.cs`：管理端删除单个包裹应用服务（先加载聚合根，不存在返回 false，再调用 RemoveAsync）。
 - `CleanupExpiredParcelsCommandService.cs`：过期包裹清理应用服务（治理型，调用仓储 RemoveExpiredAsync，不绕过隔离器，映射 DangerousBatchActionResult 为外部合同响应）。
@@ -648,6 +668,9 @@
 ##### `Zeye.Sorting.Hub.Domain/Aggregates/DataGovernance/`：数据治理聚合目录
 - `ArchiveTask.cs`：归档任务聚合根，记录 dry-run 状态、计划摘要、检查点与重试次数。
 
+##### `Zeye.Sorting.Hub.Domain/Aggregates/Idempotency/`：幂等聚合目录
+- `IdempotencyRecord.cs`：幂等记录聚合根，统一承载来源系统、操作名称、业务键、SHA256 载荷哈希、执行状态与失败消息。
+
 ##### `Zeye.Sorting.Hub.Domain/Aggregates/Parcels/`：包裹聚合目录
 - `Parcel.cs`：包裹聚合根，承载包裹生命周期状态与行为。
 
@@ -697,6 +720,9 @@
 - `ArchiveTaskStatus.cs`：归档任务状态枚举。
 - `ArchiveTaskType.cs`：归档任务类型枚举。
 
+#### `Zeye.Sorting.Hub.Domain/Enums/Idempotency/`：幂等枚举子目录
+- `IdempotencyRecordStatus.cs`：幂等记录状态枚举（Pending/Completed/Rejected/Failed）。
+
 #### `Zeye.Sorting.Hub.Domain/Enums/Sharding/`：分表治理枚举子目录
 - `ParcelShardingStrategyMode.cs`：分表策略模式枚举。
 - `ParcelTimeShardingGranularity.cs`：时间分表粒度枚举。
@@ -716,6 +742,7 @@
 
 #### `Zeye.Sorting.Hub.Domain/Repositories/`：领域仓储契约目录
 - `IArchiveTaskRepository.cs`：归档任务仓储契约（支持创建、分页查询、获取待执行任务与状态更新）。
+- `IIdempotencyRepository.cs`：幂等记录仓储契约（支持按幂等键读取、新增与更新状态）。
 - `IParcelRepository.cs`：包裹仓储接口（第一阶段可落地契约：基础读写、偏移分页、游标分页、按 Id 邻近查询、过期清理危险动作治理结果返回；同时定义 `MaxAdjacentCountPerSide = 200` 常量，为 Application 层与 Infrastructure 层提供唯一权威数字来源，禁止各自硬编码）。
 - `IWebRequestAuditLogQueryRepository.cs`：Web 请求审计日志只读查询仓储契约（分页列表与按 Id 详情）。
 - `IWebRequestAuditLogRepository.cs`：Web 请求审计日志仓储最小写入契约（`AddAsync`）。
@@ -814,6 +841,7 @@
 #### `Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/`：EF Core 实体映射配置目录
 - `ArchiveTaskEntityTypeConfiguration.cs`：归档任务实体映射配置。
 - `BagInfoEntityTypeConfiguration.cs`：BagInfo 映射配置。
+- `IdempotencyRecordEntityTypeConfiguration.cs`：幂等记录实体映射配置，定义唯一幂等键组合索引与状态/创建时间索引。
 - `ParcelEntityTypeConfiguration.cs`：Parcel 聚合映射配置（Parcel 主键 Id 改为 `ValueGeneratedNever`，由应用层显式赋值；owned/value-object 子表影子主键继续保持自动生成）。
 - `WebRequestAuditLogEntityTypeConfiguration.cs`：Web 请求审计热数据主表映射配置（写优化索引与一对一关系）。
 - `WebRequestAuditLogDetailEntityTypeConfiguration.cs`：Web 请求审计冷数据详情表映射配置（大字段落冷表）。
@@ -822,8 +850,12 @@
 - `SortingHubDbContext.cs`：EF Core DbContext（实体集与模型构建入口）。
 - `DbProviderNames.cs`：EF Core 运行时/迁移 providerName 常量（`Pomelo.EntityFrameworkCore.MySql` / `Microsoft.EntityFrameworkCore.SqlServer`），用于 `DbContext.Database.ProviderName` 识别与迁移分支判断。
 - `ConfiguredProviderNames.cs`：配置层 provider key 常量（`MySql` / `SqlServer`），用于 `Persistence:Provider`、`ConnectionStrings` key 与设计时 CLI `--provider` 参数值，避免配置语义与 EF providerName 语义混用。
+- `DuplicateKeyExceptionDetector.cs`：重复键异常检测工具，统一识别 MySQL/SQL Server 唯一键冲突并供多仓储复用。
 - `ParcelIndexNames.cs`：Parcel 关键索引名称常量（供分表治理审计与测试复用，避免多处硬编码漂移；包含 BagCode/ActualChuteId/TargetChuteId 三条 ScannedTime 复合索引及 MySQL FULLTEXT 索引名）。
 - `WebRequestAuditLogIndexNames.cs`：Web 请求审计日志关键索引名称常量（供关键索引审计与映射复用）。
+
+##### `Zeye.Sorting.Hub.Infrastructure/Persistence/Idempotency/`：幂等目录
+- `IdempotencyKeyHasher.cs`：幂等键哈希计算器，对规范化载荷执行 SHA256 计算并输出 64 位十六进制哈希。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding/`：分表策略与运行期治理目录
 - `ParcelShardingStrategyEvaluator.cs`：Parcel 分表策略评估器。
@@ -924,6 +956,8 @@
 - `20260324094539_RebuildBaseline20260324.Designer.cs`：迁移元数据文件（自动生成，勿手动修改）。
 - `AddArchiveTaskDryRunSupport.cs`：归档任务基线迁移，新增 `ArchiveTasks` 表与索引。
 - `AddArchiveTaskDryRunSupportDesigner.cs`：归档任务迁移元数据文件（自动生成，勿手动修改）。
+- `20260506075656_AddIdempotencyRecordSupport.cs`：幂等记录基线迁移，新增 `IdempotencyRecords` 表与唯一幂等键索引。
+- `20260506075656_AddIdempotencyRecordSupport.Designer.cs`：幂等记录迁移元数据文件（自动生成，勿手动修改）。
 - `MigrationSchemaResolver.cs`：迁移共享 schema 解析器。
 - `SortingHubDbContextModelSnapshot.cs`：当前模型快照（自动生成，勿手动修改）。
 
@@ -931,6 +965,7 @@
 - `RepositoryBase.cs`：通用仓储基类（增删改查 + 自动持久化实现）；接受 `NLog.ILogger` 构造参数，由派生类传入，确保日志来源类名为实际仓储类而非基类名。
 - `MemoryCacheRepositoryBase.cs`：带内存缓存失效逻辑的仓储基类，继承 `RepositoryBase`，同样使用 NLog 日志。
 - `ArchiveTaskRepository.cs`：归档任务仓储实现，负责创建、分页、待执行任务拉取与状态更新。
+- `IdempotencyRepository.cs`：幂等记录仓储实现，支持按幂等键读取、新增记录与状态更新，并复用共享重复键检测工具。
 - `ParcelCursorQueryExtensions.cs`：Parcel 游标分页查询扩展，集中封装 `ScannedTime DESC, Id DESC` 稳定排序下的游标条件，避免仓储内重复拼接。
 - `ParcelRepository.cs`：Parcel 仓储第一阶段实现（复用 `RepositoryBase`、`IDbContextFactory`，使用静态 `NLog.ILogger`，已移除 MEL `ILogger<ParcelRepository>` 构造依赖；提供基础读写、偏移分页、游标分页、按 Id 邻近查询与过期清理；条码检索按 Provider 分支（MySQL FULLTEXT Boolean、其他 Provider Contains）；过期清理纳入隔离器开关 + dry-run + 审计 + 补偿边界声明）。
 - `WebRequestAuditLogRepository.cs`：Web 请求审计日志仓储实现，负责热表与冷表详情同事务写入，以及分页列表/按 Id 详情只读查询。
@@ -955,6 +990,7 @@
 - `AutoTuningProductionControlTests.cs`：覆盖 dry-run、危险动作隔离、告警防抖与恢复、普通/严重回归、unavailable 指标处理、执行计划探针 available/unavailable 双路径、闭环链路与分表覆盖守卫校验、迁移失败策略分环境解析、结构化扩容计划解析、Time/Volume/Hybrid 分表策略评估、PerDay 预建守卫（配置+物理探测）与分表观测口径/自动索引过滤规则回归；新增 WebRequestAuditLog 治理解耦与历史保留治理语义回归；含配置键拼装参数化（Theory）覆盖。
 - `SlowQueryFingerprintTests.cs`：慢查询画像测试，覆盖 SQL 指纹去参数化、窗口聚合指标、最大指纹容量淘汰与查询服务读取详情。
 - `QueryGovernanceTests.cs`：查询治理测试，覆盖强制模板登记、慢查询画像匹配模板、索引建议输出与未登记慢查询指纹缺口暴露。
+- `IdempotencyTests.cs`：幂等能力测试，覆盖 SHA256 载荷哈希稳定性、重复请求回放与处理中拒绝。
 - `AlwaysExistsShardingPhysicalTableProbe.cs`：物理表探测测试桩，始终返回存在并记录调用次数。
 - `BaselineDataTests.cs`：基线数据测试，覆盖必要配置、Provider/连接字符串、本地时间配置、健康检查、可选种子入口与 Degraded 模式异常隔离。
 - `DataArchiveTaskTests.cs`：归档任务 dry-run 测试，覆盖创建、分页、后台执行、终态重试与非法类型校验。
@@ -979,6 +1015,7 @@
 - `ParcelCursorQueryTests.cs`：Parcel 游标分页与查询保护回归测试，覆盖首页、翻页、非法游标、页大小归一化、默认最近 24 小时窗口、普通分页页码保护与仓储稳定排序。
 - `ParcelBufferedWriteTests.cs`：Parcel 批量缓冲写入回归测试，覆盖入队、回压、单批 Flush、死信隔离、队列健康检查与 batch-buffer 接口。
 - `DatabaseConnectionDiagnosticsTests.cs`：数据库连接诊断回归测试，覆盖默认配置、非法配置、失败快照、失败阈值、本地时间语义与健康检查 Data 输出。
+- `IdempotencyTests.cs`：幂等能力测试，覆盖 SHA256 载荷哈希稳定性、重复请求回放与处理中拒绝。
 - `AuditReadOnlyApiTests.cs`：Web 请求审计日志只读 API 端点测试，覆盖默认分页、过滤组合、非法分页 400、非法时间格式 400、详情 200/404 全字段断言、中间件写读联动。
 - `SortingHubTestDbContextFactory.cs`：Host.Tests 通用 InMemory `DbContextFactory`，供查询服务测试与仓储测试复用。
 - `WebRequestAuditLogRepositoryTests.cs`：Web 请求审计日志仓储测试，覆盖 DI 解析、冷热一对一落库与最小写入服务入口。
@@ -1002,16 +1039,16 @@
 
 ## 本次更新内容
 
-- 继续实施《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》，执行前先核对现有台账，确认当前已完成到 PR-I，本次补齐 PR-J“查询模板治理与索引建议闭环”。
-- 新增 `QueryTemplateRegistry`、`QueryIndexRecommendationService` 与 `QueryGovernanceReport`，集中登记 6 个高频查询模板，并复用慢查询画像只读抽象生成模板覆盖与索引建议报告。
-- 新增 `QueryGovernanceReportHostedService`，并在 `appsettings.json` 增补 `Persistence:AutoTuning:QueryGovernance` 配置节，在运行期周期输出查询模板登记、慢查询命中情况、未登记指纹缺口与只读索引建议，不自动执行任何 DDL。
-- 新增 `QueryGovernanceTests.cs` 与 `检查台账/PR-长期数据库底座J-检查台账.md`，同步更新 README、更新记录与文件清单基线，保证断点可延续。
+- 继续实施《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》，执行前先核对现有台账，确认当前已完成到 PR-J，本次补齐 PR-K“写入幂等、去重与重复键治理”。
+- 新增 `IdempotencyRecord`、`IdempotencyRecordStatus`、`IIdempotencyRepository`、`IdempotencyGuardService`、`IdempotencyRepository` 与 `IdempotencyKeyHasher`，建立可复用的幂等记录底座与 SHA256 载荷哈希计算能力。
+- 将 `CreateParcelCommandService` 与管理端新增路由接入幂等 Guard，相同请求重复提交时可回放已有结果，处理中请求会明确拒绝；同时提取 `DuplicateKeyExceptionDetector` 统一复用唯一键冲突识别逻辑。
+- 新增 `IdempotencyRecordEntityTypeConfiguration`、EF 迁移 `20260506075656_AddIdempotencyRecordSupport.*`、`IdempotencyTests.cs` 与 `检查台账/PR-长期数据库底座K-检查台账.md`，同步更新 README、更新记录与文件清单基线，保证断点可延续。
 
 ## 后续可完善点
 
-- 下一切片可按《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》进入 PR-K，补齐写入幂等、去重与重复键治理。
-- 后续可在查询模板描述中继续细化覆盖索引、Include 列与 Provider 差异建议，增强 MySQL/SQL Server 双栈治理精度。
-- 可将未登记慢查询指纹的告警级别与治理台账联动，进一步收紧高并发查询新增路径门禁。
+- 下一切片可按《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》进入 PR-L，补齐 Outbox 事件底座与业务事件持久化。
+- 后续可将当前幂等 Guard 按同一模型接入更多写命令与后台写入链路，进一步扩大重复请求治理覆盖面。
+- 可在幂等记录清理链路中补齐危险动作隔离器与审计资产，统一长期保留策略与过期治理入口。
 
 ## Parcel API 发布门禁 / 使用边界说明
 

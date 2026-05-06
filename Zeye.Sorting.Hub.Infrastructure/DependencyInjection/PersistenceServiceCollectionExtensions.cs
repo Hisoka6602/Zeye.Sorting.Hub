@@ -21,6 +21,7 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Baseline;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Diagnostics;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Idempotency;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.MigrationGovernance;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.QueryGovernance;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
@@ -127,6 +128,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 serviceProvider.GetRequiredService<SlowQueryProfileStore>());
             services.TryAddSingleton<QueryTemplateRegistry>();
             services.TryAddSingleton<QueryIndexRecommendationService>();
+            services.TryAddSingleton<IdempotencyKeyHasher>();
             services.AddSingleton<SlowQueryCommandInterceptor>();
             services.AddSingleton<MySqlSessionBootstrapConnectionInterceptor>();
             services.TryAddSingleton<IAutoTuningObservability, NullAutoTuningObservability>();
@@ -201,6 +203,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
 
             services.AddScoped<IParcelRepository, ParcelRepository>();
             services.AddScoped<IArchiveTaskRepository, ArchiveTaskRepository>();
+            services.AddScoped<IIdempotencyRepository, IdempotencyRepository>();
             services.AddScoped<WebRequestAuditLogRepository>();
             services.AddScoped<IWebRequestAuditLogRepository>(serviceProvider =>
                 serviceProvider.GetRequiredService<WebRequestAuditLogRepository>());

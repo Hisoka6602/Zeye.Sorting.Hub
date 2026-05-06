@@ -18,6 +18,7 @@ using Zeye.Sorting.Hub.Application.Services.Parcels;
 using Zeye.Sorting.Hub.Application.Services.AuditLogs;
 using Zeye.Sorting.Hub.Application.Services.DataGovernance;
 using Zeye.Sorting.Hub.Application.Services.Diagnostics;
+using Zeye.Sorting.Hub.Application.Services.Idempotency;
 using Zeye.Sorting.Hub.Application.Services.WriteBuffers;
 using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Archiving;
@@ -136,6 +137,7 @@ try {
     builder.Services.AddScoped<GetParcelCursorPagedQueryService>();
     builder.Services.AddScoped<GetParcelByIdQueryService>();
     builder.Services.AddScoped<GetAdjacentParcelsQueryService>();
+    builder.Services.AddScoped<IdempotencyGuardService>();
     builder.Services.AddScoped<CreateParcelCommandService>();
     builder.Services.AddScoped<UpdateParcelStatusCommandService>();
     builder.Services.AddScoped<DeleteParcelCommandService>();
