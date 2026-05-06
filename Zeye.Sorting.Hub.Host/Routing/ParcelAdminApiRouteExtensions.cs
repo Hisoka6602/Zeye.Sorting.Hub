@@ -50,7 +50,7 @@ public static class ParcelAdminApiRouteExtensions {
         group.MapPost(string.Empty, CreateParcelAsync)
             .WithName("AdminCreateParcel")
             .WithSummary("管理端新增 Parcel")
-            .WithDescription("新增单个包裹记录。请求体必须传入 id（大于 0 且全局唯一）；scannedTime、dischargeTime 必须是本地时间字符串，不允许 UTC 或时区偏移。")
+            .WithDescription("新增单个包裹记录。请求体必须传入 id（大于 0 且全局唯一）；scannedTime、dischargeTime 必须是本地时间字符串，不允许 UTC 或时区偏移。首次成功写入返回 201 Created；幂等重放命中已有结果时返回 200 OK。")
             .Produces<ParcelDetailResponse>(StatusCodes.Status200OK)
             .Produces<ParcelDetailResponse>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status400BadRequest)

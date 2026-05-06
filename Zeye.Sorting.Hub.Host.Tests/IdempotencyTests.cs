@@ -166,7 +166,8 @@ public sealed class IdempotencyTests {
                 cancellationTokenSource.Token));
 
             await using (var verificationContext = new SortingHubDbContext(options)) {
-                var canceledRecord = await verificationContext.Set<IdempotencyRecord>().SingleAsync();
+                var canceledRecord = await verificationContext.Set<IdempotencyRecord>().SingleOrDefaultAsync();
+                Assert.NotNull(canceledRecord);
                 Assert.Equal(Zeye.Sorting.Hub.Domain.Enums.Idempotency.IdempotencyRecordStatus.Rejected, canceledRecord.Status);
                 Assert.Equal(IdempotencyGuardService.RequestCanceledMessage, canceledRecord.FailureMessage);
             }
@@ -184,7 +185,8 @@ public sealed class IdempotencyTests {
             Assert.Equal("retry-success", retryResult.Response);
 
             await using var finalContext = new SortingHubDbContext(options);
-            var finalRecord = await finalContext.Set<IdempotencyRecord>().SingleAsync();
+            var finalRecord = await finalContext.Set<IdempotencyRecord>().SingleOrDefaultAsync();
+            Assert.NotNull(finalRecord);
             Assert.Equal(Zeye.Sorting.Hub.Domain.Enums.Idempotency.IdempotencyRecordStatus.Completed, finalRecord.Status);
         }
         finally {

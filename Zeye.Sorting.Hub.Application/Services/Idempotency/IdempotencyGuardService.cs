@@ -11,6 +11,11 @@ namespace Zeye.Sorting.Hub.Application.Services.Idempotency;
 /// </summary>
 public sealed class IdempotencyGuardService {
     /// <summary>
+    /// 取消后状态回写的最大补偿等待时间。
+    /// </summary>
+    private static readonly TimeSpan CancellationPersistenceTimeout = TimeSpan.FromSeconds(5);
+
+    /// <summary>
     /// 幂等记录冲突错误消息。
     /// </summary>
     public const string RequestInProgressMessage = "相同幂等请求正在处理中，请稍后重试。";
@@ -162,7 +167,13 @@ public sealed class IdempotencyGuardService {
                 operationName,
                 businessKey);
             record.MarkRejected(RequestCanceledMessage);
-            await EnsureRecordStateUpdatedAsync(record, sourceSystem, operationName, businessKey, CancellationToken.None);
+            using var persistenceCancellationTokenSource = CreateCancellationPersistenceTokenSource(cancellationToken);
+            await EnsureRecordStateUpdatedAsync(
+                record,
+                sourceSystem,
+                operationName,
+                businessKey,
+                persistenceCancellationTokenSource.Token);
             throw;
         }
         catch (Exception ex) {
@@ -308,6 +319,7 @@ public sealed class IdempotencyGuardService {
     /// <param name="operationName">操作名称。</param>
     /// <param name="businessKey">业务键。</param>
     /// <param name="cancellationToken">取消令牌。</param>
+    /// <exception cref="IdempotencyGuardException">当状态落库失败时抛出。</exception>
     private async Task EnsureRecordStateUpdatedAsync(
         IdempotencyRecord record,
         string sourceSystem,
@@ -329,5 +341,18 @@ public sealed class IdempotencyGuardService {
         throw new IdempotencyGuardException(
             IdempotencyGuardException.StatePersistenceFailedErrorCode,
             updateResult.ErrorMessage ?? "更新幂等记录失败。");
+    }
+
+    /// <summary>
+    /// 为取消后的状态回写创建带超时保护的取消令牌源。
+    /// </summary>
+    /// <param name="cancellationToken">原始取消令牌。</param>
+    /// <returns>用于补偿回写的取消令牌源。</returns>
+    private static CancellationTokenSource CreateCancellationPersistenceTokenSource(CancellationToken cancellationToken) {
+        if (!cancellationToken.IsCancellationRequested) {
+            return CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        }
+
+        return new CancellationTokenSource(CancellationPersistenceTimeout);
     }
 }
