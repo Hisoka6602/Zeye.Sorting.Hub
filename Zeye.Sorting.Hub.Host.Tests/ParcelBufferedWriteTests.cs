@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
+using Zeye.Sorting.Hub.Application.Services.Idempotency;
 using Zeye.Sorting.Hub.Application.Services.Parcels;
 using Zeye.Sorting.Hub.Application.Services.WriteBuffers;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.Admin;
@@ -17,6 +18,7 @@ using Zeye.Sorting.Hub.Domain.Repositories;
 using Zeye.Sorting.Hub.Host.HealthChecks;
 using Zeye.Sorting.Hub.Host.Routing;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Idempotency;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.WriteBuffering;
 using Zeye.Sorting.Hub.Infrastructure.Repositories;
 
@@ -311,7 +313,14 @@ public sealed class ParcelBufferedWriteTests {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
         builder.Services.AddProblemDetails();
+        var databaseOptions = new DbContextOptionsBuilder<SortingHubDbContext>()
+            .UseInMemoryDatabase($"parcel-buffer-idempotency-{Guid.NewGuid():N}")
+            .Options;
         builder.Services.AddScoped<IParcelRepository>(_ => new FakeParcelRepository());
+        builder.Services.AddSingleton<IDbContextFactory<SortingHubDbContext>>(new SortingHubTestDbContextFactory(databaseOptions));
+        builder.Services.AddScoped<IIdempotencyRepository, IdempotencyRepository>();
+        builder.Services.AddScoped<IdempotencyGuardService>();
+        builder.Services.AddSingleton<IdempotencyKeyHasher>();
         builder.Services.AddScoped<CreateParcelCommandService>();
         builder.Services.AddScoped<UpdateParcelStatusCommandService>();
         builder.Services.AddScoped<DeleteParcelCommandService>();

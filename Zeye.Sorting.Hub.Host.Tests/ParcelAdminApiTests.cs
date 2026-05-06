@@ -4,12 +4,17 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Zeye.Sorting.Hub.Application.Services.Idempotency;
 using Zeye.Sorting.Hub.Application.Services.Parcels;
 using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Repositories;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.Admin;
 using Zeye.Sorting.Hub.Host.Routing;
+using Zeye.Sorting.Hub.Infrastructure.Persistence;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Idempotency;
+using Zeye.Sorting.Hub.Infrastructure.Repositories;
 
 namespace Zeye.Sorting.Hub.Host.Tests;
 
@@ -473,8 +478,15 @@ public sealed class ParcelAdminApiTests {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
         builder.Services.AddProblemDetails();
+        var databaseOptions = new DbContextOptionsBuilder<SortingHubDbContext>()
+            .UseInMemoryDatabase($"parcel-admin-idempotency-{Guid.NewGuid():N}")
+            .Options;
         // 注册预配置的测试替身（单例工厂，确保同一请求使用同一实例）
         builder.Services.AddScoped<IParcelRepository>(_ => fakeRepo);
+        builder.Services.AddSingleton<IDbContextFactory<SortingHubDbContext>>(new SortingHubTestDbContextFactory(databaseOptions));
+        builder.Services.AddScoped<IIdempotencyRepository, IdempotencyRepository>();
+        builder.Services.AddScoped<IdempotencyGuardService>();
+        builder.Services.AddSingleton<IdempotencyKeyHasher>();
         builder.Services.AddScoped<CreateParcelCommandService>();
         builder.Services.AddScoped<UpdateParcelStatusCommandService>();
         builder.Services.AddScoped<DeleteParcelCommandService>();

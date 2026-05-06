@@ -137,21 +137,21 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
             Logger.Warn(ex, "新增包裹操作被取消，Id={ParcelId}", parcel.Id);
             return RepositoryResult.Fail("操作已取消");
         }
-        catch (DbUpdateException ex) when (IsDuplicatePrimaryKeyException(ex)) {
+        catch (DbUpdateException ex) when (DuplicateKeyExceptionDetector.IsDuplicateKeyException(ex)) {
             Logger.Warn(ex, "新增包裹主键冲突，Id={ParcelId}", parcel.Id);
             return RepositoryResult.Fail(DuplicateParcelIdErrorMessage, RepositoryErrorCodes.ParcelIdConflict);
         }
-        catch (DbUpdateException ex) when (ContainsDuplicateKeyMessage(ex.Message) || ContainsDuplicateKeyMessage(ex.InnerException?.Message)) {
+        catch (DbUpdateException ex) when (DuplicateKeyExceptionDetector.ContainsDuplicateKeyMessage(ex.Message) || DuplicateKeyExceptionDetector.ContainsDuplicateKeyMessage(ex.InnerException?.Message)) {
             Logger.Warn(ex, "新增包裹主键冲突（DbUpdateException 回退分支），Id={ParcelId}", parcel.Id);
             return RepositoryResult.Fail(DuplicateParcelIdErrorMessage, RepositoryErrorCodes.ParcelIdConflict);
         }
         // InMemory Provider(当前测试基线 .NET8 + EFCore.InMemory 9.x) 在主键冲突场景下通常抛出 InvalidOperationException，
         // 且无稳定错误码，仅有消息文本。该分支仅为测试基础设施兼容兜底；真实数据库优先走上方错误码分支。
-        catch (InvalidOperationException ex) when (ContainsDuplicateKeyMessage(ex.Message)) {
+        catch (InvalidOperationException ex) when (DuplicateKeyExceptionDetector.ContainsDuplicateKeyMessage(ex.Message)) {
             Logger.Warn(ex, "新增包裹主键冲突（提供器回退分支），Id={ParcelId}", parcel.Id);
             return RepositoryResult.Fail(DuplicateParcelIdErrorMessage, RepositoryErrorCodes.ParcelIdConflict);
         }
-        catch (Exception ex) when (ContainsDuplicateKeyMessage(ex.Message) || ContainsDuplicateKeyMessage(ex.InnerException?.Message)) {
+        catch (Exception ex) when (DuplicateKeyExceptionDetector.ContainsDuplicateKeyMessage(ex.Message) || DuplicateKeyExceptionDetector.ContainsDuplicateKeyMessage(ex.InnerException?.Message)) {
             Logger.Warn(ex, "新增包裹主键冲突（通用回退分支），Id={ParcelId}", parcel.Id);
             return RepositoryResult.Fail(DuplicateParcelIdErrorMessage, RepositoryErrorCodes.ParcelIdConflict);
         }
@@ -718,38 +718,6 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
         }
 
         return Math.Min(count, IParcelRepository.MaxAdjacentCountPerSide);
-    }
-
-    /// <summary>
-    /// 判断是否为主键唯一约束冲突异常。
-    /// </summary>
-    /// <param name="exception">数据库更新异常。</param>
-    /// <returns>是否为主键冲突。</returns>
-    private static bool IsDuplicatePrimaryKeyException(DbUpdateException exception) {
-        if (exception.InnerException is MySqlException mySqlException) {
-            return mySqlException.Number == 1062;
-        }
-
-        if (exception.InnerException is SqlException sqlException) {
-            return sqlException.Number == 2627 || sqlException.Number == 2601;
-        }
-
-        return false;
-    }
-
-    /// <summary>
-    /// 判断异常消息是否包含“重复键”语义。
-    /// </summary>
-    /// <param name="message">异常消息。</param>
-    /// <returns>是否包含重复键语义。</returns>
-    private static bool ContainsDuplicateKeyMessage(string? message) {
-        if (string.IsNullOrWhiteSpace(message)) {
-            return false;
-        }
-
-        return message.Contains("same key", StringComparison.OrdinalIgnoreCase)
-               || message.Contains("duplicate", StringComparison.OrdinalIgnoreCase)
-               || message.Contains("已存在", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
