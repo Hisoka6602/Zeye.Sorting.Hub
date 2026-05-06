@@ -6,7 +6,8 @@ namespace Zeye.Sorting.Hub.Application.Services.Events;
 
 /// <summary>
 /// Outbox 消息派发应用服务。
-/// 当前阶段仅执行状态推进与日志派发模拟，不接入外部消息中间件。
+/// 当前阶段仅执行状态推进与日志派发模拟，不接入外部消息中间件，
+/// 以便先把可靠落库、失败隔离与重试边界打稳，再在后续切片接入真实分发器。
 /// </summary>
 public sealed class DispatchOutboxMessageCommandService {
     /// <summary>

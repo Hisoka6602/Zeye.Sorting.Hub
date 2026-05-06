@@ -46,6 +46,9 @@ public sealed class GetOutboxMessagePagedQueryService {
         }
 
         var status = ParseOptionalStatus(request.Status);
+        var safeStatus = string.IsNullOrWhiteSpace(request.Status)
+            ? string.Empty
+            : SanitizeForLog(request.Status.Trim());
         try {
             var result = await _outboxMessageRepository.GetPagedAsync(
                 new PageRequest {
@@ -63,7 +66,7 @@ public sealed class GetOutboxMessagePagedQueryService {
             };
         }
         catch (Exception exception) {
-            Logger.Error(exception, "分页查询 Outbox 消息失败，PageNumber={PageNumber}, PageSize={PageSize}, Status={Status}", request.PageNumber, request.PageSize, request.Status);
+            Logger.Error(exception, "分页查询 Outbox 消息失败，PageNumber={PageNumber}, PageSize={PageSize}, Status={Status}", request.PageNumber, request.PageSize, safeStatus);
             throw;
         }
     }
@@ -98,5 +101,16 @@ public sealed class GetOutboxMessagePagedQueryService {
         }
 
         return status;
+    }
+
+    /// <summary>
+    /// 清理日志字段中的换行符，避免日志注入。
+    /// </summary>
+    /// <param name="value">原始值。</param>
+    /// <returns>单行日志值。</returns>
+    private static string SanitizeForLog(string value) {
+        return string.IsNullOrEmpty(value)
+            ? string.Empty
+            : value.Replace('\r', ' ').Replace('\n', ' ');
     }
 }

@@ -40,6 +40,7 @@ public sealed class OutboxHealthCheck : IHealthCheck {
             return HealthCheckResult.Degraded("Outbox 队列存在失败重试或处理中消息。", data: data);
         }
 
+        // `OldestActiveCreatedAt` 与 `DateTime.Now` 均为本地时间语义，可直接比较积压时长。
         if (snapshot.OldestActiveCreatedAt.HasValue && DateTime.Now - snapshot.OldestActiveCreatedAt.Value > MaxActiveAge) {
             return HealthCheckResult.Degraded("Outbox 队列存在长时间未处理积压。", data: data);
         }

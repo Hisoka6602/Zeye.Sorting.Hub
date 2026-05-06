@@ -39,6 +39,7 @@ public sealed class AppendOutboxMessageCommandService {
 
         var normalizedEventType = NormalizeEventType(request.EventType);
         var normalizedPayloadJson = NormalizePayloadJson(request.PayloadJson);
+        var safeEventType = SanitizeForLog(normalizedEventType);
         var outboxMessage = OutboxMessage.CreatePending(normalizedEventType, normalizedPayloadJson);
 
         try {
@@ -50,7 +51,7 @@ public sealed class AppendOutboxMessageCommandService {
             return OutboxMessageContractMapper.ToResponse(outboxMessage);
         }
         catch (Exception exception) {
-            Logger.Error(exception, "追加 Outbox 消息失败，EventType={EventType}", normalizedEventType);
+            Logger.Error(exception, "追加 Outbox 消息失败，EventType={EventType}", safeEventType);
             throw;
         }
     }
@@ -86,5 +87,16 @@ public sealed class AppendOutboxMessageCommandService {
         catch (JsonException exception) {
             throw new ArgumentException("payloadJson 必须为合法 JSON。", nameof(payloadJson), exception);
         }
+    }
+
+    /// <summary>
+    /// 清理日志字段中的换行符，避免日志注入。
+    /// </summary>
+    /// <param name="value">原始值。</param>
+    /// <returns>单行日志值。</returns>
+    private static string SanitizeForLog(string value) {
+        return string.IsNullOrEmpty(value)
+            ? string.Empty
+            : value.Replace('\r', ' ').Replace('\n', ' ');
     }
 }

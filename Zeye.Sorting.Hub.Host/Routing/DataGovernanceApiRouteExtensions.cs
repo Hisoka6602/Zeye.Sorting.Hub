@@ -4,6 +4,7 @@ using Zeye.Sorting.Hub.Application.Services.DataGovernance;
 using Zeye.Sorting.Hub.Application.Services.Events;
 using Zeye.Sorting.Hub.Contracts.Models.DataGovernance;
 using Zeye.Sorting.Hub.Contracts.Models.Events;
+using Zeye.Sorting.Hub.SharedKernel.Utilities;
 using Zeye.Sorting.Hub.Host.Utilities;
 
 namespace Zeye.Sorting.Hub.Host.Routing;
@@ -164,7 +165,10 @@ public static class DataGovernanceApiRouteExtensions {
             return Results.Created($"/api/data-governance/outbox-messages/{response.Id}", response);
         }
         catch (ArgumentException exception) {
-            NLogLogger.Warn(exception, "追加 Outbox 消息参数校验失败。EventType={EventType}", request.EventType);
+            var safeEventType = string.IsNullOrWhiteSpace(request.EventType)
+                ? string.Empty
+                : LineBreakNormalizer.ReplaceLineBreaksToSpace(request.EventType.Trim());
+            NLogLogger.Warn(exception, "追加 Outbox 消息参数校验失败。EventType={EventType}", safeEventType);
             return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", exception.Message);
         }
     }
@@ -189,7 +193,10 @@ public static class DataGovernanceApiRouteExtensions {
             return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", exception.Message);
         }
         catch (ArgumentException exception) {
-            NLogLogger.Warn(exception, "查询 Outbox 消息参数校验失败。Status={Status}", query.Status);
+            var safeStatus = string.IsNullOrWhiteSpace(query.Status)
+                ? string.Empty
+                : LineBreakNormalizer.ReplaceLineBreaksToSpace(query.Status.Trim());
+            NLogLogger.Warn(exception, "查询 Outbox 消息参数校验失败。Status={Status}", safeStatus);
             return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", exception.Message);
         }
     }

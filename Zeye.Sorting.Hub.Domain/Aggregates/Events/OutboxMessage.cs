@@ -124,6 +124,7 @@ public sealed class OutboxMessage : IEntity<long> {
 
     /// <summary>
     /// 标记消息派发失败，并在达到上限时进入死信。
+    /// 每次失败都会先递增 <see cref="RetryCount"/>，递增后的次数达到 <paramref name="maxRetryCount"/> 时转入死信。
     /// </summary>
     /// <param name="failureMessage">失败原因。</param>
     /// <param name="maxRetryCount">最大重试次数。</param>

@@ -16,6 +16,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories;
 public sealed class OutboxMessageRepository : RepositoryBase<OutboxMessage, SortingHubDbContext>, IOutboxMessageRepository {
     /// <summary>
     /// 原子领取可派发消息的最大重试次数。
+    /// 当前固定为 8 次，兼顾常规并发冲突退避与避免后台线程长时间自旋。
     /// </summary>
     private const int MaxAcquireAttempts = 8;
 
@@ -38,6 +39,7 @@ public sealed class OutboxMessageRepository : RepositoryBase<OutboxMessage, Sort
             return RepositoryResult.Fail("Outbox 消息不能为空。");
         }
 
+        var safeEventType = SanitizeForLog(outboxMessage.EventType);
         try {
             await using var dbContext = await ContextFactory.CreateDbContextAsync(cancellationToken);
             await dbContext.Set<OutboxMessage>().AddAsync(outboxMessage, cancellationToken);
@@ -45,7 +47,7 @@ public sealed class OutboxMessageRepository : RepositoryBase<OutboxMessage, Sort
             return RepositoryResult.Success();
         }
         catch (Exception exception) {
-            Logger.Error(exception, "新增 Outbox 消息失败，EventType={EventType}", outboxMessage.EventType);
+            Logger.Error(exception, "新增 Outbox 消息失败，EventType={EventType}", safeEventType);
             return RepositoryResult.Fail("新增 Outbox 消息失败。");
         }
     }
@@ -225,5 +227,16 @@ public sealed class OutboxMessageRepository : RepositoryBase<OutboxMessage, Sort
             Logger.Error(exception, "更新 Outbox 消息失败，MessageId={MessageId}, Status={Status}", outboxMessage.Id, outboxMessage.Status);
             return RepositoryResult.Fail("更新 Outbox 消息失败。");
         }
+    }
+
+    /// <summary>
+    /// 清理日志字段中的换行符，避免日志注入。
+    /// </summary>
+    /// <param name="value">原始值。</param>
+    /// <returns>单行日志值。</returns>
+    private static string SanitizeForLog(string value) {
+        return string.IsNullOrEmpty(value)
+            ? string.Empty
+            : value.Replace('\r', ' ').Replace('\n', ' ');
     }
 }
