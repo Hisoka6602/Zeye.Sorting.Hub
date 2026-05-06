@@ -18,6 +18,7 @@ using Zeye.Sorting.Hub.Application.Services.Parcels;
 using Zeye.Sorting.Hub.Application.Services.AuditLogs;
 using Zeye.Sorting.Hub.Application.Services.DataGovernance;
 using Zeye.Sorting.Hub.Application.Services.Diagnostics;
+using Zeye.Sorting.Hub.Application.Services.Events;
 using Zeye.Sorting.Hub.Application.Services.Idempotency;
 using Zeye.Sorting.Hub.Application.Services.WriteBuffers;
 using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
@@ -75,6 +76,7 @@ try {
     builder.Services.AddHostedService<DataArchiveHostedService>();
     builder.Services.AddHostedService<BaselineDataValidationHostedService>();
     builder.Services.AddHostedService<QueryGovernanceReportHostedService>();
+    builder.Services.AddHostedService<OutboxDispatchHostedService>();
     builder.Services.AddSingleton<MigrationGovernanceHostedService>();
     builder.Services.AddHostedService(static serviceProvider =>
         serviceProvider.GetRequiredService<MigrationGovernanceHostedService>());
@@ -98,6 +100,9 @@ try {
             tags: ["ready"])
         .AddCheck<BaselineDataHealthCheck>(
             name: "baseline-data",
+            tags: ["ready"])
+        .AddCheck<OutboxHealthCheck>(
+            name: "outbox",
             tags: ["ready"])
         .AddCheck<MigrationGovernanceHealthCheck>(
             name: "migration-governance",
@@ -149,6 +154,9 @@ try {
     builder.Services.AddScoped<GetArchiveTaskPagedQueryService>();
     builder.Services.AddScoped<RetryArchiveTaskCommandService>();
     builder.Services.AddScoped<GetSlowQueryProfileQueryService>();
+    builder.Services.AddScoped<AppendOutboxMessageCommandService>();
+    builder.Services.AddScoped<GetOutboxMessagePagedQueryService>();
+    builder.Services.AddScoped<DispatchOutboxMessageCommandService>();
     builder.Services.AddWebRequestAuditLogging(builder.Configuration);
 
     // Host 启动时执行持久化初始化

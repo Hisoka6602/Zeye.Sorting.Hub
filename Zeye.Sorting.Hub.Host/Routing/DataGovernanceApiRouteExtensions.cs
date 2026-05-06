@@ -1,6 +1,9 @@
+using Microsoft.AspNetCore.Mvc;
 using NLog;
 using Zeye.Sorting.Hub.Application.Services.DataGovernance;
+using Zeye.Sorting.Hub.Application.Services.Events;
 using Zeye.Sorting.Hub.Contracts.Models.DataGovernance;
+using Zeye.Sorting.Hub.Contracts.Models.Events;
 using Zeye.Sorting.Hub.Host.Utilities;
 
 namespace Zeye.Sorting.Hub.Host.Routing;
@@ -21,6 +24,7 @@ public static class DataGovernanceApiRouteExtensions {
     /// <returns>路由构建器。</returns>
     public static IEndpointRouteBuilder MapDataGovernanceApis(this IEndpointRouteBuilder routeBuilder) {
         var group = routeBuilder.MapGroup("/api/data-governance/archive-tasks").WithTags("DataGovernance");
+        var outboxGroup = routeBuilder.MapGroup("/api/data-governance/outbox-messages").WithTags("DataGovernance");
 
         group.MapPost(string.Empty, CreateArchiveTaskAsync)
             .WithName("CreateArchiveTask")
@@ -43,6 +47,26 @@ public static class DataGovernanceApiRouteExtensions {
             .Produces<ArchiveTaskResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound);
+
+        outboxGroup.MapPost(string.Empty, (
+            [FromBody] OutboxMessageCreateRequest request,
+            [FromServices] AppendOutboxMessageCommandService commandService,
+            CancellationToken cancellationToken) => AppendOutboxMessageAsync(request, commandService, cancellationToken))
+            .WithName("AppendOutboxMessage")
+            .WithSummary("追加 Outbox 事件消息")
+            .WithDescription("将业务事件以 Outbox 记录形式持久化；当前仅提供独立写入能力，为后续同事务写入预留统一入口。")
+            .Produces<OutboxMessageResponse>(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status400BadRequest);
+
+        outboxGroup.MapGet(string.Empty, (
+            [AsParameters] OutboxMessageListRequest query,
+            [FromServices] GetOutboxMessagePagedQueryService queryService,
+            CancellationToken cancellationToken) => GetOutboxMessageListAsync(query, queryService, cancellationToken))
+            .WithName("GetOutboxMessageList")
+            .WithSummary("分页查询 Outbox 消息")
+            .WithDescription("按页码、页大小与状态过滤查询 Outbox 消息；可用于查看失败重试与死信记录。")
+            .Produces<OutboxMessageListResponse>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status400BadRequest);
 
         return routeBuilder;
     }
@@ -116,6 +140,56 @@ public static class DataGovernanceApiRouteExtensions {
         }
         catch (InvalidOperationException exception) {
             NLogLogger.Warn(exception, "重试归档任务状态校验失败。TaskId={TaskId}", id);
+            return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", exception.Message);
+        }
+    }
+
+    /// <summary>
+    /// 处理追加 Outbox 消息请求。
+    /// </summary>
+    /// <param name="request">创建请求。</param>
+    /// <param name="commandService">追加服务。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>创建结果。</returns>
+    private static async Task<IResult> AppendOutboxMessageAsync(
+        [FromBody] OutboxMessageCreateRequest request,
+        [FromServices] AppendOutboxMessageCommandService commandService,
+        CancellationToken cancellationToken) {
+        if (request is null) {
+            return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", "请求体不能为空。");
+        }
+
+        try {
+            var response = await commandService.ExecuteAsync(request, cancellationToken);
+            return Results.Created($"/api/data-governance/outbox-messages/{response.Id}", response);
+        }
+        catch (ArgumentException exception) {
+            NLogLogger.Warn(exception, "追加 Outbox 消息参数校验失败。EventType={EventType}", request.EventType);
+            return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", exception.Message);
+        }
+    }
+
+    /// <summary>
+    /// 处理 Outbox 消息分页查询请求。
+    /// </summary>
+    /// <param name="query">查询参数。</param>
+    /// <param name="queryService">查询服务。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>分页结果。</returns>
+    private static async Task<IResult> GetOutboxMessageListAsync(
+        [AsParameters] OutboxMessageListRequest query,
+        [FromServices] GetOutboxMessagePagedQueryService queryService,
+        CancellationToken cancellationToken) {
+        try {
+            var response = await queryService.ExecuteAsync(query, cancellationToken);
+            return Results.Ok(response);
+        }
+        catch (ArgumentOutOfRangeException exception) {
+            NLogLogger.Warn(exception, "查询 Outbox 消息分页参数越界。PageNumber={PageNumber}, PageSize={PageSize}", query.PageNumber, query.PageSize);
+            return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", exception.Message);
+        }
+        catch (ArgumentException exception) {
+            NLogLogger.Warn(exception, "查询 Outbox 消息参数校验失败。Status={Status}", query.Status);
             return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", exception.Message);
         }
     }
