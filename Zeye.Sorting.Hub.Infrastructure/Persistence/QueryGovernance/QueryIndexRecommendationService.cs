@@ -130,7 +130,9 @@ public sealed class QueryIndexRecommendationService {
             .Select(template => (Template: template, Profile: matchedProfilesByTemplateName[template.TemplateName]))
             .Where(static item => item.Profile is not null)
             .Where(item => ShouldEmitRecommendation(item.Profile))
-            .Select(item => BuildRecommendation(item.Template, item.Profile))
+            .Select(item => TryBuildRecommendation(item.Template, item.Profile))
+            .Where(static item => item is not null)
+            .Select(static item => item!)
             .ToArray();
 
         var unmatchedFingerprints = profiles
@@ -215,7 +217,7 @@ public sealed class QueryIndexRecommendationService {
         }
 
         // 步骤 3：若仍然相同，则按模板名称字典序稳定收敛，保证输出结果可预测。
-        return candidateTemplate.TemplateName.CompareTo(currentTemplate.TemplateName) < 0;
+        return string.Compare(candidateTemplate.TemplateName, currentTemplate.TemplateName, StringComparison.Ordinal) < 0;
     }
 
     /// <summary>
@@ -270,17 +272,21 @@ public sealed class QueryIndexRecommendationService {
     /// <param name="template">模板描述。</param>
     /// <param name="profile">慢查询画像。</param>
     /// <returns>索引建议。</returns>
-    private static QueryIndexRecommendation BuildRecommendation(
+    private static QueryIndexRecommendation? TryBuildRecommendation(
         QueryTemplateDescriptor template,
         SlowQueryProfileReadModel profile) {
+        if (!TryGetPrimaryTableName(template, out var tableName)) {
+            return null;
+        }
+
         var recommendedIndex = template.RecommendedIndexes.Count > 0
             ? template.RecommendedIndexes[0]
-            : BuildFallbackIndexExpression(template);
+            : BuildFallbackIndexExpression(template, tableName);
         var confidence = CalculateConfidence(template, profile);
         return new QueryIndexRecommendation {
             TemplateName = template.TemplateName,
             Fingerprint = profile.Fingerprint,
-            TableName = template.TableNames[0],
+            TableName = tableName,
             RecommendedIndex = recommendedIndex,
             Reason = $"模板 {template.TemplateName} 在当前窗口内出现慢查询，P99={profile.P99Milliseconds:F1}ms，调用次数={profile.CallCount}，建议优先核查声明索引 {recommendedIndex}。",
             RiskLevel = profile.TimeoutCount > 0 || profile.ErrorCount > 0 ? "高" : profile.P99Milliseconds >= 1000d ? "中" : "低",
@@ -296,13 +302,24 @@ public sealed class QueryIndexRecommendationService {
     /// 构建回退索引表达式。
     /// </summary>
     /// <param name="template">模板描述。</param>
+    /// <param name="tableName">主表名。</param>
     /// <returns>索引表达式。</returns>
-    private static string BuildFallbackIndexExpression(QueryTemplateDescriptor template) {
-        var tableName = template.TableNames[0];
+    private static string BuildFallbackIndexExpression(QueryTemplateDescriptor template, string tableName) {
         var columns = template.FilterColumns
             .Concat(template.SortColumns)
             .Distinct(StringComparer.OrdinalIgnoreCase);
         return $"{tableName}({string.Join(", ", columns)})";
+    }
+
+    /// <summary>
+    /// 尝试获取模板主表名。
+    /// </summary>
+    /// <param name="template">模板描述。</param>
+    /// <param name="tableName">主表名。</param>
+    /// <returns>若存在有效主表名则返回 true。</returns>
+    private static bool TryGetPrimaryTableName(QueryTemplateDescriptor template, out string tableName) {
+        tableName = template.TableNames.FirstOrDefault(static item => !string.IsNullOrWhiteSpace(item)) ?? string.Empty;
+        return !string.IsNullOrWhiteSpace(tableName);
     }
 
     /// <summary>

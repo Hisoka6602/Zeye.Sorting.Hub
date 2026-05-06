@@ -114,9 +114,9 @@ public sealed class QueryTemplateRegistry {
                 purpose: "分页检索归档任务与治理结果。",
                 serviceName: "GetArchiveTaskPagedQueryService",
                 tableNames: ["ArchiveTasks"],
-                filterColumns: ["Status", "TaskType", "CreatedAtLocal"],
-                sortColumns: ["CreatedAtLocal", "Id"],
-                recommendedIndexes: ["ArchiveTasks(Status, TaskType, CreatedAtLocal DESC, Id DESC)"],
+                filterColumns: ["Status", "TaskType", "CreatedAt"],
+                sortColumns: ["CreatedAt", "Id"],
+                recommendedIndexes: ["ArchiveTasks(Status, TaskType, CreatedAt DESC, Id DESC)"],
                 maxTimeRangeHours: 720,
                 isCountAllowed: true,
                 isDeepPagingAllowed: false)
@@ -148,6 +148,10 @@ public sealed class QueryTemplateRegistry {
         int maxTimeRangeHours,
         bool isCountAllowed,
         bool isDeepPagingAllowed) {
+        if (tableNames.Count == 0 || tableNames.Any(string.IsNullOrWhiteSpace)) {
+            throw new InvalidOperationException($"查询模板 {templateName} 至少需要声明一个有效表名。");
+        }
+
         return new QueryTemplateDescriptor {
             TemplateName = templateName,
             Purpose = purpose,

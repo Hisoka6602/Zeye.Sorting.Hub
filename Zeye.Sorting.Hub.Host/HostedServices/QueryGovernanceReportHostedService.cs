@@ -54,13 +54,18 @@ public sealed class QueryGovernanceReportHostedService : BackgroundService {
     /// <param name="stoppingToken">取消令牌。</param>
     /// <returns>后台任务。</returns>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
-        // 步骤 1：启动后立即输出一次基线报告，保证当前窗口无慢查询时也能看到模板登记完整性。
-        EmitGovernanceReport();
-
-        // 步骤 2：后续按固定周期重复巡检，持续输出模板覆盖与索引建议闭环结果。
-        using var timer = new PeriodicTimer(_reportInterval);
-        while (await timer.WaitForNextTickAsync(stoppingToken)) {
+        try {
+            // 步骤 1：启动后立即输出一次基线报告，保证当前窗口无慢查询时也能看到模板登记完整性。
             EmitGovernanceReport();
+
+            // 步骤 2：后续按固定周期重复巡检，持续输出模板覆盖与索引建议闭环结果。
+            using var timer = new PeriodicTimer(_reportInterval);
+            while (await timer.WaitForNextTickAsync(stoppingToken)) {
+                EmitGovernanceReport();
+            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) {
+            NLogLogger.Info("查询治理报告后台服务已停止。");
         }
     }
 

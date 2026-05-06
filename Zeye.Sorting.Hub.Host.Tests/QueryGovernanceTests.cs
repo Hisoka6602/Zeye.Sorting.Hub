@@ -1,4 +1,6 @@
+using System.Reflection;
 using Microsoft.Extensions.Configuration;
+using Zeye.Sorting.Hub.Host.HostedServices;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.QueryGovernance;
 
@@ -23,6 +25,10 @@ public sealed class QueryGovernanceTests {
         Assert.Contains(templates, static item => item.TemplateName == "ParcelByWorkstationQuery");
         Assert.Contains(templates, static item => item.TemplateName == "WebRequestAuditLogCursorQuery");
         Assert.Contains(templates, static item => item.TemplateName == "ArchiveTaskListQuery");
+        var archiveTaskTemplate = Assert.Single(templates, static item => item.TemplateName == "ArchiveTaskListQuery");
+        Assert.Contains("CreatedAt", archiveTaskTemplate.FilterColumns);
+        Assert.Contains("CreatedAt", archiveTaskTemplate.SortColumns);
+        Assert.Contains("CreatedAt", archiveTaskTemplate.RecommendedIndexes[0], StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -66,6 +72,29 @@ public sealed class QueryGovernanceTests {
         Assert.Equal(0, report.MatchedTemplateCount);
         Assert.Single(report.UnmatchedSlowQueryFingerprints);
         Assert.Equal(6, report.TemplatesWithoutObservedProfiles.Count);
+    }
+
+    /// <summary>
+    /// 停止令牌触发时查询治理后台服务应正常结束。
+    /// </summary>
+    /// <returns>异步任务。</returns>
+    [Fact]
+    public async Task QueryGovernanceReportHostedService_WhenCancellationRequested_ShouldCompleteGracefully() {
+        var configuration = BuildConfiguration();
+        var store = new SlowQueryProfileStore(configuration);
+        var hostedService = new QueryGovernanceReportHostedService(
+            new QueryIndexRecommendationService(store, new QueryTemplateRegistry(), configuration),
+            configuration);
+        using var cancellationTokenSource = new CancellationTokenSource();
+        await cancellationTokenSource.CancelAsync();
+        var executeAsyncMethod = typeof(QueryGovernanceReportHostedService).GetMethod(
+            "ExecuteAsync",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+
+        Assert.NotNull(executeAsyncMethod);
+
+        var task = (Task?)executeAsyncMethod!.Invoke(hostedService, [cancellationTokenSource.Token]);
+        await task!;
     }
 
     /// <summary>
