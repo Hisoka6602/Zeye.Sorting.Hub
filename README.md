@@ -47,7 +47,8 @@
 │   ├── PR-长期数据库底座H-检查台账.md（长期数据库底座 PR-H 台账：记录基线数据校验、配置一致性校验、可选种子入口与下一 PR 入口）
 │   ├── PR-长期数据库底座I-检查台账.md（长期数据库底座 PR-I 台账：记录慢查询指纹聚合、查询画像 API 与下一 PR 入口）
 │   ├── PR-长期数据库底座J-检查台账.md（长期数据库底座 PR-J 台账：记录查询模板登记、索引建议闭环与下一 PR 入口）
-│   └── PR-长期数据库底座K-检查台账.md（长期数据库底座 PR-K 台账：记录写入幂等、重复键治理与下一 PR 入口）
+│   ├── PR-长期数据库底座K-检查台账.md（长期数据库底座 PR-K 台账：记录写入幂等、重复键治理与下一 PR 入口）
+│   └── PR-长期数据库底座L-检查台账.md（长期数据库底座 PR-L 台账：记录 Outbox 事件持久化、状态推进、死信与下一 PR 入口）
 ├── Zeye.Sorting.Hub.Analytics（分析与报表子域，占位工程）
 │   └── Zeye.Sorting.Hub.Analytics.csproj（Analytics 项目定义）
 ├── Zeye.Sorting.Hub.Application（应用层）
@@ -68,6 +69,11 @@
 │   │   │   └── RetryArchiveTaskCommandService.cs（归档任务重试应用服务）
 │   │   ├── Diagnostics（诊断应用服务目录）
 │   │   │   └── GetSlowQueryProfileQueryService.cs（慢查询画像查询应用服务：读取内存快照并映射外部合同）
+│   │   ├── Events（事件应用服务目录）
+│   │   │   ├── AppendOutboxMessageCommandService.cs（Outbox 消息独立写入应用服务）
+│   │   │   ├── DispatchOutboxMessageCommandService.cs（Outbox 消息状态推进与日志派发模拟应用服务）
+│   │   │   ├── GetOutboxMessagePagedQueryService.cs（Outbox 消息分页查询与健康快照读取应用服务）
+│   │   │   └── OutboxMessageContractMapper.cs（Outbox 聚合到外部合同映射器）
 │   │   ├── Idempotency（幂等应用服务目录）
 │   │   │   ├── IdempotencyGuardException.cs（幂等守卫异常：提供稳定错误码，避免调用方依赖消息文本判定）
 │   │   │   └── IdempotencyGuardService.cs（幂等守卫应用服务：统一协调重复请求回放、取消重试与处理中拒绝）
@@ -112,6 +118,11 @@
 │   │   ├── Diagnostics（诊断合同目录）
 │   │   │   ├── SlowQueryProfileListResponse.cs（慢查询画像列表响应合同）
 │   │   │   └── SlowQueryProfileResponse.cs（慢查询画像详情响应合同）
+│   │   ├── Events（事件合同目录）
+│   │   │   ├── OutboxMessageCreateRequest.cs（Outbox 消息创建请求合同）
+│   │   │   ├── OutboxMessageListRequest.cs（Outbox 消息分页查询请求合同）
+│   │   │   ├── OutboxMessageListResponse.cs（Outbox 消息分页响应合同）
+│   │   │   └── OutboxMessageResponse.cs（Outbox 消息详情响应合同）
 │   │   └── Parcels（Parcel 合同目录）
 │   │       ├── Admin（管理端写接口合同目录）
 │   │       │   ├── ParcelBatchBufferedCreateRequest.cs（Parcel 批量缓冲写入请求合同）
@@ -156,6 +167,8 @@
 │   │   │       └── WebRequestAuditLogDetail.cs（Web 请求审计冷数据详情实体）
 │   │   ├── DataGovernance（数据治理聚合目录）
 │   │   │   └── ArchiveTask.cs（归档任务聚合根：记录 dry-run 状态、计划摘要、检查点与重试次数）
+│   │   ├── Events（事件聚合目录）
+│   │   │   └── OutboxMessage.cs（Outbox 消息聚合根：记录事件类型、载荷、状态推进与死信隔离信息）
 │   │   ├── Idempotency（幂等聚合目录）
 │   │   │   └── IdempotencyRecord.cs（幂等记录聚合根：记录来源系统、操作名、业务键、载荷哈希与执行状态）
 │   │   └── Parcels（包裹聚合目录）
@@ -201,6 +214,8 @@
 │   │   │   └── ArchiveTaskType.cs（归档任务类型枚举）
 │   │   ├── Idempotency（幂等枚举目录）
 │   │   │   └── IdempotencyRecordStatus.cs（幂等记录状态枚举）
+│   │   ├── Events（事件枚举目录）
+│   │   │   └── OutboxMessageStatus.cs（Outbox 消息状态枚举：Pending/Processing/Succeeded/Failed/DeadLettered）
 │   │   └── AuditLogs（审计日志枚举目录）
 │   │       ├── AuditResourceType.cs（审计资源类型枚举）
 │   │       ├── FileOperationType.cs（文件操作类型枚举）
@@ -211,6 +226,7 @@
 │   ├── Repositories（领域仓储契约目录）
 │   │   ├── IArchiveTaskRepository.cs（归档任务仓储契约：支持创建、分页查询、获取待执行任务与更新状态）
 │   │   ├── IIdempotencyRepository.cs（幂等记录仓储契约：支持按幂等键读取、新增与状态更新）
+│   │   ├── IOutboxMessageRepository.cs（Outbox 消息仓储契约：支持追加、分页、健康快照与原子领取派发）
 │   │   ├── IParcelRepository.cs（包裹仓储接口，含过期清理危险动作治理结果契约）
 │   │   ├── IWebRequestAuditLogQueryRepository.cs（Web 请求审计日志只读查询仓储契约）
 │   │   ├── IWebRequestAuditLogRepository.cs（Web 请求审计日志仓储写入契约）
@@ -224,6 +240,7 @@
 │   │       │   ├── PageRequest.cs（通用分页请求模型）
 │   │       │   └── PageResult.cs（通用分页结果模型）
 │   │       ├── ReadModels（查询读模型目录）
+│   │       │   ├── OutboxMessageHealthSnapshotReadModel.cs（Outbox 健康快照读模型：聚合待处理/处理中/失败/死信数量与最早积压时间）
 │   │       │   ├── ParcelSummaryReadModel.cs（Parcel 列表摘要读模型）
 │   │       │   ├── WebRequestAuditLogDetailReadModel.cs（Web 请求审计日志详情读模型，含 WebRequestAuditLogId 外键镜像字段）
 │   │       │   └── WebRequestAuditLogSummaryReadModel.cs（Web 请求审计日志列表摘要读模型）
@@ -243,6 +260,7 @@
 │   │   ├── DataArchiveHostedService.cs（归档 dry-run 后台托管服务：按轮询间隔拉起归档 Worker 执行待处理任务）
 │   │   ├── BaselineDataValidationHostedService.cs（基线数据校验托管服务：启动期执行配置一致性校验并按开关触发可选种子入口）
 │   │   ├── MigrationGovernanceHostedService.cs（迁移治理托管服务：启动期预演迁移计划、归档脚本并写入治理状态）
+│   │   ├── OutboxDispatchHostedService.cs（Outbox 派发托管服务：周期推进消息状态并执行日志派发模拟）
 │   │   ├── QueryGovernanceReportHostedService.cs（查询治理报告托管服务：周期输出模板登记、慢查询匹配与索引建议只读报告）
 │   │   ├── ParcelBatchWriteFlushHostedService.cs（Parcel 批量缓冲写入后台 Flush 托管服务）
 │   │   ├── ShardingInspectionHostedService.cs（分表运行期巡检托管服务）
@@ -259,7 +277,7 @@
 │   │   ├── ParcelReadOnlyApiRouteExtensions.cs（Parcel 只读 API 路由扩展：含偏移分页、游标分页、详情与邻近查询）
 │   │   ├── ParcelAdminApiRouteExtensions.cs（Parcel 管理端 API 路由扩展：含同步写接口、cleanup-expired 与 batch-buffer 缓冲写入接口）
 │   │   ├── AuditReadOnlyApiRouteExtensions.cs（Web 请求审计日志只读 API 路由扩展）
-│   │   ├── DataGovernanceApiRouteExtensions.cs（归档任务 API 路由扩展：含创建、分页查询与重试入口）
+│   │   ├── DataGovernanceApiRouteExtensions.cs（数据治理 API 路由扩展：含归档任务创建/分页/重试与 Outbox 消息写入/查询入口）
 │   │   └── DiagnosticsApiRouteExtensions.cs（诊断 API 路由扩展：暴露慢查询画像列表与详情只读端点）
 │   ├── QueryParameters（路由参数绑定模型目录）
 │   │   ├── ParcelListQueryParameters.cs（Parcel 列表查询参数）
@@ -279,6 +297,7 @@
 │   │   ├── DatabaseReadinessHealthCheck.cs（数据库基础就绪探针：保留兼容实现）
 │   │   ├── BaselineDataHealthCheck.cs（基线数据健康检查：输出校验结果、失败模式、错误数与种子执行状态）
 │   │   ├── MigrationGovernanceHealthCheck.cs（迁移治理健康检查：输出待执行迁移、危险 SQL、归档脚本与执行状态）
+│   │   ├── OutboxHealthCheck.cs（Outbox 健康检查：输出待处理/处理中/失败/死信数量与最早积压时间）
 │   │   └── HealthCheckResponseWriter.cs（健康检查 JSON 响应序列化工具，支持输出 Data 诊断数据）
 │   ├── Utilities（工具目录）
 │   │   └── LocalDateTimeParsing.cs（本地时间解析与 API 问题响应工厂共享工具）
@@ -310,6 +329,7 @@
 │   ├── SlowQueryFingerprintTests.cs（慢查询画像测试：覆盖 SQL 指纹归一化、窗口聚合、容量淘汰与查询服务读取）
 │   ├── QueryGovernanceTests.cs（查询治理测试：覆盖强制模板登记、模板匹配与未登记慢查询缺口暴露）
 │   ├── IdempotencyTests.cs（幂等能力测试：覆盖 SHA256 哈希、重复请求回放与处理中拒绝）
+│   ├── OutboxMessageTests.cs（Outbox 事件底座测试：覆盖写入、分页、状态推进、死信与健康检查）
 │   ├── BatchSelectiveMissingShardingPhysicalTableProbe.cs（批量物理表探测测试桩：选择性缺失与 schema 透传断言）
 │   ├── CountingPlanProbe.cs（执行计划探针测试桩：记录调用次数）
 │   ├── DomainEventArgsTests.cs（领域事件载荷单元测试：验证 ParcelScannedEventArgs/ParcelChuteAssignedEventArgs 业务字段赋值与值语义）
@@ -352,6 +372,7 @@
 │   │   ├── ArchiveTaskEntityTypeConfiguration.cs（归档任务实体映射配置）
 │   │   ├── BagInfoEntityTypeConfiguration.cs（BagInfo 映射配置）
 │   │   ├── IdempotencyRecordEntityTypeConfiguration.cs（幂等记录映射配置：唯一幂等键索引与状态索引）
+│   │   ├── OutboxMessageEntityTypeConfiguration.cs（Outbox 消息映射配置：状态并发令牌与状态/事件类型索引）
 │   │   ├── ParcelEntityTypeConfiguration.cs（Parcel 映射配置）
 │   │   ├── WebRequestAuditLogEntityTypeConfiguration.cs（Web 请求审计热表映射配置）
 │   │   └── WebRequestAuditLogDetailEntityTypeConfiguration.cs（Web 请求审计冷表映射配置）
@@ -436,6 +457,8 @@
 │   │   │   ├── AddArchiveTaskDryRunSupportDesigner.cs（归档任务迁移元数据，自动生成）
 │   │   │   ├── 20260506075656_AddIdempotencyRecordSupport.cs（幂等记录基线迁移）
 │   │   │   ├── 20260506075656_AddIdempotencyRecordSupport.Designer.cs（幂等记录迁移元数据，自动生成）
+│   │   │   ├── 20260506175929_AddOutboxMessageSupport.cs（Outbox 消息基线迁移）
+│   │   │   ├── 20260506175929_AddOutboxMessageSupport.Designer.cs（Outbox 消息迁移元数据，自动生成）
 │   │   │   ├── MigrationSchemaResolver.cs（迁移 schema 解析器）
 │   │   │   └── SortingHubDbContextModelSnapshot.cs（当前模型快照，自动生成）
 │   │   ├── WriteBuffering（批量缓冲写入基础设施目录）
@@ -455,6 +478,7 @@
 │   │   ├── ArchiveTaskRepository.cs（归档任务仓储实现：支持创建、分页、待执行任务拉取与状态更新）
 │   │   ├── IdempotencyRepository.cs（幂等记录仓储实现：按幂等键查询并处理唯一键冲突）
 │   │   ├── MemoryCacheRepositoryBase.cs（带内存缓存失效的仓储基类，使用 NLog 日志）
+│   │   ├── OutboxMessageRepository.cs（Outbox 消息仓储实现：支持分页、健康快照、原子领取与状态更新）
 │   │   ├── ParcelCursorQueryExtensions.cs（Parcel 游标分页查询扩展：统一稳定排序下的游标条件拼接）
 │   │   ├── ParcelRepository.cs（Parcel 仓储第一阶段实现，使用静态 NLog logger，无需 MEL ILogger 构造注入；BarCodeKeyword 检索按 Provider 分支：MySQL 走 FULLTEXT Boolean，其他 Provider 回退 Contains）
 │   │   ├── RepositoryBase.cs（通用仓储基类，接受 NLog.ILogger 构造参数，由派生类传入确保日志来源类名正确）
@@ -527,6 +551,7 @@
   - `PR-长期数据库底座I-检查台账.md`：长期数据库底座 PR-I 实施台账；记录慢查询指纹聚合、查询画像只读 API、验证结果与下一 PR 入口。
   - `PR-长期数据库底座J-检查台账.md`：长期数据库底座 PR-J 实施台账；记录查询模板登记、查询治理报告、只读索引建议闭环与下一 PR 入口。
   - `PR-长期数据库底座K-检查台账.md`：长期数据库底座 PR-K 实施台账；记录写入幂等、SHA256 载荷哈希、重复请求回放与下一 PR 入口。
+  - `PR-长期数据库底座L-检查台账.md`：长期数据库底座 PR-L 实施台账；记录 Outbox 事件持久化、状态推进、死信隔离、健康检查与下一 PR 入口。
 
 ### `.github/`：Copilot 仓库级指令目录
 - `DDD分层接口与实现放置规范.md`：DDD 分层接口定义与实现放置规范文档；明确依赖方向（Host→Infrastructure→Application→Domain）、接口定义归属规则（领域能力/应用编排/基础设施内部三类）、实现类放置约束、目录结构建议与禁止事项清单，供 Copilot 与开发人员统一执行。
@@ -573,6 +598,12 @@
 
 #### `Zeye.Sorting.Hub.Application/Services/Diagnostics/`：诊断应用服务目录
 - `GetSlowQueryProfileQueryService.cs`：慢查询画像查询应用服务，消费 `ISlowQueryProfileReader` 返回的只读快照，并映射为 Diagnostics 合同响应。
+
+#### `Zeye.Sorting.Hub.Application/Services/Events/`：事件应用服务目录
+- `AppendOutboxMessageCommandService.cs`：Outbox 消息独立写入应用服务，负责请求校验、JSON 规范化与消息持久化。
+- `DispatchOutboxMessageCommandService.cs`：Outbox 消息派发应用服务，负责领取可派发消息、做最小日志派发模拟并推进成功/失败/死信状态。
+- `GetOutboxMessagePagedQueryService.cs`：Outbox 消息分页查询应用服务，提供状态过滤分页与健康快照读取能力。
+- `OutboxMessageContractMapper.cs`：Outbox 聚合到外部合同映射器，统一响应模型转换。
 
 #### `Zeye.Sorting.Hub.Application/Services/Idempotency/`：幂等应用服务目录
 - `IdempotencyGuardException.cs`：幂等守卫异常，提供稳定错误码（如处理中、状态落库失败），避免调用方依赖异常消息文本判定。
@@ -628,6 +659,12 @@
 - `SlowQueryProfileResponse.cs`：慢查询画像详情响应合同，返回指纹、标准 SQL、样例 SQL、平均耗时、P95/P99、异常计数与窗口时间。
 - `SlowQueryProfileListResponse.cs`：慢查询画像列表响应合同，返回当前生成时间、追踪指纹总量与 TopN 画像条目。
 
+#### `Zeye.Sorting.Hub.Contracts/Models/Events/`：事件合同目录
+- `OutboxMessageCreateRequest.cs`：Outbox 消息创建请求合同。
+- `OutboxMessageListRequest.cs`：Outbox 消息分页查询请求合同。
+- `OutboxMessageListResponse.cs`：Outbox 消息分页响应合同。
+- `OutboxMessageResponse.cs`：Outbox 消息详情响应合同。
+
 #### `Zeye.Sorting.Hub.Contracts/Models/Parcels/ValueObjects/`：Parcel 值对象响应合同目录
 - `ApiRequestInfoResponse.cs`：外部接口请求记录响应合同。
 - `BagInfoResponse.cs`：集包信息响应合同。
@@ -669,6 +706,9 @@
 
 ##### `Zeye.Sorting.Hub.Domain/Aggregates/DataGovernance/`：数据治理聚合目录
 - `ArchiveTask.cs`：归档任务聚合根，记录 dry-run 状态、计划摘要、检查点与重试次数。
+
+##### `Zeye.Sorting.Hub.Domain/Aggregates/Events/`：事件聚合目录
+- `OutboxMessage.cs`：Outbox 消息聚合根，统一承载事件类型、JSON 载荷、派发状态、重试次数与死信隔离信息。
 
 ##### `Zeye.Sorting.Hub.Domain/Aggregates/Idempotency/`：幂等聚合目录
 - `IdempotencyRecord.cs`：幂等记录聚合根，统一承载来源系统、操作名称、业务键、SHA256 载荷哈希、执行状态与失败消息。
@@ -725,6 +765,9 @@
 #### `Zeye.Sorting.Hub.Domain/Enums/Idempotency/`：幂等枚举子目录
 - `IdempotencyRecordStatus.cs`：幂等记录状态枚举（Pending/Completed/Rejected/Failed）。
 
+#### `Zeye.Sorting.Hub.Domain/Enums/Events/`：事件枚举子目录
+- `OutboxMessageStatus.cs`：Outbox 消息状态枚举（Pending/Processing/Succeeded/Failed/DeadLettered）。
+
 #### `Zeye.Sorting.Hub.Domain/Enums/Sharding/`：分表治理枚举子目录
 - `ParcelShardingStrategyMode.cs`：分表策略模式枚举。
 - `ParcelTimeShardingGranularity.cs`：时间分表粒度枚举。
@@ -745,6 +788,7 @@
 #### `Zeye.Sorting.Hub.Domain/Repositories/`：领域仓储契约目录
 - `IArchiveTaskRepository.cs`：归档任务仓储契约（支持创建、分页查询、获取待执行任务与状态更新）。
 - `IIdempotencyRepository.cs`：幂等记录仓储契约（支持按幂等键读取、新增与更新状态）。
+- `IOutboxMessageRepository.cs`：Outbox 消息仓储契约（支持追加、分页、健康快照、原子领取派发与状态更新）。
 - `IParcelRepository.cs`：包裹仓储接口（第一阶段可落地契约：基础读写、偏移分页、游标分页、按 Id 邻近查询、过期清理危险动作治理结果返回；同时定义 `MaxAdjacentCountPerSide = 200` 常量，为 Application 层与 Infrastructure 层提供唯一权威数字来源，禁止各自硬编码）。
 - `IWebRequestAuditLogQueryRepository.cs`：Web 请求审计日志只读查询仓储契约（分页列表与按 Id 详情）。
 - `IWebRequestAuditLogRepository.cs`：Web 请求审计日志仓储最小写入契约（`AddAsync`）。
@@ -762,6 +806,7 @@
 - `PageResult.cs`：通用分页结果模型（Items、页码、页大小、总数）。
 
 ###### `Zeye.Sorting.Hub.Domain/Repositories/Models/ReadModels/`：查询读模型目录
+- `OutboxMessageHealthSnapshotReadModel.cs`：Outbox 健康快照读模型，聚合待处理/处理中/失败/死信数量与最早积压时间。
 - `ParcelSummaryReadModel.cs`：Parcel 列表摘要读模型（包含 Parcel 全部扁平化字段，用于分页列表）。
 - `WebRequestAuditLogSummaryReadModel.cs`：Web 请求审计日志列表摘要读模型（高频查询字段）。
 - `WebRequestAuditLogDetailReadModel.cs`：Web 请求审计日志详情读模型（热表字段 + 冷表详情字段，含 `WebRequestAuditLogId` 外键镜像字段）。
@@ -776,11 +821,11 @@
 - `MaxTimeRangeAttribute.cs`：时间范围校验特性（限制起止时间跨度，默认不超过 3 个月）。
 
 ### `Zeye.Sorting.Hub.Host/`：宿主层（程序入口、后台服务、启动配置）
-- `Program.cs`：应用入口与 Host 构建流程（按 `AuditReadOnlyApi:Enabled` 显式开关控制审计只读路由映射，并注册 Parcel 游标分页查询服务、批量缓冲写入后台 Flush 服务、分表巡检/预建托管服务、归档 dry-run API 与后台服务）。
+- `Program.cs`：应用入口与 Host 构建流程（按 `AuditReadOnlyApi:Enabled` 显式开关控制审计只读路由映射，并注册 Parcel 游标分页查询服务、批量缓冲写入后台 Flush 服务、分表巡检/预建托管服务、归档 dry-run API、Outbox API、Outbox 派发后台服务与健康检查）。
 - `Routing/ParcelReadOnlyApiRouteExtensions.cs`：Parcel 只读路由注册与处理逻辑；新增 `/api/parcels/cursor` 游标分页接口，并为普通分页补充默认最近 24 小时与页码保护说明。
 - `Routing/ParcelAdminApiRouteExtensions.cs`：Parcel 管理端路由扩展（普通写接口 + cleanup-expired 治理接口 + `/api/admin/parcels/batch-buffer` 批量缓冲写入接口）。
 - `Routing/AuditReadOnlyApiRouteExtensions.cs`：Web 请求审计日志只读路由扩展（`GET /api/audit/web-requests`、`GET /api/audit/web-requests/{id}`）。
-- `Routing/DataGovernanceApiRouteExtensions.cs`：归档任务路由扩展（`POST /api/data-governance/archive-tasks`、`GET /api/data-governance/archive-tasks`、`POST /api/data-governance/archive-tasks/{id}/retry`）。
+- `Routing/DataGovernanceApiRouteExtensions.cs`：数据治理路由扩展（`POST/GET /api/data-governance/archive-tasks*` 与 `POST/GET /api/data-governance/outbox-messages`）。
 - `Routing/DiagnosticsApiRouteExtensions.cs`：诊断路由扩展（`GET /api/diagnostics/slow-queries`、`GET /api/diagnostics/slow-queries/{fingerprint}`），只读取进程内画像快照，不触发数据库重查。
 - `QueryParameters/ParcelListQueryParameters.cs`：Parcel 列表查询参数模型（AsParameters 绑定）。
 - `QueryParameters/ParcelCursorListQueryParameters.cs`：Parcel 游标分页查询参数模型（AsParameters 绑定）。
@@ -797,6 +842,7 @@
 - `HealthChecks/DatabaseReadinessHealthCheck.cs`：数据库基础就绪健康检查探针，保留原始直接连通性探测实现。
 - `BaselineDataHealthCheck.cs`：基线数据健康检查；位于 `Zeye.Sorting.Hub.Host/HealthChecks/`，输出校验结果、失败模式、错误/告警数量与种子执行状态，挂载于 `/health/ready`。
 - `MigrationGovernanceHealthCheck.cs`：迁移治理健康检查；位于 `Zeye.Sorting.Hub.Host/HealthChecks/`，输出待执行迁移数、危险 SQL 命中、归档路径与当前执行状态，挂载于 `/health/ready`。
+- `OutboxHealthCheck.cs`：Outbox 健康检查；位于 `Zeye.Sorting.Hub.Host/HealthChecks/`，输出待处理/处理中/失败/死信数量与最早积压时间，挂载于 `/health/ready`。
 - `HealthChecks/HealthCheckResponseWriter.cs`：健康检查 JSON 响应序列化工具，输出结构化 JSON，并支持附加 Data 诊断数据。
 - `Utilities/LocalDateTimeParsing.cs`：本地时间解析与 API 问题响应工厂共享工具。
 - `Middleware/WebRequestAuditLogOptions.cs`：Web 请求审计中间件配置模型。
@@ -816,6 +862,7 @@
 - `EnumDescriptionSchemaFilter.cs`：枚举 Schema 中文增强过滤器。
 
 #### `Zeye.Sorting.Hub.Host/HostedServices/`：启动/常驻托管服务目录
+- `OutboxDispatchHostedService.cs`：Outbox 派发托管服务，周期创建作用域调用派发应用服务，执行日志派发模拟与状态推进。
 - `AutoTuningLoggerObservability.cs`：自动调优观测默认日志实现（已移除 `ConvertLogLevel` 转换方法，直接接收 `NLog.LogLevel`）。
 - `DatabaseAutoTuningHostedService.cs`：数据库自动调谐托管服务主流程（已移除 `ILogger<>` 注入，改为静态 `NLog.Logger`）。
 - `PendingRollbackAction.cs` / `TableCapacitySnapshot.cs` / `EvidenceContext.cs` / `PolicyDecision.cs`：自动调谐内部模型与决策类型。
@@ -844,6 +891,7 @@
 - `ArchiveTaskEntityTypeConfiguration.cs`：归档任务实体映射配置。
 - `BagInfoEntityTypeConfiguration.cs`：BagInfo 映射配置。
 - `IdempotencyRecordEntityTypeConfiguration.cs`：幂等记录实体映射配置，定义唯一幂等键组合索引与状态/创建时间索引。
+- `OutboxMessageEntityTypeConfiguration.cs`：Outbox 消息实体映射配置，定义状态并发令牌与状态/事件类型索引。
 - `ParcelEntityTypeConfiguration.cs`：Parcel 聚合映射配置（Parcel 主键 Id 改为 `ValueGeneratedNever`，由应用层显式赋值；owned/value-object 子表影子主键继续保持自动生成）。
 - `WebRequestAuditLogEntityTypeConfiguration.cs`：Web 请求审计热数据主表映射配置（写优化索引与一对一关系）。
 - `WebRequestAuditLogDetailEntityTypeConfiguration.cs`：Web 请求审计冷数据详情表映射配置（大字段落冷表）。
@@ -960,6 +1008,8 @@
 - `AddArchiveTaskDryRunSupportDesigner.cs`：归档任务迁移元数据文件（自动生成，勿手动修改）。
 - `20260506075656_AddIdempotencyRecordSupport.cs`：幂等记录基线迁移，新增 `IdempotencyRecords` 表与唯一幂等键索引。
 - `20260506075656_AddIdempotencyRecordSupport.Designer.cs`：幂等记录迁移元数据文件（自动生成，勿手动修改）。
+- `20260506175929_AddOutboxMessageSupport.cs`：Outbox 消息基线迁移，新增 `OutboxMessages` 表及状态/事件类型索引。
+- `20260506175929_AddOutboxMessageSupport.Designer.cs`：Outbox 消息迁移元数据文件（自动生成，勿手动修改）。
 - `MigrationSchemaResolver.cs`：迁移共享 schema 解析器。
 - `SortingHubDbContextModelSnapshot.cs`：当前模型快照（自动生成，勿手动修改）。
 
@@ -968,6 +1018,7 @@
 - `MemoryCacheRepositoryBase.cs`：带内存缓存失效逻辑的仓储基类，继承 `RepositoryBase`，同样使用 NLog 日志。
 - `ArchiveTaskRepository.cs`：归档任务仓储实现，负责创建、分页、待执行任务拉取与状态更新。
 - `IdempotencyRepository.cs`：幂等记录仓储实现，支持按幂等键读取、新增记录与状态更新，并复用共享重复键检测工具。
+- `OutboxMessageRepository.cs`：Outbox 消息仓储实现，支持分页、健康快照、原子领取可派发消息与状态更新。
 - `ParcelCursorQueryExtensions.cs`：Parcel 游标分页查询扩展，集中封装 `ScannedTime DESC, Id DESC` 稳定排序下的游标条件，避免仓储内重复拼接。
 - `ParcelRepository.cs`：Parcel 仓储第一阶段实现（复用 `RepositoryBase`、`IDbContextFactory`，使用静态 `NLog.ILogger`，已移除 MEL `ILogger<ParcelRepository>` 构造依赖；提供基础读写、偏移分页、游标分页、按 Id 邻近查询与过期清理；条码检索按 Provider 分支（MySQL FULLTEXT Boolean、其他 Provider Contains）；过期清理纳入隔离器开关 + dry-run + 审计 + 补偿边界声明）。
 - `WebRequestAuditLogRepository.cs`：Web 请求审计日志仓储实现，负责热表与冷表详情同事务写入，以及分页列表/按 Id 详情只读查询。
@@ -993,6 +1044,7 @@
 - `SlowQueryFingerprintTests.cs`：慢查询画像测试，覆盖 SQL 指纹去参数化、窗口聚合指标、最大指纹容量淘汰与查询服务读取详情。
 - `QueryGovernanceTests.cs`：查询治理测试，覆盖强制模板登记、慢查询画像匹配模板、索引建议输出与未登记慢查询指纹缺口暴露。
 - `IdempotencyTests.cs`：幂等能力测试，覆盖 SHA256 载荷哈希稳定性、重复请求回放、取消后重试与 Pending 记录自恢复回放。
+- `OutboxMessageTests.cs`：Outbox 事件底座测试，覆盖写入、分页、后台状态推进、死信隔离与健康检查。
 - `AlwaysExistsShardingPhysicalTableProbe.cs`：物理表探测测试桩，始终返回存在并记录调用次数。
 - `BaselineDataTests.cs`：基线数据测试，覆盖必要配置、Provider/连接字符串、本地时间配置、健康检查、可选种子入口与 Degraded 模式异常隔离。
 - `DataArchiveTaskTests.cs`：归档任务 dry-run 测试，覆盖创建、分页、后台执行、终态重试与非法类型校验。
@@ -1041,16 +1093,16 @@
 
 ## 本次更新内容
 
-- 继续实施《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》，执行前先核对现有台账，确认当前已完成到 PR-J，本次补齐 PR-K“写入幂等、去重与重复键治理”。
-- 新增 `IdempotencyRecord`、`IdempotencyRecordStatus`、`IIdempotencyRepository`、`IdempotencyGuardService`、`IdempotencyGuardException`、`IdempotencyRepository` 与 `IdempotencyKeyHasher`，建立可复用的幂等记录底座、稳定错误码与 SHA256 载荷哈希计算能力。
-- 将 `CreateParcelCommandService` 与管理端新增路由接入幂等 Guard，相同请求重复提交时可回放已有结果，处理中请求会明确拒绝；取消请求会落为可重试的 `Rejected` 状态，Pending 且已存在真实结果时可自动按重放语义恢复。
-- 新增 `IdempotencyRecordEntityTypeConfiguration`、EF 迁移 `20260506075656_AddIdempotencyRecordSupport.*`、`IdempotencyTests.cs` 与 `检查台账/PR-长期数据库底座K-检查台账.md`，同步更新 README、更新记录与文件清单基线，保证断点可延续。
+- 继续实施《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》，执行前先核对现有台账，确认当前已完成到 PR-K，本次补齐 PR-L“Outbox 事件底座与业务事件持久化”。
+- 新增 `OutboxMessage`、`OutboxMessageStatus`、`IOutboxMessageRepository`、`OutboxMessageHealthSnapshotReadModel`、Outbox 应用服务与事件合同，建立独立写入、分页查询、状态推进与死信隔离底座。
+- 新增 `OutboxMessageRepository`、`OutboxMessageEntityTypeConfiguration`、`OutboxDispatchHostedService`、`OutboxHealthCheck` 与 EF 迁移 `20260506175929_AddOutboxMessageSupport.*`，接入后台日志派发模拟、健康检查与 `/api/data-governance/outbox-messages` 数据治理入口。
+- 新增 `OutboxMessageTests.cs` 与 `检查台账/PR-长期数据库底座L-检查台账.md`，同步更新 README、更新记录与文件清单基线，保证下一 PR 可按断点继续推进。
 
 ## 后续可完善点
 
-- 下一切片可按《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》进入 PR-L，补齐 Outbox 事件底座与业务事件持久化。
-- 后续可将当前幂等 Guard 按同一模型接入更多写命令与后台写入链路，进一步扩大重复请求治理覆盖面。
-- 可在幂等记录清理链路中补齐危险动作隔离器与审计资产，统一长期保留策略与过期治理入口。
+- 下一切片可按《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》进入 PR-M，补齐 Inbox 幂等消费底座。
+- 后续可将 Outbox 独立写入入口扩展为与真实业务事务同 DbContext 协同写入，进一步收紧事件不丢失边界。
+- 后续可在 Outbox 清理链路中补齐长期保留策略、危险动作隔离器与审计资产，统一历史消息治理入口。
 
 ## Parcel API 发布门禁 / 使用边界说明
 
