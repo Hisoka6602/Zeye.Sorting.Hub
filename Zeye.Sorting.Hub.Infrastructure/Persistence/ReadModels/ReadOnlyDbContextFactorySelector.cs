@@ -60,13 +60,13 @@ public sealed class ReadOnlyDbContextFactorySelector {
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>数据库上下文。</returns>
     public async ValueTask<SortingHubDbContext> CreateDbContextAsync(CancellationToken cancellationToken) {
-        var probe = await ProbeRouteAsync(cancellationToken);
-        if (ShouldRejectQuery(probe)) {
-            Logger.Error("只读数据库路由拒绝访问，Summary={Summary}", probe.Summary);
-            throw new InvalidOperationException(probe.Summary);
+        var routeSelection = ResolveRouteSelection();
+        if (ShouldRejectQuery(routeSelection)) {
+            Logger.Error("只读数据库路由拒绝访问，Summary={Summary}", routeSelection.Summary);
+            throw new InvalidOperationException(routeSelection.Summary);
         }
 
-        if (ShouldUsePrimaryDatabase(probe)) {
+        if (ShouldUsePrimaryDatabase(routeSelection)) {
             return await _primaryDbContextFactory.CreateDbContextAsync(cancellationToken);
         }
 
@@ -74,8 +74,8 @@ public sealed class ReadOnlyDbContextFactorySelector {
         PersistenceServiceCollectionExtensions.ConfigureConfiguredProviderDbContextOptions(
             _serviceProvider,
             optionsBuilder,
-            ResolveConfiguredProviderName(),
-            probe.ReadOnlyConnectionString!);
+            routeSelection.ConfiguredProviderName,
+            routeSelection.ReadOnlyConnectionString);
         return new SortingHubDbContext(optionsBuilder.Options);
     }
 
@@ -83,10 +83,10 @@ public sealed class ReadOnlyDbContextFactorySelector {
     /// 探测当前只读数据库路由状态。
     /// </summary>
     /// <param name="cancellationToken">取消令牌。</param>
-    /// <returns>路由状态元组。</returns>
+    /// <returns>只读数据库路由探测结果。</returns>
     public async Task<ReadOnlyRouteProbeResult> ProbeRouteAsync(CancellationToken cancellationToken) {
         if (!_options.IsEnabled) {
-            return new ReadOnlyRouteProbeResult(false, false, false, true, "Primary", "只读数据库未启用，报表查询将保持主库路由。", null);
+            return new ReadOnlyRouteProbeResult(false, false, false, false, "Primary", "只读数据库未启用，报表查询将保持主库路由。");
         }
 
         var configuredProviderName = ResolveConfiguredProviderName();
@@ -96,21 +96,21 @@ public sealed class ReadOnlyDbContextFactorySelector {
             var summary = $"缺少连接字符串：ConnectionStrings:{readOnlyConnectionStringKey}。";
             if (_options.FallbackToPrimaryWhenUnavailable) {
                 Logger.Warn("只读数据库未配置，已回退主库，ConnectionStringKey={ConnectionStringKey}", readOnlyConnectionStringKey);
-                return new ReadOnlyRouteProbeResult(true, false, false, true, "Primary", $"{summary} 当前已回退主库。", null);
+                return new ReadOnlyRouteProbeResult(true, false, false, true, "Primary", $"{summary} 当前已回退主库。");
             }
 
             Logger.Error("只读数据库未配置且未允许回退主库，ConnectionStringKey={ConnectionStringKey}", readOnlyConnectionStringKey);
-            return new ReadOnlyRouteProbeResult(true, false, false, false, "Rejected", $"{summary} 当前已拒绝报表查询。", null);
+            return new ReadOnlyRouteProbeResult(true, false, false, false, "Rejected", $"{summary} 当前已拒绝报表查询。");
         }
 
         try {
             await using var readOnlyDbContext = CreateReadOnlyDbContext(readOnlyConnectionString, configuredProviderName);
             var canConnect = await readOnlyDbContext.Database.CanConnectAsync(cancellationToken);
             if (canConnect) {
-                return new ReadOnlyRouteProbeResult(true, true, true, false, "ReadOnly", "只读数据库连接正常，报表查询将使用只读路由。", readOnlyConnectionString);
+                return new ReadOnlyRouteProbeResult(true, true, true, false, "ReadOnly", "只读数据库连接正常，报表查询将使用只读路由。");
             }
 
-            return BuildUnavailableResult("只读数据库连接不可用。", readOnlyConnectionString);
+            return BuildUnavailableResult("只读数据库连接不可用。");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
             Logger.Warn("只读数据库探测收到取消信号。");
@@ -118,26 +118,73 @@ public sealed class ReadOnlyDbContextFactorySelector {
         }
         catch (Exception exception) {
             Logger.Error(exception, "只读数据库探测失败。");
-            return BuildUnavailableResult($"只读数据库探测失败：{exception.Message}", readOnlyConnectionString);
+            return BuildUnavailableResult("只读数据库探测失败。");
         }
     }
 
     /// <summary>
     /// 判断当前探测结果是否应拒绝报表查询。
     /// </summary>
-    /// <param name="probe">探测结果。</param>
+    /// <param name="routeSelection">路由选择结果。</param>
     /// <returns>是否应拒绝报表查询。</returns>
-    private static bool ShouldRejectQuery(ReadOnlyRouteProbeResult probe) {
-        return probe.IsEnabled && !probe.IsFallbackToPrimary && !probe.IsReadOnlyAvailable;
+    private static bool ShouldRejectQuery(ReadOnlyRouteSelection routeSelection) {
+        return routeSelection.IsEnabled && !routeSelection.IsFallbackToPrimary && !routeSelection.HasReadOnlyConnectionString;
     }
 
     /// <summary>
     /// 判断当前探测结果是否应使用主库。
     /// </summary>
-    /// <param name="probe">探测结果。</param>
+    /// <param name="routeSelection">路由选择结果。</param>
     /// <returns>是否应使用主库。</returns>
-    private static bool ShouldUsePrimaryDatabase(ReadOnlyRouteProbeResult probe) {
-        return !probe.IsEnabled || probe.IsFallbackToPrimary;
+    private static bool ShouldUsePrimaryDatabase(ReadOnlyRouteSelection routeSelection) {
+        return !routeSelection.IsEnabled || routeSelection.IsFallbackToPrimary;
+    }
+
+    /// <summary>
+    /// 解析报表查询路由选择结果。
+    /// </summary>
+    /// <returns>路由选择结果。</returns>
+    private ReadOnlyRouteSelection ResolveRouteSelection() {
+        if (!_options.IsEnabled) {
+            return new ReadOnlyRouteSelection(
+                IsEnabled: false,
+                IsFallbackToPrimary: false,
+                HasReadOnlyConnectionString: false,
+                ConfiguredProviderName: ResolveConfiguredProviderName(),
+                ReadOnlyConnectionString: string.Empty,
+                Summary: "只读数据库未启用，报表查询将保持主库路由。");
+        }
+
+        var configuredProviderName = ResolveConfiguredProviderName();
+        var readOnlyConnectionStringKey = ResolveReadOnlyConnectionStringKey(configuredProviderName);
+        var readOnlyConnectionString = _configuration.GetConnectionString(readOnlyConnectionStringKey);
+        if (!string.IsNullOrWhiteSpace(readOnlyConnectionString)) {
+            return new ReadOnlyRouteSelection(
+                IsEnabled: true,
+                IsFallbackToPrimary: false,
+                HasReadOnlyConnectionString: true,
+                ConfiguredProviderName: configuredProviderName,
+                ReadOnlyConnectionString: readOnlyConnectionString,
+                Summary: "只读数据库连接字符串已配置，报表查询将直接使用只读路由。");
+        }
+
+        if (_options.FallbackToPrimaryWhenUnavailable) {
+            return new ReadOnlyRouteSelection(
+                IsEnabled: true,
+                IsFallbackToPrimary: true,
+                HasReadOnlyConnectionString: false,
+                ConfiguredProviderName: configuredProviderName,
+                ReadOnlyConnectionString: string.Empty,
+                Summary: $"缺少连接字符串：ConnectionStrings:{readOnlyConnectionStringKey}。当前已回退主库。");
+        }
+
+        return new ReadOnlyRouteSelection(
+            IsEnabled: true,
+            IsFallbackToPrimary: false,
+            HasReadOnlyConnectionString: false,
+            ConfiguredProviderName: configuredProviderName,
+            ReadOnlyConnectionString: string.Empty,
+            Summary: $"缺少连接字符串：ConnectionStrings:{readOnlyConnectionStringKey}。当前已拒绝报表查询。");
     }
 
     /// <summary>
@@ -191,15 +238,25 @@ public sealed class ReadOnlyDbContextFactorySelector {
     /// 构建只读数据库不可用时的路由结果。
     /// </summary>
     /// <param name="summary">摘要信息。</param>
-    /// <param name="readOnlyConnectionString">只读连接字符串。</param>
-    /// <returns>路由状态元组。</returns>
-    private ReadOnlyRouteProbeResult BuildUnavailableResult(string summary, string? readOnlyConnectionString) {
+    /// <returns>只读数据库路由探测结果。</returns>
+    private ReadOnlyRouteProbeResult BuildUnavailableResult(string summary) {
         if (_options.FallbackToPrimaryWhenUnavailable) {
             Logger.Warn("只读数据库不可用，已回退主库，Summary={Summary}", summary);
-            return new ReadOnlyRouteProbeResult(true, true, false, true, "Primary", $"{summary} 当前已回退主库。", readOnlyConnectionString);
+            return new ReadOnlyRouteProbeResult(true, true, false, true, "Primary", $"{summary} 当前已回退主库。");
         }
 
         Logger.Error("只读数据库不可用且未允许回退主库，Summary={Summary}", summary);
-        return new ReadOnlyRouteProbeResult(true, true, false, false, "Rejected", $"{summary} 当前已拒绝报表查询。", readOnlyConnectionString);
+        return new ReadOnlyRouteProbeResult(true, true, false, false, "Rejected", $"{summary} 当前已拒绝报表查询。");
     }
+
+    /// <summary>
+    /// 报表查询路由选择结果。
+    /// </summary>
+    private readonly record struct ReadOnlyRouteSelection(
+        bool IsEnabled,
+        bool IsFallbackToPrimary,
+        bool HasReadOnlyConnectionString,
+        string ConfiguredProviderName,
+        string ReadOnlyConnectionString,
+        string Summary);
 }

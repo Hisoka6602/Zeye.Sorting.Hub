@@ -13,22 +13,19 @@ public readonly record struct ReadOnlyRouteProbeResult {
     /// <param name="isFallbackToPrimary">是否已回退主库。</param>
     /// <param name="routeTarget">当前路由目标。</param>
     /// <param name="summary">摘要信息。</param>
-    /// <param name="readOnlyConnectionString">只读连接字符串。</param>
     public ReadOnlyRouteProbeResult(
         bool isEnabled,
         bool isReadOnlyConfigured,
         bool isReadOnlyAvailable,
         bool isFallbackToPrimary,
         string routeTarget,
-        string summary,
-        string? readOnlyConnectionString) {
+        string summary) {
         IsEnabled = isEnabled;
         IsReadOnlyConfigured = isReadOnlyConfigured;
         IsReadOnlyAvailable = isReadOnlyAvailable;
         IsFallbackToPrimary = isFallbackToPrimary;
         RouteTarget = routeTarget;
         Summary = summary;
-        ReadOnlyConnectionString = readOnlyConnectionString;
     }
 
     /// <summary>
@@ -60,9 +57,4 @@ public readonly record struct ReadOnlyRouteProbeResult {
     /// 探测摘要。
     /// </summary>
     public string Summary { get; init; }
-
-    /// <summary>
-    /// 只读连接字符串。
-    /// </summary>
-    public string? ReadOnlyConnectionString { get; init; }
 }

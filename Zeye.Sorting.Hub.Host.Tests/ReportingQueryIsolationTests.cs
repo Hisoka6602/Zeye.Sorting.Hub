@@ -5,6 +5,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 using Zeye.Sorting.Hub.Host.HealthChecks;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.ReadModels;
 
 namespace Zeye.Sorting.Hub.Host.Tests;
@@ -68,6 +69,7 @@ public sealed class ReportingQueryIsolationTests {
         var result = await healthCheck.CheckHealthAsync(new HealthCheckContext(), CancellationToken.None);
 
         Assert.False(probe.IsEnabled);
+        Assert.False(probe.IsFallbackToPrimary);
         Assert.Equal("Primary", probe.RouteTarget);
         Assert.Equal(HealthStatus.Healthy, result.Status);
     }
@@ -108,6 +110,21 @@ public sealed class ReportingQueryIsolationTests {
         });
         Assert.Equal("Rejected", probe.RouteTarget);
         Assert.Equal(HealthStatus.Unhealthy, healthResult.Status);
+    }
+
+    /// <summary>
+    /// 只读连接字符串已配置时，创建上下文不应依赖连通性探测成功。
+    /// </summary>
+    /// <returns>异步任务。</returns>
+    [Fact]
+    public async Task ReadOnlyDbContextFactorySelector_WhenReadOnlyConnectionStringConfigured_ShouldCreateContextWithoutProbe() {
+        var serviceProvider = BuildServiceProvider(isEnabled: true, fallbackToPrimaryWhenUnavailable: false, includeReadOnlyConnectionString: true);
+        var selector = serviceProvider.GetRequiredService<ReadOnlyDbContextFactorySelector>();
+
+        await using var dbContext = await selector.CreateDbContextAsync(CancellationToken.None);
+
+        Assert.NotNull(dbContext);
+        Assert.NotNull(dbContext.Database);
     }
 
     /// <summary>
@@ -155,6 +172,11 @@ public sealed class ReportingQueryIsolationTests {
             MaxReportTimeRangeDays = DefaultMaxReportTimeRangeDays,
             MaxReportRows = DefaultMaxReportRows
         }));
+        services.AddSingleton<IAutoTuningObservability, NullAutoTuningObservability>();
+        services.AddSingleton<SlowQueryProfileStore>();
+        services.AddSingleton<SlowQueryAutoTuningPipeline>();
+        services.AddSingleton<SlowQueryCommandInterceptor>();
+        services.AddSingleton<MySqlSessionBootstrapConnectionInterceptor>();
         services.AddSingleton<ReportingQueryGuard>();
         services.AddSingleton<ReadOnlyDbContextFactorySelector>();
         services.AddSingleton<ReadOnlyDatabaseHealthCheck>();
