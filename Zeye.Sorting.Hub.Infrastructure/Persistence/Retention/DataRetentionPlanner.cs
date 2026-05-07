@@ -212,9 +212,11 @@ public sealed class DataRetentionPlanner {
         where TEntity : class {
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
         var query = whereBuilder(dbContext.Set<TEntity>().AsNoTracking());
-        return await orderBuilder(query)
+        var markers = await orderBuilder(query)
+            .Select(static _ => 1)
             .Take(batchSize)
-            .CountAsync(cancellationToken);
+            .ToListAsync(cancellationToken);
+        return markers.Count;
     }
 
     /// <summary>

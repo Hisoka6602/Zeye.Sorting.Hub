@@ -130,7 +130,7 @@ public sealed class SlowQueryProfileStore : ISlowQueryProfileReader {
             isTimeout: IsTimeoutException(exception),
             isDeadlock: IsDeadlockException(exception),
             occurredTime: now);
-        Record(sample);
+        RecordCore(fingerprint, sample);
     }
 
     /// <summary>
@@ -139,9 +139,10 @@ public sealed class SlowQueryProfileStore : ISlowQueryProfileReader {
     /// <param name="sample">慢查询样本。</param>
     public void Record(SlowQuerySample sample) {
         ArgumentNullException.ThrowIfNull(sample);
-        lock (_sync) {
-            var fingerprint = SlowQueryFingerprintAggregator.Create(sample.CommandText);
-            var normalizedSample = new SlowQuerySample(
+        var fingerprint = SlowQueryFingerprintAggregator.Create(sample.CommandText);
+        RecordCore(
+            fingerprint,
+            new SlowQuerySample(
                 commandText: sample.CommandText,
                 sqlFingerprint: fingerprint.Fingerprint,
                 elapsedMilliseconds: sample.ElapsedMilliseconds,
@@ -149,18 +150,7 @@ public sealed class SlowQueryProfileStore : ISlowQueryProfileReader {
                 isError: sample.IsError,
                 isTimeout: sample.IsTimeout,
                 isDeadlock: sample.IsDeadlock,
-                occurredTime: sample.OccurredTime);
-            var queue = GetOrCreateQueue(fingerprint);
-            queue.Enqueue(normalizedSample);
-            var overflowSampleCount = queue.Count - _maxSampleCountPerFingerprint;
-            for (var index = 0; index < overflowSampleCount; index++) {
-                queue.Dequeue();
-            }
-
-            _lastSeenAtLocalByFingerprint[fingerprint.Fingerprint] = normalizedSample.OccurredTime;
-            TrimExpiredEntries(DateTime.Now);
-            TrimOverflowFingerprints();
-        }
+                occurredTime: sample.OccurredTime));
     }
 
     /// <summary>
@@ -269,6 +259,26 @@ public sealed class SlowQueryProfileStore : ISlowQueryProfileReader {
         queue = new Queue<SlowQuerySample>();
         _samplesByFingerprint[fingerprint.Fingerprint] = queue;
         return queue;
+    }
+
+    /// <summary>
+    /// 写入归一化后的慢查询样本。
+    /// </summary>
+    /// <param name="fingerprint">慢查询指纹。</param>
+    /// <param name="sample">样本。</param>
+    private void RecordCore(SlowQueryFingerprint fingerprint, SlowQuerySample sample) {
+        lock (_sync) {
+            var queue = GetOrCreateQueue(fingerprint);
+            queue.Enqueue(sample);
+            var overflowSampleCount = queue.Count - _maxSampleCountPerFingerprint;
+            for (var index = 0; index < overflowSampleCount; index++) {
+                queue.Dequeue();
+            }
+
+            _lastSeenAtLocalByFingerprint[fingerprint.Fingerprint] = sample.OccurredTime;
+            TrimExpiredEntries(DateTime.Now);
+            TrimOverflowFingerprints();
+        }
     }
 
     /// <summary>
