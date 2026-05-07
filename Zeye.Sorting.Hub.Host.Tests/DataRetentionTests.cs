@@ -285,7 +285,6 @@ public sealed class DataRetentionTests {
     /// <summary>
     /// 创建测试 Outbox 消息。
     /// </summary>
-    /// <param name="completedAt">完成时间。</param>
     /// <returns>Outbox 消息。</returns>
     private static OutboxMessage CreateOutboxMessage() {
         var message = OutboxMessage.CreatePending("Retention.Test", "{}");
@@ -308,7 +307,6 @@ public sealed class DataRetentionTests {
     /// <summary>
     /// 创建测试幂等记录。
     /// </summary>
-    /// <param name="completedAt">完成时间。</param>
     /// <returns>幂等记录。</returns>
     private static IdempotencyRecord CreateIdempotencyRecord() {
         var record = IdempotencyRecord.CreatePending("WCS", "Retention", Guid.NewGuid().ToString("N"), new string('A', 64));
@@ -319,7 +317,6 @@ public sealed class DataRetentionTests {
     /// <summary>
     /// 创建测试归档任务。
     /// </summary>
-    /// <param name="completedAt">完成时间。</param>
     /// <returns>归档任务。</returns>
     private static ArchiveTask CreateArchiveTask() {
         var task = ArchiveTask.CreateDryRun(ArchiveTaskType.WebRequestAuditLogHistory, 7, "retention-test", null);
@@ -331,9 +328,9 @@ public sealed class DataRetentionTests {
     /// <summary>
     /// 调整 Outbox 消息时间字段。
     /// </summary>
+    /// <param name="dbContext">数据库上下文。</param>
     /// <param name="message">Outbox 消息。</param>
     /// <param name="time">目标时间。</param>
-    /// <returns>Outbox 消息。</returns>
     private static void AdjustOutboxMessageTimes(SortingHubDbContext dbContext, OutboxMessage message, DateTime time) {
         dbContext.Entry(message).Property(x => x.CreatedAt).CurrentValue = time;
         dbContext.Entry(message).Property(x => x.UpdatedAt).CurrentValue = time;
@@ -358,9 +355,9 @@ public sealed class DataRetentionTests {
     /// <summary>
     /// 调整幂等记录时间字段。
     /// </summary>
+    /// <param name="dbContext">数据库上下文。</param>
     /// <param name="record">幂等记录。</param>
     /// <param name="time">目标时间。</param>
-    /// <returns>幂等记录。</returns>
     private static void AdjustIdempotencyRecordTimes(SortingHubDbContext dbContext, IdempotencyRecord record, DateTime time) {
         dbContext.Entry(record).Property(x => x.CreatedAt).CurrentValue = time;
         dbContext.Entry(record).Property(x => x.UpdatedAt).CurrentValue = time;
@@ -370,9 +367,9 @@ public sealed class DataRetentionTests {
     /// <summary>
     /// 调整归档任务时间字段。
     /// </summary>
+    /// <param name="dbContext">数据库上下文。</param>
     /// <param name="task">归档任务。</param>
     /// <param name="time">目标时间。</param>
-    /// <returns>归档任务。</returns>
     private static void AdjustArchiveTaskTimes(SortingHubDbContext dbContext, ArchiveTask task, DateTime time) {
         dbContext.Entry(task).Property(x => x.CreatedAt).CurrentValue = time;
         dbContext.Entry(task).Property(x => x.UpdatedAt).CurrentValue = time;
