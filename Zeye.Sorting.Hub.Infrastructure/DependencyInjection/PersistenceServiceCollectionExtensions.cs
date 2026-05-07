@@ -25,6 +25,7 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.Diagnostics;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Idempotency;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.MigrationGovernance;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.QueryGovernance;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Retention;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 using Zeye.Sorting.Hub.Domain.Enums.Sharding;
 using Zeye.Sorting.Hub.Application.Services.WriteBuffers;
@@ -108,6 +109,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             RegisterBufferedWriteServices(services, configuration);
             RegisterShardingGovernanceServices(services, configuration);
             RegisterDataArchiveServices(services, configuration);
+            RegisterDataRetentionServices(services, configuration);
             RegisterBaselineDataServices(services, configuration);
             RegisterMigrationGovernanceServices(services);
             var provider = configuration["Persistence:Provider"];
@@ -365,6 +367,35 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         }
 
         /// <summary>
+        /// 注册数据保留治理能力。
+        /// </summary>
+        /// <param name="services">服务集合。</param>
+        /// <param name="configuration">配置根。</param>
+        private static void RegisterDataRetentionServices(IServiceCollection services, IConfiguration configuration) {
+            services.AddOptions<DataRetentionOptions>()
+                .Configure(options => ApplyDataRetentionOptions(options, configuration))
+                .Validate(
+                    static options => options.BatchSize is >= DataRetentionOptions.MinBatchSize and <= DataRetentionOptions.MaxBatchSize,
+                    $"BatchSize 必须在 {DataRetentionOptions.MinBatchSize}~{DataRetentionOptions.MaxBatchSize} 之间")
+                .Validate(
+                    static options => options.PollIntervalMinutes is >= DataRetentionOptions.MinPollIntervalMinutes and <= DataRetentionOptions.MaxPollIntervalMinutes,
+                    $"PollIntervalMinutes 必须在 {DataRetentionOptions.MinPollIntervalMinutes}~{DataRetentionOptions.MaxPollIntervalMinutes} 之间")
+                .Validate(
+                    static options => !options.IsEnabled || options.Policies.Count > 0,
+                    "启用数据保留治理时至少需要配置一个策略")
+                .Validate(
+                    static options => options.Policies.All(static policy => DataRetentionPolicy.IsSupportedName(policy.Name)),
+                    "Persistence:Retention:Policies:Name 存在不受支持的对象名称")
+                .Validate(
+                    static options => options.Policies.All(static policy => DataRetentionPolicy.IsValidRetentionDays(policy.RetentionDays)),
+                    $"Persistence:Retention:Policies:RetentionDays 必须在 {DataRetentionPolicy.MinRetentionDays}~{DataRetentionPolicy.MaxRetentionDays} 之间")
+                .ValidateOnStart();
+
+            services.TryAddSingleton<DataRetentionPlanner>();
+            services.TryAddSingleton<DataRetentionExecutor>();
+        }
+
+        /// <summary>
         /// 应用批量缓冲写入配置。
         /// </summary>
         /// <param name="options">配置实例。</param>
@@ -388,6 +419,32 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             options.IsEnabled = ReadBooleanSetting(configuration, "Persistence:Archiving:IsEnabled", options.IsEnabled);
             options.WorkerPollIntervalSeconds = ReadIntSetting(configuration, "Persistence:Archiving:WorkerPollIntervalSeconds", options.WorkerPollIntervalSeconds);
             options.SampleItemLimit = ReadIntSetting(configuration, "Persistence:Archiving:SampleItemLimit", options.SampleItemLimit);
+        }
+
+        /// <summary>
+        /// 应用数据保留治理配置。
+        /// </summary>
+        /// <param name="options">配置实例。</param>
+        /// <param name="configuration">配置根。</param>
+        private static void ApplyDataRetentionOptions(DataRetentionOptions options, IConfiguration configuration) {
+            options.IsEnabled = ReadBooleanSetting(configuration, $"{DataRetentionOptions.SectionPath}:IsEnabled", options.IsEnabled);
+            options.EnableGuard = ReadBooleanSetting(configuration, $"{DataRetentionOptions.SectionPath}:EnableGuard", options.EnableGuard);
+            options.AllowDangerousActionExecution = ReadBooleanSetting(configuration, $"{DataRetentionOptions.SectionPath}:AllowDangerousActionExecution", options.AllowDangerousActionExecution);
+            options.DryRun = ReadBooleanSetting(configuration, $"{DataRetentionOptions.SectionPath}:DryRun", options.DryRun);
+            options.BatchSize = ReadIntSetting(configuration, $"{DataRetentionOptions.SectionPath}:BatchSize", options.BatchSize);
+            options.PollIntervalMinutes = ReadIntSetting(configuration, $"{DataRetentionOptions.SectionPath}:PollIntervalMinutes", options.PollIntervalMinutes);
+            var policySections = configuration.GetSection($"{DataRetentionOptions.SectionPath}:Policies").GetChildren().ToArray();
+            if (policySections.Length == 0) {
+                options.Policies = DataRetentionPolicy.CreateDefaultPolicies();
+                return;
+            }
+
+            options.Policies = policySections
+                .Select(section => new DataRetentionPolicy {
+                    Name = (section["Name"] ?? string.Empty).Trim(),
+                    RetentionDays = ReadIntSetting(section, "RetentionDays", DataRetentionPolicy.MinRetentionDays)
+                })
+                .ToArray();
         }
 
         /// <summary>

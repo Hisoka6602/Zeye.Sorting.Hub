@@ -49,7 +49,8 @@
 │   ├── PR-长期数据库底座J-检查台账.md（长期数据库底座 PR-J 台账：记录查询模板登记、索引建议闭环与下一 PR 入口）
 │   ├── PR-长期数据库底座K-检查台账.md（长期数据库底座 PR-K 台账：记录写入幂等、重复键治理与下一 PR 入口）
 │   ├── PR-长期数据库底座L-检查台账.md（长期数据库底座 PR-L 台账：记录 Outbox 事件持久化、状态推进、死信与下一 PR 入口）
-│   └── PR-长期数据库底座M-检查台账.md（长期数据库底座 PR-M 台账：记录 Inbox 幂等消费、状态治理、重试与下一 PR 入口）
+│   ├── PR-长期数据库底座M-检查台账.md（长期数据库底座 PR-M 台账：记录 Inbox 幂等消费、状态治理、重试与下一 PR 入口）
+│   └── PR-长期数据库底座N-检查台账.md（长期数据库底座 PR-N 台账：记录数据保留策略、自动清理治理、健康检查与下一 PR 入口）
 ├── Zeye.Sorting.Hub.Analytics（分析与报表子域，占位工程）
 │   └── Zeye.Sorting.Hub.Analytics.csproj（Analytics 项目定义）
 ├── Zeye.Sorting.Hub.Application（应用层）
@@ -266,6 +267,7 @@
 │   │   ├── BaselineDataValidationHostedService.cs（基线数据校验托管服务：启动期执行配置一致性校验并按开关触发可选种子入口）
 │   │   ├── MigrationGovernanceHostedService.cs（迁移治理托管服务：启动期预演迁移计划、归档脚本并写入治理状态）
 │   │   ├── OutboxDispatchHostedService.cs（Outbox 派发托管服务：周期推进消息状态并执行日志派发模拟）
+│   │   ├── DataRetentionHostedService.cs（数据保留治理托管服务：周期执行计划、dry-run/真实清理与审计写入）
 │   │   ├── QueryGovernanceReportHostedService.cs（查询治理报告托管服务：周期输出模板登记、慢查询匹配与索引建议只读报告）
 │   │   ├── ParcelBatchWriteFlushHostedService.cs（Parcel 批量缓冲写入后台 Flush 托管服务）
 │   │   ├── ShardingInspectionHostedService.cs（分表运行期巡检托管服务）
@@ -303,6 +305,7 @@
 │   │   ├── BaselineDataHealthCheck.cs（基线数据健康检查：输出校验结果、失败模式、错误数与种子执行状态）
 │   │   ├── MigrationGovernanceHealthCheck.cs（迁移治理健康检查：输出待执行迁移、危险 SQL、归档脚本与执行状态）
 │   │   ├── OutboxHealthCheck.cs（Outbox 健康检查：输出待处理/处理中/失败/死信数量与最早积压时间）
+│   │   ├── DataRetentionHealthCheck.cs（数据保留治理健康检查：输出最近一次治理审计状态、计划量与执行量）
 │   │   └── HealthCheckResponseWriter.cs（健康检查 JSON 响应序列化工具，支持输出 Data 诊断数据）
 │   ├── Utilities（工具目录）
 │   │   └── LocalDateTimeParsing.cs（本地时间解析与 API 问题响应工厂共享工具）
@@ -324,7 +327,7 @@
 │   ├── Zeye.Sorting.Hub.Host.csproj（Host 项目定义）
 │   ├── nlog.config（NLog 日志配置）
 │   ├── appsettings.Development.json（开发环境配置）
-│   └── appsettings.json（默认运行配置，含 WebRequestAuditLog Body 采集开关与 AuditReadOnlyApi:Enabled）
+│   └── appsettings.json（默认运行配置，含 WebRequestAuditLog Body 采集开关、AuditReadOnlyApi:Enabled 与 Persistence:Retention）
 ├── Zeye.Sorting.Hub.Host.Tests（自动调优行为测试工程）
 │   ├── AutoTuningProductionControlTests.cs（自动调优生产可控能力测试：dry-run/隔离器/告警恢复/普通与严重回归/探针双路径/闭环链路；含分表策略评估与 PerDay 预建守卫联动测试；新增 WebRequestAuditLog 治理解耦/保留治理三态/逻辑表索引分发/配置错误键指向回归；配置键拼装参数化覆盖（Theory））
 │   ├── AlwaysExistsShardingPhysicalTableProbe.cs（物理表探测测试桩：始终存在场景，支撑分表守卫探测调用断言）
@@ -335,6 +338,7 @@
 │   ├── QueryGovernanceTests.cs（查询治理测试：覆盖强制模板登记、模板匹配与未登记慢查询缺口暴露）
 │   ├── IdempotencyTests.cs（幂等能力测试：覆盖 SHA256 哈希、重复请求回放与处理中拒绝）
 │   ├── InboxMessageTests.cs（Inbox 幂等消费测试：覆盖首次消费、重复回放、处理中拒绝、失败重试与过期治理候选）
+│   ├── DataRetentionTests.cs（数据保留治理测试：覆盖 dry-run、真实清理与健康检查状态）
 │   ├── OutboxMessageTests.cs（Outbox 事件底座测试：覆盖写入、分页、状态推进、死信与健康检查）
 │   ├── BatchSelectiveMissingShardingPhysicalTableProbe.cs（批量物理表探测测试桩：选择性缺失与 schema 透传断言）
 │   ├── CountingPlanProbe.cs（执行计划探针测试桩：记录调用次数）
@@ -414,6 +418,12 @@
 │   │   │   ├── DataArchiveCheckpointStore.cs（归档任务检查点存储器：统一写入 Running/Completed/Failed 状态）
 │   │   │   ├── DataArchiveExecutor.cs（归档 dry-run 执行器：串联状态流转与计划生成）
 │   │   │   └── DataArchiveHostedWorker.cs（归档后台 Worker：拉取待执行任务并调用执行器）
+│   │   ├── Retention（数据保留治理目录）
+│   │   │   ├── DataRetentionOptions.cs（数据保留治理配置模型：开关、守卫、dry-run、批次与策略清单）
+│   │   │   ├── DataRetentionPolicy.cs（数据保留策略模型：声明治理对象名称与默认保留天数）
+│   │   │   ├── DataRetentionPlanner.cs（数据保留计划器：统计审计、Outbox、Inbox、幂等、归档、死信与慢查询候选）
+│   │   │   ├── DataRetentionExecutor.cs（数据保留执行器：负责危险动作决策、逐策略清理与审计记录维护）
+│   │   │   └── DataRetentionAuditRecord.cs（数据保留治理审计记录模型：记录状态、决策、计划量、执行量与分策略摘要）
 │   │   ├── Baseline（基线数据目录）
 │   │   │   ├── BaselineDataOptions.cs（基线数据配置模型：控制校验开关、可选种子入口与失败模式）
 │   │   │   ├── BaselineDataSeeder.cs（基线数据种子入口：当前实现为幂等 no-op，占位后续持久化默认数据写入）
@@ -563,6 +573,7 @@
   - `PR-长期数据库底座K-检查台账.md`：长期数据库底座 PR-K 实施台账；记录写入幂等、SHA256 载荷哈希、重复请求回放与下一 PR 入口。
   - `PR-长期数据库底座L-检查台账.md`：长期数据库底座 PR-L 实施台账；记录 Outbox 事件持久化、状态推进、死信隔离、健康检查与下一 PR 入口。
   - `PR-长期数据库底座M-检查台账.md`：长期数据库底座 PR-M 实施台账；记录 Inbox 幂等消费、失败重试、过期治理候选与下一 PR 入口。
+  - `PR-长期数据库底座N-检查台账.md`：长期数据库底座 PR-N 实施台账；记录数据保留策略、自动清理治理、健康检查与下一 PR 入口。
 
 ### `.github/`：Copilot 仓库级指令目录
 - `DDD分层接口与实现放置规范.md`：DDD 分层接口定义与实现放置规范文档；明确依赖方向（Host→Infrastructure→Application→Domain）、接口定义归属规则（领域能力/应用编排/基础设施内部三类）、实现类放置约束、目录结构建议与禁止事项清单，供 Copilot 与开发人员统一执行。
@@ -836,7 +847,7 @@
 - `MaxTimeRangeAttribute.cs`：时间范围校验特性（限制起止时间跨度，默认不超过 3 个月）。
 
 ### `Zeye.Sorting.Hub.Host/`：宿主层（程序入口、后台服务、启动配置）
-- `Program.cs`：应用入口与 Host 构建流程（按 `AuditReadOnlyApi:Enabled` 显式开关控制审计只读路由映射，并注册 Parcel 游标分页查询服务、批量缓冲写入后台 Flush 服务、分表巡检/预建托管服务、归档 dry-run API、Inbox 幂等消费守卫、Outbox API、Outbox 派发后台服务与健康检查）。
+- `Program.cs`：应用入口与 Host 构建流程（按 `AuditReadOnlyApi:Enabled` 显式开关控制审计只读路由映射，并注册 Parcel 游标分页查询服务、批量缓冲写入后台 Flush 服务、分表巡检/预建托管服务、归档 dry-run API、Inbox 幂等消费守卫、Outbox API、Outbox 派发后台服务、数据保留治理后台服务与健康检查）。
 - `Routing/ParcelReadOnlyApiRouteExtensions.cs`：Parcel 只读路由注册与处理逻辑；新增 `/api/parcels/cursor` 游标分页接口，并为普通分页补充默认最近 24 小时与页码保护说明。
 - `Routing/ParcelAdminApiRouteExtensions.cs`：Parcel 管理端路由扩展（普通写接口 + cleanup-expired 治理接口 + `/api/admin/parcels/batch-buffer` 批量缓冲写入接口）。
 - `Routing/AuditReadOnlyApiRouteExtensions.cs`：Web 请求审计日志只读路由扩展（`GET /api/audit/web-requests`、`GET /api/audit/web-requests/{id}`）。
@@ -858,6 +869,7 @@
 - `BaselineDataHealthCheck.cs`：基线数据健康检查；位于 `Zeye.Sorting.Hub.Host/HealthChecks/`，输出校验结果、失败模式、错误/告警数量与种子执行状态，挂载于 `/health/ready`。
 - `MigrationGovernanceHealthCheck.cs`：迁移治理健康检查；位于 `Zeye.Sorting.Hub.Host/HealthChecks/`，输出待执行迁移数、危险 SQL 命中、归档路径与当前执行状态，挂载于 `/health/ready`。
 - `OutboxHealthCheck.cs`：Outbox 健康检查；位于 `Zeye.Sorting.Hub.Host/HealthChecks/`，输出待处理/处理中/失败/死信数量与最早积压时间，挂载于 `/health/ready`。
+- `DataRetentionHealthCheck.cs`：数据保留治理健康检查；位于 `Zeye.Sorting.Hub.Host/HealthChecks/`，输出最近一次治理审计状态、计划量、执行量、失败策略数与当前决策，挂载于 `/health/ready`。
 - `HealthChecks/HealthCheckResponseWriter.cs`：健康检查 JSON 响应序列化工具，输出结构化 JSON，并支持附加 Data 诊断数据。
 - `Utilities/LocalDateTimeParsing.cs`：本地时间解析与 API 问题响应工厂共享工具。
 - `Middleware/WebRequestAuditLogOptions.cs`：Web 请求审计中间件配置模型。
@@ -870,7 +882,7 @@
 - `Middleware/ResponseCaptureResult.cs`：响应正文采集结果值类型。
 - `Zeye.Sorting.Hub.Host.csproj`：Host 项目定义。
 - `nlog.config`：NLog 日志配置。
-- `appsettings.json`：默认运行配置（含 `WebRequestAuditLog.IncludeRequestBody/IncludeResponseBody`、`AuditReadOnlyApi:Enabled` 显式开关、`ResourceThresholds:MaxConnectionPoolSize/MemoryWarningThresholdMB` 资源阈值节、`Persistence:Diagnostics` 数据库连接诊断配置、`Persistence:WriteBuffering` 批量缓冲写入配置、`Persistence:Archiving` 归档 dry-run 配置、`Persistence:BaselineData` 基线数据校验配置、`Persistence:MigrationGovernance` 迁移治理配置、`Persistence:Sharding:RuntimeInspection/Prebuild` 分表巡检与预建配置，以及 `Persistence:AutoTuning:SlowQueryProfile` 慢查询画像配置与 `Persistence:AutoTuning:QueryGovernance` 查询治理报告/索引建议阈值配置）。
+- `appsettings.json`：默认运行配置（含 `WebRequestAuditLog.IncludeRequestBody/IncludeResponseBody`、`AuditReadOnlyApi:Enabled` 显式开关、`ResourceThresholds:MaxConnectionPoolSize/MemoryWarningThresholdMB` 资源阈值节、`Persistence:Diagnostics` 数据库连接诊断配置、`Persistence:WriteBuffering` 批量缓冲写入配置、`Persistence:Archiving` 归档 dry-run 配置、`Persistence:Retention` 数据保留治理配置、`Persistence:BaselineData` 基线数据校验配置、`Persistence:MigrationGovernance` 迁移治理配置、`Persistence:Sharding:RuntimeInspection/Prebuild` 分表巡检与预建配置，以及 `Persistence:AutoTuning:SlowQueryProfile` 慢查询画像配置与 `Persistence:AutoTuning:QueryGovernance` 查询治理报告/索引建议阈值配置）。
 - `appsettings.Development.json`：开发环境配置覆盖文件。
 
 #### `Zeye.Sorting.Hub.Host/Swagger/`：Swagger 扩展目录
@@ -878,6 +890,7 @@
 
 #### `Zeye.Sorting.Hub.Host/HostedServices/`：启动/常驻托管服务目录
 - `OutboxDispatchHostedService.cs`：Outbox 派发托管服务，周期创建作用域调用派发应用服务，执行日志派发模拟与状态推进。
+- `DataRetentionHostedService.cs`：数据保留治理托管服务，按固定轮询周期执行策略计划、危险动作决策、dry-run/真实清理与审计记录写入。
 - `AutoTuningLoggerObservability.cs`：自动调优观测默认日志实现（已移除 `ConvertLogLevel` 转换方法，直接接收 `NLog.LogLevel`）。
 - `DatabaseAutoTuningHostedService.cs`：数据库自动调谐托管服务主流程（已移除 `ILogger<>` 注入，改为静态 `NLog.Logger`）。
 - `PendingRollbackAction.cs` / `TableCapacitySnapshot.cs` / `EvidenceContext.cs` / `PolicyDecision.cs`：自动调谐内部模型与决策类型。
@@ -957,6 +970,13 @@
 - `DataArchiveCheckpointStore.cs`：归档任务检查点存储器，统一写入 Running/Completed/Failed 状态。
 - `DataArchiveExecutor.cs`：归档 dry-run 执行器，串联状态流转与计划生成。
 - `DataArchiveHostedWorker.cs`：归档后台 Worker，拉取待执行任务并调用执行器。
+
+##### `Zeye.Sorting.Hub.Infrastructure/Persistence/Retention/`：数据保留治理目录
+- `DataRetentionOptions.cs`：数据保留治理配置模型，定义开关、守卫、dry-run、批次大小、轮询间隔与策略清单。
+- `DataRetentionPolicy.cs`：数据保留策略模型，集中声明支持的治理对象名称与默认保留天数。
+- `DataRetentionPlanner.cs`：数据保留计划器，统一统计 Web 请求审计、Outbox、Inbox、幂等记录、归档任务、死信与慢查询画像候选。
+- `DataRetentionExecutor.cs`：数据保留执行器，负责危险动作决策、逐策略清理执行、失败隔离与最近一次审计记录维护。
+- `DataRetentionAuditRecord.cs`：数据保留治理审计记录模型，记录最近一次执行状态、决策、计划量、执行量、失败策略数与分策略摘要。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/Baseline/`：基线数据目录
 - `BaselineDataOptions.cs`：基线数据配置模型，定义校验开关、可选种子入口开关与失败模式。
@@ -1065,6 +1085,7 @@
 - `IdempotencyTests.cs`：幂等能力测试，覆盖 SHA256 载荷哈希稳定性、重复请求回放、取消后重试与 Pending 记录自恢复回放。
 - `InboxMessageTests.cs`：Inbox 幂等消费测试，覆盖首次消费、成功回放、处理中拒绝、失败重试与过期治理候选查询。
 - `OutboxMessageTests.cs`：Outbox 事件底座测试，覆盖写入、分页、后台状态推进、死信隔离与健康检查。
+- `DataRetentionTests.cs`：数据保留治理测试，覆盖 dry-run 计划、真实清理、守卫关闭路径与健康检查状态。
 - `AlwaysExistsShardingPhysicalTableProbe.cs`：物理表探测测试桩，始终返回存在并记录调用次数。
 - `BaselineDataTests.cs`：基线数据测试，覆盖必要配置、Provider/连接字符串、本地时间配置、健康检查、可选种子入口与 Degraded 模式异常隔离。
 - `DataArchiveTaskTests.cs`：归档任务 dry-run 测试，覆盖创建、分页、后台执行、终态重试与非法类型校验。
@@ -1113,16 +1134,16 @@
 
 ## 本次更新内容
 
-- 继续实施《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》，执行前先核对现有台账，确认当前已完成到 PR-L，本次补齐 PR-M“Inbox 幂等消费底座”。
-- 新增 `InboxMessage`、`InboxMessageStatus`、`IInboxMessageRepository` 与 `InboxMessageGuardService`，建立基于 `SourceSystem + MessageId` 的幂等消费、处理中拒绝、失败重试与成功回放基础能力。
-- 新增 `InboxMessageRepository`、`InboxMessageEntityTypeConfiguration` 与 EF 迁移 `20260507021744_AddInboxMessageSupport.*`，落地唯一消息键索引、状态索引与过期治理候选查询能力。
-- 新增 `InboxMessageTests.cs` 与 `检查台账/PR-长期数据库底座M-检查台账.md`，同步更新 README、更新记录与文件清单基线，保证下一 PR 可按断点继续推进。
+- 继续实施《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》，执行前先核对现有台账，确认当前已完成到 PR-M，本次补齐 PR-N“数据保留策略与自动清理治理”。
+- 新增 `DataRetentionOptions`、`DataRetentionPolicy`、`DataRetentionPlanner`、`DataRetentionExecutor` 与 `DataRetentionAuditRecord`，统一规划 Web 请求审计、Outbox、Inbox、幂等记录、归档任务、死信与慢查询画像的数据保留治理入口。
+- 新增 `DataRetentionHostedService`、`DataRetentionHealthCheck` 与默认 `Persistence:Retention` 配置，接入危险动作守卫、dry-run、批次清理与运行期健康探针。
+- 新增 `DataRetentionTests.cs` 与 `检查台账/PR-长期数据库底座N-检查台账.md`，同步更新 README、更新记录与文件清单基线，保证下一 PR 可按断点继续推进。
 
 ## 后续可完善点
 
-- 下一切片可按《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》进入 PR-N，补齐数据保留策略与自动清理治理。
-- 后续可将 Inbox 消费守卫接入真实外部事件消费链路，并与 Outbox / 幂等记录治理策略统一编排。
-- 后续可在 Inbox 过期治理链路中补齐危险动作隔离器、审计记录与批量清理执行器，统一长期历史消息治理入口。
+- 下一切片可按《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》进入 PR-O，补齐备份、恢复、校验与演练底座。
+- 后续可将数据保留治理的审计记录继续沉淀为可检索的持久化资产，并补充治理报表或只读查询接口。
+- 后续可结合真实运行负载细化各对象保留天数与慢查询画像窗口策略，进一步减少无效候选与批次扫描成本。
 
 ## Parcel API 发布门禁 / 使用边界说明
 

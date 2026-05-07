@@ -86,4 +86,51 @@ public sealed class DeadLetterWriteStore {
             return _entries.ToArray();
         }
     }
+
+    /// <summary>
+    /// 统计已过期的死信数量（受单次上限保护）。
+    /// </summary>
+    /// <param name="expireBefore">过期截止时间。</param>
+    /// <param name="take">最大统计数量。</param>
+    /// <returns>候选数量。</returns>
+    public int CountExpired(DateTime expireBefore, int take) {
+        if (take <= 0) {
+            throw new ArgumentOutOfRangeException(nameof(take), "take 必须大于 0。");
+        }
+
+        lock (_syncRoot) {
+            return _entries
+                .Where(entry => entry.FailedAtLocal <= expireBefore)
+                .Take(take)
+                .Count();
+        }
+    }
+
+    /// <summary>
+    /// 删除已过期的死信记录（受单次上限保护）。
+    /// </summary>
+    /// <param name="expireBefore">过期截止时间。</param>
+    /// <param name="take">最大删除数量。</param>
+    /// <returns>已删除数量。</returns>
+    public int RemoveExpired(DateTime expireBefore, int take) {
+        if (take <= 0) {
+            throw new ArgumentOutOfRangeException(nameof(take), "take 必须大于 0。");
+        }
+
+        lock (_syncRoot) {
+            var removedCount = 0;
+            var initialCount = _entries.Count;
+            for (var index = 0; index < initialCount; index++) {
+                var entry = _entries.Dequeue();
+                if (removedCount < take && entry.FailedAtLocal <= expireBefore) {
+                    removedCount++;
+                    continue;
+                }
+
+                _entries.Enqueue(entry);
+            }
+
+            return removedCount;
+        }
+    }
 }
