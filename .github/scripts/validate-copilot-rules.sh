@@ -64,7 +64,7 @@ ensure_pr_diff_ready() {
   fi
 
   if ! git show-ref --verify --quiet "refs/remotes/origin/${GITHUB_BASE_REF}"; then
-    if ! git fetch --no-tags --prune origin "${GITHUB_BASE_REF}:refs/remotes/origin/${GITHUB_BASE_REF}" >/dev/null 2>&1; then
+    if ! git fetch --no-tags --prune origin "refs/heads/${GITHUB_BASE_REF}:refs/remotes/origin/${GITHUB_BASE_REF}" >/dev/null 2>&1; then
       record_failure "无法拉取基线分支 origin/${GITHUB_BASE_REF}，无法执行基于 PR diff 的规则校验。"
       PR_DIFF_READY=1
       PR_DIFF_NAME_ONLY=""
