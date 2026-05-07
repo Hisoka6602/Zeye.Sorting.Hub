@@ -14,12 +14,16 @@ public sealed class RestoreDrillPlanner {
             return null;
         }
 
-        return Directory.EnumerateFiles(drillDirectoryPath, "*.*", SearchOption.TopDirectoryOnly)
-            .Where(static file => file.EndsWith(".md", StringComparison.OrdinalIgnoreCase) || file.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
-            .Select(file => new FileInfo(file))
-            .OrderByDescending(static file => file.LastWriteTime)
-            .Select(static file => file.FullName)
-            .FirstOrDefault();
+        var latestRecord = default(FileInfo);
+        foreach (var filePath in Directory.EnumerateFiles(drillDirectoryPath, "*.md", SearchOption.TopDirectoryOnly)
+                     .Concat(Directory.EnumerateFiles(drillDirectoryPath, "*.txt", SearchOption.TopDirectoryOnly))) {
+            var file = new FileInfo(filePath);
+            if (latestRecord is null || file.LastWriteTime > latestRecord.LastWriteTime) {
+                latestRecord = file;
+            }
+        }
+
+        return latestRecord?.FullName;
     }
 
     /// <summary>

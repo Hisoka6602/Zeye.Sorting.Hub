@@ -221,10 +221,18 @@ public sealed class BackupVerificationService {
             return null;
         }
 
-        return Directory.EnumerateFiles(backupDirectoryPath, $"{backupFileNamePrefix}-*{_backupProvider.ArtifactExtension}", SearchOption.TopDirectoryOnly)
-            .Select(path => new FileInfo(path))
-            .OrderByDescending(static file => file.LastWriteTime)
-            .FirstOrDefault();
+        var latestArtifact = default(FileInfo);
+        foreach (var filePath in Directory.EnumerateFiles(
+                     backupDirectoryPath,
+                     $"{backupFileNamePrefix}-*{_backupProvider.ArtifactExtension}",
+                     SearchOption.TopDirectoryOnly)) {
+            var file = new FileInfo(filePath);
+            if (latestArtifact is null || file.LastWriteTime > latestArtifact.LastWriteTime) {
+                latestArtifact = file;
+            }
+        }
+
+        return latestArtifact;
     }
 
     /// <summary>
