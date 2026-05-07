@@ -256,6 +256,8 @@ Generated_Code/
 # because we have git ;-)
 _UpgradeReport_Files/
 Backup*/
+!Zeye.Sorting.Hub.Infrastructure/Persistence/Backup/
+!Zeye.Sorting.Hub.Infrastructure/Persistence/Backup/*.cs
 UpgradeLog*.XML
 UpgradeLog*.htm
 ServiceFabricBackup/
