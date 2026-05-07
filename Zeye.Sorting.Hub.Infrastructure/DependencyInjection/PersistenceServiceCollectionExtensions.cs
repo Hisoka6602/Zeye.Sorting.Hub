@@ -20,6 +20,7 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Archiving;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Baseline;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Backup;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Diagnostics;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Idempotency;
@@ -110,6 +111,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             RegisterShardingGovernanceServices(services, configuration);
             RegisterDataArchiveServices(services, configuration);
             RegisterBaselineDataServices(services, configuration);
+            RegisterBackupGovernanceServices(services, configuration);
             RegisterDataRetentionServices(services, configuration);
             RegisterMigrationGovernanceServices(services);
             var provider = configuration["Persistence:Provider"];
@@ -256,6 +258,46 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         }
 
         /// <summary>
+        /// 注册备份治理能力。
+        /// </summary>
+        /// <param name="services">服务集合。</param>
+        /// <param name="configuration">配置根。</param>
+        private static void RegisterBackupGovernanceServices(IServiceCollection services, IConfiguration configuration) {
+            services.AddOptions<BackupOptions>()
+                .Configure(options => ApplyBackupOptions(options, configuration))
+                .Validate(
+                    static options => options.VerificationIntervalMinutes is >= BackupOptions.MinVerificationIntervalMinutes and <= BackupOptions.MaxVerificationIntervalMinutes,
+                    $"Persistence:Backup:VerificationIntervalMinutes 必须在 {BackupOptions.MinVerificationIntervalMinutes}~{BackupOptions.MaxVerificationIntervalMinutes} 之间")
+                .Validate(
+                    static options => options.ExpectedBackupWithinHours is >= BackupOptions.MinExpectedBackupWithinHours and <= BackupOptions.MaxExpectedBackupWithinHours,
+                    $"Persistence:Backup:ExpectedBackupWithinHours 必须在 {BackupOptions.MinExpectedBackupWithinHours}~{BackupOptions.MaxExpectedBackupWithinHours} 之间")
+                .Validate(
+                    static options => !string.IsNullOrWhiteSpace(options.BackupDirectory),
+                    "Persistence:Backup:BackupDirectory 不能为空")
+                .Validate(
+                    static options => !string.IsNullOrWhiteSpace(options.BackupFileNamePrefix),
+                    "Persistence:Backup:BackupFileNamePrefix 不能为空")
+                .Validate(
+                    static options => !string.IsNullOrWhiteSpace(options.RestoreDrillDirectory),
+                    "Persistence:Backup:RestoreDrillDirectory 不能为空")
+                .Validate(
+                    static options => options.DryRun,
+                    "当前版本仅允许 Persistence:Backup:DryRun=true；真实备份执行需后续接入危险动作隔离器")
+                .ValidateOnStart();
+
+            var provider = configuration["Persistence:Provider"];
+            if (string.Equals(provider, ConfiguredProviderNames.MySql, StringComparison.OrdinalIgnoreCase)) {
+                services.TryAddSingleton<IBackupProvider, MySqlBackupProvider>();
+            }
+            else if (string.Equals(provider, ConfiguredProviderNames.SqlServer, StringComparison.OrdinalIgnoreCase)) {
+                services.TryAddSingleton<IBackupProvider, SqlServerBackupProvider>();
+            }
+
+            services.TryAddSingleton<RestoreDrillPlanner>();
+            services.TryAddSingleton<BackupVerificationService>();
+        }
+
+        /// <summary>
         /// 注册数据保留治理能力。
         /// </summary>
         /// <param name="services">服务集合。</param>
@@ -279,6 +321,30 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
 
             services.TryAddSingleton<DataRetentionPlanner>();
             services.TryAddSingleton<DataRetentionExecutor>();
+        }
+
+        /// <summary>
+        /// 应用备份治理配置。
+        /// </summary>
+        /// <param name="options">目标选项。</param>
+        /// <param name="configuration">配置根。</param>
+        private static void ApplyBackupOptions(BackupOptions options, IConfiguration configuration) {
+            var section = configuration.GetSection(BackupOptions.SectionPath);
+            options.IsEnabled = bool.TryParse(section[nameof(BackupOptions.IsEnabled)], out var isEnabled)
+                ? isEnabled
+                : options.IsEnabled;
+            options.DryRun = bool.TryParse(section[nameof(BackupOptions.DryRun)], out var isDryRun)
+                ? isDryRun
+                : options.DryRun;
+            options.BackupDirectory = section[nameof(BackupOptions.BackupDirectory)] ?? options.BackupDirectory;
+            options.BackupFileNamePrefix = section[nameof(BackupOptions.BackupFileNamePrefix)] ?? options.BackupFileNamePrefix;
+            options.VerificationIntervalMinutes = int.TryParse(section[nameof(BackupOptions.VerificationIntervalMinutes)], out var verificationIntervalMinutes)
+                ? verificationIntervalMinutes
+                : options.VerificationIntervalMinutes;
+            options.ExpectedBackupWithinHours = int.TryParse(section[nameof(BackupOptions.ExpectedBackupWithinHours)], out var expectedBackupWithinHours)
+                ? expectedBackupWithinHours
+                : options.ExpectedBackupWithinHours;
+            options.RestoreDrillDirectory = section[nameof(BackupOptions.RestoreDrillDirectory)] ?? options.RestoreDrillDirectory;
         }
 
         /// <summary>

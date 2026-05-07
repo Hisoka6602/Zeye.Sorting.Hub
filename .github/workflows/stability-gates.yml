@@ -114,6 +114,12 @@ jobs:
           check_key "RetentionDays"
           check_key "CheckIntervalHours"
 
+          echo "── 备份治理配置 ──"
+          check_key "Backup"
+          check_key "BackupDirectory"
+          check_key "BackupFileNamePrefix"
+          check_key "RestoreDrillDirectory"
+
           echo "── 分表预建配置 ──"
           check_key "PrebuildWindowHours"
 
