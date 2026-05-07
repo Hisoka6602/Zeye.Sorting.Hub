@@ -130,17 +130,35 @@ public sealed class SlowQueryProfileStore : ISlowQueryProfileReader {
             isTimeout: IsTimeoutException(exception),
             isDeadlock: IsDeadlockException(exception),
             occurredTime: now);
+        Record(sample);
+    }
 
+    /// <summary>
+    /// 记录慢查询样本。
+    /// </summary>
+    /// <param name="sample">慢查询样本。</param>
+    public void Record(SlowQuerySample sample) {
+        ArgumentNullException.ThrowIfNull(sample);
         lock (_sync) {
+            var fingerprint = SlowQueryFingerprintAggregator.Create(sample.CommandText);
+            var normalizedSample = new SlowQuerySample(
+                commandText: sample.CommandText,
+                sqlFingerprint: fingerprint.Fingerprint,
+                elapsedMilliseconds: sample.ElapsedMilliseconds,
+                affectedRows: Math.Max(sample.AffectedRows, 0),
+                isError: sample.IsError,
+                isTimeout: sample.IsTimeout,
+                isDeadlock: sample.IsDeadlock,
+                occurredTime: sample.OccurredTime);
             var queue = GetOrCreateQueue(fingerprint);
-            queue.Enqueue(sample);
+            queue.Enqueue(normalizedSample);
             var overflowSampleCount = queue.Count - _maxSampleCountPerFingerprint;
             for (var index = 0; index < overflowSampleCount; index++) {
                 queue.Dequeue();
             }
 
-            _lastSeenAtLocalByFingerprint[fingerprint.Fingerprint] = now;
-            TrimExpiredEntries(now);
+            _lastSeenAtLocalByFingerprint[fingerprint.Fingerprint] = normalizedSample.OccurredTime;
+            TrimExpiredEntries(DateTime.Now);
             TrimOverflowFingerprints();
         }
     }
@@ -184,6 +202,56 @@ public sealed class SlowQueryProfileStore : ISlowQueryProfileReader {
 
             profile = MapToReadModel(SlowQueryFingerprintAggregator.BuildSnapshot(slowQueryFingerprint, queue.ToArray()));
             return true;
+        }
+    }
+
+    /// <summary>
+    /// 统计可被数据保留策略清理的画像数量（受单次上限保护）。
+    /// </summary>
+    /// <param name="expireBefore">过期截止时间。</param>
+    /// <param name="take">最大统计数量。</param>
+    /// <returns>候选数量。</returns>
+    public int CountRetentionCandidates(DateTime expireBefore, int take) {
+        if (take <= 0) {
+            throw new ArgumentOutOfRangeException(nameof(take), "take 必须大于 0。");
+        }
+
+        lock (_sync) {
+            TrimExpiredEntries(DateTime.Now);
+            return _lastSeenAtLocalByFingerprint
+                .Where(pair => pair.Value <= expireBefore)
+                .OrderBy(static pair => pair.Value)
+                .Take(take)
+                .Count();
+        }
+    }
+
+    /// <summary>
+    /// 删除可被数据保留策略清理的画像（受单次上限保护）。
+    /// </summary>
+    /// <param name="expireBefore">过期截止时间。</param>
+    /// <param name="take">最大删除数量。</param>
+    /// <returns>已删除数量。</returns>
+    public int RemoveRetentionCandidates(DateTime expireBefore, int take) {
+        if (take <= 0) {
+            throw new ArgumentOutOfRangeException(nameof(take), "take 必须大于 0。");
+        }
+
+        lock (_sync) {
+            TrimExpiredEntries(DateTime.Now);
+            var fingerprints = _lastSeenAtLocalByFingerprint
+                .Where(pair => pair.Value <= expireBefore)
+                .OrderBy(static pair => pair.Value)
+                .Take(take)
+                .Select(static pair => pair.Key)
+                .ToArray();
+            foreach (var fingerprint in fingerprints) {
+                _samplesByFingerprint.Remove(fingerprint);
+                _fingerprints.Remove(fingerprint);
+                _lastSeenAtLocalByFingerprint.Remove(fingerprint);
+            }
+
+            return fingerprints.Length;
         }
     }
 
