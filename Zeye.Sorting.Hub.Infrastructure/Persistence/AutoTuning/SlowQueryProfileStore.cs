@@ -201,7 +201,6 @@ public sealed class SlowQueryProfileStore : ISlowQueryProfileReader {
         lock (_sync) {
             TrimExpiredEntries(DateTime.Now);
             return _lastSeenAtLocalByFingerprint
-                .Where(static pair => true)
                 .Where(pair => pair.Value <= expireBeforeLocal)
                 .Take(maxCount)
                 .Count();

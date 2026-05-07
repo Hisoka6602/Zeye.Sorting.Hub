@@ -106,7 +106,6 @@ public sealed class DataRetentionPlanner {
         CancellationToken cancellationToken) {
         return dbContext.Set<WebRequestAuditLog>()
             .AsNoTracking()
-            .Where(static log => true)
             .Where(log => log.CreatedAt <= cutoffTime)
             .OrderBy(log => log.CreatedAt)
             .Select(log => log.Id)
