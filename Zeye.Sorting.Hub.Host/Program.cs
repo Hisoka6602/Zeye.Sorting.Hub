@@ -111,6 +111,9 @@ try {
         .AddCheck<BackupHealthCheck>(
             name: "backup",
             tags: ["ready"])
+        .AddCheck<ReadOnlyDatabaseHealthCheck>(
+            name: "read-only-database",
+            tags: ["ready"])
         .AddCheck<DataRetentionHealthCheck>(
             name: "data-retention",
             tags: ["ready"])

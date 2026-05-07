@@ -1505,7 +1505,7 @@ Zeye.Sorting.Hub.Host.Tests/BackupGovernanceTests.cs
 ```text
 Zeye.Sorting.Hub.Infrastructure/Persistence/ReadModels/ReadOnlyDatabaseOptions.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/ReadModels/ReadOnlyDbContextFactorySelector.cs
-Zeye.Sorting.Hub.Infrastructure/Persistence/ReadModels/ReportingQueryGuard.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/ReadModels/ReportingQueryBudgetPlanner.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/ReadModels/ReportingQueryBudget.cs
 Zeye.Sorting.Hub.Host/HealthChecks/ReadOnlyDatabaseHealthCheck.cs
 Zeye.Sorting.Hub.Host.Tests/ReportingQueryIsolationTests.cs
@@ -1542,7 +1542,7 @@ Zeye.Sorting.Hub.Host.Tests/ReportingQueryIsolationTests.cs
 ### 已完成
 - 只读数据库配置底座
 - 报表查询预算
-- 报表查询隔离守卫
+- 报表查询预算规划
 
 ### 下一 PR 入口
 - PR-Q 从租户 / 站点 / 设备维度数据边界预留开始
