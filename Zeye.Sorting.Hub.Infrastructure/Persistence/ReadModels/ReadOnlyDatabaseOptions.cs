@@ -20,6 +20,11 @@ public sealed class ReadOnlyDatabaseOptions {
     public const int MaxMaxReportTimeRangeDays = 366;
 
     /// <summary>
+    /// 默认报表查询最大时间范围天数。
+    /// </summary>
+    public const int DefaultMaxReportTimeRangeDays = 31;
+
+    /// <summary>
     /// 报表查询最大返回行数最小值。
     /// </summary>
     public const int MinMaxReportRows = 1;
@@ -28,6 +33,11 @@ public sealed class ReadOnlyDatabaseOptions {
     /// 报表查询最大返回行数最大值。
     /// </summary>
     public const int MaxMaxReportRows = 100000;
+
+    /// <summary>
+    /// 默认报表查询最大返回行数。
+    /// </summary>
+    public const int DefaultMaxReportRows = 10000;
 
     /// <summary>
     /// 是否启用只读数据库路由。
@@ -42,10 +52,10 @@ public sealed class ReadOnlyDatabaseOptions {
     /// <summary>
     /// 报表查询允许的最大时间范围（天）。
     /// </summary>
-    public int MaxReportTimeRangeDays { get; set; } = 31;
+    public int MaxReportTimeRangeDays { get; set; } = DefaultMaxReportTimeRangeDays;
 
     /// <summary>
     /// 报表查询允许的最大返回行数。
     /// </summary>
-    public int MaxReportRows { get; set; } = 10000;
+    public int MaxReportRows { get; set; } = DefaultMaxReportRows;
 }

@@ -42,7 +42,7 @@ public sealed class ReportingQueryGuard {
                 normalizedRangeStartLocal,
                 normalizedRangeEndLocal);
             throw new InvalidOperationException(
-                $"报表查询结束时间不能早于开始时间。RangeStartLocal={normalizedRangeStartLocal:yyyy-MM-dd HH:mm:ss}，RangeEndLocal={normalizedRangeEndLocal:yyyy-MM-dd HH:mm:ss}。");
+                $"报表查询结束时间不能早于开始时间. RangeStartLocal={normalizedRangeStartLocal:yyyy-MM-dd HH:mm:ss}, RangeEndLocal={normalizedRangeEndLocal:yyyy-MM-dd HH:mm:ss}.");
         }
 
         var range = normalizedRangeEndLocal - normalizedRangeStartLocal;

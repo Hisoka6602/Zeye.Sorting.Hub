@@ -34,6 +34,7 @@
 ### 新增文件
 - `Zeye.Sorting.Hub.Infrastructure/Persistence/ReadModels/ReadOnlyDatabaseOptions.cs`
 - `Zeye.Sorting.Hub.Infrastructure/Persistence/ReadModels/ReadOnlyDbContextFactorySelector.cs`
+- `Zeye.Sorting.Hub.Infrastructure/Persistence/ReadModels/ReadOnlyRouteProbeResult.cs`
 - `Zeye.Sorting.Hub.Infrastructure/Persistence/ReadModels/ReportingQueryGuard.cs`
 - `Zeye.Sorting.Hub.Infrastructure/Persistence/ReadModels/ReportingQueryBudget.cs`
 - `Zeye.Sorting.Hub.Host/HealthChecks/ReadOnlyDatabaseHealthCheck.cs`
@@ -55,7 +56,7 @@
 
 ## 三、本次实现结果
 
-1. 新增 `ReadOnlyDatabaseOptions`、`ReadOnlyDbContextFactorySelector`、`ReportingQueryGuard` 与 `ReportingQueryBudget`，统一建立只读副本开关、主库回退策略、报表时间范围预算、最大返回行数限制与默认关闭总数统计的基础能力。
+1. 新增 `ReadOnlyDatabaseOptions`、`ReadOnlyDbContextFactorySelector`、`ReadOnlyRouteProbeResult`、`ReportingQueryGuard` 与 `ReportingQueryBudget`，统一建立只读副本开关、主库回退策略、路由探测结果、报表时间范围预算、最大返回行数限制与默认关闭总数统计的基础能力。
 2. 调整 `PersistenceServiceCollectionExtensions.cs`，新增 `RegisterReadOnlyDatabaseServices` 与 Provider 级 DbContext 选项复用入口，避免只读副本与主库链路重复拼装 EF Core 选项。
 3. 新增 `ReadOnlyDatabaseHealthCheck` 并调整 `Program.cs`，将只读副本可用性、主库回退状态与当前报表查询路由目标接入 `/health/ready`。
 4. 调整 `appsettings.json`，补齐 `Persistence:ReadOnlyDatabase` 默认配置与 `ConnectionStrings:MySqlReadOnly` / `ConnectionStrings:SqlServerReadOnly` 预留键，保持后续接入只读副本时无需再修改结构。

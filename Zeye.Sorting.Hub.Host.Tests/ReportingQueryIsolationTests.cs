@@ -16,12 +16,12 @@ public sealed class ReportingQueryIsolationTests {
     /// <summary>
     /// 默认报表查询最大时间范围天数。
     /// </summary>
-    private const int DefaultMaxReportTimeRangeDays = 31;
+    private const int DefaultMaxReportTimeRangeDays = ReadOnlyDatabaseOptions.DefaultMaxReportTimeRangeDays;
 
     /// <summary>
     /// 默认报表查询最大返回行数。
     /// </summary>
-    private const int DefaultMaxReportRows = 10000;
+    private const int DefaultMaxReportRows = ReadOnlyDatabaseOptions.DefaultMaxReportRows;
 
     /// <summary>
     /// 报表查询时间范围超限时应拒绝执行。

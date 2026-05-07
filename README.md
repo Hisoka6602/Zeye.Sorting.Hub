@@ -446,6 +446,7 @@
 │   │   ├── ReadModels（报表查询隔离目录）
 │   │   │   ├── ReadOnlyDatabaseOptions.cs（只读数据库配置模型：定义开关、主库回退与报表预算上限）
 │   │   │   ├── ReadOnlyDbContextFactorySelector.cs（只读上下文选择器：负责只读副本探测、主库回退与拒绝路由决策）
+│   │   │   ├── ReadOnlyRouteProbeResult.cs（只读路由探测结果模型：记录配置状态、副本可用性、回退状态与当前路由目标）
 │   │   │   ├── ReportingQueryGuard.cs（报表查询预算守卫：统一校验时间范围、行数上限与总数返回策略）
 │   │   │   └── ReportingQueryBudget.cs（报表查询预算快照：记录时间窗口、行数上限与总数返回开关）
 │   │   ├── Baseline（基线数据目录）
@@ -1023,6 +1024,7 @@
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/ReadModels/`：报表查询隔离目录
 - `ReadOnlyDatabaseOptions.cs`：只读数据库配置模型，定义只读路由开关、主库回退策略、报表时间范围预算与最大返回行数上限。
 - `ReadOnlyDbContextFactorySelector.cs`：报表查询上下文选择器，负责探测只读副本连接状态，并按配置在“只读副本 / 主库回退 / 直接拒绝”之间切换。
+- `ReadOnlyRouteProbeResult.cs`：只读路由探测结果模型，统一承载只读副本配置状态、可用性、主库回退状态与当前路由目标。
 - `ReportingQueryGuard.cs`：报表查询预算守卫，统一校验本地时间范围、限制最大返回行数并默认关闭总数统计。
 - `ReportingQueryBudget.cs`：报表查询预算快照，承载时间窗口、行数上限与总数返回策略。
 
