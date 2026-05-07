@@ -11,13 +11,13 @@ internal static class BackupConnectionStringValueReader {
     /// </summary>
     /// <param name="builder">连接字符串构建器。</param>
     /// <param name="value">解析值。</param>
-    /// <param name="keys">键名集合。</param>
+    /// <param name="candidateKeys">候选键名集合。</param>
     /// <returns>是否读取成功。</returns>
-    internal static bool TryGetFirstNonEmptyValue(DbConnectionStringBuilder builder, out string value, params string[] keys) {
+    internal static bool TryGetFirstNonEmptyValue(DbConnectionStringBuilder builder, out string value, params string[] candidateKeys) {
         ArgumentNullException.ThrowIfNull(builder);
-        ArgumentNullException.ThrowIfNull(keys);
+        ArgumentNullException.ThrowIfNull(candidateKeys);
 
-        foreach (var key in keys) {
+        foreach (var key in candidateKeys) {
             if (builder.TryGetValue(key, out var rawValue) && rawValue is string stringValue && !string.IsNullOrWhiteSpace(stringValue)) {
                 value = stringValue.Trim();
                 return true;

@@ -45,9 +45,19 @@ public sealed class RestoreDrillPlanner {
         var runbookPath = Path.Combine(runbookDirectory, $"数据库恢复Runbook-{providerSegment}.md");
         var drillRecordPath = Path.Combine(drillRecordDirectory, $"备份恢复演练记录-{providerSegment}.md");
 
-        // 步骤 3：分别落盘恢复 Runbook 与演练记录，为健康检查和人工操作提供统一依据。
+        // 步骤 3：分别落盘恢复 Runbook 与演练记录；若第二步写入失败，则回滚第一份资产，避免文档状态不一致。
         await File.WriteAllTextAsync(runbookPath, BuildRunbookContent(plan), Encoding.UTF8, cancellationToken);
-        await File.WriteAllTextAsync(drillRecordPath, BuildDrillRecordContent(plan), Encoding.UTF8, cancellationToken);
+        try {
+            await File.WriteAllTextAsync(drillRecordPath, BuildDrillRecordContent(plan), Encoding.UTF8, cancellationToken);
+        }
+        catch {
+            if (File.Exists(runbookPath)) {
+                File.Delete(runbookPath);
+            }
+
+            throw;
+        }
+
         return (runbookPath, drillRecordPath);
     }
 
