@@ -106,7 +106,7 @@ public sealed class InboxMessageRepository : IInboxMessageRepository {
     /// </summary>
     /// <param name="sourceSystem">来源系统。</param>
     /// <param name="messageId">消息标识。</param>
-    /// <param name="maxRetryCount">最大重试次数。</param>
+    /// <param name="maxRetryCount">最大失败次数阈值；当 <c>RetryCount</c> 达到该值后，不再允许重新接管。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>成功接管的 Inbox 消息；不存在或已被其他执行器接管时返回 null。</returns>
     public async Task<InboxMessage?> TryAcquireForConsumptionAsync(

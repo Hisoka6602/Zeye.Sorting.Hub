@@ -370,7 +370,7 @@ public sealed class InboxMessageGuardService {
     /// 为取消后的状态回写创建带超时保护的取消令牌源。
     /// </summary>
     /// <param name="cancellationToken">原始取消令牌。</param>
-    /// <returns>用于补偿回写的取消令牌源。</returns>
+    /// <returns>用于补偿回写的取消令牌源；调用方在使用后必须释放。</returns>
     private static CancellationTokenSource CreateCancellationPersistenceTokenSource(CancellationToken cancellationToken) {
         if (!cancellationToken.IsCancellationRequested) {
             return CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
