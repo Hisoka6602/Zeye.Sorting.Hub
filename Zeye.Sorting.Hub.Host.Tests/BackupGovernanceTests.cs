@@ -176,8 +176,8 @@ public sealed class BackupGovernanceTests {
             ["Persistence:Backup:DrillRecordDirectory"] = "drill-records"
         };
         if (includeConnectionStrings) {
-            settings["ConnectionStrings:MySql"] = "Server=localhost;Database=SortingHubDb;User Id=tester;Password=secret;";
-            settings["ConnectionStrings:SqlServer"] = "Server=localhost;Initial Catalog=SortingHubDb;User Id=tester;Password=secret;";
+            settings["ConnectionStrings:MySql"] = "Server=localhost;Database=SortingHubDb;User Id=tester;Password=<test-password>;";
+            settings["ConnectionStrings:SqlServer"] = "Server=localhost;Initial Catalog=SortingHubDb;User Id=tester;Password=<test-password>;";
         }
 
         var configuration = new ConfigurationBuilder()
