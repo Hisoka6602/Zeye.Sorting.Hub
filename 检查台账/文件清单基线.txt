@@ -374,6 +374,7 @@ Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/SlowQueryProfileStore.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/SlowQuerySample.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/SlowQuerySuggestionInsight.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/AutoTuning/SlowQueryTuningCandidate.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Backup/BackupCommandTextFormatter.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/Backup/BackupConnectionStringValueReader.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/Backup/BackupExecutionRecord.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/Backup/BackupFileNamePolicy.cs

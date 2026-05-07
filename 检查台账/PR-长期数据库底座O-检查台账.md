@@ -75,7 +75,7 @@
 
 - `dotnet build Zeye.Sorting.Hub.sln -v quiet` ✅
 - `dotnet test Zeye.Sorting.Hub.Host.Tests/Zeye.Sorting.Hub.Host.Tests.csproj --no-build --filter "FullyQualifiedName~Zeye.Sorting.Hub.Host.Tests.BackupGovernanceTests" -v normal` ✅
-- `dotnet test Zeye.Sorting.Hub.sln --no-build --logger "trx;LogFileName=/tmp/zeye-full-tests.trx" -v quiet` ✅（291/291）
+- `dotnet test Zeye.Sorting.Hub.sln --no-build --logger "trx;LogFileName=/tmp/zeye-full-tests-review-fix.trx" -v quiet` ✅（293/293）
 - `./.github/scripts/validate-database-foundation-rules.sh` ✅
 
 ---
