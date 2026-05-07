@@ -73,7 +73,7 @@ public sealed class AppendOutboxMessageCommandService {
             return document.RootElement.GetRawText();
         }
         catch (JsonException exception) {
-            Logger.Warn(exception, "Outbox 载荷 JSON 规范化失败，PayloadLength={PayloadLength}", normalizedPayloadJson.Length);
+            Logger.Warn(exception, "Outbox 载荷 JSON 规范化失败，PayloadLength={PayloadLength}", payloadJson.Length);
             throw new ArgumentException("payloadJson 必须为合法 JSON。", nameof(payloadJson), exception);
         }
     }
