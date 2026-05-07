@@ -51,7 +51,8 @@
 │   ├── PR-长期数据库底座L-检查台账.md（长期数据库底座 PR-L 台账：记录 Outbox 事件持久化、状态推进、死信与下一 PR 入口）
 │   ├── PR-长期数据库底座M-检查台账.md（长期数据库底座 PR-M 台账：记录 Inbox 幂等消费、状态治理、重试与下一 PR 入口）
 │   ├── PR-长期数据库底座N-检查台账.md（长期数据库底座 PR-N 台账：记录数据保留策略、自动清理治理、健康检查与下一 PR 入口）
-│   └── `PR-长期数据库底座O-检查台账.md`（长期数据库底座 PR-O 台账：记录备份、恢复、校验、演练资产与下一 PR 入口）
+│   ├── PR-长期数据库底座O-检查台账.md（长期数据库底座 PR-O 台账：记录备份、恢复、校验、演练资产与下一 PR 入口）
+│   └── PR-长期数据库底座P-检查台账.md（长期数据库底座 PR-P 台账：记录报表查询隔离、只读副本预留、预算守卫与下一 PR 入口）
 ├── Zeye.Sorting.Hub.Analytics（分析与报表子域，占位工程）
 │   └── Zeye.Sorting.Hub.Analytics.csproj（Analytics 项目定义）
 ├── Zeye.Sorting.Hub.Application（应用层）
@@ -308,6 +309,7 @@
 │   │   ├── MigrationGovernanceHealthCheck.cs（迁移治理健康检查：输出待执行迁移、危险 SQL、归档脚本与执行状态）
 │   │   ├── OutboxHealthCheck.cs（Outbox 健康检查：输出待处理/处理中/失败/死信数量与最早积压时间）
 │   │   ├── BackupHealthCheck.cs（备份治理健康检查：输出最新备份文件校验结果、Runbook 与演练记录路径）
+│   │   ├── ReadOnlyDatabaseHealthCheck.cs（只读数据库健康检查：输出只读副本可用性、主库回退状态与报表查询路由目标）
 │   │   ├── DataRetentionHealthCheck.cs（数据保留治理健康检查：输出最近一次治理审计状态、计划量与执行量）
 │   │   └── HealthCheckResponseWriter.cs（健康检查 JSON 响应序列化工具，支持输出 Data 诊断数据）
 │   ├── Utilities（工具目录）
@@ -330,7 +332,7 @@
 │   ├── Zeye.Sorting.Hub.Host.csproj（Host 项目定义）
 │   ├── nlog.config（NLog 日志配置）
 │   ├── appsettings.Development.json（开发环境配置）
-│   └── appsettings.json（默认运行配置，含 WebRequestAuditLog Body 采集开关、AuditReadOnlyApi:Enabled、Persistence:Backup 与 Persistence:Retention）
+│   └── appsettings.json（默认运行配置，含 WebRequestAuditLog Body 采集开关、AuditReadOnlyApi:Enabled、Persistence:Backup、Persistence:ReadOnlyDatabase 与 Persistence:Retention）
 ├── Zeye.Sorting.Hub.Host.Tests（自动调优行为测试工程）
 │   ├── AutoTuningProductionControlTests.cs（自动调优生产可控能力测试：dry-run/隔离器/告警恢复/普通与严重回归/探针双路径/闭环链路；含分表策略评估与 PerDay 预建守卫联动测试；新增 WebRequestAuditLog 治理解耦/保留治理三态/逻辑表索引分发/配置错误键指向回归；配置键拼装参数化覆盖（Theory））
 │   ├── AlwaysExistsShardingPhysicalTableProbe.cs（物理表探测测试桩：始终存在场景，支撑分表守卫探测调用断言）
@@ -338,6 +340,7 @@
 │   ├── BaselineDataTests.cs（基线数据测试：覆盖配置校验、时区后缀拦截、健康检查、可选种子入口与 Degraded 模式异常隔离）
 │   ├── MigrationGovernanceTests.cs（迁移治理测试：覆盖健康检查、危险 SQL、dry-run 决策、脚本归档与预演异常记录）
 │   ├── BackupGovernanceTests.cs（备份治理测试：覆盖 Provider 命令生成、最新备份校验、Runbook/演练资产输出与健康检查状态）
+│   ├── ReportingQueryIsolationTests.cs（报表查询隔离测试：覆盖时间范围预算、返回行数上限、只读副本回退与拒绝策略）
 │   ├── SlowQueryFingerprintTests.cs（慢查询画像测试：覆盖 SQL 指纹归一化、窗口聚合、容量淘汰与查询服务读取）
 │   ├── QueryGovernanceTests.cs（查询治理测试：覆盖强制模板登记、模板匹配与未登记慢查询缺口暴露）
 │   ├── IdempotencyTests.cs（幂等能力测试：覆盖 SHA256 哈希、重复请求回放与处理中拒绝）
@@ -440,6 +443,11 @@
 │   │   │   ├── DataRetentionPlanner.cs（数据保留计划器：统计审计、Outbox、Inbox、幂等、归档、死信与慢查询候选）
 │   │   │   ├── DataRetentionExecutor.cs（数据保留执行器：负责危险动作决策、逐策略清理与审计记录维护）
 │   │   │   └── DataRetentionAuditRecord.cs（数据保留治理审计记录模型：记录状态、决策、计划量、执行量与分策略摘要）
+│   │   ├── ReadModels（报表查询隔离目录）
+│   │   │   ├── ReadOnlyDatabaseOptions.cs（只读数据库配置模型：定义开关、主库回退与报表预算上限）
+│   │   │   ├── ReadOnlyDbContextFactorySelector.cs（只读上下文选择器：负责只读副本探测、主库回退与拒绝路由决策）
+│   │   │   ├── ReportingQueryGuard.cs（报表查询预算守卫：统一校验时间范围、行数上限与总数返回策略）
+│   │   │   └── ReportingQueryBudget.cs（报表查询预算快照：记录时间窗口、行数上限与总数返回开关）
 │   │   ├── Baseline（基线数据目录）
 │   │   │   ├── BaselineDataOptions.cs（基线数据配置模型：控制校验开关、可选种子入口与失败模式）
 │   │   │   ├── BaselineDataSeeder.cs（基线数据种子入口：当前实现为幂等 no-op，占位后续持久化默认数据写入）
@@ -590,6 +598,8 @@
   - `PR-长期数据库底座L-检查台账.md`：长期数据库底座 PR-L 实施台账；记录 Outbox 事件持久化、状态推进、死信隔离、健康检查与下一 PR 入口。
   - `PR-长期数据库底座M-检查台账.md`：长期数据库底座 PR-M 实施台账；记录 Inbox 幂等消费、失败重试、过期治理候选与下一 PR 入口。
   - `PR-长期数据库底座N-检查台账.md`：长期数据库底座 PR-N 实施台账；记录数据保留策略、自动清理治理、健康检查与下一 PR 入口。
+  - `PR-长期数据库底座O-检查台账.md`：长期数据库底座 PR-O 实施台账；记录备份、恢复、校验、演练资产与下一 PR 入口。
+  - `PR-长期数据库底座P-检查台账.md`：长期数据库底座 PR-P 实施台账；记录报表查询隔离、只读副本预留、预算守卫与下一 PR 入口。
 
 ### `.github/`：Copilot 仓库级指令目录
 - `DDD分层接口与实现放置规范.md`：DDD 分层接口定义与实现放置规范文档；明确依赖方向（Host→Infrastructure→Application→Domain）、接口定义归属规则（领域能力/应用编排/基础设施内部三类）、实现类放置约束、目录结构建议与禁止事项清单，供 Copilot 与开发人员统一执行。
@@ -886,6 +896,7 @@
 - `MigrationGovernanceHealthCheck.cs`：迁移治理健康检查；位于 `Zeye.Sorting.Hub.Host/HealthChecks/`，输出待执行迁移数、危险 SQL 命中、归档路径与当前执行状态，挂载于 `/health/ready`。
 - `OutboxHealthCheck.cs`：Outbox 健康检查；位于 `Zeye.Sorting.Hub.Host/HealthChecks/`，输出待处理/处理中/失败/死信数量与最早积压时间，挂载于 `/health/ready`。
 - `BackupHealthCheck.cs`：备份治理健康检查；位于 `Zeye.Sorting.Hub.Host/HealthChecks/`，输出最新备份文件、Runbook、演练记录与备份时效校验状态，挂载于 `/health/ready`。
+- `ReadOnlyDatabaseHealthCheck.cs`：只读数据库健康检查；位于 `Zeye.Sorting.Hub.Host/HealthChecks/`，输出只读副本可用性、主库回退状态与当前报表查询路由目标，挂载于 `/health/ready`。
 - `DataRetentionHealthCheck.cs`：数据保留治理健康检查；位于 `Zeye.Sorting.Hub.Host/HealthChecks/`，输出最近一次治理审计状态、计划量、执行量、失败策略数与当前决策，挂载于 `/health/ready`。
 - `HealthChecks/HealthCheckResponseWriter.cs`：健康检查 JSON 响应序列化工具，输出结构化 JSON，并支持附加 Data 诊断数据。
 - `Utilities/LocalDateTimeParsing.cs`：本地时间解析与 API 问题响应工厂共享工具。
@@ -1009,6 +1020,12 @@
 - `DataRetentionExecutor.cs`：数据保留执行器，负责危险动作决策、逐策略清理执行、失败隔离与最近一次审计记录维护。
 - `DataRetentionAuditRecord.cs`：数据保留治理审计记录模型，记录最近一次执行状态、决策、计划量、执行量、失败策略数与分策略摘要。
 
+##### `Zeye.Sorting.Hub.Infrastructure/Persistence/ReadModels/`：报表查询隔离目录
+- `ReadOnlyDatabaseOptions.cs`：只读数据库配置模型，定义只读路由开关、主库回退策略、报表时间范围预算与最大返回行数上限。
+- `ReadOnlyDbContextFactorySelector.cs`：报表查询上下文选择器，负责探测只读副本连接状态，并按配置在“只读副本 / 主库回退 / 直接拒绝”之间切换。
+- `ReportingQueryGuard.cs`：报表查询预算守卫，统一校验本地时间范围、限制最大返回行数并默认关闭总数统计。
+- `ReportingQueryBudget.cs`：报表查询预算快照，承载时间窗口、行数上限与总数返回策略。
+
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/Baseline/`：基线数据目录
 - `BaselineDataOptions.cs`：基线数据配置模型，定义校验开关、可选种子入口开关与失败模式。
 - `BaselineDataValidationResult.cs`：基线数据校验结果模型，记录错误、告警、失败模式、是否阻断启动与种子执行结果。
@@ -1117,6 +1134,7 @@
 - `InboxMessageTests.cs`：Inbox 幂等消费测试，覆盖首次消费、成功回放、处理中拒绝、失败重试与过期治理候选查询。
 - `OutboxMessageTests.cs`：Outbox 事件底座测试，覆盖写入、分页、后台状态推进、死信隔离与健康检查。
 - `BackupGovernanceTests.cs`：备份治理测试，覆盖 MySQL/SQL Server Provider 命令生成安全性、禁用场景无连接串、最新备份文件校验、Runbook/演练记录输出与健康检查状态。
+- `ReportingQueryIsolationTests.cs`：报表查询隔离测试，覆盖时间范围预算、返回行数上限、只读副本缺失时的主库回退与直接拒绝策略。
 - `DataRetentionTests.cs`：数据保留治理测试，覆盖 dry-run 计划、真实清理、守卫关闭路径与健康检查状态。
 - `AlwaysExistsShardingPhysicalTableProbe.cs`：物理表探测测试桩，始终返回存在并记录调用次数。
 - `BaselineDataTests.cs`：基线数据测试，覆盖必要配置、Provider/连接字符串、本地时间配置、健康检查、可选种子入口与 Degraded 模式异常隔离。
@@ -1166,16 +1184,16 @@
 
 ## 本次更新内容
 
-- 继续实施《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》，执行前先核对现有台账，确认当前已完成到 PR-N，本次补齐 PR-O“备份、恢复、校验与演练底座”。
-- 新增 `BackupOptions`、`BackupPlan`、`BackupExecutionRecord`、`IBackupProvider`、`MySqlBackupProvider`、`SqlServerBackupProvider`、`RestoreDrillPlanner` 与 `BackupVerificationService`，统一建立备份计划、Provider 命令生成、最新备份文件校验与恢复资产输出底座。
-- 新增 `BackupHostedService`、`BackupHealthCheck` 与默认 `Persistence:Backup` 配置，接入后台轮询校验、恢复 Runbook、演练记录与 `/health/ready` 备份治理探针。
-- 新增 `BackupGovernanceTests.cs` 与 `检查台账/PR-长期数据库底座O-检查台账.md`，同步更新 README、更新记录与文件清单基线，保证下一 PR 可按断点继续推进。
+- 继续实施《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》，执行前先核对现有台账，确认当前已完成到 PR-O，本次补齐 PR-P“报表查询隔离与只读副本预留”。
+- 新增 `ReadOnlyDatabaseOptions`、`ReadOnlyDbContextFactorySelector`、`ReportingQueryGuard` 与 `ReportingQueryBudget`，统一建立只读副本配置、报表查询预算、主库回退策略与直接拒绝边界。
+- 新增 `ReadOnlyDatabaseHealthCheck` 与默认 `Persistence:ReadOnlyDatabase` 配置，接入 `/health/ready` 只读副本可用性探针，并补充 `ConnectionStrings:MySqlReadOnly` / `ConnectionStrings:SqlServerReadOnly` 预留键。
+- 新增 `ReportingQueryIsolationTests.cs` 与 `检查台账/PR-长期数据库底座P-检查台账.md`，同步更新 README、更新记录与文件清单基线，保证下一 PR 可按断点继续推进。
 
 ## 后续可完善点
 
-- 下一切片可按《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》进入 PR-P，补齐报表查询隔离与只读副本预留。
-- 后续可在备份治理底座上补充真实备份执行器、受控上传归档与多副本校验，但仍需保持生产恢复人工审批边界。
-- 后续可将备份治理、数据保留治理与迁移治理的运行期资产统一沉淀为只读查询接口或治理报表。
+- 下一切片可按《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》进入 PR-Q，补齐租户 / 站点 / 设备维度数据边界预留。
+- 后续可在报表查询底座上接入真实报表查询服务，但必须统一复用 `ReportingQueryGuard` 与 `ReadOnlyDbContextFactorySelector`，避免再次分散实现预算与路由逻辑。
+- 后续可将只读副本路由状态与备份/保留治理资产统一沉淀为只读查询接口或治理报表。
 
 ## Parcel API 发布门禁 / 使用边界说明
 

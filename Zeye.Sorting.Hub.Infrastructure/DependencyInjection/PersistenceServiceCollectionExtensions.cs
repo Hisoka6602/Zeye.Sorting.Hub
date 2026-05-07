@@ -26,6 +26,7 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.Diagnostics;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Idempotency;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.MigrationGovernance;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.QueryGovernance;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.ReadModels;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Retention;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 using Zeye.Sorting.Hub.Domain.Enums.Sharding;
@@ -111,6 +112,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             RegisterShardingGovernanceServices(services, configuration);
             RegisterDataArchiveServices(services, configuration);
             RegisterBackupGovernanceServices(services, configuration);
+            RegisterReadOnlyDatabaseServices(services, configuration);
             RegisterDataRetentionServices(services, configuration);
             RegisterBaselineDataServices(services, configuration);
             RegisterMigrationGovernanceServices(services);
@@ -403,6 +405,26 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         }
 
         /// <summary>
+        /// 注册报表查询只读数据库能力。
+        /// </summary>
+        /// <param name="services">服务集合。</param>
+        /// <param name="configuration">配置根。</param>
+        private static void RegisterReadOnlyDatabaseServices(IServiceCollection services, IConfiguration configuration) {
+            services.AddOptions<ReadOnlyDatabaseOptions>()
+                .Configure(options => ApplyReadOnlyDatabaseOptions(options, configuration))
+                .Validate(
+                    static options => options.MaxReportTimeRangeDays is >= ReadOnlyDatabaseOptions.MinMaxReportTimeRangeDays and <= ReadOnlyDatabaseOptions.MaxMaxReportTimeRangeDays,
+                    $"MaxReportTimeRangeDays 必须在 {ReadOnlyDatabaseOptions.MinMaxReportTimeRangeDays}~{ReadOnlyDatabaseOptions.MaxMaxReportTimeRangeDays} 之间")
+                .Validate(
+                    static options => options.MaxReportRows is >= ReadOnlyDatabaseOptions.MinMaxReportRows and <= ReadOnlyDatabaseOptions.MaxMaxReportRows,
+                    $"MaxReportRows 必须在 {ReadOnlyDatabaseOptions.MinMaxReportRows}~{ReadOnlyDatabaseOptions.MaxMaxReportRows} 之间")
+                .ValidateOnStart();
+
+            services.TryAddSingleton<ReportingQueryGuard>();
+            services.TryAddSingleton<ReadOnlyDbContextFactorySelector>();
+        }
+
+        /// <summary>
         /// 注册数据保留治理能力。
         /// </summary>
         /// <param name="services">服务集合。</param>
@@ -471,6 +493,18 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             options.BackupFilePrefix = ReadStringSetting(configuration, $"{BackupOptions.SectionPath}:BackupFilePrefix", options.BackupFilePrefix);
             options.RestoreRunbookDirectory = ReadStringSetting(configuration, $"{BackupOptions.SectionPath}:RestoreRunbookDirectory", options.RestoreRunbookDirectory);
             options.DrillRecordDirectory = ReadStringSetting(configuration, $"{BackupOptions.SectionPath}:DrillRecordDirectory", options.DrillRecordDirectory);
+        }
+
+        /// <summary>
+        /// 应用报表查询只读数据库配置。
+        /// </summary>
+        /// <param name="options">配置实例。</param>
+        /// <param name="configuration">配置根。</param>
+        private static void ApplyReadOnlyDatabaseOptions(ReadOnlyDatabaseOptions options, IConfiguration configuration) {
+            options.IsEnabled = ReadBooleanSetting(configuration, $"{ReadOnlyDatabaseOptions.SectionPath}:IsEnabled", options.IsEnabled);
+            options.FallbackToPrimaryWhenUnavailable = ReadBooleanSetting(configuration, $"{ReadOnlyDatabaseOptions.SectionPath}:FallbackToPrimaryWhenUnavailable", options.FallbackToPrimaryWhenUnavailable);
+            options.MaxReportTimeRangeDays = ReadIntSetting(configuration, $"{ReadOnlyDatabaseOptions.SectionPath}:MaxReportTimeRangeDays", options.MaxReportTimeRangeDays);
+            options.MaxReportRows = ReadIntSetting(configuration, $"{ReadOnlyDatabaseOptions.SectionPath}:MaxReportRows", options.MaxReportRows);
         }
 
         /// <summary>
@@ -581,15 +615,26 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// </summary>
         private static void ConfigureMySqlDbContextOptions(IServiceProvider sp, DbContextOptionsBuilder options) {
             var cfg = sp.GetRequiredService<IConfiguration>();
+            var cs = cfg.GetConnectionString(ConfiguredProviderNames.MySql)!;
+            ConfigureMySqlDbContextOptions(sp, options, cs);
+        }
+
+        /// <summary>
+        /// 按指定连接字符串配置 MySQL 场景下的 DbContext 选项。
+        /// </summary>
+        /// <param name="sp">服务容器。</param>
+        /// <param name="options">DbContext 选项构建器。</param>
+        /// <param name="connectionString">连接字符串。</param>
+        internal static void ConfigureMySqlDbContextOptions(IServiceProvider sp, DbContextOptionsBuilder options, string connectionString) {
+            var cfg = sp.GetRequiredService<IConfiguration>();
             var interceptor = sp.GetRequiredService<SlowQueryCommandInterceptor>();
             var mySqlSessionInterceptor = sp.GetRequiredService<MySqlSessionBootstrapConnectionInterceptor>();
-            var cs = cfg.GetConnectionString(ConfiguredProviderNames.MySql)!;
             var commandTimeoutSeconds = AutoTuningConfigurationReader.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
             var maxRetryCount = AutoTuningConfigurationReader.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryCount", 5);
             var maxRetryDelaySeconds = AutoTuningConfigurationReader.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryDelaySeconds", 10);
 
-            var serverVersion = ResolveMySqlServerVersion(cfg, cs, null);
-            options.UseMySql(cs, serverVersion, mySqlOptions => {
+            var serverVersion = ResolveMySqlServerVersion(cfg, connectionString, null);
+            options.UseMySql(connectionString, serverVersion, mySqlOptions => {
                 // 迁移程序集通常指向 Host 或 Infrastructure，按迁移放置位置调整
                 // mySqlOptions.MigrationsAssembly("Zeye.Sorting.Hub.Host");
                 mySqlOptions.EnableRetryOnFailure(
@@ -657,13 +702,24 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// </summary>
         private static void ConfigureSqlServerDbContextOptions(IServiceProvider sp, DbContextOptionsBuilder options) {
             var cfg = sp.GetRequiredService<IConfiguration>();
-            var interceptor = sp.GetRequiredService<SlowQueryCommandInterceptor>();
             var cs = cfg.GetConnectionString(ConfiguredProviderNames.SqlServer)!;
+            ConfigureSqlServerDbContextOptions(sp, options, cs);
+        }
+
+        /// <summary>
+        /// 按指定连接字符串配置 SQL Server 场景下的 DbContext 选项。
+        /// </summary>
+        /// <param name="sp">服务容器。</param>
+        /// <param name="options">DbContext 选项构建器。</param>
+        /// <param name="connectionString">连接字符串。</param>
+        internal static void ConfigureSqlServerDbContextOptions(IServiceProvider sp, DbContextOptionsBuilder options, string connectionString) {
+            var cfg = sp.GetRequiredService<IConfiguration>();
+            var interceptor = sp.GetRequiredService<SlowQueryCommandInterceptor>();
             var commandTimeoutSeconds = AutoTuningConfigurationReader.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
             var maxRetryCount = AutoTuningConfigurationReader.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryCount", 5);
             var maxRetryDelaySeconds = AutoTuningConfigurationReader.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryDelaySeconds", 10);
 
-            options.UseSqlServer(cs, sqlServerOptions => {
+            options.UseSqlServer(connectionString, sqlServerOptions => {
                 // 迁移程序集通常指向 Host 或 Infrastructure，按迁移放置位置调整
                 // sqlServerOptions.MigrationsAssembly("Zeye.Sorting.Hub.Host");
                 sqlServerOptions.EnableRetryOnFailure(
@@ -675,6 +731,31 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
 
             options.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
             options.AddInterceptors(interceptor);
+        }
+
+        /// <summary>
+        /// 按配置层 Provider 名称统一配置 DbContext 选项。
+        /// </summary>
+        /// <param name="sp">服务容器。</param>
+        /// <param name="options">DbContext 选项构建器。</param>
+        /// <param name="configuredProviderName">配置层 Provider 名称。</param>
+        /// <param name="connectionString">连接字符串。</param>
+        internal static void ConfigureConfiguredProviderDbContextOptions(
+            IServiceProvider sp,
+            DbContextOptionsBuilder options,
+            string configuredProviderName,
+            string connectionString) {
+            if (string.Equals(configuredProviderName, ConfiguredProviderNames.MySql, StringComparison.OrdinalIgnoreCase)) {
+                ConfigureMySqlDbContextOptions(sp, options, connectionString);
+                return;
+            }
+
+            if (string.Equals(configuredProviderName, ConfiguredProviderNames.SqlServer, StringComparison.OrdinalIgnoreCase)) {
+                ConfigureSqlServerDbContextOptions(sp, options, connectionString);
+                return;
+            }
+
+            throw new InvalidOperationException($"不支持的数据库类型：{configuredProviderName}，可选值：{ConfiguredProviderNames.MySql} / {ConfiguredProviderNames.SqlServer}");
         }
 
         /// <summary>

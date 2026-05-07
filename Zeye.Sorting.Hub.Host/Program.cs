@@ -26,6 +26,7 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.Backup;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Archiving;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.MigrationGovernance;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.ReadModels;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Retention;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.WriteBuffering;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -110,6 +111,9 @@ try {
             tags: ["ready"])
         .AddCheck<BackupHealthCheck>(
             name: "backup",
+            tags: ["ready"])
+        .AddCheck<ReadOnlyDatabaseHealthCheck>(
+            name: "read-only-database",
             tags: ["ready"])
         .AddCheck<DataRetentionHealthCheck>(
             name: "data-retention",
