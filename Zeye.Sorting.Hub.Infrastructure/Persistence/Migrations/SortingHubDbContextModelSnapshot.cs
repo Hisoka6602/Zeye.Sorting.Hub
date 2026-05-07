@@ -462,6 +462,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                         .HasColumnType("varchar(128)");
 
                     b.Property<int>("Status")
+                        .IsConcurrencyToken()
                         .HasColumnType("int");
 
                     b.Property<DateTime>("UpdatedAt")

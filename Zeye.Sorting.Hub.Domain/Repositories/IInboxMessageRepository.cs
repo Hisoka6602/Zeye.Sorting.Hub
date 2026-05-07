@@ -1,4 +1,5 @@
 using Zeye.Sorting.Hub.Domain.Aggregates.Events;
+using Zeye.Sorting.Hub.Domain.Enums.Events;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.Results;
 
 namespace Zeye.Sorting.Hub.Domain.Repositories;
@@ -25,6 +26,20 @@ public interface IInboxMessageRepository {
     Task<InboxMessage?> GetByKeyAsync(string sourceSystem, string messageId, CancellationToken cancellationToken);
 
     /// <summary>
+    /// 原子接管一条可消费 Inbox 消息，并切换到处理中。
+    /// </summary>
+    /// <param name="sourceSystem">来源系统。</param>
+    /// <param name="messageId">消息标识。</param>
+    /// <param name="maxRetryCount">最大重试次数。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>成功接管的 Inbox 消息；不存在或已被其他执行器接管时返回 null。</returns>
+    Task<InboxMessage?> TryAcquireForConsumptionAsync(
+        string sourceSystem,
+        string messageId,
+        int maxRetryCount,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// 获取已到过期治理时间的清理候选。
     /// </summary>
     /// <param name="expireBefore">过期治理截止时间。</param>
@@ -40,7 +55,11 @@ public interface IInboxMessageRepository {
     /// 更新 Inbox 消息。
     /// </summary>
     /// <param name="inboxMessage">Inbox 消息聚合。</param>
+    /// <param name="expectedStatus">期望的原始状态。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>仓储结果。</returns>
-    Task<RepositoryResult> UpdateAsync(InboxMessage inboxMessage, CancellationToken cancellationToken);
+    Task<RepositoryResult> UpdateAsync(
+        InboxMessage inboxMessage,
+        InboxMessageStatus expectedStatus,
+        CancellationToken cancellationToken);
 }

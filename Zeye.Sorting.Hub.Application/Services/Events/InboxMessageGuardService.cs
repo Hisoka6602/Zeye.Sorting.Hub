@@ -11,6 +11,11 @@ namespace Zeye.Sorting.Hub.Application.Services.Events;
 /// </summary>
 public sealed class InboxMessageGuardService {
     /// <summary>
+    /// 取消后状态回写的最大补偿等待时间。
+    /// </summary>
+    private static readonly TimeSpan CancellationPersistenceTimeout = TimeSpan.FromSeconds(5);
+
+    /// <summary>
     /// 消息处理中提示。
     /// </summary>
     public const string MessageInProgressMessage = "相同 Inbox 消息正在处理中，请稍后重试。";
@@ -19,6 +24,11 @@ public sealed class InboxMessageGuardService {
     /// 消息已过期提示。
     /// </summary>
     public const string MessageExpiredMessage = "Inbox 消息已过期，不允许继续消费。";
+
+    /// <summary>
+    /// 消息取消后允许重试的提示。
+    /// </summary>
+    public const string MessageCanceledMessage = "Inbox 消息消费已取消，可重新发起。";
 
     /// <summary>
     /// NLog 日志器。
@@ -120,9 +130,9 @@ public sealed class InboxMessageGuardService {
         }
 
         return await ExecuteWithRecordAsync(
-            pendingRecord,
             normalizedSourceSystem,
             normalizedMessageId,
+            maxRetryCount,
             executeAsync,
             cancellationToken);
     }
@@ -131,29 +141,55 @@ public sealed class InboxMessageGuardService {
     /// 使用持有的 Inbox 记录执行业务。
     /// </summary>
     /// <typeparam name="TResponse">返回值类型。</typeparam>
-    /// <param name="record">Inbox 记录。</param>
     /// <param name="sourceSystem">来源系统。</param>
     /// <param name="messageId">消息标识。</param>
+    /// <param name="maxRetryCount">最大重试次数。</param>
     /// <param name="executeAsync">消费委托。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>执行结果与是否为重放结果。</returns>
     private async Task<(TResponse Response, bool IsReplay)> ExecuteWithRecordAsync<TResponse>(
-        InboxMessage record,
         string sourceSystem,
         string messageId,
+        int maxRetryCount,
         Func<CancellationToken, Task<TResponse>> executeAsync,
         CancellationToken cancellationToken)
         where TResponse : class {
-        record.MarkProcessing();
-        await EnsureRecordStateUpdatedAsync(record, sourceSystem, messageId, cancellationToken);
+        var record = await _inboxMessageRepository.TryAcquireForConsumptionAsync(
+            sourceSystem,
+            messageId,
+            maxRetryCount,
+            cancellationToken);
+        if (record is null) {
+            Logger.Warn(
+                "Inbox 消息接管失败，可能已被其他执行器处理，SourceSystem={SourceSystem}, MessageId={MessageId}",
+                sourceSystem,
+                messageId);
+            throw new InvalidOperationException(MessageInProgressMessage);
+        }
 
         try {
             // 步骤 3：仅成功拿到 Processing 状态的记录才允许进入真实业务消费。
             // 步骤 4：消费成功后回写 Succeeded，后续重复消息统一走重放分支。
             var response = await executeAsync(cancellationToken);
             record.MarkSucceeded();
-            await EnsureRecordStateUpdatedAsync(record, sourceSystem, messageId, cancellationToken);
+            await EnsureRecordStateUpdatedAsync(record, InboxMessageStatus.Processing, sourceSystem, messageId, cancellationToken);
             return (response, false);
+        }
+        catch (OperationCanceledException exception) {
+            Logger.Warn(
+                exception,
+                "Inbox 消息消费被取消，SourceSystem={SourceSystem}, MessageId={MessageId}",
+                sourceSystem,
+                messageId);
+            record.MarkFailed(MessageCanceledMessage);
+            using var persistenceTokenSource = CreateCancellationPersistenceTokenSource(cancellationToken);
+            await EnsureRecordStateUpdatedAsync(
+                record,
+                InboxMessageStatus.Processing,
+                sourceSystem,
+                messageId,
+                persistenceTokenSource.Token);
+            throw;
         }
         catch (Exception exception) when (exception is not OperationCanceledException) {
             // 步骤 5：业务消费失败时回写 Failed + RetryCount，保留失败原因供后续重试与诊断。
@@ -163,7 +199,7 @@ public sealed class InboxMessageGuardService {
                 sourceSystem,
                 messageId);
             record.MarkFailed(exception.Message);
-            await EnsureRecordStateUpdatedAsync(record, sourceSystem, messageId, cancellationToken);
+            await EnsureRecordStateUpdatedAsync(record, InboxMessageStatus.Processing, sourceSystem, messageId, cancellationToken);
             throw;
         }
     }
@@ -205,12 +241,13 @@ public sealed class InboxMessageGuardService {
             case InboxMessageStatus.Processing:
                 var pendingResponse = await loadExistingAsync(cancellationToken);
                 if (pendingResponse is not null) {
+                    var expectedStatus = record.Status;
                     Logger.Warn(
                         "Inbox 记录仍未进入成功态，但已检测到真实消费结果，尝试修复为成功态。SourceSystem={SourceSystem}, MessageId={MessageId}",
                         sourceSystem,
                         messageId);
-                    record.MarkSucceeded();
-                    await EnsureRecordStateUpdatedAsync(record, sourceSystem, messageId, cancellationToken);
+                    record.MarkRecoveredAsSucceeded();
+                    await TryRepairSucceededStateAsync(record, expectedStatus, sourceSystem, messageId, cancellationToken);
                     return (pendingResponse, true);
                 }
 
@@ -239,7 +276,7 @@ public sealed class InboxMessageGuardService {
                     sourceSystem,
                     messageId,
                     record.RetryCount);
-                return await ExecuteWithRecordAsync(record, sourceSystem, messageId, executeAsync, cancellationToken);
+                return await ExecuteWithRecordAsync(sourceSystem, messageId, maxRetryCount, executeAsync, cancellationToken);
             default:
                 throw new InvalidOperationException("Inbox 消息状态无效。");
         }
@@ -262,6 +299,10 @@ public sealed class InboxMessageGuardService {
         where TResponse : class {
         var existingResponse = await loadExistingAsync(cancellationToken);
         if (existingResponse is null) {
+            Logger.Error(
+                "Inbox 消息已完成消费但未能读取已有结果，SourceSystem={SourceSystem}, MessageId={MessageId}",
+                sourceSystem,
+                messageId);
             throw new InvalidOperationException(
                 $"Inbox 消息已完成消费，但未能读取已存在结果。SourceSystem={sourceSystem}, MessageId={messageId}");
         }
@@ -270,28 +311,71 @@ public sealed class InboxMessageGuardService {
     }
 
     /// <summary>
-    /// 确保 Inbox 记录状态成功写回。
+    /// 尝试修复已存在业务结果但记录仍为中间态的成功状态。
     /// </summary>
     /// <param name="record">Inbox 记录。</param>
+    /// <param name="expectedStatus">期望的原始状态。</param>
     /// <param name="sourceSystem">来源系统。</param>
     /// <param name="messageId">消息标识。</param>
     /// <param name="cancellationToken">取消令牌。</param>
-    private async Task EnsureRecordStateUpdatedAsync(
+    private async Task TryRepairSucceededStateAsync(
         InboxMessage record,
+        InboxMessageStatus expectedStatus,
         string sourceSystem,
         string messageId,
         CancellationToken cancellationToken) {
-        var updateResult = await _inboxMessageRepository.UpdateAsync(record, cancellationToken);
+        var updateResult = await _inboxMessageRepository.UpdateAsync(record, expectedStatus, cancellationToken);
         if (updateResult.IsSuccess) {
             return;
         }
 
         Logger.Error(
-            "更新 Inbox 消息状态失败，SourceSystem={SourceSystem}, MessageId={MessageId}, Status={Status}, ErrorMessage={ErrorMessage}",
+            "Inbox 记录修复为成功态失败，将继续按重放语义返回结果。SourceSystem={SourceSystem}, MessageId={MessageId}, ExpectedStatus={ExpectedStatus}, ErrorMessage={ErrorMessage}",
             sourceSystem,
             messageId,
+            expectedStatus,
+            updateResult.ErrorMessage);
+    }
+
+    /// <summary>
+    /// 确保 Inbox 记录状态成功写回。
+    /// </summary>
+    /// <param name="record">Inbox 记录。</param>
+    /// <param name="expectedStatus">期望的原始状态。</param>
+    /// <param name="sourceSystem">来源系统。</param>
+    /// <param name="messageId">消息标识。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    private async Task EnsureRecordStateUpdatedAsync(
+        InboxMessage record,
+        InboxMessageStatus expectedStatus,
+        string sourceSystem,
+        string messageId,
+        CancellationToken cancellationToken) {
+        var updateResult = await _inboxMessageRepository.UpdateAsync(record, expectedStatus, cancellationToken);
+        if (updateResult.IsSuccess) {
+            return;
+        }
+
+        Logger.Error(
+            "更新 Inbox 消息状态失败，SourceSystem={SourceSystem}, MessageId={MessageId}, ExpectedStatus={ExpectedStatus}, Status={Status}, ErrorMessage={ErrorMessage}",
+            sourceSystem,
+            messageId,
+            expectedStatus,
             record.Status,
             updateResult.ErrorMessage);
         throw new InvalidOperationException(updateResult.ErrorMessage ?? "更新 Inbox 消息状态失败。");
+    }
+
+    /// <summary>
+    /// 为取消后的状态回写创建带超时保护的取消令牌源。
+    /// </summary>
+    /// <param name="cancellationToken">原始取消令牌。</param>
+    /// <returns>用于补偿回写的取消令牌源。</returns>
+    private static CancellationTokenSource CreateCancellationPersistenceTokenSource(CancellationToken cancellationToken) {
+        if (!cancellationToken.IsCancellationRequested) {
+            return CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        }
+
+        return new CancellationTokenSource(CancellationPersistenceTimeout);
     }
 }

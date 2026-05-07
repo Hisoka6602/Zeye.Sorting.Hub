@@ -204,6 +204,23 @@ public sealed class InboxMessage : IEntity<long> {
     }
 
     /// <summary>
+    /// 在已检测到真实消费结果时修复成功态。
+    /// 允许从 Pending 或 Processing 直接修复到成功态，避免记录长期停留在中间态。
+    /// </summary>
+    public void MarkRecoveredAsSucceeded() {
+        if (Status is not InboxMessageStatus.Pending and not InboxMessageStatus.Processing) {
+            throw new InvalidOperationException("仅待处理或处理中消息允许修复为成功态。");
+        }
+
+        var now = DateTime.Now;
+        Status = InboxMessageStatus.Succeeded;
+        FailureMessage = string.Empty;
+        LastAttemptedAt ??= now;
+        ProcessedAt = now;
+        UpdatedAt = now;
+    }
+
+    /// <summary>
     /// 标记消费失败。
     /// </summary>
     /// <param name="failureMessage">失败消息。</param>

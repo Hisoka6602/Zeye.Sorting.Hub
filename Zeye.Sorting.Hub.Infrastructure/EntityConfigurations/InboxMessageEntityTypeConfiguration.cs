@@ -21,7 +21,7 @@ public sealed class InboxMessageEntityTypeConfiguration : IEntityTypeConfigurati
         builder.Property(x => x.MessageId).HasMaxLength(InboxMessage.MaxMessageIdLength);
         builder.Property(x => x.EventType).HasMaxLength(InboxMessage.MaxEventTypeLength);
         builder.Property(x => x.FailureMessage).HasMaxLength(InboxMessage.MaxFailureMessageLength);
-        builder.Property(x => x.Status).HasConversion<int>();
+        builder.Property(x => x.Status).HasConversion<int>().IsConcurrencyToken();
 
         builder.HasIndex(x => new { x.SourceSystem, x.MessageId }).IsUnique();
         builder.HasIndex(x => new { x.Status, x.CreatedAt });
