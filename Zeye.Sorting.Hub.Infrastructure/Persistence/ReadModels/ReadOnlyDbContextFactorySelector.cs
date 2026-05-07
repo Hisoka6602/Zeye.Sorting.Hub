@@ -61,12 +61,12 @@ public sealed class ReadOnlyDbContextFactorySelector {
     /// <returns>数据库上下文。</returns>
     public async ValueTask<SortingHubDbContext> CreateDbContextAsync(CancellationToken cancellationToken) {
         var probe = await ProbeRouteAsync(cancellationToken);
-        if (!probe.IsEnabled || probe.IsFallbackToPrimary || !probe.IsReadOnlyAvailable) {
-            if (probe.IsEnabled && !probe.IsFallbackToPrimary && !probe.IsReadOnlyAvailable) {
-                Logger.Error("只读数据库路由拒绝访问，Summary={Summary}", probe.Summary);
-                throw new InvalidOperationException(probe.Summary);
-            }
+        if (probe.IsEnabled && !probe.IsFallbackToPrimary && !probe.IsReadOnlyAvailable) {
+            Logger.Error("只读数据库路由拒绝访问，Summary={Summary}", probe.Summary);
+            throw new InvalidOperationException(probe.Summary);
+        }
 
+        if (!probe.IsEnabled || probe.IsFallbackToPrimary) {
             return await _primaryDbContextFactory.CreateDbContextAsync(cancellationToken);
         }
 

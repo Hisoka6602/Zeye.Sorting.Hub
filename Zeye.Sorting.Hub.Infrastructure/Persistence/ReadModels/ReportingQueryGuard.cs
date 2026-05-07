@@ -41,7 +41,8 @@ public sealed class ReportingQueryGuard {
                 "报表查询预算校验失败：结束时间早于开始时间，RangeStartLocal={RangeStartLocal}, RangeEndLocal={RangeEndLocal}",
                 normalizedRangeStartLocal,
                 normalizedRangeEndLocal);
-            throw new InvalidOperationException("报表查询结束时间不能早于开始时间。");
+            throw new InvalidOperationException(
+                $"报表查询结束时间不能早于开始时间。RangeStartLocal={normalizedRangeStartLocal:yyyy-MM-dd HH:mm:ss}，RangeEndLocal={normalizedRangeEndLocal:yyyy-MM-dd HH:mm:ss}。");
         }
 
         var range = normalizedRangeEndLocal - normalizedRangeStartLocal;
@@ -81,7 +82,7 @@ public sealed class ReportingQueryGuard {
     /// <param name="parameterName">参数名称。</param>
     /// <returns>归一化后的本地时间。</returns>
     private static DateTime NormalizeLocalBoundary(DateTime value, string parameterName) {
-        if (value.Kind == DateTimeKind.Utc) {
+        if (value.Kind != DateTimeKind.Local && value.Kind != DateTimeKind.Unspecified) {
             Logger.Error("报表查询时间参数使用了 UTC 语义，ParameterName={ParameterName}", parameterName);
             throw new InvalidOperationException("报表查询时间参数必须使用本地时间语义。");
         }

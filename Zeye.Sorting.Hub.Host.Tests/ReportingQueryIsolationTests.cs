@@ -14,11 +14,21 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 /// </summary>
 public sealed class ReportingQueryIsolationTests {
     /// <summary>
+    /// 默认报表查询最大时间范围天数。
+    /// </summary>
+    private const int DefaultMaxReportTimeRangeDays = 31;
+
+    /// <summary>
+    /// 默认报表查询最大返回行数。
+    /// </summary>
+    private const int DefaultMaxReportRows = 10000;
+
+    /// <summary>
     /// 报表查询时间范围超限时应拒绝执行。
     /// </summary>
     [Fact]
     public void ReportingQueryGuard_WhenTimeRangeExceeded_ShouldThrow() {
-        var guard = CreateGuard(maxReportTimeRangeDays: 31, maxReportRows: 10000);
+        var guard = CreateGuard(maxReportTimeRangeDays: DefaultMaxReportTimeRangeDays, maxReportRows: DefaultMaxReportRows);
 
         Assert.Throws<InvalidOperationException>(() => guard.BuildBudget(
             rangeStartLocal: LocalTimeTestConstraint.CreateLocalTime(2026, 4, 1, 8, 0, 0),
@@ -125,8 +135,8 @@ public sealed class ReportingQueryIsolationTests {
             ["Persistence:Provider"] = "MySql",
             ["Persistence:ReadOnlyDatabase:IsEnabled"] = isEnabled.ToString(),
             ["Persistence:ReadOnlyDatabase:FallbackToPrimaryWhenUnavailable"] = fallbackToPrimaryWhenUnavailable.ToString(),
-            ["Persistence:ReadOnlyDatabase:MaxReportTimeRangeDays"] = "31",
-            ["Persistence:ReadOnlyDatabase:MaxReportRows"] = "10000"
+            ["Persistence:ReadOnlyDatabase:MaxReportTimeRangeDays"] = DefaultMaxReportTimeRangeDays.ToString(),
+            ["Persistence:ReadOnlyDatabase:MaxReportRows"] = DefaultMaxReportRows.ToString()
         };
         if (includeReadOnlyConnectionString) {
             settings["ConnectionStrings:MySqlReadOnly"] = "server=127.0.0.1;port=3306;database=zeye_sorting_hub_ro;uid=reader;pwd=<readonly-password>;SslMode=None;";
@@ -142,8 +152,8 @@ public sealed class ReportingQueryIsolationTests {
         services.AddSingleton<IOptions<ReadOnlyDatabaseOptions>>(Microsoft.Extensions.Options.Options.Create(new ReadOnlyDatabaseOptions {
             IsEnabled = isEnabled,
             FallbackToPrimaryWhenUnavailable = fallbackToPrimaryWhenUnavailable,
-            MaxReportTimeRangeDays = 31,
-            MaxReportRows = 10000
+            MaxReportTimeRangeDays = DefaultMaxReportTimeRangeDays,
+            MaxReportRows = DefaultMaxReportRows
         }));
         services.AddSingleton<ReportingQueryGuard>();
         services.AddSingleton<ReadOnlyDbContextFactorySelector>();
