@@ -245,7 +245,7 @@ public sealed class InboxMessage : IEntity<long> {
     /// <returns>允许重试返回 true。</returns>
     public bool CanRetry(int maxRetryCount) {
         if (maxRetryCount <= 0) {
-            throw new ArgumentOutOfRangeException(nameof(maxRetryCount), "最大重试次数必须大于 0。");
+            throw new ArgumentOutOfRangeException(nameof(maxRetryCount), "最大失败次数阈值必须大于 0。");
         }
 
         return Status == InboxMessageStatus.Failed && RetryCount < maxRetryCount && !IsExpired(DateTime.Now);

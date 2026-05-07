@@ -77,7 +77,7 @@ public sealed class InboxMessageGuardService {
         ArgumentNullException.ThrowIfNull(executeAsync);
         ArgumentNullException.ThrowIfNull(loadExistingAsync);
         if (maxRetryCount <= 0) {
-            throw new ArgumentOutOfRangeException(nameof(maxRetryCount), "maxRetryCount 必须大于 0。");
+            throw new ArgumentOutOfRangeException(nameof(maxRetryCount), "最大失败次数阈值必须大于 0。");
         }
 
         var normalizedSourceSystem = InboxMessage.NormalizeSourceSystem(sourceSystem);
@@ -370,7 +370,7 @@ public sealed class InboxMessageGuardService {
     /// 为取消后的状态回写创建带超时保护的取消令牌源。
     /// </summary>
     /// <param name="cancellationToken">原始取消令牌。</param>
-    /// <returns>用于补偿回写的取消令牌源；调用方在使用后必须释放。</returns>
+    /// <returns>用于补偿回写的取消令牌源；调用方应优先通过 <c>using</c> 语句确保自动释放。</returns>
     private static CancellationTokenSource CreateCancellationPersistenceTokenSource(CancellationToken cancellationToken) {
         if (!cancellationToken.IsCancellationRequested) {
             return CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

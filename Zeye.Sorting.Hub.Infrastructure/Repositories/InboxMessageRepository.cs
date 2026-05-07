@@ -115,7 +115,7 @@ public sealed class InboxMessageRepository : IInboxMessageRepository {
         int maxRetryCount,
         CancellationToken cancellationToken) {
         if (maxRetryCount <= 0) {
-            throw new ArgumentOutOfRangeException(nameof(maxRetryCount), "最大重试次数必须大于 0。");
+            throw new ArgumentOutOfRangeException(nameof(maxRetryCount), "最大失败次数阈值必须大于 0。");
         }
 
         try {
@@ -137,7 +137,13 @@ public sealed class InboxMessageRepository : IInboxMessageRepository {
                     return inboxMessage;
                 }
                 catch (DbUpdateConcurrencyException exception) {
-                    Logger.Warn(exception, "接管 Inbox 消息发生并发冲突，MessageId={MessageId}, Attempt={Attempt}", inboxMessage.Id, attempt + 1);
+                    Logger.Warn(
+                        exception,
+                        "接管 Inbox 消息发生并发冲突，RecordId={RecordId}, SourceSystem={SourceSystem}, MessageId={MessageId}, Attempt={Attempt}",
+                        inboxMessage.Id,
+                        sourceSystem,
+                        messageId,
+                        attempt + 1);
                     dbContext.ChangeTracker.Clear();
                 }
             }
