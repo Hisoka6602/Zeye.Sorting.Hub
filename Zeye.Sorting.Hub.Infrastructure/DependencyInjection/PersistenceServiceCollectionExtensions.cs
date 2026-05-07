@@ -205,6 +205,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             services.AddScoped<IParcelRepository, ParcelRepository>();
             services.AddScoped<IArchiveTaskRepository, ArchiveTaskRepository>();
             services.AddScoped<IIdempotencyRepository, IdempotencyRepository>();
+            services.AddScoped<IInboxMessageRepository, InboxMessageRepository>();
             services.AddScoped<IOutboxMessageRepository, OutboxMessageRepository>();
             services.AddScoped<WebRequestAuditLogRepository>();
             services.AddScoped<IWebRequestAuditLogRepository>(serviceProvider =>
