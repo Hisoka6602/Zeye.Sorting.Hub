@@ -59,7 +59,7 @@ public sealed class DataRetentionExecutor {
         }
 
         if (!options.DryRun) {
-            var failureRecord = DataRetentionAuditRecord.CreateFailed(options, "当前版本仅支持 dry-run 数据保留治理。真实清理需后续接入危险动作隔离器。") ;
+            var failureRecord = DataRetentionAuditRecord.CreateFailed(options, "当前版本仅支持 dry-run 数据保留治理。真实清理需后续接入危险动作隔离器。");
             SetLatestRecord(failureRecord);
             Logger.Error("数据保留治理配置非法：当前版本仅支持 dry-run，BatchSize={BatchSize}", options.BatchSize);
             return failureRecord;
