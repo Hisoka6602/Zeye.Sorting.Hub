@@ -20,6 +20,7 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Archiving;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Baseline;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Backup;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Diagnostics;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Idempotency;
@@ -109,6 +110,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             RegisterBufferedWriteServices(services, configuration);
             RegisterShardingGovernanceServices(services, configuration);
             RegisterDataArchiveServices(services, configuration);
+            RegisterBackupGovernanceServices(services, configuration);
             RegisterDataRetentionServices(services, configuration);
             RegisterBaselineDataServices(services, configuration);
             RegisterMigrationGovernanceServices(services);
@@ -166,6 +168,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 });
 
                 services.AddSingleton<IDatabaseDialect, MySqlDialect>();
+                services.TryAddSingleton<IBackupProvider, MySqlBackupProvider>();
                 services.AddSingleton<IShardingPhysicalTableProbe>(sp =>
                     (IShardingPhysicalTableProbe)sp.GetRequiredService<IDatabaseDialect>());
                 services.AddSingleton<IBatchShardingPhysicalTableProbe>(sp =>
@@ -195,6 +198,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 });
 
                 services.AddSingleton<IDatabaseDialect, SqlServerDialect>();
+                services.TryAddSingleton<IBackupProvider, SqlServerBackupProvider>();
                 services.AddSingleton<IShardingPhysicalTableProbe>(sp =>
                     (IShardingPhysicalTableProbe)sp.GetRequiredService<IDatabaseDialect>());
                 services.AddSingleton<IBatchShardingPhysicalTableProbe>(sp =>
@@ -367,6 +371,38 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         }
 
         /// <summary>
+        /// 注册备份治理能力。
+        /// </summary>
+        /// <param name="services">服务集合。</param>
+        /// <param name="configuration">配置根。</param>
+        private static void RegisterBackupGovernanceServices(IServiceCollection services, IConfiguration configuration) {
+            services.AddOptions<BackupOptions>()
+                .Configure(options => ApplyBackupOptions(options, configuration))
+                .Validate(
+                    static options => options.PollIntervalMinutes is >= BackupOptions.MinPollIntervalMinutes and <= BackupOptions.MaxPollIntervalMinutes,
+                    $"PollIntervalMinutes 必须在 {BackupOptions.MinPollIntervalMinutes}~{BackupOptions.MaxPollIntervalMinutes} 之间")
+                .Validate(
+                    static options => options.MaxAllowedBackupAgeHours is >= BackupOptions.MinMaxAllowedBackupAgeHours and <= BackupOptions.MaxMaxAllowedBackupAgeHours,
+                    $"MaxAllowedBackupAgeHours 必须在 {BackupOptions.MinMaxAllowedBackupAgeHours}~{BackupOptions.MaxMaxAllowedBackupAgeHours} 之间")
+                .Validate(
+                    static options => !string.IsNullOrWhiteSpace(options.BackupDirectory),
+                    "Persistence:Backup:BackupDirectory 不允许为空")
+                .Validate(
+                    static options => !string.IsNullOrWhiteSpace(options.BackupFilePrefix),
+                    "Persistence:Backup:BackupFilePrefix 不允许为空")
+                .Validate(
+                    static options => !string.IsNullOrWhiteSpace(options.RestoreRunbookDirectory),
+                    "Persistence:Backup:RestoreRunbookDirectory 不允许为空")
+                .Validate(
+                    static options => !string.IsNullOrWhiteSpace(options.DrillRecordDirectory),
+                    "Persistence:Backup:DrillRecordDirectory 不允许为空")
+                .ValidateOnStart();
+
+            services.TryAddSingleton<RestoreDrillPlanner>();
+            services.TryAddSingleton<BackupVerificationService>();
+        }
+
+        /// <summary>
         /// 注册数据保留治理能力。
         /// </summary>
         /// <param name="services">服务集合。</param>
@@ -419,6 +455,22 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             options.IsEnabled = ReadBooleanSetting(configuration, "Persistence:Archiving:IsEnabled", options.IsEnabled);
             options.WorkerPollIntervalSeconds = ReadIntSetting(configuration, "Persistence:Archiving:WorkerPollIntervalSeconds", options.WorkerPollIntervalSeconds);
             options.SampleItemLimit = ReadIntSetting(configuration, "Persistence:Archiving:SampleItemLimit", options.SampleItemLimit);
+        }
+
+        /// <summary>
+        /// 应用备份治理配置。
+        /// </summary>
+        /// <param name="options">配置实例。</param>
+        /// <param name="configuration">配置根。</param>
+        private static void ApplyBackupOptions(BackupOptions options, IConfiguration configuration) {
+            options.IsEnabled = ReadBooleanSetting(configuration, $"{BackupOptions.SectionPath}:IsEnabled", options.IsEnabled);
+            options.DryRun = ReadBooleanSetting(configuration, $"{BackupOptions.SectionPath}:DryRun", options.DryRun);
+            options.PollIntervalMinutes = ReadIntSetting(configuration, $"{BackupOptions.SectionPath}:PollIntervalMinutes", options.PollIntervalMinutes);
+            options.MaxAllowedBackupAgeHours = ReadIntSetting(configuration, $"{BackupOptions.SectionPath}:MaxAllowedBackupAgeHours", options.MaxAllowedBackupAgeHours);
+            options.BackupDirectory = ReadStringSetting(configuration, $"{BackupOptions.SectionPath}:BackupDirectory", options.BackupDirectory);
+            options.BackupFilePrefix = ReadStringSetting(configuration, $"{BackupOptions.SectionPath}:BackupFilePrefix", options.BackupFilePrefix);
+            options.RestoreRunbookDirectory = ReadStringSetting(configuration, $"{BackupOptions.SectionPath}:RestoreRunbookDirectory", options.RestoreRunbookDirectory);
+            options.DrillRecordDirectory = ReadStringSetting(configuration, $"{BackupOptions.SectionPath}:DrillRecordDirectory", options.DrillRecordDirectory);
         }
 
         /// <summary>
@@ -508,6 +560,20 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             return int.TryParse(configuration[key], out var parsedValue)
                 ? parsedValue
                 : fallbackValue;
+        }
+
+        /// <summary>
+        /// 读取字符串配置，无法解析时保留默认值。
+        /// </summary>
+        /// <param name="configuration">配置根。</param>
+        /// <param name="key">配置键。</param>
+        /// <param name="fallbackValue">回退值。</param>
+        /// <returns>字符串配置值。</returns>
+        private static string ReadStringSetting(IConfiguration configuration, string key, string fallbackValue) {
+            var value = configuration[key];
+            return string.IsNullOrWhiteSpace(value)
+                ? fallbackValue
+                : value.Trim();
         }
 
         /// <summary>

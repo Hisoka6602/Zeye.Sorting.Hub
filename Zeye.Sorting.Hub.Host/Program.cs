@@ -22,6 +22,7 @@ using Zeye.Sorting.Hub.Application.Services.Events;
 using Zeye.Sorting.Hub.Application.Services.Idempotency;
 using Zeye.Sorting.Hub.Application.Services.WriteBuffers;
 using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Backup;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Archiving;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.MigrationGovernance;
@@ -75,6 +76,7 @@ try {
     builder.Services.AddHostedService<ShardingPrebuildHostedService>();
     builder.Services.AddHostedService<ShardingInspectionHostedService>();
     builder.Services.AddHostedService<DataArchiveHostedService>();
+    builder.Services.AddHostedService<BackupHostedService>();
     builder.Services.AddHostedService<DataRetentionHostedService>();
     builder.Services.AddHostedService<BaselineDataValidationHostedService>();
     builder.Services.AddHostedService<QueryGovernanceReportHostedService>();
@@ -105,6 +107,9 @@ try {
             tags: ["ready"])
         .AddCheck<OutboxHealthCheck>(
             name: "outbox",
+            tags: ["ready"])
+        .AddCheck<BackupHealthCheck>(
+            name: "backup",
             tags: ["ready"])
         .AddCheck<DataRetentionHealthCheck>(
             name: "data-retention",
