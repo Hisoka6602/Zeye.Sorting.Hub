@@ -28,10 +28,10 @@ public sealed class ReportingQueryIsolationTests {
     /// 报表查询时间范围超限时应拒绝执行。
     /// </summary>
     [Fact]
-    public void ReportingQueryGuard_WhenTimeRangeExceeded_ShouldThrow() {
-        var guard = CreateGuard(maxReportTimeRangeDays: DefaultMaxReportTimeRangeDays, maxReportRows: DefaultMaxReportRows);
+    public void ReportingQueryBudgetPlanner_WhenTimeRangeExceeded_ShouldThrow() {
+        var planner = CreatePlanner(maxReportTimeRangeDays: DefaultMaxReportTimeRangeDays, maxReportRows: DefaultMaxReportRows);
 
-        Assert.Throws<InvalidOperationException>(() => guard.BuildBudget(
+        Assert.Throws<InvalidOperationException>(() => planner.BuildBudget(
             rangeStartLocal: LocalTimeTestConstraint.CreateLocalTime(2026, 4, 1, 8, 0, 0),
             rangeEndLocal: LocalTimeTestConstraint.CreateLocalTime(2026, 5, 5, 8, 0, 0),
             requestedRows: 100,
@@ -42,10 +42,10 @@ public sealed class ReportingQueryIsolationTests {
     /// 报表查询预算应裁剪行数并关闭总数统计。
     /// </summary>
     [Fact]
-    public void ReportingQueryGuard_WhenRequestedRowsExceedBudget_ShouldClampRowsAndDisableTotalCount() {
-        var guard = CreateGuard(maxReportTimeRangeDays: 31, maxReportRows: 5000);
+    public void ReportingQueryBudgetPlanner_WhenRequestedRowsExceedBudget_ShouldClampRowsAndDisableTotalCount() {
+        var planner = CreatePlanner(maxReportTimeRangeDays: 31, maxReportRows: 5000);
 
-        var budget = guard.BuildBudget(
+        var budget = planner.BuildBudget(
             rangeStartLocal: LocalTimeTestConstraint.CreateLocalTime(2026, 5, 1, 8, 0, 0),
             rangeEndLocal: LocalTimeTestConstraint.CreateLocalTime(2026, 5, 7, 8, 0, 0),
             requestedRows: 8000,
@@ -128,13 +128,13 @@ public sealed class ReportingQueryIsolationTests {
     }
 
     /// <summary>
-    /// 创建报表查询预算守卫。
+    /// 创建报表查询预算规划器。
     /// </summary>
     /// <param name="maxReportTimeRangeDays">最大时间范围天数。</param>
     /// <param name="maxReportRows">最大返回行数。</param>
-    /// <returns>预算守卫。</returns>
-    private static ReportingQueryGuard CreateGuard(int maxReportTimeRangeDays, int maxReportRows) {
-        return new ReportingQueryGuard(Microsoft.Extensions.Options.Options.Create(new ReadOnlyDatabaseOptions {
+    /// <returns>预算规划器。</returns>
+    private static ReportingQueryBudgetPlanner CreatePlanner(int maxReportTimeRangeDays, int maxReportRows) {
+        return new ReportingQueryBudgetPlanner(Microsoft.Extensions.Options.Options.Create(new ReadOnlyDatabaseOptions {
             MaxReportTimeRangeDays = maxReportTimeRangeDays,
             MaxReportRows = maxReportRows
         }));
@@ -177,7 +177,7 @@ public sealed class ReportingQueryIsolationTests {
         services.AddSingleton<SlowQueryAutoTuningPipeline>();
         services.AddSingleton<SlowQueryCommandInterceptor>();
         services.AddSingleton<MySqlSessionBootstrapConnectionInterceptor>();
-        services.AddSingleton<ReportingQueryGuard>();
+        services.AddSingleton<ReportingQueryBudgetPlanner>();
         services.AddSingleton<ReadOnlyDbContextFactorySelector>();
         services.AddSingleton<ReadOnlyDatabaseHealthCheck>();
         return services.BuildServiceProvider();

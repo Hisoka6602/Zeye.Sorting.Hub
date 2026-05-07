@@ -447,7 +447,7 @@
 │   │   │   ├── ReadOnlyDatabaseOptions.cs（只读数据库配置模型：定义开关、主库回退与报表预算上限）
 │   │   │   ├── ReadOnlyDbContextFactorySelector.cs（只读上下文选择器：负责只读副本探测、主库回退与拒绝路由决策）
 │   │   │   ├── ReadOnlyRouteProbeResult.cs（只读路由探测结果模型：记录配置状态、副本可用性、回退状态与当前路由目标）
-│   │   │   ├── ReportingQueryGuard.cs（报表查询预算守卫：统一校验时间范围、行数上限与总数返回策略）
+│   │   │   ├── ReportingQueryBudgetPlanner.cs（报表查询预算规划器：统一校验时间范围、行数上限与总数返回策略）
 │   │   │   └── ReportingQueryBudget.cs（报表查询预算快照：记录时间窗口、行数上限与总数返回开关）
 │   │   ├── Baseline（基线数据目录）
 │   │   │   ├── BaselineDataOptions.cs（基线数据配置模型：控制校验开关、可选种子入口与失败模式）
@@ -1025,7 +1025,7 @@
 - `ReadOnlyDatabaseOptions.cs`：只读数据库配置模型，定义只读路由开关、主库回退策略、报表时间范围预算与最大返回行数上限。
 - `ReadOnlyDbContextFactorySelector.cs`：报表查询上下文选择器，负责探测只读副本连接状态，并按配置在“只读副本 / 主库回退 / 直接拒绝”之间切换。
 - `ReadOnlyRouteProbeResult.cs`：只读路由探测结果模型，统一承载只读副本配置状态、可用性、主库回退状态与当前路由目标。
-- `ReportingQueryGuard.cs`：报表查询预算守卫，统一校验本地时间范围、限制最大返回行数并默认关闭总数统计。
+- `ReportingQueryBudgetPlanner.cs`：报表查询预算规划器，统一校验本地时间范围、限制最大返回行数并默认关闭总数统计。
 - `ReportingQueryBudget.cs`：报表查询预算快照，承载时间窗口、行数上限与总数返回策略。
 
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/Baseline/`：基线数据目录
@@ -1187,14 +1187,14 @@
 ## 本次更新内容
 
 - 继续实施《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》，执行前先核对现有台账，确认当前已完成到 PR-O，本次补齐 PR-P“报表查询隔离与只读副本预留”。
-- 新增 `ReadOnlyDatabaseOptions`、`ReadOnlyDbContextFactorySelector`、`ReportingQueryGuard` 与 `ReportingQueryBudget`，统一建立只读副本配置、报表查询预算、主库回退策略与直接拒绝边界。
+- 新增 `ReadOnlyDatabaseOptions`、`ReadOnlyDbContextFactorySelector`、`ReportingQueryBudgetPlanner` 与 `ReportingQueryBudget`，统一建立只读副本配置、报表查询预算、主库回退策略与直接拒绝边界。
 - 新增 `ReadOnlyDatabaseHealthCheck` 与默认 `Persistence:ReadOnlyDatabase` 配置，接入 `/health/ready` 只读副本可用性探针，并补充 `ConnectionStrings:MySqlReadOnly` / `ConnectionStrings:SqlServerReadOnly` 预留键。
 - 新增 `ReportingQueryIsolationTests.cs` 与 `检查台账/PR-长期数据库底座P-检查台账.md`，同步更新 README、更新记录与文件清单基线，保证下一 PR 可按断点继续推进。
 
 ## 后续可完善点
 
 - 下一切片可按《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》进入 PR-Q，补齐租户 / 站点 / 设备维度数据边界预留。
-- 后续可在报表查询底座上接入真实报表查询服务，但必须统一复用 `ReportingQueryGuard` 与 `ReadOnlyDbContextFactorySelector`，避免再次分散实现预算与路由逻辑。
+- 后续可在报表查询底座上接入真实报表查询服务，但必须统一复用 `ReportingQueryBudgetPlanner` 与 `ReadOnlyDbContextFactorySelector`，避免再次分散实现预算与路由逻辑。
 - 后续可将只读副本路由状态与备份/保留治理资产统一沉淀为只读查询接口或治理报表。
 
 ## Parcel API 发布门禁 / 使用边界说明

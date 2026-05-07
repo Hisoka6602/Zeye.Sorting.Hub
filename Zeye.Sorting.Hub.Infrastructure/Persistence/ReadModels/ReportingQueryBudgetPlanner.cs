@@ -4,9 +4,9 @@ using NLog;
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.ReadModels;
 
 /// <summary>
-/// 报表查询预算守卫。
+/// 报表查询预算规划器。
 /// </summary>
-public sealed class ReportingQueryGuard {
+public sealed class ReportingQueryBudgetPlanner {
     /// <summary>
     /// NLog 日志器。
     /// </summary>
@@ -18,10 +18,10 @@ public sealed class ReportingQueryGuard {
     private readonly ReadOnlyDatabaseOptions _options;
 
     /// <summary>
-    /// 初始化报表查询预算守卫。
+    /// 初始化报表查询预算规划器。
     /// </summary>
     /// <param name="options">只读数据库配置。</param>
-    public ReportingQueryGuard(IOptions<ReadOnlyDatabaseOptions> options) {
+    public ReportingQueryBudgetPlanner(IOptions<ReadOnlyDatabaseOptions> options) {
         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
     }
 
@@ -65,7 +65,7 @@ public sealed class ReportingQueryGuard {
         }
 
         if (includeTotalCount) {
-            Logger.Warn("报表查询请求总数统计已被预算守卫关闭。");
+            Logger.Warn("报表查询请求总数统计已被预算规划器关闭。");
         }
 
         return new ReportingQueryBudget(

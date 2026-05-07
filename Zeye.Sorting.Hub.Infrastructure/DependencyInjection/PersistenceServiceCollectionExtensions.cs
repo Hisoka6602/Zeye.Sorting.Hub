@@ -420,7 +420,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                     $"MaxReportRows 必须在 {ReadOnlyDatabaseOptions.MinMaxReportRows}~{ReadOnlyDatabaseOptions.MaxMaxReportRows} 之间")
                 .ValidateOnStart();
 
-            services.TryAddSingleton<ReportingQueryGuard>();
+            services.TryAddSingleton<ReportingQueryBudgetPlanner>();
             services.TryAddSingleton<ReadOnlyDbContextFactorySelector>();
         }
 

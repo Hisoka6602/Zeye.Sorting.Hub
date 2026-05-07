@@ -35,7 +35,7 @@
 - `Zeye.Sorting.Hub.Infrastructure/Persistence/ReadModels/ReadOnlyDatabaseOptions.cs`
 - `Zeye.Sorting.Hub.Infrastructure/Persistence/ReadModels/ReadOnlyDbContextFactorySelector.cs`
 - `Zeye.Sorting.Hub.Infrastructure/Persistence/ReadModels/ReadOnlyRouteProbeResult.cs`
-- `Zeye.Sorting.Hub.Infrastructure/Persistence/ReadModels/ReportingQueryGuard.cs`
+- `Zeye.Sorting.Hub.Infrastructure/Persistence/ReadModels/ReportingQueryBudgetPlanner.cs`
 - `Zeye.Sorting.Hub.Infrastructure/Persistence/ReadModels/ReportingQueryBudget.cs`
 - `Zeye.Sorting.Hub.Host/HealthChecks/ReadOnlyDatabaseHealthCheck.cs`
 - `Zeye.Sorting.Hub.Host.Tests/ReportingQueryIsolationTests.cs`
@@ -56,7 +56,7 @@
 
 ## 三、本次实现结果
 
-1. 新增 `ReadOnlyDatabaseOptions`、`ReadOnlyDbContextFactorySelector`、`ReadOnlyRouteProbeResult`、`ReportingQueryGuard` 与 `ReportingQueryBudget`，统一建立只读副本开关、主库回退策略、路由探测结果、报表时间范围预算、最大返回行数限制与默认关闭总数统计的基础能力。
+1. 新增 `ReadOnlyDatabaseOptions`、`ReadOnlyDbContextFactorySelector`、`ReadOnlyRouteProbeResult`、`ReportingQueryBudgetPlanner` 与 `ReportingQueryBudget`，统一建立只读副本开关、主库回退策略、路由探测结果、报表时间范围预算、最大返回行数限制与默认关闭总数统计的基础能力。
 2. 调整 `PersistenceServiceCollectionExtensions.cs`，新增 `RegisterReadOnlyDatabaseServices` 与 Provider 级 DbContext 选项复用入口，避免只读副本与主库链路重复拼装 EF Core 选项。
 3. 新增 `ReadOnlyDatabaseHealthCheck` 并调整 `Program.cs`，将只读副本可用性、主库回退状态与当前报表查询路由目标接入 `/health/ready`。
 4. 调整 `appsettings.json`，补齐 `Persistence:ReadOnlyDatabase` 默认配置与 `ConnectionStrings:MySqlReadOnly` / `ConnectionStrings:SqlServerReadOnly` 预留键，保持后续接入只读副本时无需再修改结构。
@@ -78,7 +78,7 @@
 ### 已完成
 - 只读数据库配置底座
 - 报表查询预算
-- 报表查询隔离守卫
+- 报表查询预算规划
 
 ### 保留能力
 - 当前已支持按 MySQL / SQL Server 配置独立只读副本连接字符串，并在只读副本缺失或不可用时按配置执行主库回退或直接拒绝。
@@ -87,8 +87,8 @@
 
 ### 未完成但已预留
 - PR-Q 租户 / 站点 / 设备维度数据边界预留
-- 后续可在当前底座上接入真实报表查询服务，但必须复用 `ReportingQueryGuard` 与 `ReadOnlyDbContextFactorySelector`
+- 后续可在当前底座上接入真实报表查询服务，但必须复用 `ReportingQueryBudgetPlanner` 与 `ReadOnlyDbContextFactorySelector`
 
 ### 下一 PR 入口
 - 下一 PR 从 PR-Q“租户 / 站点 / 设备维度数据边界预留”开始
-- 后续不要重复实现报表查询时间范围校验、只读副本回退与总数统计关闭逻辑，应复用 `ReportingQueryGuard` 与 `ReadOnlyDbContextFactorySelector`
+- 后续不要重复实现报表查询时间范围校验、只读副本回退与总数统计关闭逻辑，应复用 `ReportingQueryBudgetPlanner` 与 `ReadOnlyDbContextFactorySelector`

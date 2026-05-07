@@ -407,7 +407,7 @@
 "Zeye.Sorting.Hub.Infrastructure/Persistence/ReadModels/ReadOnlyDatabaseOptions.cs"
 "Zeye.Sorting.Hub.Infrastructure/Persistence/ReadModels/ReadOnlyDbContextFactorySelector.cs"
 "Zeye.Sorting.Hub.Infrastructure/Persistence/ReadModels/ReportingQueryBudget.cs"
-"Zeye.Sorting.Hub.Infrastructure/Persistence/ReadModels/ReportingQueryGuard.cs"
+"Zeye.Sorting.Hub.Infrastructure/Persistence/ReadModels/ReportingQueryBudgetPlanner.cs"
 "Zeye.Sorting.Hub.Infrastructure/Persistence/Retention/DataRetentionAuditRecord.cs"
 "Zeye.Sorting.Hub.Infrastructure/Persistence/Retention/DataRetentionExecutor.cs"
 "Zeye.Sorting.Hub.Infrastructure/Persistence/Retention/DataRetentionOptions.cs"
