@@ -25,6 +25,7 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.Diagnostics;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Idempotency;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.MigrationGovernance;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.QueryGovernance;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Retention;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 using Zeye.Sorting.Hub.Domain.Enums.Sharding;
 using Zeye.Sorting.Hub.Application.Services.WriteBuffers;
@@ -109,6 +110,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             RegisterShardingGovernanceServices(services, configuration);
             RegisterDataArchiveServices(services, configuration);
             RegisterBaselineDataServices(services, configuration);
+            RegisterDataRetentionServices(services, configuration);
             RegisterMigrationGovernanceServices(services);
             var provider = configuration["Persistence:Provider"];
             var commandTimeoutSeconds = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
@@ -251,6 +253,32 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             services.TryAddSingleton<MigrationRollbackScriptProvider>();
             services.TryAddSingleton<MigrationScriptArchiveService>();
             services.TryAddSingleton<MigrationGovernanceStateStore>();
+        }
+
+        /// <summary>
+        /// 注册数据保留治理能力。
+        /// </summary>
+        /// <param name="services">服务集合。</param>
+        /// <param name="configuration">配置根。</param>
+        private static void RegisterDataRetentionServices(IServiceCollection services, IConfiguration configuration) {
+            services.AddOptions<DataRetentionOptions>()
+                .Configure(options => DataRetentionOptions.Apply(options, configuration))
+                .Validate(
+                    static options => options.BatchSize is >= DataRetentionOptions.MinBatchSize and <= DataRetentionOptions.MaxBatchSize,
+                    $"Persistence:Retention:BatchSize 必须在 {DataRetentionOptions.MinBatchSize}~{DataRetentionOptions.MaxBatchSize} 之间")
+                .Validate(
+                    static options => options.ExecutionIntervalMinutes is >= DataRetentionOptions.MinExecutionIntervalMinutes and <= DataRetentionOptions.MaxExecutionIntervalMinutes,
+                    $"Persistence:Retention:ExecutionIntervalMinutes 必须在 {DataRetentionOptions.MinExecutionIntervalMinutes}~{DataRetentionOptions.MaxExecutionIntervalMinutes} 之间")
+                .Validate(
+                    static options => options.DryRun,
+                    "当前版本仅允许 Persistence:Retention:DryRun=true；真实清理需后续接入危险动作隔离器")
+                .Validate(
+                    static options => DataRetentionOptions.ArePoliciesValid(options.Policies),
+                    "Persistence:Retention:Policies 必须配置唯一且受支持的策略名称，并且 RetentionDays 必须在 1~3650 之间")
+                .ValidateOnStart();
+
+            services.TryAddSingleton<DataRetentionPlanner>();
+            services.TryAddSingleton<DataRetentionExecutor>();
         }
 
         /// <summary>

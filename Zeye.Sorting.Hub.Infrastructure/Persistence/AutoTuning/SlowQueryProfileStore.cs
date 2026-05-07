@@ -188,6 +188,27 @@ public sealed class SlowQueryProfileStore : ISlowQueryProfileReader {
     }
 
     /// <summary>
+    /// 获取达到保留截止时间的慢查询画像候选数量。
+    /// </summary>
+    /// <param name="expireBeforeLocal">保留截止时间（本地时间）。</param>
+    /// <param name="maxCount">最大返回数量。</param>
+    /// <returns>候选数量。</returns>
+    public int GetRetentionCandidateCount(DateTime expireBeforeLocal, int maxCount) {
+        if (maxCount <= 0) {
+            throw new ArgumentOutOfRangeException(nameof(maxCount), "maxCount 必须大于 0。");
+        }
+
+        lock (_sync) {
+            TrimExpiredEntries(DateTime.Now);
+            return _lastSeenAtLocalByFingerprint
+                .Where(static pair => true)
+                .Where(pair => pair.Value <= expireBeforeLocal)
+                .Take(maxCount)
+                .Count();
+        }
+    }
+
+    /// <summary>
     /// 获取或创建样本队列。
     /// </summary>
     /// <param name="fingerprint">慢查询指纹。</param>

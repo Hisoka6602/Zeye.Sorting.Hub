@@ -25,6 +25,7 @@ using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Archiving;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.MigrationGovernance;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Retention;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.WriteBuffering;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -77,6 +78,7 @@ try {
     builder.Services.AddHostedService<BaselineDataValidationHostedService>();
     builder.Services.AddHostedService<QueryGovernanceReportHostedService>();
     builder.Services.AddHostedService<OutboxDispatchHostedService>();
+    builder.Services.AddHostedService<DataRetentionHostedService>();
     builder.Services.AddSingleton<MigrationGovernanceHostedService>();
     builder.Services.AddHostedService(static serviceProvider =>
         serviceProvider.GetRequiredService<MigrationGovernanceHostedService>());
@@ -106,6 +108,9 @@ try {
             tags: ["ready"])
         .AddCheck<MigrationGovernanceHealthCheck>(
             name: "migration-governance",
+            tags: ["ready"])
+        .AddCheck<DataRetentionHealthCheck>(
+            name: "data-retention",
             tags: ["ready"])
         .AddCheck<ShardingGovernanceHealthCheck>(
             name: "sharding-governance",
