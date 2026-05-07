@@ -30,6 +30,11 @@ Zeye.Sorting.Hub.Application/Services/DataGovernance/CreateArchiveTaskCommandSer
 Zeye.Sorting.Hub.Application/Services/DataGovernance/GetArchiveTaskPagedQueryService.cs
 Zeye.Sorting.Hub.Application/Services/DataGovernance/RetryArchiveTaskCommandService.cs
 Zeye.Sorting.Hub.Application/Services/Diagnostics/GetSlowQueryProfileQueryService.cs
+Zeye.Sorting.Hub.Application/Services/Events/AppendOutboxMessageCommandService.cs
+Zeye.Sorting.Hub.Application/Services/Events/DispatchOutboxMessageCommandService.cs
+Zeye.Sorting.Hub.Application/Services/Events/GetOutboxMessagePagedQueryService.cs
+Zeye.Sorting.Hub.Application/Services/Events/OutboxMessageContractMapper.cs
+Zeye.Sorting.Hub.Application/Services/Idempotency/IdempotencyGuardException.cs
 Zeye.Sorting.Hub.Application/Services/Idempotency/IdempotencyGuardService.cs
 Zeye.Sorting.Hub.Application/Services/Parcels/CleanupExpiredParcelsCommandService.cs
 Zeye.Sorting.Hub.Application/Services/Parcels/CreateParcelCommandService.cs
@@ -58,6 +63,10 @@ Zeye.Sorting.Hub.Contracts/Models/DataGovernance/ArchiveTaskListResponse.cs
 Zeye.Sorting.Hub.Contracts/Models/DataGovernance/ArchiveTaskResponse.cs
 Zeye.Sorting.Hub.Contracts/Models/Diagnostics/SlowQueryProfileListResponse.cs
 Zeye.Sorting.Hub.Contracts/Models/Diagnostics/SlowQueryProfileResponse.cs
+Zeye.Sorting.Hub.Contracts/Models/Events/OutboxMessageCreateRequest.cs
+Zeye.Sorting.Hub.Contracts/Models/Events/OutboxMessageListRequest.cs
+Zeye.Sorting.Hub.Contracts/Models/Events/OutboxMessageListResponse.cs
+Zeye.Sorting.Hub.Contracts/Models/Events/OutboxMessageResponse.cs
 Zeye.Sorting.Hub.Contracts/Models/Parcels/Admin/ParcelBatchBufferedCreateRequest.cs
 Zeye.Sorting.Hub.Contracts/Models/Parcels/Admin/ParcelBatchBufferedCreateResponse.cs
 Zeye.Sorting.Hub.Contracts/Models/Parcels/Admin/ParcelCleanupExpiredRequest.cs
@@ -93,6 +102,7 @@ Zeye.Sorting.Hub.Domain/Abstractions/IParcelSummaryView.cs
 Zeye.Sorting.Hub.Domain/Aggregates/AuditLogs/WebRequests/WebRequestAuditLog.cs
 Zeye.Sorting.Hub.Domain/Aggregates/AuditLogs/WebRequests/WebRequestAuditLogDetail.cs
 Zeye.Sorting.Hub.Domain/Aggregates/DataGovernance/ArchiveTask.cs
+Zeye.Sorting.Hub.Domain/Aggregates/Events/OutboxMessage.cs
 Zeye.Sorting.Hub.Domain/Aggregates/Idempotency/IdempotencyRecord.cs
 Zeye.Sorting.Hub.Domain/Aggregates/Parcels/Parcel.cs
 Zeye.Sorting.Hub.Domain/Aggregates/Parcels/ValueObjects/ApiRequestInfo.cs
@@ -124,6 +134,7 @@ Zeye.Sorting.Hub.Domain/Enums/BarCodeType.cs
 Zeye.Sorting.Hub.Domain/Enums/CommandDirection.cs
 Zeye.Sorting.Hub.Domain/Enums/DataGovernance/ArchiveTaskStatus.cs
 Zeye.Sorting.Hub.Domain/Enums/DataGovernance/ArchiveTaskType.cs
+Zeye.Sorting.Hub.Domain/Enums/Events/OutboxMessageStatus.cs
 Zeye.Sorting.Hub.Domain/Enums/Idempotency/IdempotencyRecordStatus.cs
 Zeye.Sorting.Hub.Domain/Enums/ImageCaptureType.cs
 Zeye.Sorting.Hub.Domain/Enums/ImageType.cs
@@ -147,6 +158,7 @@ Zeye.Sorting.Hub.Domain/Options/LogCleanup/LogCleanupSettings.cs
 Zeye.Sorting.Hub.Domain/Primitives/AuditableEntity.cs
 Zeye.Sorting.Hub.Domain/Repositories/IArchiveTaskRepository.cs
 Zeye.Sorting.Hub.Domain/Repositories/IIdempotencyRepository.cs
+Zeye.Sorting.Hub.Domain/Repositories/IOutboxMessageRepository.cs
 Zeye.Sorting.Hub.Domain/Repositories/IParcelRepository.cs
 Zeye.Sorting.Hub.Domain/Repositories/IWebRequestAuditLogQueryRepository.cs
 Zeye.Sorting.Hub.Domain/Repositories/IWebRequestAuditLogRepository.cs
@@ -156,6 +168,7 @@ Zeye.Sorting.Hub.Domain/Repositories/Models/Paging/CursorPageRequest.cs
 Zeye.Sorting.Hub.Domain/Repositories/Models/Paging/CursorPageResult.cs
 Zeye.Sorting.Hub.Domain/Repositories/Models/Paging/PageRequest.cs
 Zeye.Sorting.Hub.Domain/Repositories/Models/Paging/PageResult.cs
+Zeye.Sorting.Hub.Domain/Repositories/Models/ReadModels/OutboxMessageHealthSnapshotReadModel.cs
 Zeye.Sorting.Hub.Domain/Repositories/Models/ReadModels/ParcelSummaryReadModel.cs
 Zeye.Sorting.Hub.Domain/Repositories/Models/ReadModels/WebRequestAuditLogDetailReadModel.cs
 Zeye.Sorting.Hub.Domain/Repositories/Models/ReadModels/WebRequestAuditLogSummaryReadModel.cs
@@ -190,6 +203,7 @@ Zeye.Sorting.Hub.Host.Tests/MissingIndexShardingPhysicalTableProbe.cs
 Zeye.Sorting.Hub.Host.Tests/NullScope.cs
 Zeye.Sorting.Hub.Host.Tests/ObservabilityEntry.cs
 Zeye.Sorting.Hub.Host.Tests/OptionsMonitorSubscription.cs
+Zeye.Sorting.Hub.Host.Tests/OutboxMessageTests.cs
 Zeye.Sorting.Hub.Host.Tests/ParcelAdminApiTests.cs
 Zeye.Sorting.Hub.Host.Tests/ParcelBufferedWriteTests.cs
 Zeye.Sorting.Hub.Host.Tests/ParcelCursorQueryTests.cs
@@ -220,6 +234,7 @@ Zeye.Sorting.Hub.Host/HealthChecks/DatabaseConnectionDetailedHealthCheck.cs
 Zeye.Sorting.Hub.Host/HealthChecks/DatabaseReadinessHealthCheck.cs
 Zeye.Sorting.Hub.Host/HealthChecks/HealthCheckResponseWriter.cs
 Zeye.Sorting.Hub.Host/HealthChecks/MigrationGovernanceHealthCheck.cs
+Zeye.Sorting.Hub.Host/HealthChecks/OutboxHealthCheck.cs
 Zeye.Sorting.Hub.Host/HealthChecks/ShardingGovernanceHealthCheck.cs
 Zeye.Sorting.Hub.Host/HostedServices/AutoTuningLoggerObservability.cs
 Zeye.Sorting.Hub.Host/HostedServices/BaselineDataValidationHostedService.cs
@@ -231,6 +246,7 @@ Zeye.Sorting.Hub.Host/HostedServices/DevelopmentBrowserLauncherHostedService.cs
 Zeye.Sorting.Hub.Host/HostedServices/EvidenceContext.cs
 Zeye.Sorting.Hub.Host/HostedServices/LogCleanupService.cs
 Zeye.Sorting.Hub.Host/HostedServices/MigrationGovernanceHostedService.cs
+Zeye.Sorting.Hub.Host/HostedServices/OutboxDispatchHostedService.cs
 Zeye.Sorting.Hub.Host/HostedServices/ParcelBatchWriteFlushHostedService.cs
 Zeye.Sorting.Hub.Host/HostedServices/PendingRollbackAction.cs
 Zeye.Sorting.Hub.Host/HostedServices/PerDayGovernanceGroup.cs
@@ -277,6 +293,7 @@ Zeye.Sorting.Hub.Infrastructure/DependencyInjection/PersistenceServiceCollection
 Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/ArchiveTaskEntityTypeConfiguration.cs
 Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/BagInfoEntityTypeConfiguration.cs
 Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/IdempotencyRecordEntityTypeConfiguration.cs
+Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/OutboxMessageEntityTypeConfiguration.cs
 Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/ParcelEntityTypeConfiguration.cs
 Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/WebRequestAuditLogDetailEntityTypeConfiguration.cs
 Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/WebRequestAuditLogEntityTypeConfiguration.cs
@@ -348,6 +365,8 @@ Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/20260324094539_RebuildBas
 Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/20260324094539_RebuildBaseline20260324.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/20260506075656_AddIdempotencyRecordSupport.Designer.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/20260506075656_AddIdempotencyRecordSupport.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/20260506175929_AddOutboxMessageSupport.Designer.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/20260506175929_AddOutboxMessageSupport.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/AddArchiveTaskDryRunSupport.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/AddArchiveTaskDryRunSupportDesigner.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/MigrationSchemaResolver.cs
@@ -386,6 +405,7 @@ Zeye.Sorting.Hub.Infrastructure/Persistence/WriteBuffering/ParcelBufferedWriteSe
 Zeye.Sorting.Hub.Infrastructure/Repositories/ArchiveTaskRepository.cs
 Zeye.Sorting.Hub.Infrastructure/Repositories/IdempotencyRepository.cs
 Zeye.Sorting.Hub.Infrastructure/Repositories/MemoryCacheRepositoryBase.cs
+Zeye.Sorting.Hub.Infrastructure/Repositories/OutboxMessageRepository.cs
 Zeye.Sorting.Hub.Infrastructure/Repositories/ParcelCursorQueryExtensions.cs
 Zeye.Sorting.Hub.Infrastructure/Repositories/ParcelRepository.cs
 Zeye.Sorting.Hub.Infrastructure/Repositories/RepositoryBase.cs

@@ -12,6 +12,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using NLog;
 using Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests;
 using Zeye.Sorting.Hub.Domain.Aggregates.DataGovernance;
+using Zeye.Sorting.Hub.Domain.Aggregates.Events;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects;
 using Zeye.Sorting.Hub.Domain.Repositories;
@@ -204,6 +205,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             services.AddScoped<IParcelRepository, ParcelRepository>();
             services.AddScoped<IArchiveTaskRepository, ArchiveTaskRepository>();
             services.AddScoped<IIdempotencyRepository, IdempotencyRepository>();
+            services.AddScoped<IOutboxMessageRepository, OutboxMessageRepository>();
             services.AddScoped<WebRequestAuditLogRepository>();
             services.AddScoped<IWebRequestAuditLogRepository>(serviceProvider =>
                 serviceProvider.GetRequiredService<WebRequestAuditLogRepository>());
