@@ -1,6 +1,7 @@
 using System.Text.Json;
 using NLog;
 using Zeye.Sorting.Hub.Domain.Repositories;
+using Zeye.Sorting.Hub.SharedKernel.Utilities;
 
 namespace Zeye.Sorting.Hub.Application.Services.Events;
 
@@ -55,20 +56,23 @@ public sealed class DispatchOutboxMessageCommandService {
             // 步骤 2：成功则推进到 Succeeded；失败则推进到 Failed/DeadLettered，保证无人值守场景可恢复。
             // 步骤 3：每条消息的终态都必须回写数据库，避免长期卡在 Processing。
             try {
+                var safeEventType = LineBreakNormalizer.ReplaceLineBreaksToSpace(outboxMessage.EventType);
                 using var payloadDocument = JsonDocument.Parse(outboxMessage.PayloadJson);
                 Logger.Info(
                     "Outbox 模拟派发成功，MessageId={MessageId}, EventType={EventType}, PayloadKind={PayloadKind}",
                     outboxMessage.Id,
-                    outboxMessage.EventType,
+                    safeEventType,
                     payloadDocument.RootElement.ValueKind);
                 outboxMessage.MarkDispatchSucceeded();
             }
             catch (JsonException exception) {
-                Logger.Error(exception, "Outbox 消息载荷解析失败，MessageId={MessageId}, EventType={EventType}", outboxMessage.Id, outboxMessage.EventType);
+                var safeEventType = LineBreakNormalizer.ReplaceLineBreaksToSpace(outboxMessage.EventType);
+                Logger.Error(exception, "Outbox 消息载荷解析失败，MessageId={MessageId}, EventType={EventType}", outboxMessage.Id, safeEventType);
                 outboxMessage.MarkDispatchFailed("Outbox 载荷不是合法 JSON。", maxRetryCount);
             }
             catch (Exception exception) {
-                Logger.Error(exception, "Outbox 模拟派发失败，MessageId={MessageId}, EventType={EventType}", outboxMessage.Id, outboxMessage.EventType);
+                var safeEventType = LineBreakNormalizer.ReplaceLineBreaksToSpace(outboxMessage.EventType);
+                Logger.Error(exception, "Outbox 模拟派发失败，MessageId={MessageId}, EventType={EventType}", outboxMessage.Id, safeEventType);
                 outboxMessage.MarkDispatchFailed("Outbox 模拟派发失败。", maxRetryCount);
             }
 

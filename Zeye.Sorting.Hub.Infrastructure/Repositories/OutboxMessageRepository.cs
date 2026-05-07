@@ -7,6 +7,7 @@ using Zeye.Sorting.Hub.Domain.Repositories.Models.Paging;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.ReadModels;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.Results;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
+using Zeye.Sorting.Hub.SharedKernel.Utilities;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Repositories;
 
@@ -19,6 +20,12 @@ public sealed class OutboxMessageRepository : RepositoryBase<OutboxMessage, Sort
     /// 当前固定为 8 次，兼顾常规并发冲突退避与避免后台线程长时间自旋。
     /// </summary>
     private const int MaxAcquireAttempts = 8;
+
+    /// <summary>
+    /// Processing 状态超时回收阈值。
+    /// 超过该窗口仍未完成的消息会被视为卡死并尝试自动自愈。
+    /// </summary>
+    private static readonly TimeSpan ProcessingRecoveryTimeout = TimeSpan.FromMinutes(5);
 
     /// <summary>
     /// 初始化 Outbox 消息仓储。
@@ -39,7 +46,7 @@ public sealed class OutboxMessageRepository : RepositoryBase<OutboxMessage, Sort
             return RepositoryResult.Fail("Outbox 消息不能为空。");
         }
 
-        var safeEventType = SanitizeForLog(outboxMessage.EventType);
+        var safeEventType = LineBreakNormalizer.ReplaceLineBreaksToSpace(outboxMessage.EventType);
         try {
             await using var dbContext = await ContextFactory.CreateDbContextAsync(cancellationToken);
             await dbContext.Set<OutboxMessage>().AddAsync(outboxMessage, cancellationToken);
@@ -130,10 +137,14 @@ public sealed class OutboxMessageRepository : RepositoryBase<OutboxMessage, Sort
 
         try {
             await using var dbContext = await ContextFactory.CreateDbContextAsync(cancellationToken);
+            var processingRecoveryCutoff = DateTime.Now - ProcessingRecoveryTimeout;
             for (var attempt = 0; attempt < MaxAcquireAttempts; attempt++) {
                 var nextMessage = await dbContext.Set<OutboxMessage>()
                     .Where(x => x.Status == OutboxMessageStatus.Pending
-                                || (x.Status == OutboxMessageStatus.Failed && x.RetryCount < maxRetryCount))
+                                || (x.Status == OutboxMessageStatus.Failed && x.RetryCount < maxRetryCount)
+                                || (x.Status == OutboxMessageStatus.Processing
+                                    && x.RetryCount < maxRetryCount
+                                    && (x.LastAttemptedAt ?? x.UpdatedAt) <= processingRecoveryCutoff))
                     .OrderBy(x => x.CreatedAt)
                     .ThenBy(x => x.Id)
                     .FirstOrDefaultAsync(cancellationToken);
@@ -142,8 +153,19 @@ public sealed class OutboxMessageRepository : RepositoryBase<OutboxMessage, Sort
                 }
 
                 try {
-                    nextMessage.MarkProcessing();
-                    await dbContext.SaveChangesAsync(cancellationToken);
+                    if (nextMessage.Status == OutboxMessageStatus.Processing) {
+                        var canContinueDispatch = nextMessage.RecoverTimedOutProcessing(maxRetryCount);
+                        await dbContext.SaveChangesAsync(cancellationToken);
+                        if (!canContinueDispatch) {
+                            dbContext.ChangeTracker.Clear();
+                            continue;
+                        }
+                    }
+                    else {
+                        nextMessage.MarkProcessing();
+                        await dbContext.SaveChangesAsync(cancellationToken);
+                    }
+
                     return nextMessage;
                 }
                 catch (DbUpdateConcurrencyException exception) {
@@ -169,25 +191,29 @@ public sealed class OutboxMessageRepository : RepositoryBase<OutboxMessage, Sort
     public async Task<OutboxMessageHealthSnapshotReadModel> GetHealthSnapshotAsync(CancellationToken cancellationToken) {
         try {
             await using var dbContext = await ContextFactory.CreateDbContextAsync(cancellationToken);
-            var query = dbContext.Set<OutboxMessage>().AsNoTracking();
-            var pendingCount = await query.LongCountAsync(x => x.Status == OutboxMessageStatus.Pending, cancellationToken);
-            var processingCount = await query.LongCountAsync(x => x.Status == OutboxMessageStatus.Processing, cancellationToken);
-            var failedCount = await query.LongCountAsync(x => x.Status == OutboxMessageStatus.Failed, cancellationToken);
-            var deadLetteredCount = await query.LongCountAsync(x => x.Status == OutboxMessageStatus.DeadLettered, cancellationToken);
-            var oldestActiveCreatedAt = await query
-                .Where(x => x.Status == OutboxMessageStatus.Pending
-                            || x.Status == OutboxMessageStatus.Processing
-                            || x.Status == OutboxMessageStatus.Failed)
-                .OrderBy(x => x.CreatedAt)
-                .Select(x => (DateTime?)x.CreatedAt)
+            var aggregate = await dbContext.Set<OutboxMessage>()
+                .AsNoTracking()
+                .GroupBy(static _ => 1)
+                .Select(group => new {
+                    PendingCount = group.LongCount(x => x.Status == OutboxMessageStatus.Pending),
+                    ProcessingCount = group.LongCount(x => x.Status == OutboxMessageStatus.Processing),
+                    FailedCount = group.LongCount(x => x.Status == OutboxMessageStatus.Failed),
+                    DeadLetteredCount = group.LongCount(x => x.Status == OutboxMessageStatus.DeadLettered),
+                    OldestActiveCreatedAt = group
+                        .Where(x => x.Status == OutboxMessageStatus.Pending
+                                    || x.Status == OutboxMessageStatus.Processing
+                                    || x.Status == OutboxMessageStatus.Failed)
+                        .Select(x => (DateTime?)x.CreatedAt)
+                        .Min()
+                })
                 .FirstOrDefaultAsync(cancellationToken);
 
             return new OutboxMessageHealthSnapshotReadModel {
-                PendingCount = pendingCount,
-                ProcessingCount = processingCount,
-                FailedCount = failedCount,
-                DeadLetteredCount = deadLetteredCount,
-                OldestActiveCreatedAt = oldestActiveCreatedAt
+                PendingCount = aggregate?.PendingCount ?? 0,
+                ProcessingCount = aggregate?.ProcessingCount ?? 0,
+                FailedCount = aggregate?.FailedCount ?? 0,
+                DeadLetteredCount = aggregate?.DeadLetteredCount ?? 0,
+                OldestActiveCreatedAt = aggregate?.OldestActiveCreatedAt
             };
         }
         catch (Exception exception) {
@@ -229,14 +255,4 @@ public sealed class OutboxMessageRepository : RepositoryBase<OutboxMessage, Sort
         }
     }
 
-    /// <summary>
-    /// 清理日志字段中的换行符，避免日志注入。
-    /// </summary>
-    /// <param name="value">原始值。</param>
-    /// <returns>单行日志值。</returns>
-    private static string SanitizeForLog(string value) {
-        return string.IsNullOrEmpty(value)
-            ? string.Empty
-            : value.Replace('\r', ' ').Replace('\n', ' ');
-    }
 }

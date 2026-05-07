@@ -45,6 +45,22 @@ public sealed class OutboxMessageTests {
     }
 
     /// <summary>
+    /// 验证场景：事件类型包含换行符时返回 400，避免日志与输出污染。
+    /// </summary>
+    [Fact]
+    public async Task AppendOutboxMessage_WithLineBreakEventType_ShouldReturnBadRequest() {
+        await using var app = await BuildTestAppAsync();
+        using var client = app.GetTestClient();
+
+        using var response = await client.PostAsJsonAsync("/api/data-governance/outbox-messages", new OutboxMessageCreateRequest {
+            EventType = "Parcel\r\nCreated",
+            PayloadJson = "{\"parcelId\":1004}"
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    /// <summary>
     /// 验证场景：分页接口可以返回刚创建的 Outbox 消息。
     /// </summary>
     [Fact]
@@ -85,6 +101,38 @@ public sealed class OutboxMessageTests {
         Assert.Equal(OutboxMessageStatus.Succeeded, reloaded!.Status);
         Assert.NotNull(reloaded.CompletedAt);
         LocalTimeTestConstraint.AssertIsLocalTime(reloaded.CompletedAt!.Value);
+    }
+
+    /// <summary>
+    /// 验证场景：处理中超时的消息会被自动回收并继续派发，避免长期卡死。
+    /// </summary>
+    [Fact]
+    public async Task OutboxDispatchHostedService_WhenProcessingTimedOut_ShouldRecoverAndSucceed() {
+        await using var app = await BuildTestAppAsync();
+        using var scope = app.Services.CreateScope();
+        var repository = scope.ServiceProvider.GetRequiredService<IOutboxMessageRepository>();
+        var dbContextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<SortingHubDbContext>>();
+        var hostedService = scope.ServiceProvider.GetRequiredService<OutboxDispatchHostedService>();
+        var message = OutboxMessage.CreatePending("ParcelCreated", "{\"parcelId\":1005}");
+        await repository.AddAsync(message, CancellationToken.None);
+        var acquired = await repository.TryAcquireNextDispatchableAsync(2, CancellationToken.None);
+        Assert.NotNull(acquired);
+
+        await using (var dbContext = await dbContextFactory.CreateDbContextAsync()) {
+            var persistedMessage = await dbContext.Set<OutboxMessage>().SingleAsync(x => x.Id == message.Id);
+            var staleAttemptedAt = DateTime.Now.AddMinutes(-10);
+            dbContext.Entry(persistedMessage).Property(x => x.LastAttemptedAt).CurrentValue = staleAttemptedAt;
+            dbContext.Entry(persistedMessage).Property(x => x.UpdatedAt).CurrentValue = staleAttemptedAt;
+            await dbContext.SaveChangesAsync();
+        }
+
+        var handledCount = await hostedService.RunOnceAsync(CancellationToken.None);
+        var reloaded = await repository.GetByIdAsync(message.Id, CancellationToken.None);
+
+        Assert.Equal(1, handledCount);
+        Assert.NotNull(reloaded);
+        Assert.Equal(OutboxMessageStatus.Succeeded, reloaded!.Status);
+        Assert.Equal(1, reloaded.RetryCount);
     }
 
     /// <summary>

@@ -3,6 +3,7 @@ using NLog;
 using Zeye.Sorting.Hub.Contracts.Models.Events;
 using Zeye.Sorting.Hub.Domain.Aggregates.Events;
 using Zeye.Sorting.Hub.Domain.Repositories;
+using Zeye.Sorting.Hub.SharedKernel.Utilities;
 
 namespace Zeye.Sorting.Hub.Application.Services.Events;
 
@@ -37,9 +38,9 @@ public sealed class AppendOutboxMessageCommandService {
     public async Task<OutboxMessageResponse> ExecuteAsync(OutboxMessageCreateRequest request, CancellationToken cancellationToken) {
         ArgumentNullException.ThrowIfNull(request);
 
-        var normalizedEventType = NormalizeEventType(request.EventType);
+        var normalizedEventType = OutboxMessage.NormalizeEventType(request.EventType);
         var normalizedPayloadJson = NormalizePayloadJson(request.PayloadJson);
-        var safeEventType = SanitizeForLog(normalizedEventType);
+        var safeEventType = LineBreakNormalizer.ReplaceLineBreaksToSpace(normalizedEventType);
         var outboxMessage = OutboxMessage.CreatePending(normalizedEventType, normalizedPayloadJson);
 
         try {
@@ -54,19 +55,6 @@ public sealed class AppendOutboxMessageCommandService {
             Logger.Error(exception, "追加 Outbox 消息失败，EventType={EventType}", safeEventType);
             throw;
         }
-    }
-
-    /// <summary>
-    /// 规范化事件类型。
-    /// </summary>
-    /// <param name="eventType">事件类型。</param>
-    /// <returns>规范化后的事件类型。</returns>
-    private static string NormalizeEventType(string eventType) {
-        if (string.IsNullOrWhiteSpace(eventType)) {
-            throw new ArgumentException("eventType 不能为空。", nameof(eventType));
-        }
-
-        return eventType.Trim();
     }
 
     /// <summary>
@@ -87,16 +75,5 @@ public sealed class AppendOutboxMessageCommandService {
         catch (JsonException exception) {
             throw new ArgumentException("payloadJson 必须为合法 JSON。", nameof(payloadJson), exception);
         }
-    }
-
-    /// <summary>
-    /// 清理日志字段中的换行符，避免日志注入。
-    /// </summary>
-    /// <param name="value">原始值。</param>
-    /// <returns>单行日志值。</returns>
-    private static string SanitizeForLog(string value) {
-        return string.IsNullOrEmpty(value)
-            ? string.Empty
-            : value.Replace('\r', ' ').Replace('\n', ' ');
     }
 }

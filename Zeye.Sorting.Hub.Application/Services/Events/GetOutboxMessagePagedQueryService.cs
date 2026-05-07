@@ -4,6 +4,7 @@ using Zeye.Sorting.Hub.Domain.Enums.Events;
 using Zeye.Sorting.Hub.Domain.Repositories;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.Paging;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.ReadModels;
+using Zeye.Sorting.Hub.SharedKernel.Utilities;
 
 namespace Zeye.Sorting.Hub.Application.Services.Events;
 
@@ -48,7 +49,7 @@ public sealed class GetOutboxMessagePagedQueryService {
         var status = ParseOptionalStatus(request.Status);
         var safeStatus = string.IsNullOrWhiteSpace(request.Status)
             ? string.Empty
-            : SanitizeForLog(request.Status.Trim());
+            : LineBreakNormalizer.ReplaceLineBreaksToSpace(request.Status.Trim());
         try {
             var result = await _outboxMessageRepository.GetPagedAsync(
                 new PageRequest {
@@ -101,16 +102,5 @@ public sealed class GetOutboxMessagePagedQueryService {
         }
 
         return status;
-    }
-
-    /// <summary>
-    /// 清理日志字段中的换行符，避免日志注入。
-    /// </summary>
-    /// <param name="value">原始值。</param>
-    /// <returns>单行日志值。</returns>
-    private static string SanitizeForLog(string value) {
-        return string.IsNullOrEmpty(value)
-            ? string.Empty
-            : value.Replace('\r', ' ').Replace('\n', ' ');
     }
 }

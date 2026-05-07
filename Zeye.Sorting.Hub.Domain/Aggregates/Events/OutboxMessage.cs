@@ -83,12 +83,26 @@ public sealed class OutboxMessage : IEntity<long> {
     public static OutboxMessage CreatePending(string eventType, string payloadJson) {
         var now = DateTime.Now;
         return new OutboxMessage {
-            EventType = NormalizeRequiredText(eventType, nameof(eventType), MaxEventTypeLength),
+            EventType = NormalizeEventType(eventType),
             PayloadJson = NormalizePayloadJson(payloadJson),
             Status = OutboxMessageStatus.Pending,
             CreatedAt = now,
             UpdatedAt = now
         };
+    }
+
+    /// <summary>
+    /// 规范化事件类型。
+    /// </summary>
+    /// <param name="eventType">原始事件类型。</param>
+    /// <returns>规范化后的事件类型。</returns>
+    public static string NormalizeEventType(string eventType) {
+        var normalized = NormalizeRequiredText(eventType, nameof(eventType), MaxEventTypeLength);
+        if (normalized.AsSpan().IndexOfAny('\r', '\n') >= 0) {
+            throw new ArgumentException("事件类型不能包含换行符。", nameof(eventType));
+        }
+
+        return normalized;
     }
 
     /// <summary>
@@ -105,6 +119,37 @@ public sealed class OutboxMessage : IEntity<long> {
         LastAttemptedAt = now;
         CompletedAt = null;
         UpdatedAt = now;
+    }
+
+    /// <summary>
+    /// 回收处理超时的消息，并在达到上限时进入死信。
+    /// 处理超时视为一次失败尝试，因此会先递增 <see cref="RetryCount"/>。
+    /// </summary>
+    /// <param name="maxRetryCount">最大重试次数。</param>
+    /// <returns>若返回 true 表示已重新进入处理中；返回 false 表示已转入死信。</returns>
+    public bool RecoverTimedOutProcessing(int maxRetryCount) {
+        if (Status != OutboxMessageStatus.Processing) {
+            throw new InvalidOperationException("仅处理中消息允许执行超时回收。");
+        }
+
+        if (maxRetryCount <= 0) {
+            throw new ArgumentOutOfRangeException(nameof(maxRetryCount), "最大重试次数必须大于 0。");
+        }
+
+        var now = DateTime.Now;
+        RetryCount++;
+        LastAttemptedAt = now;
+        UpdatedAt = now;
+        if (RetryCount >= maxRetryCount) {
+            Status = OutboxMessageStatus.DeadLettered;
+            FailureMessage = "Outbox 消息处理超时，已达到最大重试次数并进入死信。";
+            CompletedAt = now;
+            return false;
+        }
+
+        FailureMessage = "Outbox 消息处理超时，已自动回收重试。";
+        CompletedAt = null;
+        return true;
     }
 
     /// <summary>
