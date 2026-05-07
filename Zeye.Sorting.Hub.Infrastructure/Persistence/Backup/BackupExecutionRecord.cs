@@ -20,7 +20,7 @@ public sealed class BackupExecutionRecord {
     public const string FailedStatus = "Failed";
 
     /// <summary>
-    /// 记录时间。
+    /// 记录本地时间。
     /// </summary>
     public DateTime RecordedAtLocal { get; init; }
 
@@ -75,7 +75,7 @@ public sealed class BackupExecutionRecord {
     public string? VerifiedBackupFilePath { get; init; }
 
     /// <summary>
-    /// 实际校验命中的备份文件时间。
+    /// 实际校验命中的备份文件本地时间。
     /// </summary>
     public DateTime? VerifiedBackupAtLocal { get; init; }
 

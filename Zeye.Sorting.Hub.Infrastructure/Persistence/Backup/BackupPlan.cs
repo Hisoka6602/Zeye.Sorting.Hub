@@ -5,7 +5,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Backup;
 /// </summary>
 public sealed class BackupPlan {
     /// <summary>
-    /// 计划生成时间。
+    /// 计划生成本地时间。
     /// </summary>
     public DateTime GeneratedAtLocal { get; init; }
 

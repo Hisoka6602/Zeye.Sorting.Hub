@@ -106,6 +106,7 @@ public sealed class BackupVerificationService {
                 });
             }
 
+            // 步骤 4：文件系统时间统一使用本地时间语义，避免引入 UTC 转换链路。
             var verifiedBackupAtLocal = File.GetLastWriteTime(verifiedBackupFilePath);
             var isFresh = DateTime.Now - verifiedBackupAtLocal <= TimeSpan.FromHours(_options.MaxAllowedBackupAgeHours);
             return PublishRecord(new BackupExecutionRecord {
