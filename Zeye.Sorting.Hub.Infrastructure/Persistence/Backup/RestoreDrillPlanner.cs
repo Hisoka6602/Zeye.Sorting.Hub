@@ -1,5 +1,6 @@
 using System.Text;
 using Microsoft.Extensions.Hosting;
+using NLog;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Backup;
 
@@ -7,6 +8,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Backup;
 /// 恢复演练与 Runbook 规划器。
 /// </summary>
 public sealed class RestoreDrillPlanner {
+    /// <summary>
+    /// NLog 日志器。
+    /// </summary>
+    private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
+
     /// <summary>
     /// 内容根环境信息。
     /// </summary>
@@ -85,7 +91,12 @@ public sealed class RestoreDrillPlanner {
         }
         finally {
             if (File.Exists(tempFilePath)) {
-                File.Delete(tempFilePath);
+                try {
+                    File.Delete(tempFilePath);
+                }
+                catch (Exception exception) {
+                    Logger.Warn(exception, "删除备份治理临时文件失败，TempFilePath={TempFilePath}", tempFilePath);
+                }
             }
         }
     }

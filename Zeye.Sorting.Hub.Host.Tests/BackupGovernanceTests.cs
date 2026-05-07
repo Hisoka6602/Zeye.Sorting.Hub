@@ -103,6 +103,8 @@ public sealed class BackupGovernanceTests {
 
     /// <summary>
     /// MySQL Provider 应拒绝不安全数据库名。
+    /// 数据库名包含分号时会被 DatabaseIdentifierPolicy.NormalizeDatabaseName 拒绝，
+    /// 用于验证命令生成链路不会把危险字符直接拼接到 shell 命令中。
     /// </summary>
     [Fact]
     public void MySqlBackupProvider_BuildPlan_WhenDatabaseNameUnsafe_ShouldThrow() {
