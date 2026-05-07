@@ -36,10 +36,10 @@ public sealed class BackupGovernanceTests {
             var backupProvider = serviceProvider.GetRequiredService<IBackupProvider>();
             var backupVerificationService = serviceProvider.GetRequiredService<BackupVerificationService>();
             var healthCheck = serviceProvider.GetRequiredService<BackupHealthCheck>();
-            var now = LocalTimeTestConstraint.CreateLocalTime(2026, 5, 7, 15, 30, 0);
+            var now = DateTime.Now;
             var backupDirectoryPath = Path.Combine(rootPath, options.BackupDirectory, backupProvider.ConfiguredProviderName);
             Directory.CreateDirectory(backupDirectoryPath);
-            var backupFilePath = Path.Combine(backupDirectoryPath, "sorting-hub-20260507140000-sortinghub.sql");
+            var backupFilePath = Path.Combine(backupDirectoryPath, $"sorting-hub-{now:yyyyMMddHHmmss}-SortingHubDb.sql");
             await File.WriteAllTextAsync(backupFilePath, "mock-backup");
             File.SetLastWriteTime(backupFilePath, now.AddHours(-1));
 
@@ -102,6 +102,34 @@ public sealed class BackupGovernanceTests {
     }
 
     /// <summary>
+    /// MySQL Provider 应拒绝不安全数据库名。
+    /// </summary>
+    [Fact]
+    public void MySqlBackupProvider_BuildPlan_WhenDatabaseNameUnsafe_ShouldThrow() {
+        var provider = new MySqlBackupProvider();
+        var options = new BackupOptions {
+            BackupFilePrefix = "sorting-hub"
+        };
+
+        Assert.Throws<InvalidOperationException>(() => provider.BuildPlan(options, "/tmp/backup-tests", "SortingHubDb;drop", DateTime.Now));
+    }
+
+    /// <summary>
+    /// SQL Server 命令应转义路径中的单引号。
+    /// </summary>
+    [Fact]
+    public void SqlServerBackupProvider_BuildPlan_WhenPathContainsQuote_ShouldEscapeLiteral() {
+        var provider = new SqlServerBackupProvider();
+        var options = new BackupOptions {
+            BackupFilePrefix = "sorting-hub"
+        };
+
+        var plan = provider.BuildPlan(options, "/tmp/backup's", "SortingHubDb", DateTime.Now);
+
+        Assert.Contains("backup''s", plan.CommandText, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// 关闭治理时健康检查应返回 Healthy。
     /// </summary>
     /// <returns>异步任务。</returns>
@@ -109,7 +137,7 @@ public sealed class BackupGovernanceTests {
     public async Task BackupHealthCheck_WhenBackupDisabled_ShouldReturnHealthy() {
         var rootPath = CreateTempDirectory();
         try {
-            var serviceProvider = BuildServiceProvider(rootPath, SqlServerProvider, isEnabled: false, dryRun: true);
+            var serviceProvider = BuildServiceProvider(rootPath, SqlServerProvider, isEnabled: false, dryRun: true, includeConnectionStrings: false);
             var backupVerificationService = serviceProvider.GetRequiredService<BackupVerificationService>();
             var healthCheck = serviceProvider.GetRequiredService<BackupHealthCheck>();
 
@@ -131,22 +159,27 @@ public sealed class BackupGovernanceTests {
     /// <param name="providerName">Provider 名称。</param>
     /// <param name="isEnabled">是否启用。</param>
     /// <param name="dryRun">是否 dry-run。</param>
+    /// <param name="includeConnectionStrings">是否包含连接字符串。</param>
     /// <returns>服务容器。</returns>
-    private static ServiceProvider BuildServiceProvider(string rootPath, string providerName, bool isEnabled, bool dryRun) {
+    private static ServiceProvider BuildServiceProvider(string rootPath, string providerName, bool isEnabled, bool dryRun, bool includeConnectionStrings = true) {
+        var settings = new Dictionary<string, string?> {
+            ["Persistence:Provider"] = providerName,
+            ["Persistence:Backup:IsEnabled"] = isEnabled.ToString(),
+            ["Persistence:Backup:DryRun"] = dryRun.ToString(),
+            ["Persistence:Backup:PollIntervalMinutes"] = "60",
+            ["Persistence:Backup:MaxAllowedBackupAgeHours"] = "24",
+            ["Persistence:Backup:BackupDirectory"] = "backup-artifacts",
+            ["Persistence:Backup:BackupFilePrefix"] = "sorting-hub",
+            ["Persistence:Backup:RestoreRunbookDirectory"] = "backup-runbooks",
+            ["Persistence:Backup:DrillRecordDirectory"] = "drill-records"
+        };
+        if (includeConnectionStrings) {
+            settings["ConnectionStrings:MySql"] = "Server=localhost;Database=SortingHubDb;User Id=tester;Password=secret;";
+            settings["ConnectionStrings:SqlServer"] = "Server=localhost;Initial Catalog=SortingHubDb;User Id=tester;Password=secret;";
+        }
+
         var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> {
-                ["Persistence:Provider"] = providerName,
-                ["Persistence:Backup:IsEnabled"] = isEnabled.ToString(),
-                ["Persistence:Backup:DryRun"] = dryRun.ToString(),
-                ["Persistence:Backup:PollIntervalMinutes"] = "60",
-                ["Persistence:Backup:MaxAllowedBackupAgeHours"] = "24",
-                ["Persistence:Backup:BackupDirectory"] = "backup-artifacts",
-                ["Persistence:Backup:BackupFilePrefix"] = "sorting-hub",
-                ["Persistence:Backup:RestoreRunbookDirectory"] = "backup-runbooks",
-                ["Persistence:Backup:DrillRecordDirectory"] = "drill-records",
-                ["ConnectionStrings:MySql"] = "Server=localhost;Database=SortingHubDb;User Id=tester;Password=secret;",
-                ["ConnectionStrings:SqlServer"] = "Server=localhost;Initial Catalog=SortingHubDb;User Id=tester;Password=secret;"
-            })
+            .AddInMemoryCollection(settings)
             .Build();
         var services = new ServiceCollection();
         services.AddSingleton<IConfiguration>(configuration);

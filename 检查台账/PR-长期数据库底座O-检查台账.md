@@ -39,6 +39,7 @@
 - `Zeye.Sorting.Hub.Infrastructure/Persistence/Backup/SqlServerBackupProvider.cs`
 - `Zeye.Sorting.Hub.Infrastructure/Persistence/Backup/BackupFileNamePolicy.cs`
 - `Zeye.Sorting.Hub.Infrastructure/Persistence/Backup/BackupConnectionStringValueReader.cs`
+- `Zeye.Sorting.Hub.Infrastructure/Persistence/Backup/BackupCommandTextFormatter.cs`
 - `Zeye.Sorting.Hub.Infrastructure/Persistence/Backup/RestoreDrillPlanner.cs`
 - `Zeye.Sorting.Hub.Infrastructure/Persistence/Backup/BackupVerificationService.cs`
 - `Zeye.Sorting.Hub.Host/HostedServices/BackupHostedService.cs`
@@ -62,11 +63,11 @@
 
 ## 三、本次实现结果
 
-1. 新增 `BackupOptions`、`BackupPlan`、`BackupExecutionRecord`、`IBackupProvider`、`MySqlBackupProvider` 与 `SqlServerBackupProvider`，统一建立备份治理配置、数据库名解析、Provider 级命令生成与备份文件命名规则。
-2. 新增 `BackupVerificationService` 与 `RestoreDrillPlanner`，形成“生成备份计划 → 校验最新备份文件 → 输出恢复 Runbook / 演练记录 → 缓存最近一次执行记录”的治理链路。
+1. 新增 `BackupOptions`、`BackupPlan`、`BackupExecutionRecord`、`IBackupProvider`、`MySqlBackupProvider`、`SqlServerBackupProvider` 与 `BackupCommandTextFormatter`，统一建立备份治理配置、数据库名解析、Provider 级命令生成、Shell 参数 / SQL 字面量转义与备份文件命名规则。
+2. 新增 `BackupVerificationService` 与 `RestoreDrillPlanner`，形成“禁用时短路 → 生成备份计划 → 校验最新备份文件 → 输出恢复 Runbook / 演练记录 → 缓存最近一次执行记录”的治理链路，并将资产写入改为临时文件 + 原子替换。
 3. 新增 `BackupHostedService` 与 `BackupHealthCheck`，将备份治理能力接入宿主后台轮询与 `/health/ready` 健康探针，缺失备份文件或备份超龄时返回 Degraded。
 4. 调整 `.gitignore`、`PersistenceServiceCollectionExtensions.cs`、`Program.cs` 与 `appsettings.json`，为 `Persistence/Backup/` 源码目录解除误忽略并补齐 `Persistence:Backup` 默认配置与 DI 接线，支持按 MySQL / SQL Server 分别注册备份 Provider。
-5. 新增 `BackupGovernanceTests.cs`，覆盖 MySQL/SQL Server Provider 命令生成、最新备份文件校验、Runbook/演练记录输出与健康检查状态，并同步修正 README、更新记录与文件清单基线。
+5. 新增 `BackupGovernanceTests.cs`，覆盖 MySQL/SQL Server Provider 命令生成安全性、禁用场景无连接串、最新备份文件校验、Runbook/演练记录输出与健康检查状态，并同步修正 README、更新记录与文件清单基线。
 
 ---
 

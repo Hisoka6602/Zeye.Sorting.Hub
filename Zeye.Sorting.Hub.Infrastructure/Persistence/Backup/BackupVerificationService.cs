@@ -71,12 +71,13 @@ public sealed class BackupVerificationService {
     /// <returns>执行记录。</returns>
     public async Task<BackupExecutionRecord> ExecuteAsync(CancellationToken cancellationToken) {
         try {
+            if (!_options.IsEnabled) {
+                return PublishRecord(BackupExecutionRecord.CreateDisabled(_backupProvider.ProviderName, _backupProvider.ConfiguredProviderName, "Unknown"));
+            }
+
             // 步骤 1：解析 provider、连接字符串与数据库名，确保计划基于当前真实配置生成。
             var connectionString = ResolveConnectionString();
             var databaseName = _backupProvider.ResolveDatabaseName(connectionString);
-            if (!_options.IsEnabled) {
-                return PublishRecord(BackupExecutionRecord.CreateDisabled(_backupProvider.ProviderName, _backupProvider.ConfiguredProviderName, databaseName));
-            }
 
             // 步骤 2：生成计划与文档资产，统一产出备份命令、Runbook 与演练记录。
             var generatedAtLocal = DateTime.Now;

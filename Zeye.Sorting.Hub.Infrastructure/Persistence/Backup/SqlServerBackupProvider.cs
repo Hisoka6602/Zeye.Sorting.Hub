@@ -1,5 +1,6 @@
 using System.Data.Common;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Backup;
 
@@ -23,7 +24,7 @@ public sealed class SqlServerBackupProvider : IBackupProvider {
             ConnectionString = connectionString
         };
         if (BackupConnectionStringValueReader.TryGetFirstNonEmptyValue(builder, out var databaseName, "Initial Catalog", "Database")) {
-            return databaseName;
+            return DatabaseIdentifierPolicy.NormalizeDatabaseName(databaseName, nameof(connectionString));
         }
 
         throw new InvalidOperationException("SQL Server 连接字符串缺少 Initial Catalog 或 Database。");
@@ -35,18 +36,22 @@ public sealed class SqlServerBackupProvider : IBackupProvider {
         ArgumentException.ThrowIfNullOrWhiteSpace(backupDirectoryPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(databaseName);
 
+        var normalizedDatabaseName = DatabaseIdentifierPolicy.NormalizeDatabaseName(databaseName, nameof(databaseName));
         var providerDirectory = Path.Combine(backupDirectoryPath, ConfiguredProviderName);
         var backupFilePath = Path.Combine(
             providerDirectory,
-            $"{BackupFileNamePolicy.SanitizeSegment(options.BackupFilePrefix)}-{generatedAtLocal:yyyyMMddHHmmss}-{BackupFileNamePolicy.SanitizeSegment(databaseName)}{BackupFileExtension}");
-        var commandText = $"sqlcmd -Q \"BACKUP DATABASE [{databaseName}] TO DISK = N'{backupFilePath}' WITH INIT, COMPRESSION\"";
+            $"{BackupFileNamePolicy.SanitizeSegment(options.BackupFilePrefix)}-{generatedAtLocal:yyyyMMddHHmmss}-{BackupFileNamePolicy.SanitizeSegment(normalizedDatabaseName)}{BackupFileExtension}");
+        var escapedDatabaseName = DatabaseIdentifierPolicy.EscapeSqlServerIdentifier(normalizedDatabaseName);
+        var escapedBackupFilePath = BackupCommandTextFormatter.EscapeSqlServerStringLiteral(backupFilePath);
+        var backupSql = $"BACKUP DATABASE [{escapedDatabaseName}] TO DISK = N'{escapedBackupFilePath}' WITH INIT, COMPRESSION";
+        var commandText = $"sqlcmd -Q {BackupCommandTextFormatter.QuoteDoubleQuotedShellArgument(backupSql)}";
         return new BackupPlan {
             GeneratedAtLocal = generatedAtLocal,
             IsEnabled = options.IsEnabled,
             IsDryRun = options.DryRun,
             ProviderName = ProviderName,
             ConfiguredProviderName = ConfiguredProviderName,
-            DatabaseName = databaseName,
+            DatabaseName = normalizedDatabaseName,
             BackupDirectoryPath = backupDirectoryPath,
             PlannedBackupFilePath = backupFilePath,
             CommandText = commandText

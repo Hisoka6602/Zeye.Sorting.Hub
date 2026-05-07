@@ -45,18 +45,9 @@ public sealed class RestoreDrillPlanner {
         var runbookPath = Path.Combine(runbookDirectory, $"数据库恢复Runbook-{providerSegment}.md");
         var drillRecordPath = Path.Combine(drillRecordDirectory, $"备份恢复演练记录-{providerSegment}.md");
 
-        // 步骤 3：分别落盘恢复 Runbook 与演练记录；若第二步写入失败，则回滚第一份资产，避免文档状态不一致。
-        await File.WriteAllTextAsync(runbookPath, BuildRunbookContent(plan), Encoding.UTF8, cancellationToken);
-        try {
-            await File.WriteAllTextAsync(drillRecordPath, BuildDrillRecordContent(plan), Encoding.UTF8, cancellationToken);
-        }
-        catch {
-            if (File.Exists(runbookPath)) {
-                File.Delete(runbookPath);
-            }
-
-            throw;
-        }
+        // 步骤 3：分别使用临时文件 + 原子替换写入两份资产，避免异常时丢失历史可用文档。
+        await WriteTextAtomicallyAsync(runbookPath, BuildRunbookContent(plan), cancellationToken);
+        await WriteTextAtomicallyAsync(drillRecordPath, BuildDrillRecordContent(plan), cancellationToken);
 
         return (runbookPath, drillRecordPath);
     }
@@ -73,6 +64,30 @@ public sealed class RestoreDrillPlanner {
         }
 
         return Path.GetFullPath(Path.Combine(_hostEnvironment.ContentRootPath, directory));
+    }
+
+    /// <summary>
+    /// 以临时文件 + 原子替换方式写入文本。
+    /// </summary>
+    /// <param name="targetPath">目标路径。</param>
+    /// <param name="content">文本内容。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>异步任务。</returns>
+    private static async Task WriteTextAtomicallyAsync(string targetPath, string content, CancellationToken cancellationToken) {
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetPath);
+
+        var targetDirectory = Path.GetDirectoryName(targetPath)
+            ?? throw new InvalidOperationException($"目标路径缺少目录：{targetPath}");
+        var tempFilePath = Path.Combine(targetDirectory, $".{Path.GetFileName(targetPath)}.{Guid.NewGuid():N}.tmp");
+        try {
+            await File.WriteAllTextAsync(tempFilePath, content, Encoding.UTF8, cancellationToken);
+            File.Move(tempFilePath, targetPath, overwrite: true);
+        }
+        finally {
+            if (File.Exists(tempFilePath)) {
+                File.Delete(tempFilePath);
+            }
+        }
     }
 
     /// <summary>

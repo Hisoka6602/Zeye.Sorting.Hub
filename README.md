@@ -431,6 +431,7 @@
 │   │   │   ├── SqlServerBackupProvider.cs（SQL Server 备份 Provider：生成 BACKUP DATABASE 计划命令与 .bak 备份文件路径）
 │   │   │   ├── BackupFileNamePolicy.cs（备份文件名策略工具：统一清洗 Provider、数据库与文件名前缀片段）
 │   │   │   ├── BackupConnectionStringValueReader.cs（备份连接字符串值读取工具：集中提取数据库名相关键值）
+│   │   │   ├── BackupCommandTextFormatter.cs（备份命令文本格式化工具：统一处理 Shell 参数与 SQL Server 字符串字面量转义）
 │   │   │   ├── RestoreDrillPlanner.cs（恢复演练与 Runbook 规划器：输出恢复文档与演练记录资产）
 │   │   │   └── BackupVerificationService.cs（备份校验服务：生成计划、校验最新备份文件并缓存运行期记录）
 │   │   ├── Retention（数据保留治理目录）
@@ -997,6 +998,7 @@
 - `SqlServerBackupProvider.cs`：SQL Server 备份 Provider，生成 `sqlcmd + BACKUP DATABASE` 命令与 `.bak` 备份文件计划。
 - `BackupFileNamePolicy.cs`：备份文件名策略工具，统一清洗文件前缀、Provider 与数据库名片段，避免路径字符污染。
 - `BackupConnectionStringValueReader.cs`：备份连接字符串值读取工具，集中提取 `Database` / `Initial Catalog` 等数据库名键值，避免 Provider 实现复制解析逻辑。
+- `BackupCommandTextFormatter.cs`：备份命令文本格式化工具，统一处理 POSIX Shell 参数包装、双引号命令参数与 SQL Server 字符串字面量转义。
 - `RestoreDrillPlanner.cs`：恢复演练与 Runbook 规划器，输出数据库恢复 Runbook 与演练记录资产到指定目录。
 - `BackupVerificationService.cs`：备份校验服务，负责生成计划、查找最新备份文件、判断是否超龄并缓存最近一次治理结果。
 
@@ -1114,7 +1116,7 @@
 - `IdempotencyTests.cs`：幂等能力测试，覆盖 SHA256 载荷哈希稳定性、重复请求回放、取消后重试与 Pending 记录自恢复回放。
 - `InboxMessageTests.cs`：Inbox 幂等消费测试，覆盖首次消费、成功回放、处理中拒绝、失败重试与过期治理候选查询。
 - `OutboxMessageTests.cs`：Outbox 事件底座测试，覆盖写入、分页、后台状态推进、死信隔离与健康检查。
-- `BackupGovernanceTests.cs`：备份治理测试，覆盖 MySQL/SQL Server Provider 命令生成、最新备份文件校验、Runbook/演练记录输出与健康检查状态。
+- `BackupGovernanceTests.cs`：备份治理测试，覆盖 MySQL/SQL Server Provider 命令生成安全性、禁用场景无连接串、最新备份文件校验、Runbook/演练记录输出与健康检查状态。
 - `DataRetentionTests.cs`：数据保留治理测试，覆盖 dry-run 计划、真实清理、守卫关闭路径与健康检查状态。
 - `AlwaysExistsShardingPhysicalTableProbe.cs`：物理表探测测试桩，始终返回存在并记录调用次数。
 - `BaselineDataTests.cs`：基线数据测试，覆盖必要配置、Provider/连接字符串、本地时间配置、健康检查、可选种子入口与 Degraded 模式异常隔离。

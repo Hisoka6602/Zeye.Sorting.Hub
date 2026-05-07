@@ -1,5 +1,6 @@
 using System.Data.Common;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Backup;
 
@@ -23,7 +24,7 @@ public sealed class MySqlBackupProvider : IBackupProvider {
             ConnectionString = connectionString
         };
         if (BackupConnectionStringValueReader.TryGetFirstNonEmptyValue(builder, out var databaseName, "Database", "Initial Catalog")) {
-            return databaseName;
+            return DatabaseIdentifierPolicy.NormalizeDatabaseName(databaseName, nameof(connectionString));
         }
 
         throw new InvalidOperationException("MySQL 连接字符串缺少 Database 或 Initial Catalog。");
@@ -35,18 +36,19 @@ public sealed class MySqlBackupProvider : IBackupProvider {
         ArgumentException.ThrowIfNullOrWhiteSpace(backupDirectoryPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(databaseName);
 
+        var normalizedDatabaseName = DatabaseIdentifierPolicy.NormalizeDatabaseName(databaseName, nameof(databaseName));
         var providerDirectory = Path.Combine(backupDirectoryPath, ConfiguredProviderName);
         var backupFilePath = Path.Combine(
             providerDirectory,
-            $"{BackupFileNamePolicy.SanitizeSegment(options.BackupFilePrefix)}-{generatedAtLocal:yyyyMMddHHmmss}-{BackupFileNamePolicy.SanitizeSegment(databaseName)}{BackupFileExtension}");
-        var commandText = $"mysqldump --single-transaction --quick --databases {databaseName} > \"{backupFilePath}\"";
+            $"{BackupFileNamePolicy.SanitizeSegment(options.BackupFilePrefix)}-{generatedAtLocal:yyyyMMddHHmmss}-{BackupFileNamePolicy.SanitizeSegment(normalizedDatabaseName)}{BackupFileExtension}");
+        var commandText = $"mysqldump --single-transaction --quick --databases {BackupCommandTextFormatter.QuotePosixShellArgument(normalizedDatabaseName)} > {BackupCommandTextFormatter.QuotePosixShellArgument(backupFilePath)}";
         return new BackupPlan {
             GeneratedAtLocal = generatedAtLocal,
             IsEnabled = options.IsEnabled,
             IsDryRun = options.DryRun,
             ProviderName = ProviderName,
             ConfiguredProviderName = ConfiguredProviderName,
-            DatabaseName = databaseName,
+            DatabaseName = normalizedDatabaseName,
             BackupDirectoryPath = backupDirectoryPath,
             PlannedBackupFilePath = backupFilePath,
             CommandText = commandText
