@@ -51,7 +51,7 @@
 │   ├── PR-长期数据库底座L-检查台账.md（长期数据库底座 PR-L 台账：记录 Outbox 事件持久化、状态推进、死信与下一 PR 入口）
 │   ├── PR-长期数据库底座M-检查台账.md（长期数据库底座 PR-M 台账：记录 Inbox 幂等消费、状态治理、重试与下一 PR 入口）
 │   ├── PR-长期数据库底座N-检查台账.md（长期数据库底座 PR-N 台账：记录数据保留策略、自动清理治理、健康检查与下一 PR 入口）
-│   └── PR-长期数据库底座O-检查台账.md（长期数据库底座 PR-O 台账：记录备份、恢复、校验、演练资产与下一 PR 入口）
+│   └── `PR-长期数据库底座O-检查台账.md`（长期数据库底座 PR-O 台账：记录备份、恢复、校验、演练资产与下一 PR 入口）
 ├── Zeye.Sorting.Hub.Analytics（分析与报表子域，占位工程）
 │   └── Zeye.Sorting.Hub.Analytics.csproj（Analytics 项目定义）
 ├── Zeye.Sorting.Hub.Application（应用层）
