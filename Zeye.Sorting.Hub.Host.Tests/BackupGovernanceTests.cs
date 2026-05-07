@@ -91,7 +91,7 @@ public sealed class BackupGovernanceTests {
             Directory.CreateDirectory(backupDirectoryPath);
             var latestBackupPath = Path.Combine(backupDirectoryPath, "sorting-hub-SortingHub-20260507010000.sql");
             await File.WriteAllTextAsync(latestBackupPath, "backup");
-            File.SetLastWriteTime(latestBackupPath, DateTime.Now);
+            File.SetLastWriteTime(latestBackupPath, LocalTimeTestConstraint.CreateLocalTime(2099, 1, 1, 0, 0, 0));
             var service = CreateBackupVerificationService(
                 tempRootPath,
                 providerName: "MySql",

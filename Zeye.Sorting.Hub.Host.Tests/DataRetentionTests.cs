@@ -131,8 +131,9 @@ public sealed class DataRetentionTests {
     /// <param name="options">数据库配置。</param>
     /// <returns>异步任务。</returns>
     private static async Task SeedRetentionCandidatesAsync(DbContextOptions<SortingHubDbContext> options) {
-        var oldTime = DateTime.Now.AddDays(-45);
-        var oldCompletedTime = DateTime.Now.AddDays(-31);
+        var oldTime = LocalTimeTestConstraint.CreateLocalTime(2026, 1, 1, 8, 0, 0);
+        var oldCompletedTime = LocalTimeTestConstraint.CreateLocalTime(2026, 1, 15, 8, 0, 0);
+        var pendingInboxExpiresAt = LocalTimeTestConstraint.CreateLocalTime(2099, 1, 1, 0, 0, 0);
         await using var dbContext = new SortingHubDbContext(options);
 
         dbContext.Set<WebRequestAuditLog>().AddRange(
@@ -174,7 +175,7 @@ public sealed class DataRetentionTests {
         SetPrivateNullableDateTime(outboxMessage, "CompletedAt", oldCompletedTime);
         dbContext.Set<OutboxMessage>().Add(outboxMessage);
 
-        var inboxMessage = InboxMessage.CreatePending("WCS", "MSG-1", "ParcelCreated", DateTime.Now.AddDays(5));
+        var inboxMessage = InboxMessage.CreatePending("WCS", "MSG-1", "ParcelCreated", pendingInboxExpiresAt);
         inboxMessage.MarkProcessing();
         inboxMessage.MarkSucceeded();
         SetPrivateDateTime(inboxMessage, "UpdatedAt", oldCompletedTime);
@@ -211,10 +212,10 @@ public sealed class DataRetentionTests {
         deadLetterWriteStore = new DeadLetterWriteStore(capacity: 16);
         deadLetterWriteStore.Add(new DeadLetterWriteEntry(
             Parcel: CreateDeadLetterParcel(),
-            FailedAtLocal: DateTime.Now.AddDays(-20),
+            FailedAtLocal: LocalTimeTestConstraint.CreateLocalTime(2026, 1, 10, 8, 0, 0),
             RetryCount: 3,
             ErrorMessage: "dead-letter",
-            LastRetryAtLocal: DateTime.Now.AddDays(-19)));
+            LastRetryAtLocal: LocalTimeTestConstraint.CreateLocalTime(2026, 1, 11, 8, 0, 0)));
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:AutoTuning:SlowQueryThresholdMilliseconds"] = "500",
@@ -227,7 +228,7 @@ public sealed class DataRetentionTests {
             .Build();
         slowQueryProfileStore = new SlowQueryProfileStore(configuration);
         slowQueryProfileStore.Record("SELECT * FROM Parcels WHERE Id = 1", TimeSpan.FromMilliseconds(1200));
-        ForceSlowQueryLastSeenAtLocal(slowQueryProfileStore, DateTime.Now.AddDays(-10));
+        ForceSlowQueryLastSeenAtLocal(slowQueryProfileStore, LocalTimeTestConstraint.CreateLocalTime(2026, 1, 20, 8, 0, 0));
         return new DataRetentionPlanner(new SortingHubTestDbContextFactory(options), deadLetterWriteStore, slowQueryProfileStore);
     }
 

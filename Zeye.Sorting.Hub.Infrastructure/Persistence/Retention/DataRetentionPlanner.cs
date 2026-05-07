@@ -78,6 +78,7 @@ public sealed class DataRetentionPlanner {
         DataRetentionPolicy policy,
         int batchSize,
         CancellationToken cancellationToken) {
+        // 本地时间语义：与各治理表中的 CreatedAt / UpdatedAt / CompletedAt / ExpiresAt 保持一致。
         var cutoffTime = DateTime.Now.AddDays(-policy.RetentionDays);
         return policy.Name switch {
             DataRetentionPolicy.WebRequestAuditLog => CountWebRequestAuditLogCandidatesAsync(dbContext, cutoffTime, batchSize, cancellationToken),
@@ -149,6 +150,7 @@ public sealed class DataRetentionPlanner {
         DateTime cutoffTime,
         int batchSize,
         CancellationToken cancellationToken) {
+        // 本地时间语义：用于与 InboxMessage.ExpiresAt（本地时间）做同语义比较。
         var now = DateTime.Now;
         return dbContext.Set<InboxMessage>()
             .AsNoTracking()

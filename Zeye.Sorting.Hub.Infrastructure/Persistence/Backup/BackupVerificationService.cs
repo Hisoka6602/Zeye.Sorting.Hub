@@ -174,6 +174,7 @@ public sealed class BackupVerificationService {
     /// <param name="options">备份配置。</param>
     /// <returns>备份计划。</returns>
     private BackupPlan BuildPlan(BackupOptions options) {
+        // 本地时间语义：用于生成备份文件名、最近备份时效窗口与健康检查输出。
         var now = DateTime.Now;
         var configuredProvider = _configuration["Persistence:Provider"];
         if (!string.Equals(configuredProvider, _backupProvider.ProviderName, StringComparison.OrdinalIgnoreCase)) {

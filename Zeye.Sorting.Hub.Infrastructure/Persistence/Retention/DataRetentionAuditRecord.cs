@@ -75,8 +75,9 @@ public sealed record class DataRetentionAuditRecord {
     /// <param name="options">当前配置。</param>
     /// <returns>审计记录。</returns>
     public static DataRetentionAuditRecord CreateDisabled(DataRetentionOptions options) {
+        var recordedAtLocal = DateTime.Now;
         return new DataRetentionAuditRecord {
-            RecordedAtLocal = DateTime.Now,
+            RecordedAtLocal = recordedAtLocal,
             Status = DisabledStatus,
             IsEnabled = false,
             IsDryRun = options.DryRun,
@@ -99,8 +100,9 @@ public sealed record class DataRetentionAuditRecord {
         DataRetentionOptions options,
         IReadOnlyDictionary<string, int> candidateCounts,
         string summary) {
+        var recordedAtLocal = DateTime.Now;
         return new DataRetentionAuditRecord {
-            RecordedAtLocal = DateTime.Now,
+            RecordedAtLocal = recordedAtLocal,
             Status = SucceededStatus,
             IsEnabled = true,
             IsDryRun = options.DryRun,
@@ -119,8 +121,9 @@ public sealed record class DataRetentionAuditRecord {
     /// <param name="failureMessage">失败消息。</param>
     /// <returns>审计记录。</returns>
     public static DataRetentionAuditRecord CreateFailed(DataRetentionOptions options, string failureMessage) {
+        var recordedAtLocal = DateTime.Now;
         return new DataRetentionAuditRecord {
-            RecordedAtLocal = DateTime.Now,
+            RecordedAtLocal = recordedAtLocal,
             Status = FailedStatus,
             IsEnabled = options.IsEnabled,
             IsDryRun = options.DryRun,

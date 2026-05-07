@@ -95,8 +95,9 @@ public sealed record class BackupExecutionRecord {
     /// <param name="plan">备份计划。</param>
     /// <returns>执行记录。</returns>
     public static BackupExecutionRecord CreateDisabled(BackupPlan plan) {
+        var recordedAtLocal = DateTime.Now;
         return new BackupExecutionRecord {
-            RecordedAtLocal = DateTime.Now,
+            RecordedAtLocal = recordedAtLocal,
             Status = DisabledStatus,
             IsEnabled = false,
             IsDryRun = plan.IsDryRun,
@@ -117,8 +118,9 @@ public sealed record class BackupExecutionRecord {
     /// <param name="summary">摘要。</param>
     /// <returns>执行记录。</returns>
     public static BackupExecutionRecord CreateSucceeded(BackupPlan plan, bool hasRecentBackupArtifact, string summary) {
+        var recordedAtLocal = DateTime.Now;
         return new BackupExecutionRecord {
-            RecordedAtLocal = DateTime.Now,
+            RecordedAtLocal = recordedAtLocal,
             Status = SucceededStatus,
             IsEnabled = true,
             IsDryRun = plan.IsDryRun,
@@ -142,8 +144,9 @@ public sealed record class BackupExecutionRecord {
     /// <param name="failureMessage">失败消息。</param>
     /// <returns>执行记录。</returns>
     public static BackupExecutionRecord CreateDegraded(BackupPlan plan, bool hasRecentBackupArtifact, string summary, string? failureMessage = null) {
+        var recordedAtLocal = DateTime.Now;
         return new BackupExecutionRecord {
-            RecordedAtLocal = DateTime.Now,
+            RecordedAtLocal = recordedAtLocal,
             Status = DegradedStatus,
             IsEnabled = true,
             IsDryRun = plan.IsDryRun,
@@ -166,8 +169,9 @@ public sealed record class BackupExecutionRecord {
     /// <param name="failureMessage">失败消息。</param>
     /// <returns>执行记录。</returns>
     public static BackupExecutionRecord CreateFailed(BackupPlan plan, string failureMessage) {
+        var recordedAtLocal = DateTime.Now;
         return new BackupExecutionRecord {
-            RecordedAtLocal = DateTime.Now,
+            RecordedAtLocal = recordedAtLocal,
             Status = FailedStatus,
             IsEnabled = plan.IsEnabled,
             IsDryRun = plan.IsDryRun,
