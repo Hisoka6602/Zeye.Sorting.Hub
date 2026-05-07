@@ -154,6 +154,7 @@ try {
     builder.Services.AddScoped<GetArchiveTaskPagedQueryService>();
     builder.Services.AddScoped<RetryArchiveTaskCommandService>();
     builder.Services.AddScoped<GetSlowQueryProfileQueryService>();
+    builder.Services.AddScoped<InboxMessageGuardService>();
     builder.Services.AddScoped<AppendOutboxMessageCommandService>();
     builder.Services.AddScoped<GetOutboxMessagePagedQueryService>();
     builder.Services.AddScoped<DispatchOutboxMessageCommandService>();

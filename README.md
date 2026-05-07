@@ -48,7 +48,8 @@
 │   ├── PR-长期数据库底座I-检查台账.md（长期数据库底座 PR-I 台账：记录慢查询指纹聚合、查询画像 API 与下一 PR 入口）
 │   ├── PR-长期数据库底座J-检查台账.md（长期数据库底座 PR-J 台账：记录查询模板登记、索引建议闭环与下一 PR 入口）
 │   ├── PR-长期数据库底座K-检查台账.md（长期数据库底座 PR-K 台账：记录写入幂等、重复键治理与下一 PR 入口）
-│   └── PR-长期数据库底座L-检查台账.md（长期数据库底座 PR-L 台账：记录 Outbox 事件持久化、状态推进、死信与下一 PR 入口）
+│   ├── PR-长期数据库底座L-检查台账.md（长期数据库底座 PR-L 台账：记录 Outbox 事件持久化、状态推进、死信与下一 PR 入口）
+│   └── PR-长期数据库底座M-检查台账.md（长期数据库底座 PR-M 台账：记录 Inbox 幂等消费、状态治理、重试与下一 PR 入口）
 ├── Zeye.Sorting.Hub.Analytics（分析与报表子域，占位工程）
 │   └── Zeye.Sorting.Hub.Analytics.csproj（Analytics 项目定义）
 ├── Zeye.Sorting.Hub.Application（应用层）
@@ -73,6 +74,7 @@
 │   │   │   ├── AppendOutboxMessageCommandService.cs（Outbox 消息独立写入应用服务）
 │   │   │   ├── DispatchOutboxMessageCommandService.cs（Outbox 消息状态推进与日志派发模拟应用服务）
 │   │   │   ├── GetOutboxMessagePagedQueryService.cs（Outbox 消息分页查询与健康快照读取应用服务）
+│   │   │   ├── InboxMessageGuardService.cs（Inbox 消息幂等消费守卫应用服务）
 │   │   │   └── OutboxMessageContractMapper.cs（Outbox 聚合到外部合同映射器）
 │   │   ├── Idempotency（幂等应用服务目录）
 │   │   │   ├── IdempotencyGuardException.cs（幂等守卫异常：提供稳定错误码，避免调用方依赖消息文本判定）
@@ -168,6 +170,7 @@
 │   │   ├── DataGovernance（数据治理聚合目录）
 │   │   │   └── ArchiveTask.cs（归档任务聚合根：记录 dry-run 状态、计划摘要、检查点与重试次数）
 │   │   ├── Events（事件聚合目录）
+│   │   │   ├── InboxMessage.cs（Inbox 消息聚合根：记录来源系统、消息标识、消费状态与过期治理边界）
 │   │   │   └── OutboxMessage.cs（Outbox 消息聚合根：记录事件类型、载荷、状态推进与死信隔离信息）
 │   │   ├── Idempotency（幂等聚合目录）
 │   │   │   └── IdempotencyRecord.cs（幂等记录聚合根：记录来源系统、操作名、业务键、载荷哈希与执行状态）
@@ -215,6 +218,7 @@
 │   │   ├── Idempotency（幂等枚举目录）
 │   │   │   └── IdempotencyRecordStatus.cs（幂等记录状态枚举）
 │   │   ├── Events（事件枚举目录）
+│   │   │   ├── InboxMessageStatus.cs（Inbox 消息状态枚举：Pending/Processing/Succeeded/Failed）
 │   │   │   └── OutboxMessageStatus.cs（Outbox 消息状态枚举：Pending/Processing/Succeeded/Failed/DeadLettered）
 │   │   └── AuditLogs（审计日志枚举目录）
 │   │       ├── AuditResourceType.cs（审计资源类型枚举）
@@ -226,6 +230,7 @@
 │   ├── Repositories（领域仓储契约目录）
 │   │   ├── IArchiveTaskRepository.cs（归档任务仓储契约：支持创建、分页查询、获取待执行任务与更新状态）
 │   │   ├── IIdempotencyRepository.cs（幂等记录仓储契约：支持按幂等键读取、新增与状态更新）
+│   │   ├── IInboxMessageRepository.cs（Inbox 消息仓储契约：支持按消息键读取、更新与过期治理候选查询）
 │   │   ├── IOutboxMessageRepository.cs（Outbox 消息仓储契约：支持追加、分页、健康快照与原子领取派发）
 │   │   ├── IParcelRepository.cs（包裹仓储接口，含过期清理危险动作治理结果契约）
 │   │   ├── IWebRequestAuditLogQueryRepository.cs（Web 请求审计日志只读查询仓储契约）
@@ -329,6 +334,7 @@
 │   ├── SlowQueryFingerprintTests.cs（慢查询画像测试：覆盖 SQL 指纹归一化、窗口聚合、容量淘汰与查询服务读取）
 │   ├── QueryGovernanceTests.cs（查询治理测试：覆盖强制模板登记、模板匹配与未登记慢查询缺口暴露）
 │   ├── IdempotencyTests.cs（幂等能力测试：覆盖 SHA256 哈希、重复请求回放与处理中拒绝）
+│   ├── InboxMessageTests.cs（Inbox 幂等消费测试：覆盖首次消费、重复回放、处理中拒绝、失败重试与过期治理候选）
 │   ├── OutboxMessageTests.cs（Outbox 事件底座测试：覆盖写入、分页、状态推进、死信与健康检查）
 │   ├── BatchSelectiveMissingShardingPhysicalTableProbe.cs（批量物理表探测测试桩：选择性缺失与 schema 透传断言）
 │   ├── CountingPlanProbe.cs（执行计划探针测试桩：记录调用次数）
@@ -372,6 +378,7 @@
 │   │   ├── ArchiveTaskEntityTypeConfiguration.cs（归档任务实体映射配置）
 │   │   ├── BagInfoEntityTypeConfiguration.cs（BagInfo 映射配置）
 │   │   ├── IdempotencyRecordEntityTypeConfiguration.cs（幂等记录映射配置：唯一幂等键索引与状态索引）
+│   │   ├── InboxMessageEntityTypeConfiguration.cs（Inbox 消息映射配置：唯一消息键索引与过期治理索引）
 │   │   ├── OutboxMessageEntityTypeConfiguration.cs（Outbox 消息映射配置：状态并发令牌与状态/事件类型索引）
 │   │   ├── ParcelEntityTypeConfiguration.cs（Parcel 映射配置）
 │   │   ├── WebRequestAuditLogEntityTypeConfiguration.cs（Web 请求审计热表映射配置）
@@ -459,6 +466,8 @@
 │   │   │   ├── 20260506075656_AddIdempotencyRecordSupport.Designer.cs（幂等记录迁移元数据，自动生成）
 │   │   │   ├── 20260506175929_AddOutboxMessageSupport.cs（Outbox 消息基线迁移）
 │   │   │   ├── 20260506175929_AddOutboxMessageSupport.Designer.cs（Outbox 消息迁移元数据，自动生成）
+│   │   │   ├── 20260507021744_AddInboxMessageSupport.cs（Inbox 消息基线迁移）
+│   │   │   ├── 20260507021744_AddInboxMessageSupport.Designer.cs（Inbox 消息迁移元数据，自动生成）
 │   │   │   ├── MigrationSchemaResolver.cs（迁移 schema 解析器）
 │   │   │   └── SortingHubDbContextModelSnapshot.cs（当前模型快照，自动生成）
 │   │   ├── WriteBuffering（批量缓冲写入基础设施目录）
@@ -477,6 +486,7 @@
 │   ├── Repositories（仓储基类与结果模型目录）
 │   │   ├── ArchiveTaskRepository.cs（归档任务仓储实现：支持创建、分页、待执行任务拉取与状态更新）
 │   │   ├── IdempotencyRepository.cs（幂等记录仓储实现：按幂等键查询并处理唯一键冲突）
+│   │   ├── InboxMessageRepository.cs（Inbox 消息仓储实现：按消息键查询、更新状态与枚举过期治理候选）
 │   │   ├── MemoryCacheRepositoryBase.cs（带内存缓存失效的仓储基类，使用 NLog 日志）
 │   │   ├── OutboxMessageRepository.cs（Outbox 消息仓储实现：支持分页、健康快照、原子领取与状态更新）
 │   │   ├── ParcelCursorQueryExtensions.cs（Parcel 游标分页查询扩展：统一稳定排序下的游标条件拼接）
@@ -552,6 +562,7 @@
   - `PR-长期数据库底座J-检查台账.md`：长期数据库底座 PR-J 实施台账；记录查询模板登记、查询治理报告、只读索引建议闭环与下一 PR 入口。
   - `PR-长期数据库底座K-检查台账.md`：长期数据库底座 PR-K 实施台账；记录写入幂等、SHA256 载荷哈希、重复请求回放与下一 PR 入口。
   - `PR-长期数据库底座L-检查台账.md`：长期数据库底座 PR-L 实施台账；记录 Outbox 事件持久化、状态推进、死信隔离、健康检查与下一 PR 入口。
+  - `PR-长期数据库底座M-检查台账.md`：长期数据库底座 PR-M 实施台账；记录 Inbox 幂等消费、失败重试、过期治理候选与下一 PR 入口。
 
 ### `.github/`：Copilot 仓库级指令目录
 - `DDD分层接口与实现放置规范.md`：DDD 分层接口定义与实现放置规范文档；明确依赖方向（Host→Infrastructure→Application→Domain）、接口定义归属规则（领域能力/应用编排/基础设施内部三类）、实现类放置约束、目录结构建议与禁止事项清单，供 Copilot 与开发人员统一执行。
@@ -603,6 +614,7 @@
 - `AppendOutboxMessageCommandService.cs`：Outbox 消息独立写入应用服务，负责请求校验、JSON 规范化与消息持久化。
 - `DispatchOutboxMessageCommandService.cs`：Outbox 消息派发应用服务，负责领取可派发消息、做最小日志派发模拟并推进成功/失败/死信状态。
 - `GetOutboxMessagePagedQueryService.cs`：Outbox 消息分页查询应用服务，提供状态过滤分页与健康快照读取能力。
+- `InboxMessageGuardService.cs`：Inbox 消息幂等消费守卫应用服务，统一协调消息键去重、处理中拒绝、失败重试与成功回放。
 - `OutboxMessageContractMapper.cs`：Outbox 聚合到外部合同映射器，统一响应模型转换。
 
 #### `Zeye.Sorting.Hub.Application/Services/Idempotency/`：幂等应用服务目录
@@ -708,6 +720,7 @@
 - `ArchiveTask.cs`：归档任务聚合根，记录 dry-run 状态、计划摘要、检查点与重试次数。
 
 ##### `Zeye.Sorting.Hub.Domain/Aggregates/Events/`：事件聚合目录
+- `InboxMessage.cs`：Inbox 消息聚合根，统一承载来源系统、消息标识、事件类型、消费状态、重试次数与过期治理时间。
 - `OutboxMessage.cs`：Outbox 消息聚合根，统一承载事件类型、JSON 载荷、派发状态、重试次数与死信隔离信息。
 
 ##### `Zeye.Sorting.Hub.Domain/Aggregates/Idempotency/`：幂等聚合目录
@@ -766,6 +779,7 @@
 - `IdempotencyRecordStatus.cs`：幂等记录状态枚举（Pending/Completed/Rejected/Failed）。
 
 #### `Zeye.Sorting.Hub.Domain/Enums/Events/`：事件枚举子目录
+- `InboxMessageStatus.cs`：Inbox 消息状态枚举（Pending/Processing/Succeeded/Failed）。
 - `OutboxMessageStatus.cs`：Outbox 消息状态枚举（Pending/Processing/Succeeded/Failed/DeadLettered）。
 
 #### `Zeye.Sorting.Hub.Domain/Enums/Sharding/`：分表治理枚举子目录
@@ -788,6 +802,7 @@
 #### `Zeye.Sorting.Hub.Domain/Repositories/`：领域仓储契约目录
 - `IArchiveTaskRepository.cs`：归档任务仓储契约（支持创建、分页查询、获取待执行任务与状态更新）。
 - `IIdempotencyRepository.cs`：幂等记录仓储契约（支持按幂等键读取、新增与更新状态）。
+- `IInboxMessageRepository.cs`：Inbox 消息仓储契约（支持按来源系统+消息标识读取、更新状态与过期治理候选查询）。
 - `IOutboxMessageRepository.cs`：Outbox 消息仓储契约（支持追加、分页、健康快照、原子领取派发与状态更新）。
 - `IParcelRepository.cs`：包裹仓储接口（第一阶段可落地契约：基础读写、偏移分页、游标分页、按 Id 邻近查询、过期清理危险动作治理结果返回；同时定义 `MaxAdjacentCountPerSide = 200` 常量，为 Application 层与 Infrastructure 层提供唯一权威数字来源，禁止各自硬编码）。
 - `IWebRequestAuditLogQueryRepository.cs`：Web 请求审计日志只读查询仓储契约（分页列表与按 Id 详情）。
@@ -821,7 +836,7 @@
 - `MaxTimeRangeAttribute.cs`：时间范围校验特性（限制起止时间跨度，默认不超过 3 个月）。
 
 ### `Zeye.Sorting.Hub.Host/`：宿主层（程序入口、后台服务、启动配置）
-- `Program.cs`：应用入口与 Host 构建流程（按 `AuditReadOnlyApi:Enabled` 显式开关控制审计只读路由映射，并注册 Parcel 游标分页查询服务、批量缓冲写入后台 Flush 服务、分表巡检/预建托管服务、归档 dry-run API、Outbox API、Outbox 派发后台服务与健康检查）。
+- `Program.cs`：应用入口与 Host 构建流程（按 `AuditReadOnlyApi:Enabled` 显式开关控制审计只读路由映射，并注册 Parcel 游标分页查询服务、批量缓冲写入后台 Flush 服务、分表巡检/预建托管服务、归档 dry-run API、Inbox 幂等消费守卫、Outbox API、Outbox 派发后台服务与健康检查）。
 - `Routing/ParcelReadOnlyApiRouteExtensions.cs`：Parcel 只读路由注册与处理逻辑；新增 `/api/parcels/cursor` 游标分页接口，并为普通分页补充默认最近 24 小时与页码保护说明。
 - `Routing/ParcelAdminApiRouteExtensions.cs`：Parcel 管理端路由扩展（普通写接口 + cleanup-expired 治理接口 + `/api/admin/parcels/batch-buffer` 批量缓冲写入接口）。
 - `Routing/AuditReadOnlyApiRouteExtensions.cs`：Web 请求审计日志只读路由扩展（`GET /api/audit/web-requests`、`GET /api/audit/web-requests/{id}`）。
@@ -885,12 +900,13 @@
 - `Zeye.Sorting.Hub.Infrastructure.csproj`：Infrastructure 项目定义。
 
 #### `Zeye.Sorting.Hub.Infrastructure/DependencyInjection/`：依赖注入扩展目录
-- `PersistenceServiceCollectionExtensions.cs`：持久化服务注册扩展（数据库提供器选择、连接字符串校验、DbContext 注册、数据库连接诊断/预热、批量缓冲写入、归档 dry-run、基线数据校验、迁移治理、分表运行期巡检与预建服务注册、Parcel 主表保持按 `CreatedTime` 分表；分表时间粒度由 Time/Volume/Hybrid 统一策略决策驱动，Parcel 关联值对象规则继续复用声明式清单与覆盖守卫）。
+- `PersistenceServiceCollectionExtensions.cs`：持久化服务注册扩展（数据库提供器选择、连接字符串校验、DbContext 注册、数据库连接诊断/预热、批量缓冲写入、归档 dry-run、基线数据校验、迁移治理、分表运行期巡检与预建服务注册，并新增 Inbox 消息仓储注册；Parcel 主表保持按 `CreatedTime` 分表；分表时间粒度由 Time/Volume/Hybrid 统一策略决策驱动，Parcel 关联值对象规则继续复用声明式清单与覆盖守卫）。
 
 #### `Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/`：EF Core 实体映射配置目录
 - `ArchiveTaskEntityTypeConfiguration.cs`：归档任务实体映射配置。
 - `BagInfoEntityTypeConfiguration.cs`：BagInfo 映射配置。
 - `IdempotencyRecordEntityTypeConfiguration.cs`：幂等记录实体映射配置，定义唯一幂等键组合索引与状态/创建时间索引。
+- `InboxMessageEntityTypeConfiguration.cs`：Inbox 消息实体映射配置，定义来源系统+消息标识唯一索引、状态索引与过期治理索引。
 - `OutboxMessageEntityTypeConfiguration.cs`：Outbox 消息实体映射配置，定义状态并发令牌与状态/事件类型索引。
 - `ParcelEntityTypeConfiguration.cs`：Parcel 聚合映射配置（Parcel 主键 Id 改为 `ValueGeneratedNever`，由应用层显式赋值；owned/value-object 子表影子主键继续保持自动生成）。
 - `WebRequestAuditLogEntityTypeConfiguration.cs`：Web 请求审计热数据主表映射配置（写优化索引与一对一关系）。
@@ -1010,6 +1026,8 @@
 - `20260506075656_AddIdempotencyRecordSupport.Designer.cs`：幂等记录迁移元数据文件（自动生成，勿手动修改）。
 - `20260506175929_AddOutboxMessageSupport.cs`：Outbox 消息基线迁移，新增 `OutboxMessages` 表及状态/事件类型索引。
 - `20260506175929_AddOutboxMessageSupport.Designer.cs`：Outbox 消息迁移元数据文件（自动生成，勿手动修改）。
+- `20260507021744_AddInboxMessageSupport.cs`：Inbox 消息基线迁移，新增 `InboxMessages` 表、唯一消息键索引与过期治理索引。
+- `20260507021744_AddInboxMessageSupport.Designer.cs`：Inbox 消息迁移元数据文件（自动生成，勿手动修改）。
 - `MigrationSchemaResolver.cs`：迁移共享 schema 解析器。
 - `SortingHubDbContextModelSnapshot.cs`：当前模型快照（自动生成，勿手动修改）。
 
@@ -1018,6 +1036,7 @@
 - `MemoryCacheRepositoryBase.cs`：带内存缓存失效逻辑的仓储基类，继承 `RepositoryBase`，同样使用 NLog 日志。
 - `ArchiveTaskRepository.cs`：归档任务仓储实现，负责创建、分页、待执行任务拉取与状态更新。
 - `IdempotencyRepository.cs`：幂等记录仓储实现，支持按幂等键读取、新增记录与状态更新，并复用共享重复键检测工具。
+- `InboxMessageRepository.cs`：Inbox 消息仓储实现，支持按消息键读取、唯一键冲突处理、状态更新与过期治理候选查询。
 - `OutboxMessageRepository.cs`：Outbox 消息仓储实现，支持分页、健康快照、原子领取可派发消息与状态更新。
 - `ParcelCursorQueryExtensions.cs`：Parcel 游标分页查询扩展，集中封装 `ScannedTime DESC, Id DESC` 稳定排序下的游标条件，避免仓储内重复拼接。
 - `ParcelRepository.cs`：Parcel 仓储第一阶段实现（复用 `RepositoryBase`、`IDbContextFactory`，使用静态 `NLog.ILogger`，已移除 MEL `ILogger<ParcelRepository>` 构造依赖；提供基础读写、偏移分页、游标分页、按 Id 邻近查询与过期清理；条码检索按 Provider 分支（MySQL FULLTEXT Boolean、其他 Provider Contains）；过期清理纳入隔离器开关 + dry-run + 审计 + 补偿边界声明）。
@@ -1044,6 +1063,7 @@
 - `SlowQueryFingerprintTests.cs`：慢查询画像测试，覆盖 SQL 指纹去参数化、窗口聚合指标、最大指纹容量淘汰与查询服务读取详情。
 - `QueryGovernanceTests.cs`：查询治理测试，覆盖强制模板登记、慢查询画像匹配模板、索引建议输出与未登记慢查询指纹缺口暴露。
 - `IdempotencyTests.cs`：幂等能力测试，覆盖 SHA256 载荷哈希稳定性、重复请求回放、取消后重试与 Pending 记录自恢复回放。
+- `InboxMessageTests.cs`：Inbox 幂等消费测试，覆盖首次消费、成功回放、处理中拒绝、失败重试与过期治理候选查询。
 - `OutboxMessageTests.cs`：Outbox 事件底座测试，覆盖写入、分页、后台状态推进、死信隔离与健康检查。
 - `AlwaysExistsShardingPhysicalTableProbe.cs`：物理表探测测试桩，始终返回存在并记录调用次数。
 - `BaselineDataTests.cs`：基线数据测试，覆盖必要配置、Provider/连接字符串、本地时间配置、健康检查、可选种子入口与 Degraded 模式异常隔离。
@@ -1093,16 +1113,16 @@
 
 ## 本次更新内容
 
-- 继续实施《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》，执行前先核对现有台账，确认当前已完成到 PR-K，本次补齐 PR-L“Outbox 事件底座与业务事件持久化”。
-- 新增 `OutboxMessage`、`OutboxMessageStatus`、`IOutboxMessageRepository`、`OutboxMessageHealthSnapshotReadModel`、Outbox 应用服务与事件合同，建立独立写入、分页查询、状态推进与死信隔离底座。
-- 新增 `OutboxMessageRepository`、`OutboxMessageEntityTypeConfiguration`、`OutboxDispatchHostedService`、`OutboxHealthCheck` 与 EF 迁移 `20260506175929_AddOutboxMessageSupport.*`，接入后台日志派发模拟、健康检查与 `/api/data-governance/outbox-messages` 数据治理入口。
-- 新增 `OutboxMessageTests.cs` 与 `检查台账/PR-长期数据库底座L-检查台账.md`，同步更新 README、更新记录与文件清单基线，保证下一 PR 可按断点继续推进。
+- 继续实施《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》，执行前先核对现有台账，确认当前已完成到 PR-L，本次补齐 PR-M“Inbox 幂等消费底座”。
+- 新增 `InboxMessage`、`InboxMessageStatus`、`IInboxMessageRepository` 与 `InboxMessageGuardService`，建立基于 `SourceSystem + MessageId` 的幂等消费、处理中拒绝、失败重试与成功回放基础能力。
+- 新增 `InboxMessageRepository`、`InboxMessageEntityTypeConfiguration` 与 EF 迁移 `20260507021744_AddInboxMessageSupport.*`，落地唯一消息键索引、状态索引与过期治理候选查询能力。
+- 新增 `InboxMessageTests.cs` 与 `检查台账/PR-长期数据库底座M-检查台账.md`，同步更新 README、更新记录与文件清单基线，保证下一 PR 可按断点继续推进。
 
 ## 后续可完善点
 
-- 下一切片可按《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》进入 PR-M，补齐 Inbox 幂等消费底座。
-- 后续可将 Outbox 独立写入入口扩展为与真实业务事务同 DbContext 协同写入，进一步收紧事件不丢失边界。
-- 后续可在 Outbox 清理链路中补齐长期保留策略、危险动作隔离器与审计资产，统一历史消息治理入口。
+- 下一切片可按《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》进入 PR-N，补齐数据保留策略与自动清理治理。
+- 后续可将 Inbox 消费守卫接入真实外部事件消费链路，并与 Outbox / 幂等记录治理策略统一编排。
+- 后续可在 Inbox 过期治理链路中补齐危险动作隔离器、审计记录与批量清理执行器，统一长期历史消息治理入口。
 
 ## Parcel API 发布门禁 / 使用边界说明
 

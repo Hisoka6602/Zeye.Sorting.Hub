@@ -13,4 +13,9 @@ public static class RepositoryErrorCodes {
     /// 幂等记录唯一键冲突错误码。
     /// </summary>
     public const string IdempotencyRecordConflict = "Idempotency.Record.Conflict";
+
+    /// <summary>
+    /// Inbox 消息唯一键冲突错误码。
+    /// </summary>
+    public const string InboxMessageConflict = "Inbox.Message.Conflict";
 }
