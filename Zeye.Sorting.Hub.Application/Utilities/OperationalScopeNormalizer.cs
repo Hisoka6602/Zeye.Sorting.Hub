@@ -5,10 +5,10 @@ using Zeye.Sorting.Hub.Domain.ValueObjects;
 namespace Zeye.Sorting.Hub.Application.Utilities;
 
 /// <summary>
-/// 运营边界守卫工具。
+/// 运营边界规范化器。
 /// 统一负责站点、产线、设备与工作站维度的标准化、边界校验与合同映射，避免后续业务模块重复实现同义规则。
 /// </summary>
-public static class OperationalScopeGuard {
+public static class OperationalScopeNormalizer {
     /// <summary>
     /// NLog 日志器。
     /// </summary>

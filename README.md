@@ -97,7 +97,7 @@
 │   ├── Utilities（应用层内部共享工具目录）
 │   │   ├── EnumGuard.cs（枚举值合法性校验工具：统一封装 Enum.IsDefined + Warn 日志 + 异常抛出）
 │   │   ├── Guard.cs（基础参数边界守卫工具：ThrowIfZeroOrNegative / ThrowIfNegative，消除各服务重复检查代码）
-│   │   └── OperationalScopeGuard.cs（运营边界守卫工具：统一标准化站点/产线/设备/工作站维度并映射合同）
+│   │   └── OperationalScopeNormalizer.cs（运营边界规范化器：统一标准化站点/产线/设备/工作站维度并映射合同）
 │   ├── Mappers/Parcels（应用层 Parcel 映射目录）
 │   │   └── ParcelCreateRequestMapper.cs（Parcel 新增请求映射器：统一同步新增与缓冲写入的聚合构建）
 │   ├── Services/WriteBuffers（批量缓冲写入应用抽象目录）
@@ -644,7 +644,7 @@
 #### `Zeye.Sorting.Hub.Application/Utilities/`：应用层内部共享工具目录
 - `EnumGuard.cs`：枚举值合法性校验工具；统一封装 `Enum.IsDefined` 判断、Warn 日志记录与 `ArgumentOutOfRangeException` 抛出，消除各应用服务中重复的枚举验证模板代码；提供 `int` 和 `int?` 两个重载。
 - `Guard.cs`：基础参数边界守卫工具；提供 `ThrowIfZeroOrNegative`（Id 正数校验，有 long/int 两个重载）和 `ThrowIfNegative`（可选数量非负校验），统一记录 Warn 日志并抛出 `ArgumentOutOfRangeException`。
-- `OperationalScopeGuard.cs`：运营边界守卫工具；统一标准化 `SiteCode`、`LineCode`、`DeviceCode`、`WorkstationName`，输出 `OperationalScope` 值对象并映射通用响应合同。
+- `OperationalScopeNormalizer.cs`：运营边界规范化器；统一标准化 `SiteCode`、`LineCode`、`DeviceCode`、`WorkstationName`，输出 `OperationalScope` 值对象并映射通用响应合同。
 
 #### `Zeye.Sorting.Hub.Application/Services/AuditLogs/`：审计日志应用服务目录
 - `GetWebRequestAuditLogPagedQueryService.cs`：Web 请求审计日志分页查询应用服务（参数校验、过滤映射、分页结果映射）。
@@ -1212,13 +1212,13 @@
 
 - 继续实施《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》，执行前先核对现有台账，确认当前已完成到 PR-P，本次补齐 PR-Q“租户 / 站点 / 设备维度数据边界预留”。
 - 新增 `SiteIdentity`、`LineIdentity`、`DeviceIdentity` 与 `OperationalScope`，统一建立站点/产线/设备/工作站四维运营边界值对象，避免后续业务模块继续写死单站点结构。
-- 新增 `OperationalScopeRequest`、`OperationalScopeResponse` 与 `OperationalScopeGuard`，统一沉淀运营边界请求/响应合同、标准化守卫、必填校验与响应映射能力。
+- 新增 `OperationalScopeRequest`、`OperationalScopeResponse` 与 `OperationalScopeNormalizer`，统一沉淀运营边界请求/响应合同、标准化入口、必填校验与响应映射能力。
 - 新增 `OperationalScopeTests.cs` 与 `检查台账/PR-长期数据库底座Q-检查台账.md`，同步更新 README、更新记录与文件清单基线，保证下一 PR 可按断点继续推进。
 
 ## 后续可完善点
 
 - 下一切片可按《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》进入 PR-R，补齐业务模块接入模板与代码生成规范。
-- 后续业务模块若新增租户 / 站点 / 设备边界字段，应统一复用 `OperationalScopeGuard` 与 `OperationalScopeRequest` / `OperationalScopeResponse`，避免再次分散实现同义校验。
+- 后续业务模块若新增租户 / 站点 / 设备边界字段，应统一复用 `OperationalScopeNormalizer` 与 `OperationalScopeRequest` / `OperationalScopeResponse`，避免再次分散实现同义校验。
 - 后续可在 `OperationalScope` 基础上逐步接入真实多站点、多设备业务上下文，但当前仍保持“不做租户鉴权、不改动现有表结构”的边界。
 
 ## Parcel API 发布门禁 / 使用边界说明

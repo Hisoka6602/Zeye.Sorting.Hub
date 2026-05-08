@@ -10,12 +10,12 @@ public sealed record OperationalScopeRequest {
     public required string SiteCode { get; init; }
 
     /// <summary>
-    /// 产线编码（可空，长度范围：0~64）。
+    /// 产线编码（可空；空白会归一化为 null；非空时长度范围：1~64）。
     /// </summary>
     public string? LineCode { get; init; }
 
     /// <summary>
-    /// 设备编码（可空，长度范围：0~64）。
+    /// 设备编码（可空；空白会归一化为 null；非空时长度范围：1~64）。
     /// </summary>
     public string? DeviceCode { get; init; }
 

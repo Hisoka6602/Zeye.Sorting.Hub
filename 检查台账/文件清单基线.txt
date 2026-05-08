@@ -86,7 +86,7 @@ Zeye.Sorting.Hub.Application/Services/WriteBuffers/BufferedWriteResult.cs
 Zeye.Sorting.Hub.Application/Services/WriteBuffers/IBufferedWriteService.cs
 Zeye.Sorting.Hub.Application/Utilities/EnumGuard.cs
 Zeye.Sorting.Hub.Application/Utilities/Guard.cs
-Zeye.Sorting.Hub.Application/Utilities/OperationalScopeGuard.cs
+Zeye.Sorting.Hub.Application/Utilities/OperationalScopeNormalizer.cs
 Zeye.Sorting.Hub.Application/Zeye.Sorting.Hub.Application.csproj
 Zeye.Sorting.Hub.Contracts/Models/AuditLogs/WebRequests/WebRequestAuditLogDetailResponse.cs
 Zeye.Sorting.Hub.Contracts/Models/AuditLogs/WebRequests/WebRequestAuditLogListItemResponse.cs
