@@ -617,7 +617,7 @@ check_no_history_in_readme() {
 
   local added_lines
   added_lines="$(git --no-pager diff --unified=0 "origin/${GITHUB_BASE_REF}...HEAD" -- README.md | grep -E '^\+' | grep -v -E '^\+\+\+' || true)"
-  local heading_pattern='^#{1,6}[[:space:]]*(更新记录（CHANGELOG）|更新记录|历史更新记录|更新历史|CHANGELOG|Changelog|History|历史)([[:space:][:punct:]]|$)'
+  local heading_pattern='^#{1,6}[[:space:]]*(更新记录（CHANGELOG）|更新记录|历史更新记录|更新历史|CHANGELOG|Changelog|History|历史)([[:space:]]*[:：-].*|[[:space:]]*$)'
   local added_heading_lines
   added_heading_lines="$(echo "$added_lines" | sed 's/^+//' | grep -E "$heading_pattern" || true)"
   if [[ -n "$added_heading_lines" ]]; then
@@ -732,7 +732,12 @@ check_performance_patterns() {
     return
   fi
 
-  local pattern='ToList\(\)\.Count|Any\(\)[[:space:]]*==[[:space:]]*true|Count\(\)[[:space:]]*(==|!=|>|<|>=|<=)[[:space:]]*0|\.Where\([^\r\n]*\)\.(FirstOrDefault|First|SingleOrDefault|Single)\(|string\.Format\('
+  local pattern_to_list_count='ToList\(\)\.Count'
+  local pattern_any_true='Any\(\)[[:space:]]*==[[:space:]]*true'
+  local pattern_count_zero='Count\(\)[[:space:]]*(==|!=|>|<|>=|<=)[[:space:]]*0'
+  local pattern_where_first='\.Where\([^\r\n]*\)\.(FirstOrDefault|First|SingleOrDefault|Single)\('
+  local pattern_string_format='string\.Format\('
+  local pattern="${pattern_to_list_count}|${pattern_any_true}|${pattern_count_zero}|${pattern_where_first}|${pattern_string_format}"
   local file_path=""
   while IFS= read -r file_path; do
     [[ -z "$file_path" ]] && continue
