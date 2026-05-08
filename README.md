@@ -26,6 +26,8 @@
 ├── 待完善事项.md（待完善事项列表，仅记录代码中尚未实现的可完善点）
 ├── 更新记录.md（更新记录，按时间倒序记录每次 PR 更新内容）
 ├── README.md（仓库总览、结构清单与维护规范）
+├── 业务模块接入规范.md（业务模块接入规范：统一模块目录结构、治理接线要求与分层边界）
+├── Copilot-业务模块新增模板.md（Copilot 业务模块新增模板：沉淀新增模块任务模板与接入检查项）
 ├── 数据库底座门禁说明.md （数据库底座门禁说明文档：记录 PR-F 门禁组成、本地执行命令、增量扫描边界与下一阶段入口）
 ├── 长期运行优化与热更新支持清单.md（面向一年无人值守运行的优化与热更新治理清单）
 ├── drill-records/（季度/年度稳定性演练记录目录，供演练记录门禁检查；每次演练后在此新增记录文件）
@@ -53,7 +55,8 @@
 │   ├── PR-长期数据库底座N-检查台账.md（长期数据库底座 PR-N 台账：记录数据保留策略、自动清理治理、健康检查与下一 PR 入口）
 │   ├── PR-长期数据库底座O-检查台账.md（长期数据库底座 PR-O 台账：记录备份、恢复、校验、演练资产与下一 PR 入口）
 │   ├── PR-长期数据库底座P-检查台账.md（长期数据库底座 PR-P 台账：记录报表查询隔离、只读副本预留、预算守卫与下一 PR 入口）
-│   └── PR-长期数据库底座Q-检查台账.md（长期数据库底座 PR-Q 台账：记录运营边界建模、维度预留与下一 PR 入口）
+│   ├── PR-长期数据库底座Q-检查台账.md（长期数据库底座 PR-Q 台账：记录运营边界建模、维度预留与下一 PR 入口）
+│   └── PR-长期数据库底座R-检查台账.md（长期数据库底座 PR-R 台账：记录业务模块接入模板、统一结果模型与下一 PR 入口）
 ├── Zeye.Sorting.Hub.Analytics（分析与报表子域，占位工程）
 │   └── Zeye.Sorting.Hub.Analytics.csproj（Analytics 项目定义）
 ├── Zeye.Sorting.Hub.Application（应用层）
@@ -95,6 +98,8 @@
 │   │       ├── ParcelQueryRequestMapper.cs（Parcel 查询请求映射器：统一默认时间窗口与过滤模型构建）
 │   │       └── UpdateParcelStatusCommandService.cs（管理端更新包裹状态应用服务（仅支持领域允许的状态转换））
 │   ├── Utilities（应用层内部共享工具目录）
+│   │   ├── ApplicationErrorCodes.cs（应用层稳定错误码定义：统一沉淀校验/冲突/不存在等错误码）
+│   │   ├── ApplicationResult.cs（应用层统一结果模型：承载状态码、错误码与 ProblemDetails 标题）
 │   │   ├── EnumGuard.cs（枚举值合法性校验工具：统一封装 Enum.IsDefined + Warn 日志 + 异常抛出）
 │   │   ├── Guard.cs（基础参数边界守卫工具：ThrowIfZeroOrNegative / ThrowIfNegative，消除各服务重复检查代码）
 │   │   └── OperationalScopeNormalizer.cs（运营边界规范化器：统一标准化站点/产线/设备/工作站维度并映射合同）
@@ -351,6 +356,7 @@
 │   ├── MigrationGovernanceTests.cs（迁移治理测试：覆盖健康检查、危险 SQL、dry-run 决策、脚本归档与预演异常记录）
 │   ├── BackupGovernanceTests.cs（备份治理测试：覆盖 Provider 命令生成、最新备份校验、Runbook/演练资产输出与健康检查状态）
 │   ├── OperationalScopeTests.cs（运营边界测试：覆盖维度标准化、必填校验、可选维度归一化与合同映射）
+│   ├── BusinessModuleTemplateRulesTests.cs（业务模块模板规则测试：覆盖统一结果模型、路由约定与文档模板门禁）
 │   ├── ReportingQueryIsolationTests.cs（报表查询隔离测试：覆盖时间范围预算、返回行数上限、只读副本回退与拒绝策略）
 │   ├── SlowQueryFingerprintTests.cs（慢查询画像测试：覆盖 SQL 指纹归一化、窗口聚合、容量淘汰与查询服务读取）
 │   ├── QueryGovernanceTests.cs（查询治理测试：覆盖强制模板登记、模板匹配与未登记慢查询缺口暴露）
@@ -575,6 +581,8 @@
 - `.gitattributes`：Git 属性配置（如行尾规范）。
 - `.gitignore`：Git 忽略规则（如 `bin/`、`obj/`、IDE 临时文件）。
 - `README.md`：仓库总览、结构清单与维护规范文档。
+- `业务模块接入规范.md`：业务模块接入规范，约束新增模块的目录结构、分层边界、查询/写入治理与统一错误处理。
+- `Copilot-业务模块新增模板.md`：Copilot 业务模块新增模板，沉淀新增业务模块时应直接复用的任务模板与检查清单。
 - `更新记录.md`：更新记录，按时间倒序记录每次 PR 更新内容（从 README 独立拆分）。
 - `待完善事项.md`：待完善事项列表，仅记录代码中尚未实现的可完善点（从 README 独立拆分，已实现项不记录）。
 - `数据库底座门禁说明.md`： 数据库底座门禁说明文档，记录 PR-F 当前交付的 CI 门禁组成、本地执行命令、增量扫描边界与下一阶段入口。
@@ -613,6 +621,7 @@
   - `PR-长期数据库底座O-检查台账.md`：长期数据库底座 PR-O 实施台账；记录备份、恢复、校验、演练资产与下一 PR 入口。
   - `PR-长期数据库底座P-检查台账.md`：长期数据库底座 PR-P 实施台账；记录报表查询隔离、只读副本预留、预算守卫与下一 PR 入口。
   - `PR-长期数据库底座Q-检查台账.md`：长期数据库底座 PR-Q 实施台账；记录运营边界建模、站点/产线/设备维度预留与下一 PR 入口。
+  - `PR-长期数据库底座R-检查台账.md`：长期数据库底座 PR-R 实施台账；记录业务模块接入模板、统一结果模型、路由约定与下一 PR 入口。
 
 ### `.github/`：Copilot 仓库级指令目录
 - `DDD分层接口与实现放置规范.md`：DDD 分层接口定义与实现放置规范文档；明确依赖方向（Host→Infrastructure→Application→Domain）、接口定义归属规则（领域能力/应用编排/基础设施内部三类）、实现类放置约束、目录结构建议与禁止事项清单，供 Copilot 与开发人员统一执行。
@@ -642,6 +651,8 @@
 - `SlowQueryProfileReadModel.cs`：慢查询画像读模型，承载指纹、标准 SQL、平均耗时、P95/P99、异常次数与窗口起止时间。
 
 #### `Zeye.Sorting.Hub.Application/Utilities/`：应用层内部共享工具目录
+- `ApplicationErrorCodes.cs`：应用层稳定错误码定义，统一沉淀参数校验、资源不存在、业务冲突、幂等拒绝与内部失败等错误码。
+- `ApplicationResult.cs`：应用层统一结果模型，承载成功/失败状态、HTTP 状态码、错误码、错误消息与 ProblemDetails 标题，供后续业务模块写命令复用。
 - `EnumGuard.cs`：枚举值合法性校验工具；统一封装 `Enum.IsDefined` 判断、Warn 日志记录与 `ArgumentOutOfRangeException` 抛出，消除各应用服务中重复的枚举验证模板代码；提供 `int` 和 `int?` 两个重载。
 - `Guard.cs`：基础参数边界守卫工具；提供 `ThrowIfZeroOrNegative`（Id 正数校验，有 long/int 两个重载）和 `ThrowIfNegative`（可选数量非负校验），统一记录 Warn 日志并抛出 `ArgumentOutOfRangeException`。
 - `OperationalScopeNormalizer.cs`：运营边界规范化器；统一标准化 `SiteCode`、`LineCode`、`DeviceCode`、`WorkstationName`，输出 `OperationalScope` 值对象并映射通用响应合同。
@@ -898,6 +909,7 @@
 
 ### `Zeye.Sorting.Hub.Host/`：宿主层（程序入口、后台服务、启动配置）
 - `Program.cs`：应用入口与 Host 构建流程（按 `AuditReadOnlyApi:Enabled` 显式开关控制审计只读路由映射，并注册 Parcel 游标分页查询服务、批量缓冲写入后台 Flush 服务、分表巡检/预建托管服务、归档 dry-run API、备份治理后台服务、Inbox 幂等消费守卫、Outbox API、Outbox 派发后台服务、数据保留治理后台服务与健康检查）。
+- `Routing/EndpointRouteBuilderConventionExtensions.cs`：业务模块路由约定扩展，统一业务模块路由组标签、端点说明声明与应用层失败结果到 ProblemDetails 的映射。
 - `Routing/ParcelReadOnlyApiRouteExtensions.cs`：Parcel 只读路由注册与处理逻辑；新增 `/api/parcels/cursor` 游标分页接口，并为普通分页补充默认最近 24 小时与页码保护说明。
 - `Routing/ParcelAdminApiRouteExtensions.cs`：Parcel 管理端路由扩展（普通写接口 + cleanup-expired 治理接口 + `/api/admin/parcels/batch-buffer` 批量缓冲写入接口）。
 - `Routing/AuditReadOnlyApiRouteExtensions.cs`：Web 请求审计日志只读路由扩展（`GET /api/audit/web-requests`、`GET /api/audit/web-requests/{id}`）。
@@ -1160,6 +1172,7 @@
 - `OutboxMessageTests.cs`：Outbox 事件底座测试，覆盖写入、分页、后台状态推进、死信隔离与健康检查。
 - `BackupGovernanceTests.cs`：备份治理测试，覆盖 MySQL/SQL Server Provider 命令生成安全性、禁用场景无连接串、最新备份文件校验、Runbook/演练记录输出与健康检查状态。
 - `OperationalScopeTests.cs`：运营边界测试，覆盖站点/产线/设备/工作站维度标准化、必填校验、可选维度归一化与响应合同映射。
+- `BusinessModuleTemplateRulesTests.cs`：业务模块模板规则测试，覆盖 `ApplicationResult` 稳定错误码、业务模块路由约定与模板文档关键规则。
 - `ReportingQueryIsolationTests.cs`：报表查询隔离测试，覆盖时间范围预算、返回行数上限、只读副本缺失时的主库回退与直接拒绝策略。
 - `DataRetentionTests.cs`：数据保留治理测试，覆盖 dry-run 计划、真实清理、守卫关闭路径与健康检查状态。
 - `AlwaysExistsShardingPhysicalTableProbe.cs`：物理表探测测试桩，始终返回存在并记录调用次数。
@@ -1210,16 +1223,16 @@
 
 ## 本次更新内容
 
-- 继续实施《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》，执行前先核对现有台账，确认当前已完成到 PR-P，本次补齐 PR-Q“租户 / 站点 / 设备维度数据边界预留”。
-- 新增 `SiteIdentity`、`LineIdentity`、`DeviceIdentity` 与 `OperationalScope`，统一建立站点/产线/设备/工作站四维运营边界值对象，避免后续业务模块继续写死单站点结构。
-- 新增 `OperationalScopeRequest`、`OperationalScopeResponse` 与 `OperationalScopeNormalizer`，统一沉淀运营边界请求/响应合同、标准化入口、必填校验与响应映射能力。
-- 新增 `OperationalScopeTests.cs` 与 `检查台账/PR-长期数据库底座Q-检查台账.md`，同步更新 README、更新记录与文件清单基线，保证下一 PR 可按断点继续推进。
+- 继续实施《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》，执行前先核对现有台账，确认当前已完成到 PR-Q，本次补齐 PR-R“业务模块接入模板与代码生成规范”。
+- 新增 `业务模块接入规范.md` 与 `Copilot-业务模块新增模板.md`，统一沉淀业务模块目录结构、接线边界、治理底座复用要求与 Copilot 任务模板。
+- 新增 `ApplicationErrorCodes.cs`、`ApplicationResult.cs` 与 `EndpointRouteBuilderConventionExtensions.cs`，统一应用层稳定错误码、失败结果模型与业务模块路由 ProblemDetails 约定。
+- 新增 `BusinessModuleTemplateRulesTests.cs` 与 `检查台账/PR-长期数据库底座R-检查台账.md`，同步更新 README、更新记录与文件清单基线，保证下一 PR 可按断点继续推进。
 
 ## 后续可完善点
 
-- 下一切片可按《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》进入 PR-R，补齐业务模块接入模板与代码生成规范。
-- 后续业务模块若新增租户 / 站点 / 设备边界字段，应统一复用 `OperationalScopeNormalizer` 与 `OperationalScopeRequest` / `OperationalScopeResponse`，避免再次分散实现同义校验。
-- 后续可在 `OperationalScope` 基础上逐步接入真实多站点、多设备业务上下文，但当前仍保持“不做租户鉴权、不改动现有表结构”的边界。
+- 下一切片可按《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》进入 PR-S，补齐压测工程与性能基线报告。
+- 后续业务模块新增写命令时，应优先复用 `ApplicationResult`、`ApplicationErrorCodes` 与 `EndpointRouteBuilderConventionExtensions`，避免再次分散定义错误协议。
+- 后续模块接入时若存在运营边界输入，仍应统一复用 `OperationalScopeNormalizer` 与 `OperationalScopeRequest` / `OperationalScopeResponse`，避免再次分散实现同义校验。
 
 ## Parcel API 发布门禁 / 使用边界说明
 
