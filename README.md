@@ -1270,10 +1270,9 @@
 
 ## 本次更新内容
 
-- 继续实施《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》，执行前先核对现有台账，确认当前已完成到 PR-S，本次补齐 PR-T“生产运行 Runbook、应急预案与最终底座验收”。
-- 新增 `生产运行Runbook.md`、`数据库故障应急预案.md`、`分表治理Runbook.md`、`备份恢复演练Runbook.md`、`业务接入前底座验收清单.md` 与 `无人值守运行检查清单.md`，统一沉淀生产运行、分表治理、备份恢复、最终放行与长期巡检资料。
-- 新增 `Zeye.Sorting.Hub.Host.Tests/ProductionReadinessRulesTests.cs`，并补充 `.github/workflows/stability-gates.yml` 对 PR-T 文档的触发路径，避免运行资料和验收上下文回退。
-- 新增 `检查台账/PR-长期数据库底座T-检查台账.md`，同步更新 README、更新记录与文件清单基线，完成长期数据库底座多 PR 路线图收口。
+- 继续围绕《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》的 PR-T 阶段收敛回归约束，本次重点同步 README 对生产运行资料、最终验收资料与对应测试入口的索引说明。
+- 补充 `Zeye.Sorting.Hub.Host.Tests/ProductionReadinessRulesTests.cs` 与 `.github/workflows/stability-gates.yml` 的职责说明，强调 PR-T 资料变更会触发稳定性门禁，并对运行手册、应急预案、验收清单建立最小回归保护。
+- 同步校正根目录 PR-T 文档与 `检查台账/PR-长期数据库底座T-检查台账.md` 的 README 职责描述，保证仓库索引与现状保持一致。
 
 ## 后续可完善点
 
