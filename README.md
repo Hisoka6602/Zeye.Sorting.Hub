@@ -376,6 +376,7 @@
 │   ├── BackupGovernanceTests.cs（备份治理测试：覆盖 Provider 命令生成、最新备份校验、Runbook/演练资产输出与健康检查状态）
 │   ├── OperationalScopeTests.cs（运营边界测试：覆盖维度标准化、必填校验、可选维度归一化与合同映射）
 │   ├── BusinessModuleTemplateRulesTests.cs（业务模块模板规则测试：覆盖统一结果模型、路由约定与文档模板门禁）
+│   ├── CopilotRuleValidationScriptTests.cs（Copilot 规则脚本回归测试：覆盖 README 历史记录标题变体与性能反模式门禁扩展）
 │   ├── PerformanceBaselineRulesTests.cs（压测基线规则测试：覆盖压测说明、k6 脚本、workflow 与性能基线报告模板门禁）
 │   ├── ProductionReadinessRulesTests.cs（生产运行资料规则测试：覆盖 Runbook、应急预案、验收清单、无人值守检查清单与稳定性门禁上下文）
 │   ├── RepositoryFileReader.cs（测试仓库文件读取入口：统一定位仓库根目录并读取规则测试依赖文档）
@@ -1217,6 +1218,7 @@
 - `BackupGovernanceTests.cs`：备份治理测试，覆盖 MySQL/SQL Server Provider 命令生成安全性、禁用场景无连接串、最新备份文件校验、Runbook/演练记录输出与健康检查状态。
 - `OperationalScopeTests.cs`：运营边界测试，覆盖站点/产线/设备/工作站维度标准化、必填校验、可选维度归一化与响应合同映射。
 - `BusinessModuleTemplateRulesTests.cs`：业务模块模板规则测试，覆盖 `ApplicationResult` 稳定错误码、业务模块路由约定与模板文档关键规则。
+- `CopilotRuleValidationScriptTests.cs`：Copilot 规则脚本回归测试，覆盖 README 历史记录章节标题变体与新增性能反模式门禁，避免 `validate-copilot-rules.sh` 覆盖范围回退。
 - `PerformanceBaselineRulesTests.cs`：压测基线规则测试，覆盖压测工程说明、k6 脚本、轻量 smoke workflow 与性能基线报告模板关键约束。
 - `ProductionReadinessRulesTests.cs`：生产运行资料规则测试，覆盖 PR-T 新增 Runbook、应急预案、最终验收清单、无人值守检查清单与稳定性门禁触发上下文。
 - `RepositoryFileReader.cs`：测试仓库文件读取入口，统一定位仓库根目录并读取规则测试依赖的 Markdown / workflow / 脚本文件，避免重复维护相同定位逻辑。
@@ -1270,16 +1272,15 @@
 
 ## 本次更新内容
 
-- 继续围绕《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》的 PR-T 阶段收敛回归约束，本次重点同步 README 对生产运行资料、最终验收资料与对应测试入口的索引说明。
-- 补充 `Zeye.Sorting.Hub.Host.Tests/ProductionReadinessRulesTests.cs` 与 `.github/workflows/stability-gates.yml` 的职责说明，强调 PR-T 资料变更会触发稳定性门禁，并对运行手册、应急预案、验收清单建立最小回归保护。
-- 同步校正根目录 PR-T 文档与 `检查台账/PR-长期数据库底座T-检查台账.md` 的 README 职责描述，保证仓库索引与现状保持一致。
+- 按《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》执行前置核对，确认长期数据库底座 PR-A～PR-T 主体能力已完成，当前补齐点集中在 `PR-A-检查台账.md` 延后的 Copilot 严格门禁覆盖。
+- 补强 `.github/scripts/validate-copilot-rules.sh`：README 历史记录门禁改为识别常见 Markdown 标题变体，并扩展 `.Count() == 0`、`.Where(...).FirstOrDefault()`、`string.Format()` 等性能反模式检测。
+- 新增 `Zeye.Sorting.Hub.Host.Tests/CopilotRuleValidationScriptTests.cs`，对上述门禁补强建立最小回归保护，并同步更新 README、更新记录、文件清单基线与 PR-A 台账补充记录。
 
 ## 后续可完善点
 
 - 长期数据库底座路线图已完成，后续进入正式业务模块开发时，应继续按 `业务模块接入规范.md` 与 `业务接入前底座验收清单.md` 执行。
+- 当前 `validate-copilot-rules.sh` 仍以增量正则门禁为主，后续可继续补充更多高频 .NET 性能反模式与 README 结构误用场景。
 - 后续需持续补充季度演练记录与真实生产复盘，保证 `drill-records/`、运行手册与验收清单长期保持同步。
-- 后续真实压测执行时，应将环境快照、数据规模与原始结果沉淀到 `性能基线报告.md` 与本地 `performance/results/` 产物中，避免不同环境结果混比。
-- 后续新增业务模块前，可先复用本次压测脚本模式补充模块级基线，保持查询、写入与诊断链路的性能门禁一致。
 
 ## Parcel API 发布门禁 / 使用边界说明
 
