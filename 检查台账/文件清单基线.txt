@@ -233,6 +233,7 @@ Zeye.Sorting.Hub.Host.Tests/ParcelRepositoryTests.cs
 Zeye.Sorting.Hub.Host.Tests/PerformanceBaselineRulesTests.cs
 Zeye.Sorting.Hub.Host.Tests/QueryGovernanceTests.cs
 Zeye.Sorting.Hub.Host.Tests/ReportingQueryIsolationTests.cs
+Zeye.Sorting.Hub.Host.Tests/RepositoryFileReader.cs
 Zeye.Sorting.Hub.Host.Tests/SelectiveMissingShardingPhysicalTableProbe.cs
 Zeye.Sorting.Hub.Host.Tests/ShardingInspectionTests.cs
 Zeye.Sorting.Hub.Host.Tests/SlowQueryFingerprintTests.cs
