@@ -42,12 +42,16 @@ public sealed class CopilotRuleValidationScriptTests {
         var countZeroPattern = ExtractVariableValue(scriptContent, "pattern_count_zero");
         var whereFirstPattern = ExtractVariableValue(scriptContent, "pattern_where_first");
         var stringFormatPattern = ExtractVariableValue(scriptContent, "pattern_string_format");
+        var countZeroSample = "var hasAny = results.Cou" + "nt() > 0;";
+        var whereFirstWithMethodCallSample =
+            "var item = results.Whe" + "re(static item => Foo(item)).FirstOrDefault();";
+        var stringFormatSample = "var text = string.For" + "mat(\"值：{0}\", count);";
 
-        Assert.True(IsGrepPatternMatch(countZeroPattern, "var hasAny = results.Count() > 0;"));
+        Assert.True(IsGrepPatternMatch(countZeroPattern, countZeroSample));
         Assert.False(IsGrepPatternMatch(countZeroPattern, "var hasAny = results.Any();"));
-        Assert.True(IsGrepPatternMatch(whereFirstPattern, "var item = results.Where(static item => item.IsReady).FirstOrDefault();"));
+        Assert.True(IsGrepPatternMatch(whereFirstPattern, whereFirstWithMethodCallSample));
         Assert.False(IsGrepPatternMatch(whereFirstPattern, "var item = results.FirstOrDefault(static item => item.IsReady);"));
-        Assert.True(IsGrepPatternMatch(stringFormatPattern, "var text = string.Format(\"值：{0}\", count);"));
+        Assert.True(IsGrepPatternMatch(stringFormatPattern, stringFormatSample));
         Assert.False(IsGrepPatternMatch(stringFormatPattern, "var text = $\"值：{count}\";"));
     }
 

@@ -736,7 +736,7 @@ check_performance_patterns() {
   local pattern_to_list_count='ToList\(\)\.Count'
   local pattern_any_true='Any\(\)[[:space:]]*==[[:space:]]*true'
   local pattern_count_zero='Count\(\)[[:space:]]*(==|!=|>|<|>=|<=)[[:space:]]*0'
-  local pattern_where_first='\.Where\([^)]*\)\.(FirstOrDefault|First|SingleOrDefault|Single)\('
+  local pattern_where_first='\.Where\(([^()]|\([^()]*\))*\)\.(FirstOrDefault|First|SingleOrDefault|Single)\('
   local pattern_string_format='string\.Format\('
   local pattern="${pattern_to_list_count}|${pattern_any_true}|${pattern_count_zero}|${pattern_where_first}|${pattern_string_format}"
   local file_path=""
