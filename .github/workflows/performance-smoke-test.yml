@@ -1,0 +1,35 @@
+name: performance-smoke-test
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/performance-smoke-test.yml"
+      - "performance/**"
+      - "性能基线报告.md"
+      - "README.md"
+      - "更新记录.md"
+      - "检查台账/**"
+      - "Zeye.Sorting.Hub.Host.Tests/**"
+
+permissions:
+  contents: read
+
+jobs:
+  performance-asset-smoke:
+    name: 压测资产轻量冒烟校验
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore Zeye.Sorting.Hub.sln
+
+      - name: Performance baseline rules tests
+        run: dotnet test Zeye.Sorting.Hub.Host.Tests/Zeye.Sorting.Hub.Host.Tests.csproj --no-restore -c Release --filter "FullyQualifiedName~PerformanceBaselineRulesTests" --logger "console;verbosity=normal"
