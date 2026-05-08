@@ -3,7 +3,7 @@ namespace Zeye.Sorting.Hub.Application.Utilities;
 /// <summary>
 /// 应用层统一结果模型。
 /// </summary>
-public sealed record class ApplicationResult {
+public sealed record ApplicationResult {
     /// <summary>
     /// 默认失败标题。
     /// </summary>

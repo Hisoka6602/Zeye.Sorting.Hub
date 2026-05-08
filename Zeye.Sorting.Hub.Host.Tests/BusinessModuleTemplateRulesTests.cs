@@ -149,7 +149,7 @@ public sealed class BusinessModuleTemplateRulesTests {
                 "TemplateModuleNullProblems",
                 "模板模块空声明接口",
                 "用于验证显式传入 null 的 ProblemDetails 状态码声明不会导致异常。",
-                problemStatusCodes: null!);
+                problemStatusCodes: null);
         await app.StartAsync();
 
         using var client = app.GetTestClient();

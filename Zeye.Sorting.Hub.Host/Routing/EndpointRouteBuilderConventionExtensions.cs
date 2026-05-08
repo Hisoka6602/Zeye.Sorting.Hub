@@ -108,7 +108,7 @@ public static class EndpointRouteBuilderConventionExtensions {
     /// <returns>去重后的状态码集合。</returns>
     private static IEnumerable<int> NormalizeProblemStatusCodes(int[]? problemStatusCodes) {
         if (problemStatusCodes is null) {
-            Logger.Warn("应用业务模块端点约定时 ProblemDetails 状态码声明为空数组引用，已按空集合处理。");
+            Logger.Warn("应用业务模块端点约定时 ProblemDetails 状态码声明为 null，已按空集合处理。");
             return [];
         }
 
