@@ -12,6 +12,12 @@ on:
       - "Zeye.Sorting.Hub.Application/**"
       - "Zeye.Sorting.Hub.Host.Tests/**"
       - "长期运行优化与热更新支持清单.md"
+      - "生产运行Runbook.md"
+      - "数据库故障应急预案.md"
+      - "分表治理Runbook.md"
+      - "备份恢复演练Runbook.md"
+      - "业务接入前底座验收清单.md"
+      - "无人值守运行检查清单.md"
       - "drill-records/**"
 
 permissions:
