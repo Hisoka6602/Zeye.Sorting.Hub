@@ -1565,7 +1565,7 @@ Zeye.Sorting.Hub.Domain/ValueObjects/LineIdentity.cs
 Zeye.Sorting.Hub.Domain/ValueObjects/DeviceIdentity.cs
 Zeye.Sorting.Hub.Contracts/Models/Common/OperationalScopeRequest.cs
 Zeye.Sorting.Hub.Contracts/Models/Common/OperationalScopeResponse.cs
-Zeye.Sorting.Hub.Application/Utilities/OperationalScopeGuard.cs
+Zeye.Sorting.Hub.Application/Utilities/OperationalScopeNormalizer.cs
 Zeye.Sorting.Hub.Host.Tests/OperationalScopeTests.cs
 ```
 
