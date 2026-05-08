@@ -102,7 +102,7 @@ public static class EndpointRouteBuilderConventionExtensions {
     }
 
     /// <summary>
-    /// 归一化 ProblemDetails 状态码声明列表。
+    /// 归一化 ProblemDetails 状态码声明列表：对 <c>null</c> 按空集合处理，对非空集合执行去重。
     /// </summary>
     /// <param name="problemStatusCodes">原始状态码声明列表。</param>
     /// <returns>去重后的状态码集合。</returns>

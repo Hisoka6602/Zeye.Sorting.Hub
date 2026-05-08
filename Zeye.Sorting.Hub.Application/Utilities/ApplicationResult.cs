@@ -65,7 +65,7 @@ public sealed record ApplicationResult {
     public int StatusCode { get; }
 
     /// <summary>
-    /// 初始化统一结果模型。
+    /// 私有构造函数，仅供工厂方法使用，禁止外部直接实例化。
     /// </summary>
     /// <param name="isSuccess">是否成功。</param>
     /// <param name="statusCode">HTTP 状态码。</param>
