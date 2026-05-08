@@ -19,6 +19,7 @@
 │   └── workflows（CI 工作流目录）
 │       ├── copilot-instructions-validation.yml（Copilot 限制规则 PR 校验流水线：每次 PR 运行规则校验脚本）
 │       ├── database-foundation-gates.yml （数据库底座门禁流水线：构建+测试、UTC/README/敏感配置/影分身代码与结构性底座规则校验）
+│       ├── performance-smoke-test.yml（压测资产轻量冒烟流水线：仅校验压测脚本、基线报告模板与规则测试，不执行真实压测）
 │       ├── ef-migration-validation.yml（EF 迁移验收流水线：MySQL+SQL Server 双 Provider 执行 dotnet ef list/update/script）
 │       └── stability-gates.yml（长期运行稳定性门禁：构建+测试、配置合法性、隔离器边界、回滚资产、健康探针端点、契约兼容性、蓝绿部署验证、演练记录（强制阻断）、分表预建校验、迁移归档验证共 10 项门禁）
 ├── .gitattributes（Git 属性配置）
@@ -30,6 +31,15 @@
 ├── Copilot-业务模块新增模板.md（Copilot 业务模块新增模板：沉淀新增模块任务模板与接入检查项）
 ├── 数据库底座门禁说明.md （数据库底座门禁说明文档：记录 PR-F 门禁组成、本地执行命令、增量扫描边界与下一阶段入口）
 ├── 长期运行优化与热更新支持清单.md（面向一年无人值守运行的优化与热更新治理清单）
+├── performance/（压测工程目录：沉淀 PR-S 的 k6 脚本、说明文档与结果目录占位）
+│   ├── README.md（压测工程说明：记录覆盖范围、环境变量、手动执行命令与结果沉淀约定）
+│   ├── k6/（k6 压测脚本目录）
+│   │   ├── common.js（压测脚本共享逻辑：本地时间格式化、环境变量解析、请求头与写入载荷构造）
+│   │   ├── parcel-cursor-query.js（Parcel 游标分页与普通分页压测脚本）
+│   │   ├── parcel-batch-buffer-write.js（Parcel 批量缓冲写入压测脚本）
+│   │   └── audit-query.js（审计查询、健康检查与慢查询画像压测脚本）
+│   └── results/（压测结果目录占位）
+│       └── .gitkeep（保留空目录的占位文件）
 ├── drill-records/（季度/年度稳定性演练记录目录，供演练记录门禁检查；每次演练后在此新增记录文件）
 ├── 检查台账/（逐文件全量审查台账目录；存放文件清单基线与各批次检查结果，按 PR-A/B/C… 分批递增）
 │   ├── 文件清单基线.txt（全仓库受版本控制文件基线清单，由 git ls-files 生成，作为防遗漏对账基准）
@@ -56,7 +66,8 @@
 │   ├── PR-长期数据库底座O-检查台账.md（长期数据库底座 PR-O 台账：记录备份、恢复、校验、演练资产与下一 PR 入口）
 │   ├── PR-长期数据库底座P-检查台账.md（长期数据库底座 PR-P 台账：记录报表查询隔离、只读副本预留、预算守卫与下一 PR 入口）
 │   ├── PR-长期数据库底座Q-检查台账.md（长期数据库底座 PR-Q 台账：记录运营边界建模、维度预留与下一 PR 入口）
-│   └── PR-长期数据库底座R-检查台账.md（长期数据库底座 PR-R 台账：记录业务模块接入模板、统一结果模型与下一 PR 入口）
+│   ├── PR-长期数据库底座R-检查台账.md（长期数据库底座 PR-R 台账：记录业务模块接入模板、统一结果模型与下一 PR 入口）
+│   └── PR-长期数据库底座S-检查台账.md（长期数据库底座 PR-S 台账：记录压测工程、性能基线报告模板与下一 PR 入口）
 ├── Zeye.Sorting.Hub.Analytics（分析与报表子域，占位工程）
 │   └── Zeye.Sorting.Hub.Analytics.csproj（Analytics 项目定义）
 ├── Zeye.Sorting.Hub.Application（应用层）
@@ -358,6 +369,8 @@
 │   ├── BackupGovernanceTests.cs（备份治理测试：覆盖 Provider 命令生成、最新备份校验、Runbook/演练资产输出与健康检查状态）
 │   ├── OperationalScopeTests.cs（运营边界测试：覆盖维度标准化、必填校验、可选维度归一化与合同映射）
 │   ├── BusinessModuleTemplateRulesTests.cs（业务模块模板规则测试：覆盖统一结果模型、路由约定与文档模板门禁）
+│   ├── PerformanceBaselineRulesTests.cs（压测基线规则测试：覆盖压测说明、k6 脚本、workflow 与性能基线报告模板门禁）
+│   ├── RepositoryFileReader.cs（测试仓库文件读取入口：统一定位仓库根目录并读取规则测试依赖文档）
 │   ├── ReportingQueryIsolationTests.cs（报表查询隔离测试：覆盖时间范围预算、返回行数上限、只读副本回退与拒绝策略）
 │   ├── SlowQueryFingerprintTests.cs（慢查询画像测试：覆盖 SQL 指纹归一化、窗口聚合、容量淘汰与查询服务读取）
 │   ├── QueryGovernanceTests.cs（查询治理测试：覆盖强制模板登记、模板匹配与未登记慢查询缺口暴露）
@@ -559,6 +572,7 @@
 │   │   └── LineBreakNormalizer.cs（换行标准化工具：将 CR/LF 归一化为空格，仅在存在换行时分配新字符串）
 │   └── Zeye.Sorting.Hub.SharedKernel.csproj（SharedKernel 项目定义）
 ├── Zeye.Sorting.Hub.sln（.NET 解决方案入口）
+├── 性能基线报告.md（压测基线报告模板：记录 PR-S 强制指标、场景摘要、环境快照与结果结论）
 ├── EFCore数据库迁移指南.md（EF Core CodeFirst 迁移使用说明文档）
 ├── EFCore9升级计划.md（EF Core 8 → 9 升级记录：已完成，EFCore 9.0.14 / Pomelo 9.0.0 / HasPendingModelChanges 守卫已集成）
 ├── 新数据库提供程序接入指南.md（接入新数据库提供器（如 SQLite / PostgreSQL）的逐步操作指南）
@@ -587,6 +601,8 @@
 - `更新记录.md`：更新记录，按时间倒序记录每次 PR 更新内容（从 README 独立拆分）。
 - `待完善事项.md`：待完善事项列表，仅记录代码中尚未实现的可完善点（从 README 独立拆分，已实现项不记录）。
 - `数据库底座门禁说明.md`： 数据库底座门禁说明文档，记录 PR-F 当前交付的 CI 门禁组成、本地执行命令、增量扫描边界与下一阶段入口。
+- `performance/`：压测工程目录，集中沉淀 PR-S 的 k6 脚本、执行说明与结果目录占位。
+- `性能基线报告.md`：性能基线报告模板，统一记录 RPS、P50/P95/P99、错误率、超时率、连接池占用、写入队列深度、CPU、内存与 GC 次数。
 - `Zeye.Sorting.Hub.sln`：.NET 解决方案入口，聚合全部项目。
 - `Parcel属性新增操作指南.md`：当 Parcel 聚合需要新增属性时，需要修改哪些文件、如何修改的操作指南（含三种情形：主表标量属性、现有值对象属性、新增值对象）。
 - `项目完成度与推进计划.md`：项目阶段评估与路线图文档。
@@ -623,6 +639,7 @@
   - `PR-长期数据库底座P-检查台账.md`：长期数据库底座 PR-P 实施台账；记录报表查询隔离、只读副本预留、预算守卫与下一 PR 入口。
   - `PR-长期数据库底座Q-检查台账.md`：长期数据库底座 PR-Q 实施台账；记录运营边界建模、站点/产线/设备维度预留与下一 PR 入口。
   - `PR-长期数据库底座R-检查台账.md`：长期数据库底座 PR-R 实施台账；记录业务模块接入模板、统一结果模型、路由约定与下一 PR 入口。
+  - `PR-长期数据库底座S-检查台账.md`：长期数据库底座 PR-S 实施台账；记录压测工程、性能基线报告模板、轻量 smoke workflow 与下一 PR 入口。
 
 ### `.github/`：Copilot 仓库级指令目录
 - `DDD分层接口与实现放置规范.md`：DDD 分层接口定义与实现放置规范文档；明确依赖方向（Host→Infrastructure→Application→Domain）、接口定义归属规则（领域能力/应用编排/基础设施内部三类）、实现类放置约束、目录结构建议与禁止事项清单，供 Copilot 与开发人员统一执行。
@@ -637,8 +654,19 @@
 ### `.github/workflows/`：CI 工作流目录
 - `copilot-instructions-validation.yml`：Copilot 限制规则校验流水线；每次 PR 触发并执行 `validate-copilot-rules.sh`，对规则自动门禁。
 - `database-foundation-gates.yml`： 数据库底座门禁流水线；新增独立的 PR-F 门禁，执行 Release 构建与测试，并串行校验 UTC/配置时区后缀、README 文件树同步、敏感配置、影分身代码、枚举 Description、HostedService 异常捕获、后台循环取消与有界容量规则。
+- `performance-smoke-test.yml`：压测资产轻量冒烟流水线；仅在压测脚本、基线报告模板、README、台账或对应测试变更时触发，并通过过滤后的 `PerformanceBaselineRulesTests` 校验资产约束，不执行真实压测。
 - `ef-migration-validation.yml`：EF 迁移验收流水线（MySQL + SQL Server 容器环境），真实执行 `dotnet ef migrations list`、`dotnet ef database update`、`dotnet ef migrations script` 三项门禁命令。
 - `stability-gates.yml`：长期运行稳定性门禁流水线；包含构建+单元测试、配置合法性验证（含分表预建配置检查）、隔离器边界检查、回滚资产检查、健康探针端点注册检查、契约兼容性验证、蓝绿/滚动部署验证、演练记录门禁（强制阻断）、分表预建校验门禁、迁移脚本归档验证门禁共 10 个 job/门禁；其中 `deploy-validation` 依赖 `build-and-test`、`health-probe`、`rollback-asset`，并非全部 job 同时并行执行。
+
+### `performance/`：压测工程目录
+- `README.md`：压测工程说明，记录覆盖范围、环境变量、手动执行命令、CI 轻量 smoke test 边界与结果沉淀约定。
+- `k6/`：k6 压测脚本目录。
+  - `common.js`：压测脚本共享逻辑，统一处理本地时间格式化、环境变量解析、请求头与批量写入载荷构造。
+  - `parcel-cursor-query.js`：Parcel 游标分页与普通分页压测脚本，形成双读取链路基线。
+  - `parcel-batch-buffer-write.js`：Parcel 批量缓冲写入压测脚本，覆盖有界队列入队链路。
+  - `audit-query.js`：审计日志查询、就绪健康检查与慢查询画像压测脚本。
+- `results/`：压测结果目录占位。
+  - `.gitkeep`：保留空结果目录的占位文件。
 
 ### `Zeye.Sorting.Hub.Analytics/`：分析与报表子域（当前为占位工程）
 - `Zeye.Sorting.Hub.Analytics.csproj`：Analytics 项目定义。
@@ -1174,6 +1202,8 @@
 - `BackupGovernanceTests.cs`：备份治理测试，覆盖 MySQL/SQL Server Provider 命令生成安全性、禁用场景无连接串、最新备份文件校验、Runbook/演练记录输出与健康检查状态。
 - `OperationalScopeTests.cs`：运营边界测试，覆盖站点/产线/设备/工作站维度标准化、必填校验、可选维度归一化与响应合同映射。
 - `BusinessModuleTemplateRulesTests.cs`：业务模块模板规则测试，覆盖 `ApplicationResult` 稳定错误码、业务模块路由约定与模板文档关键规则。
+- `PerformanceBaselineRulesTests.cs`：压测基线规则测试，覆盖压测工程说明、k6 脚本、轻量 smoke workflow 与性能基线报告模板关键约束。
+- `RepositoryFileReader.cs`：测试仓库文件读取入口，统一定位仓库根目录并读取规则测试依赖的 Markdown / workflow / 脚本文件，避免重复维护相同定位逻辑。
 - `ReportingQueryIsolationTests.cs`：报表查询隔离测试，覆盖时间范围预算、返回行数上限、只读副本缺失时的主库回退与直接拒绝策略。
 - `DataRetentionTests.cs`：数据保留治理测试，覆盖 dry-run 计划、真实清理、守卫关闭路径与健康检查状态。
 - `AlwaysExistsShardingPhysicalTableProbe.cs`：物理表探测测试桩，始终返回存在并记录调用次数。
@@ -1224,16 +1254,16 @@
 
 ## 本次更新内容
 
-- 继续实施《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》，执行前先核对现有台账，确认当前已完成到 PR-Q，本次补齐 PR-R“业务模块接入模板与代码生成规范”。
-- 新增 `业务模块接入规范.md` 与 `Copilot-业务模块新增模板.md`，统一沉淀业务模块目录结构、接线边界、治理底座复用要求与 Copilot 任务模板。
-- 新增 `ApplicationErrorCodes.cs`、`ApplicationResult.cs` 与 `EndpointRouteBuilderConventionExtensions.cs`，统一应用层稳定错误码、失败结果模型与业务模块路由 ProblemDetails 约定。
-- 新增 `BusinessModuleTemplateRulesTests.cs` 与 `检查台账/PR-长期数据库底座R-检查台账.md`，同步更新 README、更新记录与文件清单基线，保证下一 PR 可按断点继续推进。
+- 继续实施《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》，执行前先核对现有台账，确认当前已完成到 PR-R，本次补齐 PR-S“压测工程与性能基线报告”。
+- 新增 `performance/README.md`、`performance/k6/*.js`、`performance/results/.gitkeep` 与 `性能基线报告.md`，统一沉淀 API 级压测脚本、本地时间输入规范、结果目录占位与基线报告模板。
+- 新增 `.github/workflows/performance-smoke-test.yml` 与 `PerformanceBaselineRulesTests.cs`，在 CI 中只执行轻量规则校验，不运行真实压测，同时对脚本、文档与 workflow 关键约束建立回归测试。
+- 新增 `检查台账/PR-长期数据库底座S-检查台账.md`，同步更新 README、更新记录与文件清单基线，保证下一 PR 可按断点继续推进。
 
 ## 后续可完善点
 
-- 下一切片可按《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》进入 PR-S，补齐压测工程与性能基线报告。
-- 后续业务模块新增写命令时，应优先复用 `ApplicationResult`、`ApplicationErrorCodes` 与 `EndpointRouteBuilderConventionExtensions`，避免再次分散定义错误协议。
-- 后续模块接入时若存在运营边界输入，仍应统一复用 `OperationalScopeNormalizer` 与 `OperationalScopeRequest` / `OperationalScopeResponse`，避免再次分散实现同义校验。
+- 下一切片可按《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》进入 PR-T，补齐生产运行 Runbook、应急预案与最终底座验收资料。
+- 后续真实压测执行时，应将环境快照、数据规模与原始结果沉淀到 `性能基线报告.md` 与本地 `performance/results/` 产物中，避免不同环境结果混比。
+- 后续新增业务模块前，可先复用本次压测脚本模式补充模块级基线，保持查询、写入与诊断链路的性能门禁一致。
 
 ## Parcel API 发布门禁 / 使用边界说明
 

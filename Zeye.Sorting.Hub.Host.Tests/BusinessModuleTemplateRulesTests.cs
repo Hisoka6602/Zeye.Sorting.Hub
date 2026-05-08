@@ -1,4 +1,3 @@
-using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
@@ -166,9 +165,8 @@ public sealed class BusinessModuleTemplateRulesTests {
     /// </summary>
     [Fact]
     public void BusinessModuleTemplateDocuments_ShouldContainRequiredRules() {
-        var repositoryRoot = LocateRepositoryRoot();
-        var moduleConvention = File.ReadAllText(Path.Combine(repositoryRoot, "业务模块接入规范.md"));
-        var copilotTemplate = File.ReadAllText(Path.Combine(repositoryRoot, "Copilot-业务模块新增模板.md"));
+        var moduleConvention = RepositoryFileReader.ReadAllText("业务模块接入规范.md");
+        var copilotTemplate = RepositoryFileReader.ReadAllText("Copilot-业务模块新增模板.md");
 
         Assert.Contains("高频列表必须优先游标分页", moduleConvention, StringComparison.Ordinal);
         Assert.Contains("写入必须考虑幂等", moduleConvention, StringComparison.Ordinal);
@@ -177,24 +175,5 @@ public sealed class BusinessModuleTemplateRulesTests {
         Assert.Contains("ApplicationResult", copilotTemplate, StringComparison.Ordinal);
         Assert.Contains("EndpointRouteBuilderConventionExtensions", copilotTemplate, StringComparison.Ordinal);
         Assert.Contains("先输出实施计划（Plan）", copilotTemplate, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// 定位仓库根目录。
-    /// </summary>
-    /// <returns>仓库根目录绝对路径。</returns>
-    private static string LocateRepositoryRoot() {
-        var current = new DirectoryInfo(AppContext.BaseDirectory);
-        while (current is not null) {
-            var readmePath = Path.Combine(current.FullName, "README.md");
-            var solutionPath = Path.Combine(current.FullName, "Zeye.Sorting.Hub.sln");
-            if (File.Exists(readmePath) && File.Exists(solutionPath)) {
-                return current.FullName;
-            }
-
-            current = current.Parent;
-        }
-
-        throw new DirectoryNotFoundException("未找到仓库根目录。");
     }
 }

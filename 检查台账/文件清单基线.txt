@@ -10,8 +10,10 @@
 .github/workflows/copilot-instructions-validation.yml
 .github/workflows/database-foundation-gates.yml
 .github/workflows/ef-migration-validation.yml
+.github/workflows/performance-smoke-test.yml
 .github/workflows/stability-gates.yml
 .gitignore
+"Copilot-\344\270\232\345\212\241\346\250\241\345\235\227\346\226\260\345\242\236\346\250\241\346\235\277.md"
 "EFCore9\345\215\207\347\272\247\350\256\241\345\210\222.md"
 "EFCore\346\225\260\346\215\256\345\272\223\350\277\201\347\247\273\346\214\207\345\215\227.md"
 "Parcel\345\261\236\346\200\247\346\226\260\345\242\236\346\223\215\344\275\234\346\214\207\345\215\227.md"
@@ -51,6 +53,8 @@ Zeye.Sorting.Hub.Application/Services/Parcels/UpdateParcelStatusCommandService.c
 Zeye.Sorting.Hub.Application/Services/WriteBuffers/BufferedWriteOptions.cs
 Zeye.Sorting.Hub.Application/Services/WriteBuffers/BufferedWriteResult.cs
 Zeye.Sorting.Hub.Application/Services/WriteBuffers/IBufferedWriteService.cs
+Zeye.Sorting.Hub.Application/Utilities/ApplicationErrorCodes.cs
+Zeye.Sorting.Hub.Application/Utilities/ApplicationResult.cs
 Zeye.Sorting.Hub.Application/Utilities/EnumGuard.cs
 Zeye.Sorting.Hub.Application/Utilities/Guard.cs
 Zeye.Sorting.Hub.Application/Utilities/OperationalScopeNormalizer.cs
@@ -195,6 +199,7 @@ Zeye.Sorting.Hub.Host.Tests/AutoTuningProductionControlTests.cs
 Zeye.Sorting.Hub.Host.Tests/BackupGovernanceTests.cs
 Zeye.Sorting.Hub.Host.Tests/BaselineDataTests.cs
 Zeye.Sorting.Hub.Host.Tests/BatchSelectiveMissingShardingPhysicalTableProbe.cs
+Zeye.Sorting.Hub.Host.Tests/BusinessModuleTemplateRulesTests.cs
 Zeye.Sorting.Hub.Host.Tests/ConfigChangeHistoryStoreTests.cs
 Zeye.Sorting.Hub.Host.Tests/ConfigurableShardingPhysicalTableProbe.cs
 Zeye.Sorting.Hub.Host.Tests/CountingPlanProbe.cs
@@ -225,6 +230,7 @@ Zeye.Sorting.Hub.Host.Tests/ParcelCursorQueryTests.cs
 Zeye.Sorting.Hub.Host.Tests/ParcelQueryServicesTests.cs
 Zeye.Sorting.Hub.Host.Tests/ParcelReadOnlyApiTests.cs
 Zeye.Sorting.Hub.Host.Tests/ParcelRepositoryTests.cs
+Zeye.Sorting.Hub.Host.Tests/PerformanceBaselineRulesTests.cs
 Zeye.Sorting.Hub.Host.Tests/QueryGovernanceTests.cs
 Zeye.Sorting.Hub.Host.Tests/ReportingQueryIsolationTests.cs
 Zeye.Sorting.Hub.Host.Tests/SelectiveMissingShardingPhysicalTableProbe.cs
@@ -301,6 +307,7 @@ Zeye.Sorting.Hub.Host/QueryParameters/WebRequestAuditLogListQueryParameters.cs
 Zeye.Sorting.Hub.Host/Routing/AuditReadOnlyApiRouteExtensions.cs
 Zeye.Sorting.Hub.Host/Routing/DataGovernanceApiRouteExtensions.cs
 Zeye.Sorting.Hub.Host/Routing/DiagnosticsApiRouteExtensions.cs
+Zeye.Sorting.Hub.Host/Routing/EndpointRouteBuilderConventionExtensions.cs
 Zeye.Sorting.Hub.Host/Routing/ParcelAdminApiRouteExtensions.cs
 Zeye.Sorting.Hub.Host/Routing/ParcelReadOnlyApiRouteExtensions.cs
 Zeye.Sorting.Hub.Host/Swagger/EnumDescriptionSchemaFilter.cs
@@ -466,7 +473,15 @@ Zeye.Sorting.Hub.SharedKernel/Utilities/SafeExecutor.cs
 Zeye.Sorting.Hub.SharedKernel/Zeye.Sorting.Hub.SharedKernel.csproj
 Zeye.Sorting.Hub.sln
 "drill-records/2026-Q1-\347\250\263\345\256\232\346\200\247\346\274\224\347\273\203\350\256\260\345\275\225.md"
+performance/README.md
+performance/k6/audit-query.js
+performance/k6/common.js
+performance/k6/parcel-batch-buffer-write.js
+performance/k6/parcel-cursor-query.js
+performance/results/.gitkeep
+"\344\270\232\345\212\241\346\250\241\345\235\227\346\216\245\345\205\245\350\247\204\350\214\203.md"
 "\345\276\205\345\256\214\345\226\204\344\272\213\351\241\271.md"
+"\346\200\247\350\203\275\345\237\272\347\272\277\346\212\245\345\221\212.md"
 "\346\225\260\346\215\256\345\272\223\345\272\225\345\272\247\351\227\250\347\246\201\350\257\264\346\230\216.md"
 "\346\225\260\346\215\256\345\272\223\350\257\273\345\206\231\345\216\213\345\212\233\346\265\213\350\257\225\350\256\241\345\210\222.md"
 "\346\226\260\346\225\260\346\215\256\345\272\223\346\217\220\344\276\233\347\250\213\345\272\217\346\216\245\345\205\245\346\214\207\345\215\227.md"
@@ -494,6 +509,8 @@ Zeye.Sorting.Hub.sln
 "\346\243\200\346\237\245\345\217\260\350\264\246/PR-\351\225\277\346\234\237\346\225\260\346\215\256\345\272\223\345\272\225\345\272\247O-\346\243\200\346\237\245\345\217\260\350\264\246.md"
 "\346\243\200\346\237\245\345\217\260\350\264\246/PR-\351\225\277\346\234\237\346\225\260\346\215\256\345\272\223\345\272\225\345\272\247P-\346\243\200\346\237\245\345\217\260\350\264\246.md"
 "\346\243\200\346\237\245\345\217\260\350\264\246/PR-\351\225\277\346\234\237\346\225\260\346\215\256\345\272\223\345\272\225\345\272\247Q-\346\243\200\346\237\245\345\217\260\350\264\246.md"
+"\346\243\200\346\237\245\345\217\260\350\264\246/PR-\351\225\277\346\234\237\346\225\260\346\215\256\345\272\223\345\272\225\345\272\247R-\346\243\200\346\237\245\345\217\260\350\264\246.md"
+"\346\243\200\346\237\245\345\217\260\350\264\246/PR-\351\225\277\346\234\237\346\225\260\346\215\256\345\272\223\345\272\225\345\272\247S-\346\243\200\346\237\245\345\217\260\350\264\246.md"
 "\346\243\200\346\237\245\345\217\260\350\264\246/\346\226\207\344\273\266\346\270\205\345\215\225\345\237\272\347\272\277.txt"
 "\351\200\220\346\226\207\344\273\266\346\243\200\346\237\245\346\226\271\346\241\210.md"
 "\351\225\277\346\234\237\350\277\220\350\241\214\344\274\230\345\214\226\344\270\216\347\203\255\346\233\264\346\226\260\346\224\257\346\214\201\346\270\205\345\215\225.md"
