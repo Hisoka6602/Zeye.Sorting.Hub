@@ -41,7 +41,7 @@ public static class EndpointRouteBuilderConventionExtensions {
         string endpointName,
         string summary,
         string description,
-        params int[] problemStatusCodes) {
+        params int[]? problemStatusCodes) {
         ValidateRouteHandlerBuilder(routeBuilder);
         ValidateRequiredText(endpointName, nameof(endpointName), "应用业务模块端点约定");
         ValidateRequiredText(summary, nameof(summary), "应用业务模块端点约定");
@@ -52,7 +52,8 @@ public static class EndpointRouteBuilderConventionExtensions {
             .WithSummary(summary.Trim())
             .WithDescription(description.Trim());
 
-        foreach (var problemStatusCode in problemStatusCodes.Distinct()) {
+        var normalizedProblemStatusCodes = NormalizeProblemStatusCodes(problemStatusCodes);
+        foreach (var problemStatusCode in normalizedProblemStatusCodes) {
             if (problemStatusCode is < ApplicationResult.BadRequestStatusCode or > 599) {
                 Logger.Warn("应用业务模块端点约定时发现非法 ProblemDetails 状态码，StatusCode={StatusCode}", problemStatusCode);
                 throw new ArgumentOutOfRangeException(nameof(problemStatusCodes), "ProblemDetails 状态码必须位于 400-599 范围内。");
@@ -70,11 +71,17 @@ public static class EndpointRouteBuilderConventionExtensions {
     /// <param name="result">应用层结果。</param>
     /// <returns>ProblemDetails 响应。</returns>
     public static IResult ToProblemResult(this ApplicationResult result) {
+        if (result is null) {
+            Logger.Warn("尝试将空的 ApplicationResult 映射为 ProblemDetails。");
+            throw new ArgumentNullException(nameof(result));
+        }
+
         if (result.IsSuccess) {
             Logger.Warn("尝试将成功的 ApplicationResult 映射为 ProblemDetails。StatusCode={StatusCode}", result.StatusCode);
             throw new InvalidOperationException("成功结果不能映射为 ProblemDetails。");
         }
 
+        var normalizedStatusCode = NormalizeProblemStatusCode(result.StatusCode);
         var problemDetails = new ProblemDetails {
             Title = string.IsNullOrWhiteSpace(result.ProblemTitle)
                 ? ApplicationResult.DefaultProblemTitle
@@ -82,7 +89,7 @@ public static class EndpointRouteBuilderConventionExtensions {
             Detail = string.IsNullOrWhiteSpace(result.ErrorMessage)
                 ? ApplicationResult.DefaultErrorMessage
                 : result.ErrorMessage,
-            Status = result.StatusCode
+            Status = normalizedStatusCode
         };
         if (!string.IsNullOrWhiteSpace(result.ErrorCode)) {
             problemDetails.Extensions["errorCode"] = result.ErrorCode;
@@ -91,7 +98,35 @@ public static class EndpointRouteBuilderConventionExtensions {
         return Results.Json(
             problemDetails,
             contentType: "application/problem+json",
-            statusCode: result.StatusCode);
+            statusCode: normalizedStatusCode);
+    }
+
+    /// <summary>
+    /// 归一化 ProblemDetails 状态码声明列表。
+    /// </summary>
+    /// <param name="problemStatusCodes">原始状态码声明列表。</param>
+    /// <returns>去重后的状态码集合。</returns>
+    private static IEnumerable<int> NormalizeProblemStatusCodes(int[]? problemStatusCodes) {
+        if (problemStatusCodes is null) {
+            Logger.Warn("应用业务模块端点约定时 ProblemDetails 状态码声明为空数组引用，已按空集合处理。");
+            return [];
+        }
+
+        return problemStatusCodes.Distinct();
+    }
+
+    /// <summary>
+    /// 归一化 ProblemDetails 响应状态码。
+    /// </summary>
+    /// <param name="statusCode">原始状态码。</param>
+    /// <returns>可安全返回的响应状态码。</returns>
+    private static int NormalizeProblemStatusCode(int statusCode) {
+        if (statusCode is >= ApplicationResult.BadRequestStatusCode and <= 599) {
+            return statusCode;
+        }
+
+        Logger.Warn("应用层结果状态码非法，已降级为 500。StatusCode={StatusCode}", statusCode);
+        return ApplicationResult.InternalServerErrorStatusCode;
     }
 
     /// <summary>

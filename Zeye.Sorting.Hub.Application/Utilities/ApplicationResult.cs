@@ -3,7 +3,7 @@ namespace Zeye.Sorting.Hub.Application.Utilities;
 /// <summary>
 /// 应用层统一结果模型。
 /// </summary>
-public readonly record struct ApplicationResult {
+public sealed record class ApplicationResult {
     /// <summary>
     /// 默认失败标题。
     /// </summary>
@@ -35,38 +35,61 @@ public readonly record struct ApplicationResult {
     public const int InternalServerErrorStatusCode = 500;
 
     /// <summary>
+    /// 200 状态码常量。
+    /// </summary>
+    public const int SuccessStatusCode = 200;
+
+    /// <summary>
     /// 稳定错误码。
     /// </summary>
-    public string? ErrorCode { get; init; }
+    public string? ErrorCode { get; }
 
     /// <summary>
     /// 错误消息。
     /// </summary>
-    public string? ErrorMessage { get; init; }
+    public string? ErrorMessage { get; }
 
     /// <summary>
     /// 是否成功。
     /// </summary>
-    public required bool IsSuccess { get; init; }
+    public bool IsSuccess { get; }
 
     /// <summary>
     /// ProblemDetails 标题。
     /// </summary>
-    public string? ProblemTitle { get; init; }
+    public string? ProblemTitle { get; }
 
     /// <summary>
     /// HTTP 状态码。
     /// </summary>
-    public int StatusCode { get; init; }
+    public int StatusCode { get; }
+
+    /// <summary>
+    /// 初始化统一结果模型。
+    /// </summary>
+    /// <param name="isSuccess">是否成功。</param>
+    /// <param name="statusCode">HTTP 状态码。</param>
+    /// <param name="problemTitle">问题标题。</param>
+    /// <param name="errorMessage">错误消息。</param>
+    /// <param name="errorCode">稳定错误码。</param>
+    private ApplicationResult(bool isSuccess, int statusCode, string? problemTitle, string? errorMessage, string? errorCode) {
+        IsSuccess = isSuccess;
+        StatusCode = statusCode;
+        ProblemTitle = problemTitle;
+        ErrorMessage = errorMessage;
+        ErrorCode = errorCode;
+    }
 
     /// <summary>
     /// 创建成功结果。
     /// </summary>
     /// <returns>成功结果。</returns>
-    public static ApplicationResult Success() => new() {
-        IsSuccess = true,
-        StatusCode = 200
-    };
+    public static ApplicationResult Success() => new(
+        isSuccess: true,
+        statusCode: SuccessStatusCode,
+        problemTitle: null,
+        errorMessage: null,
+        errorCode: null);
 
     /// <summary>
     /// 创建参数校验失败结果。
@@ -145,13 +168,12 @@ public readonly record struct ApplicationResult {
     /// <param name="errorCode">稳定错误码。</param>
     /// <returns>失败结果。</returns>
     private static ApplicationResult CreateFailure(int statusCode, string problemTitle, string errorMessage, string? errorCode) {
-        return new ApplicationResult {
-            IsSuccess = false,
-            StatusCode = NormalizeFailureStatusCode(statusCode),
-            ProblemTitle = string.IsNullOrWhiteSpace(problemTitle) ? DefaultProblemTitle : problemTitle.Trim(),
-            ErrorMessage = string.IsNullOrWhiteSpace(errorMessage) ? DefaultErrorMessage : errorMessage.Trim(),
-            ErrorCode = string.IsNullOrWhiteSpace(errorCode) ? null : errorCode.Trim()
-        };
+        return new ApplicationResult(
+            isSuccess: false,
+            statusCode: NormalizeFailureStatusCode(statusCode),
+            problemTitle: NormalizeProblemTitle(problemTitle),
+            errorMessage: NormalizeErrorMessage(errorMessage),
+            errorCode: NormalizeErrorCode(errorCode));
     }
 
     /// <summary>
@@ -163,5 +185,38 @@ public readonly record struct ApplicationResult {
         return statusCode is >= BadRequestStatusCode and <= 599
             ? statusCode
             : InternalServerErrorStatusCode;
+    }
+
+    /// <summary>
+    /// 归一化问题标题。
+    /// </summary>
+    /// <param name="problemTitle">原始问题标题。</param>
+    /// <returns>规范化后的问题标题。</returns>
+    private static string NormalizeProblemTitle(string problemTitle) {
+        return string.IsNullOrWhiteSpace(problemTitle)
+            ? DefaultProblemTitle
+            : problemTitle.Trim();
+    }
+
+    /// <summary>
+    /// 归一化错误消息。
+    /// </summary>
+    /// <param name="errorMessage">原始错误消息。</param>
+    /// <returns>规范化后的错误消息。</returns>
+    private static string NormalizeErrorMessage(string errorMessage) {
+        return string.IsNullOrWhiteSpace(errorMessage)
+            ? DefaultErrorMessage
+            : errorMessage.Trim();
+    }
+
+    /// <summary>
+    /// 归一化稳定错误码。
+    /// </summary>
+    /// <param name="errorCode">原始稳定错误码。</param>
+    /// <returns>规范化后的错误码。</returns>
+    private static string? NormalizeErrorCode(string? errorCode) {
+        return string.IsNullOrWhiteSpace(errorCode)
+            ? null
+            : errorCode.Trim();
     }
 }

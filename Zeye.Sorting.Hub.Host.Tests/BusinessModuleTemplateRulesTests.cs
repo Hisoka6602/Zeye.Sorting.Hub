@@ -1,3 +1,5 @@
+using System.IO;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -34,6 +36,39 @@ public sealed class BusinessModuleTemplateRulesTests {
         Assert.Equal(ApplicationResult.ConflictStatusCode, conflict.StatusCode);
         Assert.Equal(ApplicationErrorCodes.NotFound, notFound.ErrorCode);
         Assert.Equal(ApplicationResult.NotFoundStatusCode, notFound.StatusCode);
+    }
+
+    /// <summary>
+    /// 应用层统一结果模型应为引用类型，避免值类型默认值陷阱。
+    /// </summary>
+    [Fact]
+    public void ApplicationResult_ShouldBeReferenceType() {
+        Assert.False(typeof(ApplicationResult).IsValueType);
+    }
+
+    /// <summary>
+    /// 未初始化的应用层结果映射为 ProblemDetails 时应自动降级为 500。
+    /// </summary>
+    /// <returns>异步任务。</returns>
+    [Fact]
+    public async Task ToProblemResult_WhenResultIsUninitialized_ShouldFallbackToInternalServerError() {
+        var uninitializedResult = (ApplicationResult)RuntimeHelpers.GetUninitializedObject(typeof(ApplicationResult));
+        var httpResult = uninitializedResult.ToProblemResult();
+        var httpContext = new DefaultHttpContext();
+        httpContext.Response.Body = new MemoryStream();
+        httpContext.RequestServices = new ServiceCollection()
+            .AddLogging()
+            .ConfigureHttpJsonOptions(static _ => { })
+            .BuildServiceProvider();
+
+        await httpResult.ExecuteAsync(httpContext);
+        httpContext.Response.Body.Position = 0;
+        using var problemDocument = await JsonDocument.ParseAsync(httpContext.Response.Body);
+
+        Assert.Equal(ApplicationResult.InternalServerErrorStatusCode, httpContext.Response.StatusCode);
+        Assert.Equal("业务处理失败", problemDocument.RootElement.GetProperty("title").GetString());
+        Assert.Equal("业务处理失败", problemDocument.RootElement.GetProperty("detail").GetString());
+        Assert.Equal(ApplicationResult.InternalServerErrorStatusCode, problemDocument.RootElement.GetProperty("status").GetInt32());
     }
 
     /// <summary>
@@ -87,6 +122,43 @@ public sealed class BusinessModuleTemplateRulesTests {
         Assert.Equal("请求冲突", conflictDocument.RootElement.GetProperty("title").GetString());
         Assert.Equal("业务键已存在", conflictDocument.RootElement.GetProperty("detail").GetString());
         Assert.Equal(ApplicationErrorCodes.Conflict, conflictDocument.RootElement.GetProperty("errorCode").GetString());
+    }
+
+    /// <summary>
+    /// 路由约定扩展在 ProblemDetails 状态码声明显式传入空引用时应按空集合处理。
+    /// </summary>
+    /// <returns>异步任务。</returns>
+    [Fact]
+    public async Task EndpointRouteBuilderConventionExtensions_WhenProblemStatusCodesIsNull_ShouldTreatAsEmptyDeclarations() {
+        var builder = WebApplication.CreateBuilder();
+        builder.WebHost.UseTestServer();
+        builder.Services.AddProblemDetails();
+        builder.Services.AddEndpointsApiExplorer();
+        builder.Services.AddSwaggerGen(options => {
+            options.SwaggerDoc(ApiVersion, new OpenApiInfo {
+                Title = "test",
+                Version = ApiVersion
+            });
+        });
+
+        await using var app = builder.Build();
+        app.UseSwagger();
+        var group = app.MapBusinessModuleGroup("/api/template-module-null", "TemplateModuleNull");
+        group.MapGet("/health", static () => Results.Ok(new { Ok = true }))
+            .WithBusinessModuleEndpointConvention(
+                "TemplateModuleNullProblems",
+                "模板模块空声明接口",
+                "用于验证显式传入 null 的 ProblemDetails 状态码声明不会导致异常。",
+                problemStatusCodes: null!);
+        await app.StartAsync();
+
+        using var client = app.GetTestClient();
+        var swaggerJson = await client.GetStringAsync("/swagger/v1/swagger.json");
+        var response = await client.GetAsync("/api/template-module-null/health");
+
+        Assert.Equal(StatusCodes.Status200OK, (int)response.StatusCode);
+        Assert.Contains("\"/api/template-module-null/health\"", swaggerJson, StringComparison.Ordinal);
+        Assert.Contains("\"TemplateModuleNull\"", swaggerJson, StringComparison.Ordinal);
     }
 
     /// <summary>
