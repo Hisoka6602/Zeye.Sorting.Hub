@@ -95,7 +95,9 @@ export function assertAcceptedResponse(response, requestName, acceptedStatuses) 
  * @returns {string} 写入请求体 JSON 字符串。
  */
 export function createParcelBatchPayload(batchSize, identitySeed) {
-    const parcels = [];
+    const payload = {
+        parcels: []
+    };
     const scannedAt = new Date();
     const dischargeAt = new Date(scannedAt.getTime() + 3 * 1000);
     const scannedTime = formatLocalDateTime(scannedAt);
@@ -104,35 +106,35 @@ export function createParcelBatchPayload(batchSize, identitySeed) {
     for (let index = 0; index < batchSize; index += 1) {
         const parcelId = identitySeed + index;
         const parcelTimestamp = createDotNetTicksLiteral(scannedAt.getTime() + index);
-        parcels.push(`{
-            "id": ${parcelId},
-            "parcelTimestamp": ${parcelTimestamp},
-            "type": 0,
-            "barCodes": "BC${parcelId}",
-            "weight": 1.25,
-            "workstationName": "WS-PR-S",
-            "scannedTime": "${scannedTime}",
-            "dischargeTime": "${dischargeTime}",
-            "targetChuteId": ${100 + index},
-            "actualChuteId": ${100 + index},
-            "requestStatus": 0,
-            "bagCode": "BAG-${identitySeed}",
-            "isSticking": false,
-            "length": 10,
-            "width": 8,
-            "height": 6,
-            "volume": 480,
-            "hasImages": false,
-            "hasVideos": false,
-            "coordinate": "",
-            "noReadType": 0,
-            "sorterCarrierId": null,
-            "segmentCodes": null,
-            "lifecycleMilliseconds": null
-        }`);
+        payload.parcels.push({
+            id: parcelId,
+            parcelTimestamp,
+            type: 0,
+            barCodes: `BC${parcelId}`,
+            weight: 1.25,
+            workstationName: 'WS-PR-S',
+            scannedTime,
+            dischargeTime,
+            targetChuteId: 100 + index,
+            actualChuteId: 100 + index,
+            requestStatus: 0,
+            bagCode: `BAG-${identitySeed}`,
+            isSticking: false,
+            length: 10,
+            width: 8,
+            height: 6,
+            volume: 480,
+            hasImages: false,
+            hasVideos: false,
+            coordinate: '',
+            noReadType: 0,
+            sorterCarrierId: null,
+            segmentCodes: null,
+            lifecycleMilliseconds: null
+        });
     }
 
-    return `{"parcels":[${parcels.join(',')}]}`
+    return JSON.stringify(payload).replace(/"parcelTimestamp":"(\d+)"/g, '"parcelTimestamp":$1');
 }
 
 /**
@@ -143,6 +145,7 @@ export function createParcelBatchPayload(batchSize, identitySeed) {
  */
 export function createDotNetTicksLiteral(unixMilliseconds) {
     const dotNetEpochMillisecondsOffset = 62135596800000;
+    // .NET Ticks 每毫秒对应 10000 ticks，这里保持毫秒精度并补齐四位零以对齐 .NET 语义。
     const ticksPerMillisecondLiteral = '0000';
     return `${unixMilliseconds + dotNetEpochMillisecondsOffset}${ticksPerMillisecondLiteral}`;
 }
