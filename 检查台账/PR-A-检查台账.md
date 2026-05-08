@@ -117,6 +117,15 @@
 - **分级**：P2（门禁改进项，可排期优化）
 - **建议修复阶段/PR**：后续专项 CI 优化 PR（待建）
 
+### 补充修复记录（2026-05-08）
+
+1. 已补强 `check_no_history_in_readme()`：
+   - 将单纯关键字匹配升级为 Markdown 标题变体识别。
+   - 新增 `更新记录`、`更新历史`、`CHANGELOG`、`History`、`历史` 等章节标题场景拦截，避免 README 中通过等效标题绕过规则 22。
+2. 已补强 `check_performance_patterns()`：
+   - 新增 `.Count() == 0 / > 0 / != 0`、`.Where(...).FirstOrDefault()`、`string.Format()` 等常见反模式拦截。
+   - 同步新增 `Zeye.Sorting.Hub.Host.Tests/CopilotRuleValidationScriptTests.cs`，对脚本正则与失败提示建立回归保护。
+
 ---
 
 ## 四、未覆盖文件清单
