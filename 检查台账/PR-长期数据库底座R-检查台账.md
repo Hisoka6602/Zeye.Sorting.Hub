@@ -64,10 +64,10 @@
 
 ## 四、验证记录
 
-- `dotnet build Zeye.Sorting.Hub.sln -v quiet` ⏳
-- `dotnet test Zeye.Sorting.Hub.Host.Tests/Zeye.Sorting.Hub.Host.Tests.csproj --no-build --filter "FullyQualifiedName~BusinessModuleTemplateRulesTests" -v quiet` ⏳
-- `dotnet test Zeye.Sorting.Hub.sln --no-build -v quiet` ⏳
-- `./.github/scripts/validate-database-foundation-rules.sh` ⏳
+- `dotnet build Zeye.Sorting.Hub.sln -v quiet` ✅
+- `dotnet test Zeye.Sorting.Hub.Host.Tests/Zeye.Sorting.Hub.Host.Tests.csproj -v quiet --filter "FullyQualifiedName~BusinessModuleTemplateRulesTests"` ✅
+- `dotnet test Zeye.Sorting.Hub.sln --no-build -v quiet` ✅
+- `./.github/scripts/validate-database-foundation-rules.sh` ✅
 
 ---
 

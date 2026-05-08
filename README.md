@@ -299,6 +299,7 @@
 │   │   ├── TableCapacitySnapshot.cs（表容量快照模型）
 │   │   └── WebRequestAuditLogRetentionCandidates.cs（WebRequestAuditLog 历史分表保留候选模型：候选总数 + 物理表名清单）
 │   ├── Routing（路由扩展目录）
+│   │   ├── EndpointRouteBuilderConventionExtensions.cs（业务模块路由约定扩展：统一标签、端点说明与 ProblemDetails 映射）
 │   │   ├── ParcelReadOnlyApiRouteExtensions.cs（Parcel 只读 API 路由扩展：含偏移分页、游标分页、详情与邻近查询）
 │   │   ├── ParcelAdminApiRouteExtensions.cs（Parcel 管理端 API 路由扩展：含同步写接口、cleanup-expired 与 batch-buffer 缓冲写入接口）
 │   │   ├── AuditReadOnlyApiRouteExtensions.cs（Web 请求审计日志只读 API 路由扩展）
