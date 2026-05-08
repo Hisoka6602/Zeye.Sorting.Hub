@@ -370,6 +370,7 @@
 │   ├── OperationalScopeTests.cs（运营边界测试：覆盖维度标准化、必填校验、可选维度归一化与合同映射）
 │   ├── BusinessModuleTemplateRulesTests.cs（业务模块模板规则测试：覆盖统一结果模型、路由约定与文档模板门禁）
 │   ├── PerformanceBaselineRulesTests.cs（压测基线规则测试：覆盖压测说明、k6 脚本、workflow 与性能基线报告模板门禁）
+│   ├── RepositoryFileReader.cs（测试仓库文件读取入口：统一定位仓库根目录并读取规则测试依赖文档）
 │   ├── ReportingQueryIsolationTests.cs（报表查询隔离测试：覆盖时间范围预算、返回行数上限、只读副本回退与拒绝策略）
 │   ├── SlowQueryFingerprintTests.cs（慢查询画像测试：覆盖 SQL 指纹归一化、窗口聚合、容量淘汰与查询服务读取）
 │   ├── QueryGovernanceTests.cs（查询治理测试：覆盖强制模板登记、模板匹配与未登记慢查询缺口暴露）
@@ -1202,6 +1203,7 @@
 - `OperationalScopeTests.cs`：运营边界测试，覆盖站点/产线/设备/工作站维度标准化、必填校验、可选维度归一化与响应合同映射。
 - `BusinessModuleTemplateRulesTests.cs`：业务模块模板规则测试，覆盖 `ApplicationResult` 稳定错误码、业务模块路由约定与模板文档关键规则。
 - `PerformanceBaselineRulesTests.cs`：压测基线规则测试，覆盖压测工程说明、k6 脚本、轻量 smoke workflow 与性能基线报告模板关键约束。
+- `RepositoryFileReader.cs`：测试仓库文件读取入口，统一定位仓库根目录并读取规则测试依赖的 Markdown / workflow / 脚本文件，避免重复维护相同定位逻辑。
 - `ReportingQueryIsolationTests.cs`：报表查询隔离测试，覆盖时间范围预算、返回行数上限、只读副本缺失时的主库回退与直接拒绝策略。
 - `DataRetentionTests.cs`：数据保留治理测试，覆盖 dry-run 计划、真实清理、守卫关闭路径与健康检查状态。
 - `AlwaysExistsShardingPhysicalTableProbe.cs`：物理表探测测试桩，始终返回存在并记录调用次数。

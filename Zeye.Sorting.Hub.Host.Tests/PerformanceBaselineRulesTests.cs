@@ -1,6 +1,3 @@
-using System.IO;
-using System.Linq;
-
 namespace Zeye.Sorting.Hub.Host.Tests;
 
 /// <summary>
@@ -12,7 +9,7 @@ public sealed class PerformanceBaselineRulesTests {
     /// </summary>
     [Fact]
     public void PerformanceReadme_ShouldDescribeCoveredScenariosAndLocalTimeRules() {
-        var performanceReadme = ReadRepositoryFile("performance", "README.md");
+        var performanceReadme = RepositoryFileReader.ReadAllText("performance", "README.md");
 
         Assert.Contains("Parcel 游标分页", performanceReadme, StringComparison.Ordinal);
         Assert.Contains("Parcel 普通分页", performanceReadme, StringComparison.Ordinal);
@@ -21,6 +18,7 @@ public sealed class PerformanceBaselineRulesTests {
         Assert.Contains("HealthCheck", performanceReadme, StringComparison.Ordinal);
         Assert.Contains("慢查询画像 API", performanceReadme, StringComparison.Ordinal);
         Assert.Contains("无 `Z`、无 offset 的本地时间字符串", performanceReadme, StringComparison.Ordinal);
+        Assert.Contains("DateTime.Ticks", performanceReadme, StringComparison.Ordinal);
         Assert.Contains("performance-smoke-test.yml", performanceReadme, StringComparison.Ordinal);
     }
 
@@ -29,12 +27,13 @@ public sealed class PerformanceBaselineRulesTests {
     /// </summary>
     [Fact]
     public void PerformanceScripts_ShouldTargetRequiredApisAndUseLocalTimeFormatting() {
-        var commonScript = ReadRepositoryFile("performance", "k6", "common.js");
-        var parcelQueryScript = ReadRepositoryFile("performance", "k6", "parcel-cursor-query.js");
-        var parcelBatchScript = ReadRepositoryFile("performance", "k6", "parcel-batch-buffer-write.js");
-        var auditQueryScript = ReadRepositoryFile("performance", "k6", "audit-query.js");
+        var commonScript = RepositoryFileReader.ReadAllText("performance", "k6", "common.js");
+        var parcelQueryScript = RepositoryFileReader.ReadAllText("performance", "k6", "parcel-cursor-query.js");
+        var parcelBatchScript = RepositoryFileReader.ReadAllText("performance", "k6", "parcel-batch-buffer-write.js");
+        var auditQueryScript = RepositoryFileReader.ReadAllText("performance", "k6", "audit-query.js");
 
         Assert.Contains("formatLocalDateTime", commonScript, StringComparison.Ordinal);
+        Assert.Contains("createDotNetTicksLiteral", commonScript, StringComparison.Ordinal);
         Assert.Contains("/api/parcels/cursor", parcelQueryScript, StringComparison.Ordinal);
         Assert.Contains("/api/parcels?pageNumber=1", parcelQueryScript, StringComparison.Ordinal);
         Assert.Contains("createLocalWindow", parcelQueryScript, StringComparison.Ordinal);
@@ -50,7 +49,7 @@ public sealed class PerformanceBaselineRulesTests {
     /// </summary>
     [Fact]
     public void PerformanceSmokeWorkflow_ShouldRunFilteredRulesTests() {
-        var workflowContent = ReadRepositoryFile(".github", "workflows", "performance-smoke-test.yml");
+        var workflowContent = RepositoryFileReader.ReadAllText(".github", "workflows", "performance-smoke-test.yml");
 
         Assert.Contains("performance-smoke-test", workflowContent, StringComparison.Ordinal);
         Assert.Contains("performance/**", workflowContent, StringComparison.Ordinal);
@@ -64,7 +63,7 @@ public sealed class PerformanceBaselineRulesTests {
     /// </summary>
     [Fact]
     public void PerformanceBaselineReportTemplate_ShouldContainRequiredMetricsAndScenarios() {
-        var reportTemplate = ReadRepositoryFile("性能基线报告.md");
+        var reportTemplate = RepositoryFileReader.ReadAllText("性能基线报告.md");
 
         Assert.Contains("RPS", reportTemplate, StringComparison.Ordinal);
         Assert.Contains("P50", reportTemplate, StringComparison.Ordinal);
@@ -83,35 +82,5 @@ public sealed class PerformanceBaselineRulesTests {
         Assert.Contains("审计日志查询", reportTemplate, StringComparison.Ordinal);
         Assert.Contains("HealthCheck", reportTemplate, StringComparison.Ordinal);
         Assert.Contains("慢查询画像 API", reportTemplate, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// 读取仓库文件内容。
-    /// </summary>
-    /// <param name="pathSegments">相对路径片段。</param>
-    /// <returns>文件内容。</returns>
-    private static string ReadRepositoryFile(params string[] pathSegments) {
-        var repositoryRoot = LocateRepositoryRoot();
-        var filePath = Path.Combine(new[] { repositoryRoot }.Concat(pathSegments).ToArray());
-        return File.ReadAllText(filePath);
-    }
-
-    /// <summary>
-    /// 定位仓库根目录。
-    /// </summary>
-    /// <returns>仓库根目录绝对路径。</returns>
-    private static string LocateRepositoryRoot() {
-        var current = new DirectoryInfo(AppContext.BaseDirectory);
-        while (current is not null) {
-            var readmePath = Path.Combine(current.FullName, "README.md");
-            var solutionPath = Path.Combine(current.FullName, "Zeye.Sorting.Hub.sln");
-            if (File.Exists(readmePath) && File.Exists(solutionPath)) {
-                return current.FullName;
-            }
-
-            current = current.Parent;
-        }
-
-        throw new DirectoryNotFoundException("未找到仓库根目录。");
     }
 }

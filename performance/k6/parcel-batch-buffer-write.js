@@ -31,7 +31,7 @@ export default function () {
     const payload = createParcelBatchPayload(batchSize, identitySeed);
     const response = http.post(
         `${baseUrl}/api/admin/parcels/batch-buffer`,
-        JSON.stringify(payload),
+        payload,
         {
             ...createJsonRequestParams(),
             tags: {

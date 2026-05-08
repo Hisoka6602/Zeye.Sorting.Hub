@@ -92,44 +92,59 @@ export function assertAcceptedResponse(response, requestName, acceptedStatuses) 
  * 构建批量缓冲写入载荷。
  * @param {number} batchSize 单批数量。
  * @param {number} identitySeed 身份种子。
- * @returns {{ parcels: object[] }} 写入请求体。
+ * @returns {string} 写入请求体 JSON 字符串。
  */
 export function createParcelBatchPayload(batchSize, identitySeed) {
     const parcels = [];
-    const scannedTime = formatLocalDateTime(new Date());
-    const dischargeTime = formatLocalDateTime(new Date(Date.now() + 3 * 1000));
+    const scannedAt = new Date();
+    const dischargeAt = new Date(scannedAt.getTime() + 3 * 1000);
+    const scannedTime = formatLocalDateTime(scannedAt);
+    const dischargeTime = formatLocalDateTime(dischargeAt);
 
     for (let index = 0; index < batchSize; index += 1) {
         const parcelId = identitySeed + index;
-        parcels.push({
-            id: parcelId,
-            parcelTimestamp: Date.now() + index,
-            type: 0,
-            barCodes: `BC${parcelId}`,
-            weight: 1.25,
-            workstationName: 'WS-PR-S',
-            scannedTime,
-            dischargeTime,
-            targetChuteId: 100 + index,
-            actualChuteId: 100 + index,
-            requestStatus: 0,
-            bagCode: `BAG-${identitySeed}`,
-            isSticking: false,
-            length: 10,
-            width: 8,
-            height: 6,
-            volume: 480,
-            hasImages: false,
-            hasVideos: false,
-            coordinate: '',
-            noReadType: 0,
-            sorterCarrierId: null,
-            segmentCodes: null,
-            lifecycleMilliseconds: null
-        });
+        const parcelTimestamp = createDotNetTicksLiteral(scannedAt.getTime() + index);
+        parcels.push(`{
+            "id": ${parcelId},
+            "parcelTimestamp": ${parcelTimestamp},
+            "type": 0,
+            "barCodes": "BC${parcelId}",
+            "weight": 1.25,
+            "workstationName": "WS-PR-S",
+            "scannedTime": "${scannedTime}",
+            "dischargeTime": "${dischargeTime}",
+            "targetChuteId": ${100 + index},
+            "actualChuteId": ${100 + index},
+            "requestStatus": 0,
+            "bagCode": "BAG-${identitySeed}",
+            "isSticking": false,
+            "length": 10,
+            "width": 8,
+            "height": 6,
+            "volume": 480,
+            "hasImages": false,
+            "hasVideos": false,
+            "coordinate": "",
+            "noReadType": 0,
+            "sorterCarrierId": null,
+            "segmentCodes": null,
+            "lifecycleMilliseconds": null
+        }`);
     }
 
-    return { parcels };
+    return `{"parcels":[${parcels.join(',')}]}`
+}
+
+/**
+ * 生成与 .NET DateTime.Ticks 语义一致的时间戳字面量。
+ * 为避免 JavaScript Number 在 64 位 ticks 上丢失精度，这里保持毫秒级精度并直接输出十进制字符串。
+ * @param {number} unixMilliseconds Unix 毫秒时间戳。
+ * @returns {string} .NET ticks 十进制字面量。
+ */
+export function createDotNetTicksLiteral(unixMilliseconds) {
+    const dotNetEpochMillisecondsOffset = 62135596800000;
+    const ticksPerMillisecondLiteral = '0000';
+    return `${unixMilliseconds + dotNetEpochMillisecondsOffset}${ticksPerMillisecondLiteral}`;
 }
 
 /**

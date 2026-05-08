@@ -20,6 +20,7 @@ performance/
 ```
 
 - `k6/common.js`：压测脚本共用的本地时间格式化、环境变量解析、请求头与批量写入载荷构造逻辑。
+- `k6/common.js` 中的 `parcelTimestamp` 按 `.NET DateTime.Ticks` 语义生成，并通过十进制字面量字符串规避 JavaScript 大整数精度丢失。
 - `k6/parcel-cursor-query.js`：覆盖 Parcel 游标分页与普通分页两类高频读取链路。
 - `k6/parcel-batch-buffer-write.js`：覆盖 Parcel 批量缓冲写入链路。
 - `k6/audit-query.js`：覆盖审计日志查询、`/health/ready` 与慢查询画像 API。
