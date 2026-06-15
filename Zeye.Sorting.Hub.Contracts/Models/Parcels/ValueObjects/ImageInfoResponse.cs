@@ -30,6 +30,51 @@ public sealed record ImageInfoResponse {
     public required string RelativePath { get; init; }
 
     /// <summary>
+    /// 对象存储提供器（枚举数值）。
+    /// </summary>
+    public int? StorageProvider { get; init; }
+
+    /// <summary>
+    /// 对象存储 Bucket 名称。
+    /// </summary>
+    public string? BucketName { get; init; }
+
+    /// <summary>
+    /// 对象键。
+    /// </summary>
+    public string? ObjectKey { get; init; }
+
+    /// <summary>
+    /// 内容类型。
+    /// </summary>
+    public string? ContentType { get; init; }
+
+    /// <summary>
+    /// 对象大小（字节）。
+    /// </summary>
+    public long? ObjectSizeBytes { get; init; }
+
+    /// <summary>
+    /// 对象 ETag。
+    /// </summary>
+    public string? ETag { get; init; }
+
+    /// <summary>
+    /// 对象 SHA256 摘要。
+    /// </summary>
+    public string? Sha256 { get; init; }
+
+    /// <summary>
+    /// 上传完成时间（本地时间）。
+    /// </summary>
+    public DateTime? UploadedAtLocal { get; init; }
+
+    /// <summary>
+    /// 原始文件名。
+    /// </summary>
+    public string? OriginalFileName { get; init; }
+
+    /// <summary>
     /// 图片获取方式（枚举数值）。
     /// </summary>
     public required int CaptureType { get; init; }

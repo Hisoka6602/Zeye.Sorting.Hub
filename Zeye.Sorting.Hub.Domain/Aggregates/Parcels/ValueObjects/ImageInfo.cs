@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Zeye.Sorting.Hub.Domain.Enums;
+using Zeye.Sorting.Hub.Domain.Enums.ObjectStorage;
 
 namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
     /// <summary>
@@ -42,6 +43,57 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
         public required string RelativePath { get; init; }
 
         /// <summary>
+        /// 对象存储提供器。
+        /// </summary>
+        public ObjectStorageProvider? StorageProvider { get; init; }
+
+        /// <summary>
+        /// 对象存储 Bucket 名称。
+        /// </summary>
+        [MaxLength(128)]
+        public string? BucketName { get; init; }
+
+        /// <summary>
+        /// 对象键。
+        /// </summary>
+        [MaxLength(1024)]
+        public string? ObjectKey { get; init; }
+
+        /// <summary>
+        /// 内容类型。
+        /// </summary>
+        [MaxLength(256)]
+        public string? ContentType { get; init; }
+
+        /// <summary>
+        /// 对象大小（字节）。
+        /// </summary>
+        public long? ObjectSizeBytes { get; init; }
+
+        /// <summary>
+        /// 对象 ETag。
+        /// </summary>
+        [MaxLength(128)]
+        public string? ETag { get; init; }
+
+        /// <summary>
+        /// 对象 SHA256 摘要。
+        /// </summary>
+        [MaxLength(128)]
+        public string? Sha256 { get; init; }
+
+        /// <summary>
+        /// 上传完成时间（本地时间）。
+        /// </summary>
+        public DateTime? UploadedAtLocal { get; init; }
+
+        /// <summary>
+        /// 原始文件名。
+        /// </summary>
+        [MaxLength(256)]
+        public string? OriginalFileName { get; init; }
+
+        /// <summary>
         /// 图片获取方式（相机获取、本地匹配等）
         /// </summary>
         public required ImageCaptureType CaptureType { get; init; }
@@ -58,6 +110,15 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
                 && string.Equals(CameraSerialNumber, other.CameraSerialNumber, StringComparison.Ordinal)
                 && ImageType == other.ImageType
                 && string.Equals(RelativePath, other.RelativePath, StringComparison.Ordinal)
+                && StorageProvider == other.StorageProvider
+                && string.Equals(BucketName, other.BucketName, StringComparison.Ordinal)
+                && string.Equals(ObjectKey, other.ObjectKey, StringComparison.Ordinal)
+                && string.Equals(ContentType, other.ContentType, StringComparison.Ordinal)
+                && ObjectSizeBytes == other.ObjectSizeBytes
+                && string.Equals(ETag, other.ETag, StringComparison.Ordinal)
+                && string.Equals(Sha256, other.Sha256, StringComparison.Ordinal)
+                && Nullable.Equals(UploadedAtLocal, other.UploadedAtLocal)
+                && string.Equals(OriginalFileName, other.OriginalFileName, StringComparison.Ordinal)
                 && CaptureType == other.CaptureType;
         }
 
@@ -66,9 +127,23 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
         /// </summary>
         /// <returns>领域字段哈希码。</returns>
         public override int GetHashCode() {
-            return HashCode.Combine(
-                HashCode.Combine(CameraName, CustomName, CameraSerialNumber),
-                HashCode.Combine(ImageType, RelativePath, CaptureType));
+            var hashCode = new HashCode();
+            hashCode.Add(CameraName, StringComparer.Ordinal);
+            hashCode.Add(CustomName, StringComparer.Ordinal);
+            hashCode.Add(CameraSerialNumber, StringComparer.Ordinal);
+            hashCode.Add(ImageType);
+            hashCode.Add(RelativePath, StringComparer.Ordinal);
+            hashCode.Add(StorageProvider);
+            hashCode.Add(BucketName, StringComparer.Ordinal);
+            hashCode.Add(ObjectKey, StringComparer.Ordinal);
+            hashCode.Add(ContentType, StringComparer.Ordinal);
+            hashCode.Add(ObjectSizeBytes);
+            hashCode.Add(ETag, StringComparer.Ordinal);
+            hashCode.Add(Sha256, StringComparer.Ordinal);
+            hashCode.Add(UploadedAtLocal);
+            hashCode.Add(OriginalFileName, StringComparer.Ordinal);
+            hashCode.Add(CaptureType);
+            return hashCode.ToHashCode();
         }
 
         /// <summary>
@@ -76,7 +151,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
         /// </summary>
         /// <returns>调试字符串。</returns>
         public override string ToString() {
-            return $"{nameof(ImageInfo)} {{ {nameof(CameraName)} = {CameraName}, {nameof(CustomName)} = {CustomName}, {nameof(CameraSerialNumber)} = {CameraSerialNumber}, {nameof(ImageType)} = {ImageType}, {nameof(RelativePath)} = {RelativePath}, {nameof(CaptureType)} = {CaptureType} }}";
+            return $"{nameof(ImageInfo)} {{ {nameof(CameraName)} = {CameraName}, {nameof(CustomName)} = {CustomName}, {nameof(CameraSerialNumber)} = {CameraSerialNumber}, {nameof(ImageType)} = {ImageType}, {nameof(RelativePath)} = {RelativePath}, {nameof(StorageProvider)} = {StorageProvider}, {nameof(BucketName)} = {BucketName}, {nameof(ObjectKey)} = {ObjectKey}, {nameof(ContentType)} = {ContentType}, {nameof(ObjectSizeBytes)} = {ObjectSizeBytes}, {nameof(ETag)} = {ETag}, {nameof(Sha256)} = {Sha256}, {nameof(UploadedAtLocal)} = {UploadedAtLocal}, {nameof(OriginalFileName)} = {OriginalFileName}, {nameof(CaptureType)} = {CaptureType} }}";
         }
     }
 }

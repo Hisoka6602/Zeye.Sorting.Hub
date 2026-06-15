@@ -95,6 +95,9 @@ public sealed class SwaggerDocumentationTests {
         Assert.Contains("\"ImageInfoResponse\"", swaggerJson, StringComparison.Ordinal);
         Assert.Contains("\"imageType\"", swaggerJson, StringComparison.Ordinal);
         Assert.Contains("可选值：0 = Scan（扫码图）", swaggerJson, StringComparison.Ordinal);
+        Assert.Contains("\"storageProvider\"", swaggerJson, StringComparison.Ordinal);
+        Assert.Contains("0 = LocalFileSystem（本地文件系统）", swaggerJson, StringComparison.Ordinal);
+        Assert.Contains("1 = Minio（MinIO 对象存储）", swaggerJson, StringComparison.Ordinal);
         Assert.Contains("\"captureType\"", swaggerJson, StringComparison.Ordinal);
         Assert.Contains("0 = Camera（相机获取）", swaggerJson, StringComparison.Ordinal);
         Assert.Contains("\"VideoInfoResponse\"", swaggerJson, StringComparison.Ordinal);

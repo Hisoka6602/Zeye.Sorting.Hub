@@ -92,6 +92,15 @@ internal static class ParcelContractMapper {
                 CameraSerialNumber = x.CameraSerialNumber,
                 ImageType = (int)x.ImageType,
                 RelativePath = x.RelativePath,
+                StorageProvider = x.StorageProvider is null ? null : (int)x.StorageProvider.Value,
+                BucketName = x.BucketName,
+                ObjectKey = x.ObjectKey,
+                ContentType = x.ContentType,
+                ObjectSizeBytes = x.ObjectSizeBytes,
+                ETag = x.ETag,
+                Sha256 = x.Sha256,
+                UploadedAtLocal = x.UploadedAtLocal,
+                OriginalFileName = x.OriginalFileName,
                 CaptureType = (int)x.CaptureType
             }).ToArray(),
             videoInfos: parcel.VideoInfos.Select(x => new VideoInfoResponse {
