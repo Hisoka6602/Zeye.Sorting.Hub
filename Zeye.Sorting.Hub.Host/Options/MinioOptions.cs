@@ -118,8 +118,8 @@ public sealed class MinioOptions {
             return false;
         }
 
-        foreach (var character in value[2..^1]) {
-            if (!IsPlaceholderCharacter(character)) {
+        for (var index = 2; index < value.Length - 1; index++) {
+            if (!IsPlaceholderCharacter(value[index])) {
                 return false;
             }
         }
@@ -148,8 +148,8 @@ public sealed class MinioOptions {
             return false;
         }
 
-        foreach (var character in value) {
-            if (!IsValidBucketCharacter(character)) {
+        for (var index = 0; index < value.Length; index++) {
+            if (!IsValidBucketCharacter(value[index])) {
                 return false;
             }
         }

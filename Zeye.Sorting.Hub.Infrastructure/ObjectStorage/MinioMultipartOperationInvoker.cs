@@ -398,8 +398,8 @@ internal sealed class MinioMultipartOperationInvoker {
         string methodName,
         string firstParameterTypeFullName,
         params Type[] otherParameterTypes) {
-        return type.GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
-            .Single(method => {
+        var method = type.GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
+            .SingleOrDefault(method => {
                 if (!string.Equals(method.Name, methodName, StringComparison.Ordinal)) {
                     return false;
                 }
@@ -421,6 +421,7 @@ internal sealed class MinioMultipartOperationInvoker {
 
                 return true;
             });
+        return method ?? throw new InvalidOperationException($"未找到 MinIO 实例方法：{type.FullName}.{methodName}。");
     }
 
     /// <summary>
