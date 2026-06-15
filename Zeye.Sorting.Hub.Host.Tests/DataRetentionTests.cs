@@ -174,8 +174,9 @@ public sealed class DataRetentionTests {
     /// <param name="includeFreshRecords">是否补充未过期数据。</param>
     /// <returns>异步任务。</returns>
     private static async Task SeedRetentionDataAsync(ServiceProvider serviceProvider, bool includeFreshRecords) {
-        var expiredAt = LocalTimeTestConstraint.CreateLocalTime(2026, 3, 1, 8, 0, 0);
-        var freshAt = LocalTimeTestConstraint.CreateLocalTime(2026, 5, 1, 8, 0, 0);
+        var now = DateTime.Now;
+        var expiredAt = now.AddDays(-45);
+        var freshAt = now.AddDays(-15);
         await using var dbContext = await serviceProvider.GetRequiredService<IDbContextFactory<SortingHubDbContext>>().CreateDbContextAsync();
 
         var expiredAuditLog = CreateAuditLog(1, expiredAt, "trace-expired");

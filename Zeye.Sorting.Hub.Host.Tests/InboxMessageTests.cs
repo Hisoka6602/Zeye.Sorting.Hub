@@ -22,7 +22,7 @@ public sealed class InboxMessageTests {
             var factory = new SortingHubTestDbContextFactory(options);
             var repository = new InboxMessageRepository(factory);
             var service = new InboxMessageGuardService(repository);
-            var expiresAt = LocalTimeTestConstraint.CreateLocalTime(2026, 6, 1, 8, 0, 0);
+            var expiresAt = DateTime.Now.AddDays(7);
 
             var result = await service.ExecuteAsync(
                 "WCS",

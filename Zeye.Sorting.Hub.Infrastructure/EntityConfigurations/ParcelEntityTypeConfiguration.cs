@@ -179,7 +179,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
                 b.HasIndex("ImageType");
                 b.HasIndex("StorageProvider");
                 b.HasIndex("UploadedAtLocal");
-                b.HasIndex("BucketName", "ObjectKey");
+                b.HasIndex("BucketName", "ObjectKey").HasPrefixLength(128, 512);
             });
 
             builder.OwnsMany(x => x.VideoInfos, b => {

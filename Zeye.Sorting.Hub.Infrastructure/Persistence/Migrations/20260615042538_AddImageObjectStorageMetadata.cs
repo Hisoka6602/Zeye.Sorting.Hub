@@ -81,7 +81,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_ImageInfos_BucketName_ObjectKey",
                 table: "Parcel_ImageInfos",
-                columns: new[] { "BucketName", "ObjectKey" });
+                columns: new[] { "BucketName", "ObjectKey" })
+                .Annotation("MySql:IndexPrefixLength", new[] { 128, 512 });
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_ImageInfos_StorageProvider",

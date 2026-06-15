@@ -1131,7 +1131,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
                             b1.HasIndex("UploadedAtLocal");
 
-                            b1.HasIndex("BucketName", "ObjectKey");
+                            b1.HasIndex("BucketName", "ObjectKey")
+                                .HasAnnotation("MySql:IndexPrefixLength", new[] { 128, 512 });
 
                             b1.ToTable("Parcel_ImageInfos", (string)null);
 
