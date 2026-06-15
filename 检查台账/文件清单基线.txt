@@ -1,4 +1,5 @@
-﻿模块能力地图.md
+﻿Copilot-MinIO接入执行指令.md
+MinIO对象存储接入多PR实施方案与Copilot严格门禁.md
 .gitattributes
 .github/DDD分层接口与实现放置规范.md
 .github/copilot-instructions.md
@@ -521,6 +522,7 @@ performance/results/.gitkeep
 检查台账/PR-长期数据库底座S-检查台账.md
 检查台账/PR-长期数据库底座T-检查台账.md
 检查台账/文件清单基线.txt
+模块能力地图.md
 生产运行Runbook.md
 逐文件检查方案.md
 长期运行优化与热更新支持清单.md
