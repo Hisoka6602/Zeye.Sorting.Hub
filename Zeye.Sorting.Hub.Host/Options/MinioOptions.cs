@@ -154,8 +154,8 @@ public sealed class MinioOptions {
             }
         }
 
-        var startsWithSupportedCharacter = value[0] is >= 'a' and <= 'z' or >= '0' and <= '9';
-        var endsWithSupportedCharacter = value[^1] is >= 'a' and <= 'z' or >= '0' and <= '9';
+        var startsWithSupportedCharacter = IsValidBucketBoundaryCharacter(value[0]);
+        var endsWithSupportedCharacter = IsValidBucketBoundaryCharacter(value[^1]);
         return startsWithSupportedCharacter && endsWithSupportedCharacter;
     }
 
@@ -187,5 +187,15 @@ public sealed class MinioOptions {
             || character is >= '0' and <= '9'
             || character is '.'
             || character is '-';
+    }
+
+    /// <summary>
+    /// 校验 Bucket 首尾边界字符是否合法。
+    /// </summary>
+    /// <param name="character">待校验字符。</param>
+    /// <returns>合法时返回 <see langword="true"/>。</returns>
+    private static bool IsValidBucketBoundaryCharacter(char character) {
+        return character is >= 'a' and <= 'z'
+            || character is >= '0' and <= '9';
     }
 }

@@ -123,7 +123,8 @@ public sealed class ObjectStorageOptionsTests {
         services.AddObjectStorageOptions(configuration);
 
         using var serviceProvider = services.BuildServiceProvider(new ServiceProviderOptions {
-            ValidateScopes = true
+            ValidateScopes = true,
+            ValidateOnBuild = true
         });
         return serviceProvider.GetRequiredService<IOptions<ObjectStorageOptions>>().Value;
     }

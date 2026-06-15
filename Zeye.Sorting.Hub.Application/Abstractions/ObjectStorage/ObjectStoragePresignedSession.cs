@@ -2,6 +2,7 @@ namespace Zeye.Sorting.Hub.Application.Abstractions.ObjectStorage;
 
 /// <summary>
 /// 预签名会话。
+/// 同时用于单对象上传、对象读取与 Multipart 分片上传返回。
 /// </summary>
 public readonly record struct ObjectStoragePresignedSession {
     /// <summary>
