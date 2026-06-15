@@ -1118,6 +1118,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                                 .HasColumnType("int");
 
                             b1.Property<DateTime?>("UploadedAtLocal")
+                                .HasComment("上传完成时间（本地时间）")
                                 .HasColumnType("datetime(6)");
 
                             b1.HasKey("Id");

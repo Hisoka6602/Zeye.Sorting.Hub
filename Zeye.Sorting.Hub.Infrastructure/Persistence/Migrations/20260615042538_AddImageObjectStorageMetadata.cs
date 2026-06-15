@@ -75,7 +75,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                 name: "UploadedAtLocal",
                 table: "Parcel_ImageInfos",
                 type: "datetime(6)",
-                nullable: true);
+                nullable: true,
+                comment: "上传完成时间（本地时间）");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_ImageInfos_BucketName_ObjectKey",

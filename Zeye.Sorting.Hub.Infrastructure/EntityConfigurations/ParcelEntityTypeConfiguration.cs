@@ -171,6 +171,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
                 b.Property(x => x.ETag).HasMaxLength(128);
                 b.Property(x => x.Sha256).HasMaxLength(128);
                 b.Property(x => x.OriginalFileName).HasMaxLength(256);
+                b.Property(x => x.UploadedAtLocal).HasComment("上传完成时间（本地时间）");
                 b.Property<long>("Id").ValueGeneratedOnAdd();
                 b.HasKey("Id");
 
