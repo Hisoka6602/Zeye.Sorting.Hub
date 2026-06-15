@@ -27,7 +27,6 @@
 ├── 待完善事项.md（待完善事项列表，仅记录代码中尚未实现的可完善点）
 ├── 更新记录.md（更新记录，按时间倒序记录每次 PR 更新内容）
 ├── README.md（仓库总览、结构清单与维护规范）
-├── Copilot-MinIO接入执行指令.md（面向 Copilot 的 MinIO 执行指令：单 PR 约束、禁止项、固定输出与断点摘要格式）
 ├── MinIO对象存储接入多PR实施方案与Copilot严格门禁.md（MinIO 接入实施方案：多 PR 拆分、断点续跑、断点续传与严格门禁说明）
 ├── 模块能力地图.md（当前系统能力总览：模块状态、对外能力、长期运行能力与边界说明）
 ├── 业务模块接入规范.md（业务模块接入规范：统一模块目录结构、治理接线要求与分层边界）
@@ -647,7 +646,6 @@
 - `备份恢复演练Runbook.md`：备份恢复演练手册，沉淀备份失败检查、恢复演练步骤、通过标准与演练归档要求。
 - `业务接入前底座验收清单.md`：业务接入前底座验收清单，统一核对 PR-A～PR-T 完成度与最终放行项。
 - `无人值守运行检查清单.md`：无人值守运行检查清单，按每日、每周、每月、每季度沉淀长期巡检项。
-- `Copilot-MinIO接入执行指令.md`：面向 Copilot 的执行指令文档，固定 MinIO 接入的阶段约束、禁止项、文件同步要求、测试要求与输出格式。
 - `MinIO对象存储接入多PR实施方案与Copilot严格门禁.md`：MinIO 接入实施方案，统一说明对象存储架构决策、多 PR 拆分、上传断点续传、严格门禁与 Copilot 断点续跑要求。
 - `模块能力地图.md`：当前系统能力地图，统一说明模块状态、已落地能力、对外接口与长期运行边界。
 - `Zeye.Sorting.Hub.sln`：.NET 解决方案入口，聚合全部项目。
@@ -1332,7 +1330,7 @@
 
 ## 本次更新内容
 
-- 按《Copilot-MinIO接入执行指令.md》继续执行下一阶段，当前阶段进入 PR-C，在 Infrastructure 项目内接入 MinIO SDK，并补齐对象存储运行期实现与 Host 启动接线。
+- 按《MinIO对象存储接入多PR实施方案与Copilot严格门禁.md》继续执行下一阶段，当前阶段进入 PR-C，在 Infrastructure 项目内接入 MinIO SDK，并补齐对象存储运行期实现与 Host 启动接线。
 - 新增 `Zeye.Sorting.Hub.Infrastructure/ObjectStorage/MinioObjectStorageService.cs`、`MinioMultipartOperationInvoker.cs` 与 `MinioObjectStorageClientOptions.cs`，实现单对象上传预签名、对象读取预签名、Multipart 创建/分片签名/完成/中止与对象存在性探测能力。
 - 新增 `Zeye.Sorting.Hub.Infrastructure/DependencyInjection/ObjectStorageServiceCollectionExtensions.cs`，并在 `Program.cs` 中接线 `AddObjectStorageOptions()` + `AddMinioObjectStorage()`，让 Host 在启动期完成对象存储配置校验与服务注册。
 - 更新 `Zeye.Sorting.Hub.Host/appsettings.json`，补齐 `ObjectStorage:Minio` 占位配置（含 Region、Bucket、有效期与 Bootstrap 守卫）。
