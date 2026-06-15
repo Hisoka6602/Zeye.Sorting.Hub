@@ -119,7 +119,7 @@ public sealed class MinioOptions {
         }
 
         foreach (var character in value[2..^1]) {
-            if (!(char.IsAsciiLetterOrDigit(character) || character == '_')) {
+            if (!IsPlaceholderCharacter(character)) {
                 return false;
             }
         }
@@ -149,10 +149,7 @@ public sealed class MinioOptions {
         }
 
         foreach (var character in value) {
-            if (!(character is >= 'a' and <= 'z'
-                || character is >= '0' and <= '9'
-                || character is '.'
-                || character is '-')) {
+            if (!IsValidBucketCharacter(character)) {
                 return false;
             }
         }
@@ -169,5 +166,26 @@ public sealed class MinioOptions {
     /// <returns>处于允许范围时返回 <see langword="true"/>。</returns>
     public static bool IsValidExpireSeconds(int seconds) {
         return seconds is >= MinExpireSeconds and <= MaxExpireSeconds;
+    }
+
+    /// <summary>
+    /// 校验占位符变量字符是否合法。
+    /// </summary>
+    /// <param name="character">待校验字符。</param>
+    /// <returns>合法时返回 <see langword="true"/>。</returns>
+    private static bool IsPlaceholderCharacter(char character) {
+        return char.IsAsciiLetterOrDigit(character) || character == '_';
+    }
+
+    /// <summary>
+    /// 校验 Bucket 名称字符是否合法。
+    /// </summary>
+    /// <param name="character">待校验字符。</param>
+    /// <returns>合法时返回 <see langword="true"/>。</returns>
+    private static bool IsValidBucketCharacter(char character) {
+        return character is >= 'a' and <= 'z'
+            || character is >= '0' and <= '9'
+            || character is '.'
+            || character is '-';
     }
 }
