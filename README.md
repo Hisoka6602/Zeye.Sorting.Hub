@@ -183,7 +183,7 @@
 │   │           ├── ChuteInfoResponse.cs（格口信息响应合同）
 │   │           ├── CommandInfoResponse.cs（通信指令记录响应合同）
 │   │           ├── GrayDetectorInfoResponse.cs（灰检信息响应合同）
-│   │           ├── ImageInfoResponse.cs（图片信息响应合同）
+│   │           ├── ImageInfoResponse.cs（图片信息响应合同，兼容 RelativePath 与对象存储元数据）
 │   │           ├── ParcelDeviceInfoResponse.cs（包裹设备信息响应合同）
 │   │           ├── ParcelPositionInfoResponse.cs（包裹坐标信息响应合同）
 │   │           ├── SorterCarrierInfoResponse.cs（小车信息响应合同）
@@ -217,7 +217,7 @@
 │   │           ├── ChuteInfo.cs（格口分配信息值对象）
 │   │           ├── CommandInfo.cs（设备命令交互信息值对象）
 │   │           ├── GrayDetectorInfo.cs（灰度检测结果值对象）
-│   │           ├── ImageInfo.cs（图片元数据值对象）
+│   │           ├── ImageInfo.cs（图片元数据值对象，兼容 RelativePath 与对象存储骨架字段）
 │   │           ├── ParcelDeviceInfo.cs（包裹相关设备信息值对象）
 │   │           ├── ParcelPositionInfo.cs（包裹空间/轨迹位置信息值对象）
 │   │           ├── SorterCarrierInfo.cs（分拣小车/载体信息值对象）
@@ -241,6 +241,8 @@
 │   │   ├── ImageCaptureType.cs（图像采集方式枚举）
 │   │   ├── ImageType.cs（图像类型枚举）
 │   │   ├── NoReadType.cs（无码/难码类型枚举）
+│   │   ├── ObjectStorage（对象存储枚举目录）
+│   │   │   └── ObjectStorageProvider.cs（对象存储提供器枚举）
 │   │   ├── ParcelExceptionType.cs（包裹异常类型枚举）
 │   │   ├── ParcelStatus.cs（包裹状态枚举）
 │   │   ├── ParcelType.cs（包裹类别枚举）
@@ -546,6 +548,8 @@
 │   │   │   ├── 20260506175929_AddOutboxMessageSupport.Designer.cs（Outbox 消息迁移元数据，自动生成）
 │   │   │   ├── 20260507021744_AddInboxMessageSupport.cs（Inbox 消息基线迁移）
 │   │   │   ├── 20260507021744_AddInboxMessageSupport.Designer.cs（Inbox 消息迁移元数据，自动生成）
+│   │   │   ├── 20260615042538_AddImageObjectStorageMetadata.cs（图片对象存储元数据骨架迁移）
+│   │   │   ├── 20260615042538_AddImageObjectStorageMetadata.Designer.cs（图片对象存储元数据迁移元数据，自动生成）
 │   │   │   ├── MigrationSchemaResolver.cs（迁移 schema 解析器）
 │   │   │   └── SortingHubDbContextModelSnapshot.cs（当前模型快照，自动生成）
 │   │   ├── WriteBuffering（批量缓冲写入基础设施目录）
@@ -798,7 +802,7 @@
 - `ChuteInfoResponse.cs`：格口信息响应合同。
 - `CommandInfoResponse.cs`：通信指令记录响应合同。
 - `GrayDetectorInfoResponse.cs`：灰检信息响应合同。
-- `ImageInfoResponse.cs`：图片信息响应合同。
+- `ImageInfoResponse.cs`：图片信息响应合同（兼容历史相对路径与对象存储元数据输出）。
 - `ParcelDeviceInfoResponse.cs`：包裹设备信息响应合同。
 - `ParcelPositionInfoResponse.cs`：包裹坐标信息响应合同。
 - `SorterCarrierInfoResponse.cs`：小车信息响应合同。
@@ -850,7 +854,7 @@
 - `ChuteInfo.cs`：格口分配信息值对象。
 - `CommandInfo.cs`：设备命令交互信息值对象。
 - `GrayDetectorInfo.cs`：灰度检测结果值对象。
-- `ImageInfo.cs`：图片元数据值对象（路径、类型、时间等）。
+- `ImageInfo.cs`：图片元数据值对象（兼容历史 `RelativePath` 与对象存储骨架字段）。
 - `ParcelDeviceInfo.cs`：包裹相关设备信息值对象。
 - `ParcelPositionInfo.cs`：包裹空间/轨迹位置信息值对象。
 - `SorterCarrierInfo.cs`：分拣小车/载体信息值对象。
@@ -884,6 +888,9 @@
 - `VolumeSourceType.cs`：体积来源类型枚举定义。
 - `MigrationFailureMode.cs`：数据库迁移失败策略枚举。
 - `ParcelUpdateOperation.cs`：包裹状态更新操作枚举。
+
+##### `Zeye.Sorting.Hub.Domain/Enums/ObjectStorage/`：对象存储枚举目录
+- `ObjectStorageProvider.cs`：对象存储提供器枚举定义（当前用于图片对象存储元数据骨架）。
 
 #### `Zeye.Sorting.Hub.Domain/Enums/DataGovernance/`：数据治理枚举子目录
 - `ArchiveTaskStatus.cs`：归档任务状态枚举。
@@ -1181,6 +1188,8 @@
 - `20260506175929_AddOutboxMessageSupport.Designer.cs`：Outbox 消息迁移元数据文件（自动生成，勿手动修改）。
 - `20260507021744_AddInboxMessageSupport.cs`：Inbox 消息基线迁移，新增 `InboxMessages` 表、唯一消息键索引与过期治理索引。
 - `20260507021744_AddInboxMessageSupport.Designer.cs`：Inbox 消息迁移元数据文件（自动生成，勿手动修改）。
+- `20260615042538_AddImageObjectStorageMetadata.cs`：图片对象存储元数据骨架迁移，向 `Parcel_ImageInfos` 增加对象存储字段与查询索引。
+- `20260615042538_AddImageObjectStorageMetadata.Designer.cs`：图片对象存储元数据迁移元数据文件（自动生成，勿手动修改）。
 - `MigrationSchemaResolver.cs`：迁移共享 schema 解析器。
 - `SortingHubDbContextModelSnapshot.cs`：当前模型快照（自动生成，勿手动修改）。
 
@@ -1275,15 +1284,16 @@
 
 ## 本次更新内容
 
-- 按《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》执行前置核对，确认长期数据库底座 PR-A～PR-T 主体能力已完成，当前补齐点集中在 `PR-A-检查台账.md` 延后的 Copilot 严格门禁覆盖。
-- 补强 `.github/scripts/validate-copilot-rules.sh`：README 历史记录门禁改为识别常见 Markdown 标题变体，并扩展 `.Count() == 0`、`.Where(...).FirstOrDefault()`、`string.Format()` 等性能反模式检测。
-- 新增 `Zeye.Sorting.Hub.Host.Tests/CopilotRuleValidationScriptTests.cs`，对上述门禁补强建立最小回归保护，并同步更新 README、更新记录、文件清单基线与 PR-A 台账补充记录。
+- 按《Copilot-MinIO接入执行指令.md》实施前置核对，确认当前仓库与 MinIO 相关的已完成内容仅为方案/执行文档，代码侧尚未开始，当前阶段进入 PR-A。
+- 新增 `Zeye.Sorting.Hub.Domain/Enums/ObjectStorage/ObjectStorageProvider.cs`，并扩展 `ImageInfo`、`ImageInfoResponse`、`ParcelContractMapper`、`ParcelEntityTypeConfiguration`，为图片对象存储元数据补齐骨架字段，同时保持 `RelativePath` 兼容。
+- 新增 `20260615042538_AddImageObjectStorageMetadata` 迁移与模型快照更新，为 `Parcel_ImageInfos` 增加对象存储字段及索引。
+- 扩展 `ParcelRepositoryTests.cs`、`ParcelQueryServicesTests.cs`、`SwaggerDocumentationTests.cs` 与 `AutoTuningProductionControlTests.cs`，覆盖对象存储元数据持久化、详情映射、Swagger 枚举描述与值对象相等性回归。
 
 ## 后续可完善点
 
-- 长期数据库底座路线图已完成，后续进入正式业务模块开发时，应继续按 `业务模块接入规范.md` 与 `业务接入前底座验收清单.md` 执行。
-- 当前 `validate-copilot-rules.sh` 仍以增量正则门禁为主，后续可继续补充更多高频 .NET 性能反模式与 README 结构误用场景。
-- 后续需持续补充季度演练记录与真实生产复盘，保证 `drill-records/`、运行手册与验收清单长期保持同步。
+- 下一阶段可按 PR-B 继续补齐对象存储抽象、上传会话模型与 Options 校验，不应跨阶段提前接入 MinIO SDK。
+- 当前 PR-A 仅提供图片对象存储元数据骨架，尚未开始 Multipart 会话持久化、对象存储 API 与 Parcel 图片绑定能力。
+- 历史 `RelativePath` 数据仍维持兼容读取策略，后续若推进历史回填，应单独按运行手册与门禁要求补充演练和回滚方案。
 
 ## Parcel API 发布门禁 / 使用边界说明
 
