@@ -20,11 +20,6 @@ public readonly record struct CreateObjectStorageMultipartUploadSessionRequest {
     public string? ContentType { get; init; }
 
     /// <summary>
-    /// 原始文件名。
-    /// </summary>
-    public string? OriginalFileName { get; init; }
-
-    /// <summary>
     /// 对象总大小（字节）。
     /// </summary>
     public long? ObjectSizeBytes { get; init; }

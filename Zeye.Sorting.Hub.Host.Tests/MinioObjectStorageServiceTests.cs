@@ -40,13 +40,42 @@ public sealed class MinioObjectStorageServiceTests {
 
         var session = await service.CreateReadSessionAsync(new CreateObjectStorageReadSessionRequest {
             BucketName = "sorting-hub-parcel-images",
-            ObjectKey = "images/2026/06/15/parcel-001/top-cam.jpg",
-            DownloadFileName = "top-cam.jpg"
+            ObjectKey = "images/2026/06/15/parcel-001/top-cam.jpg"
         }, CancellationToken.None);
 
         Assert.Equal("GET", session.HttpMethod);
         Assert.Contains("X-Amz-Signature", session.Url, StringComparison.Ordinal);
         Assert.Empty(session.Headers);
+    }
+
+    /// <summary>
+    /// 验证场景：包含非法字符的占位符不会在运行期被解析为环境变量。
+    /// </summary>
+    [Fact]
+    public void FromConfiguration_ShouldKeepInvalidPlaceholderCredentialLiteral() {
+        Environment.SetEnvironmentVariable("MINIO-ACCESS-KEY", "runtime-access-key");
+
+        try {
+            var configuration = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?> {
+                    ["ObjectStorage:Minio:Endpoint"] = "minio.zeye.local:9000",
+                    ["ObjectStorage:Minio:UseSsl"] = "false",
+                    ["ObjectStorage:Minio:AccessKey"] = "${MINIO-ACCESS-KEY}",
+                    ["ObjectStorage:Minio:SecretKey"] = "${MINIO_SECRET_KEY}",
+                    ["ObjectStorage:Minio:Region"] = "us-east-1",
+                    ["ObjectStorage:Minio:PresignedUploadExpireSeconds"] = "900",
+                    ["ObjectStorage:Minio:PresignedReadExpireSeconds"] = "300",
+                    ["ObjectStorage:Minio:MultipartPartExpireSeconds"] = "900"
+                })
+                .Build();
+
+            var options = MinioObjectStorageClientOptions.FromConfiguration(configuration);
+
+            Assert.Equal("${MINIO-ACCESS-KEY}", options.AccessKey);
+        }
+        finally {
+            Environment.SetEnvironmentVariable("MINIO-ACCESS-KEY", null);
+        }
     }
 
     /// <summary>

@@ -13,9 +13,4 @@ public readonly record struct CreateObjectStorageReadSessionRequest {
     /// 目标对象键。
     /// </summary>
     public required string ObjectKey { get; init; }
-
-    /// <summary>
-    /// 下载文件名。
-    /// </summary>
-    public string? DownloadFileName { get; init; }
 }

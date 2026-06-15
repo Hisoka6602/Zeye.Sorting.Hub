@@ -18,12 +18,6 @@ public readonly record struct CreateObjectStorageUploadSessionRequest {
     /// 内容类型。
     /// </summary>
     public string? ContentType { get; init; }
-
-    /// <summary>
-    /// 原始文件名。
-    /// </summary>
-    public string? OriginalFileName { get; init; }
-
     /// <summary>
     /// 对象大小（字节）。
     /// </summary>

@@ -137,8 +137,16 @@ internal sealed class MinioObjectStorageClientOptions {
             return false;
         }
 
-        placeholderName = value[2..^1].Trim();
-        return !string.IsNullOrWhiteSpace(placeholderName);
+        var extractedValue = value[2..^1];
+        for (var index = 0; index < extractedValue.Length; index++) {
+            var character = extractedValue[index];
+            if (!char.IsAsciiLetterOrDigit(character) && character != '_') {
+                return false;
+            }
+        }
+
+        placeholderName = extractedValue;
+        return true;
     }
 
     /// <summary>
