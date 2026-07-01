@@ -52,14 +52,6 @@ internal sealed class WebRequestAuditBackgroundWorkerHostedService : BackgroundS
                             result.ErrorMessage);
                     }
                 }
-                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) {
-                    NLogLogger.Info("Web 请求审计后台消费收到停止信号，消费循环结束。");
-                    break;
-                }
-                catch (ObjectDisposedException) when (stoppingToken.IsCancellationRequested) {
-                    NLogLogger.Info("Web 请求审计后台消费在宿主释放阶段结束。");
-                    break;
-                }
                 catch (Exception ex) {
                     NLogLogger.Error(ex, "写入 Web 请求审计日志发生异常，TraceId={TraceId}, CorrelationId={CorrelationId}", entry.TraceId, entry.CorrelationId);
                 }
