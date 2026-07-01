@@ -69,6 +69,7 @@ try {
     builder.Services.Configure<HostingOptions>(builder.Configuration.GetSection("Hosting"));
     builder.Services.Configure<AuditReadOnlyApiOptions>(builder.Configuration.GetSection(AuditReadOnlyApiOptions.SectionName));
     builder.Services.Configure<ResourceThresholdsOptions>(builder.Configuration.GetSection(ResourceThresholdsOptions.SectionName));
+    builder.Services.AddObjectStorageOptions(builder.Configuration);
     builder.Services.AddHostedService<LogCleanupService>();
     builder.Services.AddHostedService<DevelopmentBrowserLauncherHostedService>();
     builder.Services.AddHostedService<DatabaseConnectionWarmupHostedService>();
@@ -87,6 +88,7 @@ try {
     builder.Services.AddSingleton<SafeExecutor>();
     builder.Services.AddSingleton<ConfigChangeHistoryStore<LogCleanupSettings>>();
     builder.Services.AddSortingHubPersistence(builder.Configuration);
+    builder.Services.AddMinioObjectStorage(builder.Configuration);
     // 显式替换 IAutoTuningObservability：无论 AddSortingHubPersistence 内是否已注册占位空实现，
     // Replace 均保证最终容器中只存在真实的日志观测实现，与注册顺序无关。
     builder.Services.Replace(ServiceDescriptor.Singleton<IAutoTuningObservability, AutoTuningLoggerObservability>());

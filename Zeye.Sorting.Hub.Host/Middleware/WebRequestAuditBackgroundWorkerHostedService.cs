@@ -38,26 +38,32 @@ internal sealed class WebRequestAuditBackgroundWorkerHostedService : BackgroundS
     /// <param name="stoppingToken">停止令牌。</param>
     /// <returns>异步任务。</returns>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
-        await foreach (var entry in _queue.Reader.ReadAllAsync(stoppingToken)) {
-            try {
-                using var scope = _scopeFactory.CreateScope();
-                var writeService = scope.ServiceProvider.GetRequiredService<WriteWebRequestAuditLogCommandService>();
-                var result = await writeService.WriteAsync(entry.Log, stoppingToken);
-                if (!result.IsSuccess) {
-                    NLogLogger.Error("写入 Web 请求审计日志返回失败，TraceId={TraceId}, CorrelationId={CorrelationId}, ErrorCode={ErrorCode}, ErrorMessage={ErrorMessage}",
-                        entry.TraceId,
-                        entry.CorrelationId,
-                        result.ErrorCode,
-                        result.ErrorMessage);
+        try {
+            await foreach (var entry in _queue.Reader.ReadAllAsync(stoppingToken)) {
+                try {
+                    using var scope = _scopeFactory.CreateScope();
+                    var writeService = scope.ServiceProvider.GetRequiredService<WriteWebRequestAuditLogCommandService>();
+                    var result = await writeService.WriteAsync(entry.Log, stoppingToken);
+                    if (!result.IsSuccess) {
+                        NLogLogger.Error("写入 Web 请求审计日志返回失败，TraceId={TraceId}, CorrelationId={CorrelationId}, ErrorCode={ErrorCode}, ErrorMessage={ErrorMessage}",
+                            entry.TraceId,
+                            entry.CorrelationId,
+                            result.ErrorCode,
+                            result.ErrorMessage);
+                    }
+                }
+                catch (Exception ex) {
+                    NLogLogger.Error(ex, "写入 Web 请求审计日志发生异常，TraceId={TraceId}, CorrelationId={CorrelationId}", entry.TraceId, entry.CorrelationId);
                 }
             }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) {
-                NLogLogger.Warn("Web 请求审计后台消费收到停止信号，消费循环结束。");
-                break;
-            }
-            catch (Exception ex) {
-                NLogLogger.Error(ex, "写入 Web 请求审计日志发生异常，TraceId={TraceId}, CorrelationId={CorrelationId}", entry.TraceId, entry.CorrelationId);
-            }
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) {
+            NLogLogger.Warn("Web 请求审计后台消费已按停止令牌退出。");
+        }
+        catch (ObjectDisposedException) when (stoppingToken.IsCancellationRequested) {
+            // 说明：该分支用于处理宿主释放阶段 Channel / ScopeFactory 已先行释放的收尾场景，
+            // 与停止令牌触发的取消异常互补，避免关闭流程将其误判为后台服务失败。
+            NLogLogger.Warn("Web 请求审计后台消费在宿主释放后安全退出。");
         }
     }
 }

@@ -4,6 +4,7 @@ using Zeye.Sorting.Hub.Contracts.Models.Parcels;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.Admin;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.ValueObjects;
 using Zeye.Sorting.Hub.Domain.Enums;
+using Zeye.Sorting.Hub.Domain.Enums.ObjectStorage;
 using Microsoft.OpenApi.Any;
 using Microsoft.OpenApi.Models;
 using Swashbuckle.AspNetCore.SwaggerGen;
@@ -49,6 +50,7 @@ public sealed class EnumDescriptionSchemaFilter : ISchemaFilter {
             },
             [typeof(ImageInfoResponse)] = new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase) {
                 ["imageType"] = typeof(ImageType),
+                ["storageProvider"] = typeof(ObjectStorageProvider),
                 ["captureType"] = typeof(ImageCaptureType)
             },
             [typeof(VideoInfoResponse)] = new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase) {

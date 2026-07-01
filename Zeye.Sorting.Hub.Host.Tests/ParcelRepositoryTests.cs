@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects;
 using Zeye.Sorting.Hub.Domain.Enums;
+using Zeye.Sorting.Hub.Domain.Enums.ObjectStorage;
 using Zeye.Sorting.Hub.Domain.Repositories;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.Filters;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.Paging;
@@ -111,6 +112,55 @@ public sealed class ParcelRepositoryTests {
             Assert.Equal(2, adjacent.Count);
             Assert.Equal("BC-101", adjacent[0].BarCodes);
             Assert.Equal("BC-103", adjacent[1].BarCodes);
+        }
+        finally {
+            await CleanupDatabaseAsync(databaseName);
+        }
+    }
+
+    /// <summary>
+    /// 验证场景：ImageInfo 对象存储元数据应可持久化并正确回读。
+    /// </summary>
+    [Fact]
+    public async Task GetByIdAsync_ShouldRoundTripImageObjectStorageMetadata() {
+        var databaseName = $"parcel-repo-image-storage-test-{Guid.NewGuid():N}";
+        var uploadedAtLocal = DateTime.Now.AddMinutes(-15);
+        try {
+            var parcel = CreateParcel("BC-IMAGE-1", "BAG-IMAGE", "WS-IMAGE", ParcelStatus.Pending, DateTime.Now.AddMinutes(-20), 320, 420);
+            parcel.AddImageInfo(new ImageInfo {
+                CameraName = "Cam-Storage",
+                CustomName = "TopCam",
+                CameraSerialNumber = "SN-STORAGE-1",
+                ImageType = ImageType.Panorama,
+                RelativePath = string.Empty,
+                StorageProvider = ObjectStorageProvider.Minio,
+                BucketName = "sorting-hub-parcel-images",
+                ObjectKey = "images/2026/06/15/storage-1.jpg",
+                ContentType = "image/jpeg",
+                ObjectSizeBytes = 4096,
+                ETag = "etag-storage-1",
+                Sha256 = "sha256-storage-1",
+                UploadedAtLocal = uploadedAtLocal,
+                OriginalFileName = "storage-1.jpg",
+                CaptureType = ImageCaptureType.Camera
+            });
+            await SeedParcelsAsync(databaseName, [parcel]);
+
+            var repository = CreateRepository(databaseName);
+            var detail = await repository.GetByIdAsync(parcel.Id, CancellationToken.None);
+
+            Assert.NotNull(detail);
+            Assert.Single(detail!.ImageInfos);
+            var imageInfo = detail.ImageInfos[0];
+            Assert.Equal(ObjectStorageProvider.Minio, imageInfo.StorageProvider);
+            Assert.Equal("sorting-hub-parcel-images", imageInfo.BucketName);
+            Assert.Equal("images/2026/06/15/storage-1.jpg", imageInfo.ObjectKey);
+            Assert.Equal("image/jpeg", imageInfo.ContentType);
+            Assert.Equal(4096, imageInfo.ObjectSizeBytes);
+            Assert.Equal("etag-storage-1", imageInfo.ETag);
+            Assert.Equal("sha256-storage-1", imageInfo.Sha256);
+            Assert.Equal(uploadedAtLocal, imageInfo.UploadedAtLocal);
+            Assert.Equal("storage-1.jpg", imageInfo.OriginalFileName);
         }
         finally {
             await CleanupDatabaseAsync(databaseName);

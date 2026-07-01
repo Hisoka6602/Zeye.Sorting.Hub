@@ -15,6 +15,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
 using Zeye.Sorting.Hub.Domain.Enums;
+using Zeye.Sorting.Hub.Domain.Enums.ObjectStorage;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Host.HostedServices;
 using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
@@ -2216,6 +2217,15 @@ public sealed class AutoTuningProductionControlTests {
             CameraSerialNumber = "SN-1",
             ImageType = ImageType.Scan,
             RelativePath = "images/a.jpg",
+            StorageProvider = ObjectStorageProvider.Minio,
+            BucketName = "sorting-hub-parcel-images",
+            ObjectKey = "images/a.jpg",
+            ContentType = "image/jpeg",
+            ObjectSizeBytes = 1024,
+            ETag = "etag-a",
+            Sha256 = "sha256-a",
+            UploadedAtLocal = new DateTime(2024, 1, 1, 12, 10, 0, DateTimeKind.Local),
+            OriginalFileName = "a.jpg",
             CaptureType = ImageCaptureType.Camera
         }, 101L);
         var rightImage = SetParcelIdForTesting(new ImageInfo {
@@ -2224,6 +2234,15 @@ public sealed class AutoTuningProductionControlTests {
             CameraSerialNumber = "SN-1",
             ImageType = ImageType.Scan,
             RelativePath = "images/a.jpg",
+            StorageProvider = ObjectStorageProvider.Minio,
+            BucketName = "sorting-hub-parcel-images",
+            ObjectKey = "images/a.jpg",
+            ContentType = "image/jpeg",
+            ObjectSizeBytes = 1024,
+            ETag = "etag-a",
+            Sha256 = "sha256-a",
+            UploadedAtLocal = new DateTime(2024, 1, 1, 12, 10, 0, DateTimeKind.Local),
+            OriginalFileName = "a.jpg",
             CaptureType = ImageCaptureType.Camera
         }, 202L);
         Assert.Equal(leftImage, rightImage);

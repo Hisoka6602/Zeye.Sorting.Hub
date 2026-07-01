@@ -81,9 +81,21 @@
 │   └── Zeye.Sorting.Hub.Analytics.csproj（Analytics 项目定义）
 ├── Zeye.Sorting.Hub.Application（应用层）
 │   ├── Abstractions（应用层抽象目录）
-│   │   └── Diagnostics（慢查询画像只读抽象目录）
-│   │       ├── ISlowQueryProfileReader.cs（慢查询画像只读接口：向 Application 暴露只读画像读取能力）
-│   │       └── SlowQueryProfileReadModel.cs（慢查询画像读模型：承载指纹、标准 SQL 与窗口聚合指标）
+│   │   ├── Diagnostics（慢查询画像只读抽象目录）
+│   │   │   ├── ISlowQueryProfileReader.cs（慢查询画像只读接口：向 Application 暴露只读画像读取能力）
+│   │   │   └── SlowQueryProfileReadModel.cs（慢查询画像读模型：承载指纹、标准 SQL 与窗口聚合指标）
+│   │   └── ObjectStorage（对象存储协作抽象目录）
+│   │       ├── AbortObjectStorageMultipartUploadRequest.cs（中止 Multipart 上传请求模型）
+│   │       ├── CompleteObjectStorageMultipartUploadRequest.cs（完成 Multipart 上传请求模型）
+│   │       ├── CreateObjectStorageMultipartUploadPartRequest.cs（创建 Multipart 分片上传预签名请求模型）
+│   │       ├── CreateObjectStorageMultipartUploadSessionRequest.cs（创建 Multipart 上传会话请求模型）
+│   │       ├── CreateObjectStorageReadSessionRequest.cs（创建对象读取预签名请求模型）
+│   │       ├── CreateObjectStorageUploadSessionRequest.cs（创建单对象上传预签名请求模型）
+│   │       ├── IObjectStorageService.cs（对象存储应用协作抽象：定义预签名、Multipart 与对象探测能力）
+│   │       ├── ObjectStorageMultipartPartETag.cs（Multipart 分片完成标记模型）
+│   │       ├── ObjectStorageMultipartUploadSession.cs（Multipart 上传会话模型）
+│   │       ├── ObjectStorageObjectDescriptor.cs（对象存储对象描述模型）
+│   │       └── ObjectStoragePresignedSession.cs（通用预签名会话模型）
 │   ├── Services（应用服务目录）
 │   │   ├── AuditLogs（审计日志应用服务目录）
 │   │   │   ├── GetWebRequestAuditLogByIdQueryService.cs（Web 请求审计日志详情查询应用服务）
@@ -182,7 +194,7 @@
 │   │           ├── ChuteInfoResponse.cs（格口信息响应合同）
 │   │           ├── CommandInfoResponse.cs（通信指令记录响应合同）
 │   │           ├── GrayDetectorInfoResponse.cs（灰检信息响应合同）
-│   │           ├── ImageInfoResponse.cs（图片信息响应合同）
+│   │           ├── ImageInfoResponse.cs（图片信息响应合同，兼容 RelativePath 与对象存储元数据）
 │   │           ├── ParcelDeviceInfoResponse.cs（包裹设备信息响应合同）
 │   │           ├── ParcelPositionInfoResponse.cs（包裹坐标信息响应合同）
 │   │           ├── SorterCarrierInfoResponse.cs（小车信息响应合同）
@@ -216,7 +228,7 @@
 │   │           ├── ChuteInfo.cs（格口分配信息值对象）
 │   │           ├── CommandInfo.cs（设备命令交互信息值对象）
 │   │           ├── GrayDetectorInfo.cs（灰度检测结果值对象）
-│   │           ├── ImageInfo.cs（图片元数据值对象）
+│   │           ├── ImageInfo.cs（图片元数据值对象，兼容 RelativePath 与对象存储骨架字段）
 │   │           ├── ParcelDeviceInfo.cs（包裹相关设备信息值对象）
 │   │           ├── ParcelPositionInfo.cs（包裹空间/轨迹位置信息值对象）
 │   │           ├── SorterCarrierInfo.cs（分拣小车/载体信息值对象）
@@ -240,6 +252,8 @@
 │   │   ├── ImageCaptureType.cs（图像采集方式枚举）
 │   │   ├── ImageType.cs（图像类型枚举）
 │   │   ├── NoReadType.cs（无码/难码类型枚举）
+│   │   ├── ObjectStorage（对象存储枚举目录）
+│   │   │   └── ObjectStorageProvider.cs（对象存储提供器枚举）
 │   │   ├── ParcelExceptionType.cs（包裹异常类型枚举）
 │   │   ├── ParcelStatus.cs（包裹状态枚举）
 │   │   ├── ParcelType.cs（包裹类别枚举）
@@ -335,6 +349,10 @@
 │   │   ├── SwaggerOptions.cs（Swagger 子配置模型）
 │   │   ├── BrowserAutoOpenOptions.cs（Development 浏览器自动打开配置）
 │   │   ├── AuditReadOnlyApiOptions.cs（AuditReadOnlyApi 显式开关配置）
+│   │   ├── MinioBootstrapOptions.cs（MinIO 启动期自检守卫配置）
+│   │   ├── MinioOptions.cs（MinIO 配置模型与配置值校验辅助）
+│   │   ├── ObjectStorageOptions.cs（对象存储总配置模型）
+│   │   ├── ObjectStorageOptionsServiceCollectionExtensions.cs（对象存储配置注册与 ValidateOnStart 扩展）
 │   │   └── ResourceThresholdsOptions.cs（运行时资源阈值告警配置）
 │   ├── HealthChecks（健康检查目录）
 │   │   ├── BufferedWriteQueueHealthCheck.cs（批量缓冲写入队列健康检查：输出队列深度、死信数量与 Flush 状态）
@@ -405,6 +423,8 @@
 │   ├── NullScope.cs（通用测试日志空作用域单例）
 │   ├── ObservabilityEntry.cs（自动调优观测记录模型）
 │   ├── HostingOptionsTests.cs（Hosting 配置拼装测试：监听地址拆分、Swagger 地址拼装、显式地址优先级与无效监听地址兜底）
+│   ├── ObjectStorageOptionsTests.cs（对象存储配置测试：默认值、占位符凭据与启动期守卫校验）
+│   ├── MinioObjectStorageServiceTests.cs（MinIO 对象存储服务测试：预签名会话、Multipart 分片签名与 DI 注册）
 │   ├── ParcelAdminApiTests.cs（Parcel 管理端写接口测试：新增/更新状态/删除成功路径 + cleanup-expired 三态 + 参数非法校验）
 │   ├── AuditReadOnlyApiTests.cs（Web 请求审计日志只读 API 端点测试：分页、过滤、参数校验、详情全字段、写读联动）
 │   ├── ParcelReadOnlyApiTests.cs（Parcel 只读 API 端点测试：列表/详情/404/邻近参数异常）
@@ -426,7 +446,12 @@
 │   └── Zeye.Sorting.Hub.Host.Tests.csproj（xUnit 测试项目定义）
 ├── Zeye.Sorting.Hub.Infrastructure（基础设施层）
 │   ├── DependencyInjection（依赖注入扩展目录）
+│   │   ├── ObjectStorageServiceCollectionExtensions.cs（对象存储服务注册扩展：绑定 MinIO 运行期配置并注册客户端、Multipart 调用器与 IObjectStorageService）
 │   │   └── PersistenceServiceCollectionExtensions.cs（持久化服务注册扩展（数据库提供器选择、连接字符串校验、DbContext 注册、数据库连接诊断/预热、批量缓冲写入、归档 dry-run 与分表规则守卫注册；Parcel 主表始终按 CreatedTime 路由，时间/容量/混合策略决策由统一评估器驱动））
+│   ├── ObjectStorage（对象存储基础设施目录）
+│   │   ├── MinioMultipartOperationInvoker.cs（MinIO Multipart 反射调用器：封装创建/完成/中止上传与分片预签名）
+│   │   ├── MinioObjectStorageClientOptions.cs（MinIO 运行期配置模型：解析 Endpoint、Region、有效期与占位符环境变量凭据）
+│   │   └── MinioObjectStorageService.cs（MinIO 对象存储服务实现：提供上传/读取预签名、Multipart 与对象存在性探测）
 │   ├── EntityConfigurations（EF Core 映射配置目录）
 │   │   ├── ArchiveTaskEntityTypeConfiguration.cs（归档任务实体映射配置）
 │   │   ├── BagInfoEntityTypeConfiguration.cs（BagInfo 映射配置）
@@ -545,6 +570,8 @@
 │   │   │   ├── 20260506175929_AddOutboxMessageSupport.Designer.cs（Outbox 消息迁移元数据，自动生成）
 │   │   │   ├── 20260507021744_AddInboxMessageSupport.cs（Inbox 消息基线迁移）
 │   │   │   ├── 20260507021744_AddInboxMessageSupport.Designer.cs（Inbox 消息迁移元数据，自动生成）
+│   │   │   ├── 20260615042538_AddImageObjectStorageMetadata.cs（图片对象存储元数据骨架迁移）
+│   │   │   ├── 20260615042538_AddImageObjectStorageMetadata.Designer.cs（图片对象存储元数据迁移元数据，自动生成）
 │   │   │   ├── MigrationSchemaResolver.cs（迁移 schema 解析器）
 │   │   │   └── SortingHubDbContextModelSnapshot.cs（当前模型快照，自动生成）
 │   │   ├── WriteBuffering（批量缓冲写入基础设施目录）
@@ -696,6 +723,19 @@
 - `ISlowQueryProfileReader.cs`：慢查询画像只读接口，定义获取 TopN 画像列表与按指纹读取详情的查询契约，保证 Application 不直接依赖 Infrastructure 实现。
 - `SlowQueryProfileReadModel.cs`：慢查询画像读模型，承载指纹、标准 SQL、平均耗时、P95/P99、异常次数与窗口起止时间。
 
+#### `Zeye.Sorting.Hub.Application/Abstractions/ObjectStorage/`：应用层对象存储协作抽象目录
+- `IObjectStorageService.cs`：对象存储应用协作抽象，统一定义单对象上传预签名、对象读取预签名、Multipart 会话/分片、完成/中止与对象存在性探测能力，供后续 Infrastructure 以 MinIO 实现。
+- `CreateObjectStorageUploadSessionRequest.cs`：创建单对象上传预签名请求模型，承载 Bucket、对象键、内容类型、原始文件名与对象大小元数据。
+- `CreateObjectStorageReadSessionRequest.cs`：创建对象读取预签名请求模型，承载 Bucket、对象键与可选下载文件名。
+- `CreateObjectStorageMultipartUploadSessionRequest.cs`：创建 Multipart 上传会话请求模型，承载 Bucket、对象键、内容类型、原始文件名、总大小与建议分片大小。
+- `CreateObjectStorageMultipartUploadPartRequest.cs`：创建 Multipart 分片上传预签名请求模型，承载 Bucket、对象键、UploadId 与分片序号。
+- `CompleteObjectStorageMultipartUploadRequest.cs`：完成 Multipart 上传请求模型，承载 Bucket、对象键、UploadId 与已完成分片标记集合。
+- `AbortObjectStorageMultipartUploadRequest.cs`：中止 Multipart 上传请求模型，承载 Bucket、对象键与 UploadId。
+- `ObjectStorageMultipartUploadSession.cs`：Multipart 上传会话模型，返回 UploadId、建议分片大小、预估分片数量与会话本地到期时间。
+- `ObjectStorageMultipartPartETag.cs`：Multipart 分片完成标记模型，统一封装分片序号与 ETag。
+- `ObjectStorageObjectDescriptor.cs`：对象存储对象描述模型，统一复用 Bucket + ObjectKey 组合。
+- `ObjectStoragePresignedSession.cs`：通用预签名会话模型，统一承载 URL、HTTP 方法、调用方需透传请求头与本地到期时间。
+
 #### `Zeye.Sorting.Hub.Application/Utilities/`：应用层内部共享工具目录
 - `ApplicationErrorCodes.cs`：应用层稳定错误码定义，统一沉淀参数校验、资源不存在、业务冲突、幂等拒绝与内部失败等错误码。
 - `ApplicationResult.cs`：应用层统一结果模型，承载成功/失败状态、HTTP 状态码、错误码、错误消息与 ProblemDetails 标题，供后续业务模块写命令复用。
@@ -796,7 +836,7 @@
 - `ChuteInfoResponse.cs`：格口信息响应合同。
 - `CommandInfoResponse.cs`：通信指令记录响应合同。
 - `GrayDetectorInfoResponse.cs`：灰检信息响应合同。
-- `ImageInfoResponse.cs`：图片信息响应合同。
+- `ImageInfoResponse.cs`：图片信息响应合同（兼容历史相对路径与对象存储元数据输出）。
 - `ParcelDeviceInfoResponse.cs`：包裹设备信息响应合同。
 - `ParcelPositionInfoResponse.cs`：包裹坐标信息响应合同。
 - `SorterCarrierInfoResponse.cs`：小车信息响应合同。
@@ -848,7 +888,7 @@
 - `ChuteInfo.cs`：格口分配信息值对象。
 - `CommandInfo.cs`：设备命令交互信息值对象。
 - `GrayDetectorInfo.cs`：灰度检测结果值对象。
-- `ImageInfo.cs`：图片元数据值对象（路径、类型、时间等）。
+- `ImageInfo.cs`：图片元数据值对象（兼容历史 `RelativePath` 与对象存储骨架字段）。
 - `ParcelDeviceInfo.cs`：包裹相关设备信息值对象。
 - `ParcelPositionInfo.cs`：包裹空间/轨迹位置信息值对象。
 - `SorterCarrierInfo.cs`：分拣小车/载体信息值对象。
@@ -882,6 +922,9 @@
 - `VolumeSourceType.cs`：体积来源类型枚举定义。
 - `MigrationFailureMode.cs`：数据库迁移失败策略枚举。
 - `ParcelUpdateOperation.cs`：包裹状态更新操作枚举。
+
+##### `Zeye.Sorting.Hub.Domain/Enums/ObjectStorage/`：对象存储枚举目录
+- `ObjectStorageProvider.cs`：对象存储提供器枚举定义（当前用于图片对象存储元数据骨架）。
 
 #### `Zeye.Sorting.Hub.Domain/Enums/DataGovernance/`：数据治理枚举子目录
 - `ArchiveTaskStatus.cs`：归档任务状态枚举。
@@ -969,6 +1012,10 @@
 - `Options/SwaggerOptions.cs`：Swagger 子配置模型。
 - `Options/BrowserAutoOpenOptions.cs`：Development 浏览器自动打开配置模型。
 - `Options/AuditReadOnlyApiOptions.cs`：审计只读 API 开关配置模型（`AuditReadOnlyApi:Enabled`）。
+- `Options/ObjectStorageOptions.cs`：对象存储总配置模型，收敛 `ObjectStorage:Provider` 与 `ObjectStorage:Minio` 子配置。
+- `Options/MinioOptions.cs`：MinIO 配置模型，定义 Endpoint、占位符凭据、Bucket 与预签名有效期默认值，并提供配置值合法性校验辅助。
+- `Options/MinioBootstrapOptions.cs`：MinIO 启动期自检守卫配置模型，约束 Bucket 自检仅能在守卫开启且 dry-run 模式下声明。
+- `Options/ObjectStorageOptionsServiceCollectionExtensions.cs`：对象存储配置注册扩展，集中绑定 `ObjectStorage` 配置节并通过 `ValidateOnStart()` 执行 Provider、占位符凭据、Bucket 命名与 Bootstrap 守卫校验。
 - `Options/ResourceThresholdsOptions.cs`：运行时资源阈值告警配置模型（`ResourceThresholds:MaxConnectionPoolSize`、`MemoryWarningThresholdMB` 等）。
 - `HealthChecks/BufferedWriteQueueHealthCheck.cs`：批量缓冲写入队列健康检查，输出队列深度、死信数量、背压状态与最近 Flush 时间。
 - `HealthChecks/ShardingGovernanceHealthCheck.cs`：分表治理健康检查，输出缺表、缺索引、容量风险、热表/详情表一致性与预建计划状态。
@@ -992,7 +1039,7 @@
 - `Middleware/ResponseCaptureResult.cs`：响应正文采集结果值类型。
 - `Zeye.Sorting.Hub.Host.csproj`：Host 项目定义。
 - `nlog.config`：NLog 日志配置。
-- `appsettings.json`：默认运行配置（含 `WebRequestAuditLog.IncludeRequestBody/IncludeResponseBody`、`AuditReadOnlyApi:Enabled` 显式开关、`ResourceThresholds:MaxConnectionPoolSize/MemoryWarningThresholdMB` 资源阈值节、`Persistence:Diagnostics` 数据库连接诊断配置、`Persistence:WriteBuffering` 批量缓冲写入配置、`Persistence:Archiving` 归档 dry-run 配置、`Persistence:Backup` 备份治理配置、`Persistence:Retention` 数据保留治理配置、`Persistence:BaselineData` 基线数据校验配置、`Persistence:MigrationGovernance` 迁移治理配置、`Persistence:Sharding:RuntimeInspection/Prebuild` 分表巡检与预建配置，以及 `Persistence:AutoTuning:SlowQueryProfile` 慢查询画像配置与 `Persistence:AutoTuning:QueryGovernance` 查询治理报告/索引建议阈值配置）。
+- `appsettings.json`：默认运行配置（含 `WebRequestAuditLog.IncludeRequestBody/IncludeResponseBody`、`AuditReadOnlyApi:Enabled` 显式开关、`ObjectStorage:Minio` 对象存储占位配置、`ResourceThresholds:MaxConnectionPoolSize/MemoryWarningThresholdMB` 资源阈值节、`Persistence:Diagnostics` 数据库连接诊断配置、`Persistence:WriteBuffering` 批量缓冲写入配置、`Persistence:Archiving` 归档 dry-run 配置、`Persistence:Backup` 备份治理配置、`Persistence:Retention` 数据保留治理配置、`Persistence:BaselineData` 基线数据校验配置、`Persistence:MigrationGovernance` 迁移治理配置、`Persistence:Sharding:RuntimeInspection/Prebuild` 分表巡检与预建配置，以及 `Persistence:AutoTuning:SlowQueryProfile` 慢查询画像配置与 `Persistence:AutoTuning:QueryGovernance` 查询治理报告/索引建议阈值配置）。
 - `appsettings.Development.json`：开发环境配置覆盖文件。
 
 #### `Zeye.Sorting.Hub.Host/Swagger/`：Swagger 扩展目录
@@ -1024,7 +1071,13 @@
 - `Zeye.Sorting.Hub.Infrastructure.csproj`：Infrastructure 项目定义。
 
 #### `Zeye.Sorting.Hub.Infrastructure/DependencyInjection/`：依赖注入扩展目录
+- `ObjectStorageServiceCollectionExtensions.cs`：对象存储服务注册扩展，负责解析 `ObjectStorage:Minio` 运行期配置，并注册 `MinioClient`、Multipart 调用器与 `IObjectStorageService`。
 - `PersistenceServiceCollectionExtensions.cs`：持久化服务注册扩展（数据库提供器选择、连接字符串校验、DbContext 注册、数据库连接诊断/预热、批量缓冲写入、归档 dry-run、备份治理、数据保留、基线数据校验、迁移治理、分表运行期巡检与预建服务注册，并新增 Inbox 消息仓储注册；Parcel 主表保持按 `CreatedTime` 分表；分表时间粒度由 Time/Volume/Hybrid 统一策略决策驱动，Parcel 关联值对象规则继续复用声明式清单与覆盖守卫）。
+
+#### `Zeye.Sorting.Hub.Infrastructure/ObjectStorage/`：对象存储基础设施目录
+- `MinioObjectStorageClientOptions.cs`：MinIO 运行期配置模型，负责解析 Endpoint、Region、预签名有效期，以及 `${变量名}` 形式占位符对应的环境变量凭据。
+- `MinioMultipartOperationInvoker.cs`：MinIO Multipart 调用器，集中封装 SDK 内部 Multipart 创建/完成/中止与分片预签名反射调用，避免反射细节散落。
+- `MinioObjectStorageService.cs`：MinIO 对象存储服务实现，提供单对象上传预签名、读取预签名、Multipart 会话/分片签名、完成/中止上传与对象存在性探测。
 
 #### `Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/`：EF Core 实体映射配置目录
 - `ArchiveTaskEntityTypeConfiguration.cs`：归档任务实体映射配置。
@@ -1179,6 +1232,8 @@
 - `20260506175929_AddOutboxMessageSupport.Designer.cs`：Outbox 消息迁移元数据文件（自动生成，勿手动修改）。
 - `20260507021744_AddInboxMessageSupport.cs`：Inbox 消息基线迁移，新增 `InboxMessages` 表、唯一消息键索引与过期治理索引。
 - `20260507021744_AddInboxMessageSupport.Designer.cs`：Inbox 消息迁移元数据文件（自动生成，勿手动修改）。
+- `20260615042538_AddImageObjectStorageMetadata.cs`：图片对象存储元数据骨架迁移，向 `Parcel_ImageInfos` 增加对象存储字段与查询索引。
+- `20260615042538_AddImageObjectStorageMetadata.Designer.cs`：图片对象存储元数据迁移元数据文件（自动生成，勿手动修改）。
 - `MigrationSchemaResolver.cs`：迁移共享 schema 解析器。
 - `SortingHubDbContextModelSnapshot.cs`：当前模型快照（自动生成，勿手动修改）。
 
@@ -1259,6 +1314,8 @@
 - `ParcelRepositoryTests.cs`：Parcel 仓储第一阶段能力测试，覆盖分页过滤、详情与按 Id 邻近查询、新增/更新/删除、过期清理与批量新增；新增同一扫描时间稳定排序、锚点不存在、重复主键冲突语义回归，并验证危险清理动作的 blocked/dry-run/executed 三态。
 - `SelectiveMissingShardingPhysicalTableProbe.cs`：物理表探测测试桩，模拟指定分表缺失场景。
 - `HostingOptionsTests.cs`：Hosting 配置单元测试，覆盖监听地址分号拆分去重、`0.0.0.0` 归一化为 `localhost` 的 Swagger 地址拼装、`BrowserAutoOpen:Url` 显式配置优先级与无效监听地址返回 null 的兜底行为。
+- `ObjectStorageOptionsTests.cs`：对象存储配置回归测试，覆盖默认值、合法配置绑定、占位符凭据门禁与危险启动期自检配置阻断。
+- `MinioObjectStorageServiceTests.cs`：MinIO 对象存储服务回归测试，覆盖单对象上传预签名、对象读取预签名、Multipart 分片预签名与 DI 注册。
 - `SwaggerDocumentationTests.cs`：Swagger 文档增强回归测试，覆盖管理端更新请求、值对象响应枚举字段与审计日志只读端点声明。
 - `TestDialect.cs`：通用数据库方言测试桩，提供默认 ProviderName 测试分支。
 - `TestHostEnvironment.cs`：`IHostEnvironment` 测试桩，注入环境名与最小内容根配置。
@@ -1273,15 +1330,17 @@
 
 ## 本次更新内容
 
-- 按《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》执行前置核对，确认长期数据库底座 PR-A～PR-T 主体能力已完成，当前补齐点集中在 `PR-A-检查台账.md` 延后的 Copilot 严格门禁覆盖。
-- 补强 `.github/scripts/validate-copilot-rules.sh`：README 历史记录门禁改为识别常见 Markdown 标题变体，并扩展 `.Count() == 0`、`.Where(...).FirstOrDefault()`、`string.Format()` 等性能反模式检测。
-- 新增 `Zeye.Sorting.Hub.Host.Tests/CopilotRuleValidationScriptTests.cs`，对上述门禁补强建立最小回归保护，并同步更新 README、更新记录、文件清单基线与 PR-A 台账补充记录。
+- 按《MinIO对象存储接入多PR实施方案与Copilot严格门禁.md》继续执行下一阶段，当前阶段进入 PR-C，在 Infrastructure 项目内接入 MinIO SDK，并补齐对象存储运行期实现与 Host 启动接线。
+- 新增 `Zeye.Sorting.Hub.Infrastructure/ObjectStorage/MinioObjectStorageService.cs`、`MinioMultipartOperationInvoker.cs` 与 `MinioObjectStorageClientOptions.cs`，实现单对象上传预签名、对象读取预签名、Multipart 创建/分片签名/完成/中止与对象存在性探测能力。
+- 新增 `Zeye.Sorting.Hub.Infrastructure/DependencyInjection/ObjectStorageServiceCollectionExtensions.cs`，并在 `Program.cs` 中接线 `AddObjectStorageOptions()` + `AddMinioObjectStorage()`，让 Host 在启动期完成对象存储配置校验与服务注册。
+- 更新 `Zeye.Sorting.Hub.Host/appsettings.json`，补齐 `ObjectStorage:Minio` 占位配置（含 Region、Bucket、有效期与 Bootstrap 守卫）。
+- 新增 `Zeye.Sorting.Hub.Host.Tests/MinioObjectStorageServiceTests.cs`，覆盖上传/读取预签名、Multipart 分片预签名与 DI 注册回归。
 
 ## 后续可完善点
 
-- 长期数据库底座路线图已完成，后续进入正式业务模块开发时，应继续按 `业务模块接入规范.md` 与 `业务接入前底座验收清单.md` 执行。
-- 当前 `validate-copilot-rules.sh` 仍以增量正则门禁为主，后续可继续补充更多高频 .NET 性能反模式与 README 结构误用场景。
-- 后续需持续补充季度演练记录与真实生产复盘，保证 `drill-records/`、运行手册与验收清单长期保持同步。
+- 下一阶段可按 PR-D 补齐 Multipart 上传会话持久化，将 UploadId、状态、已确认分片与本地时间字段正式入库。
+- 当前 PR-C 仅完成 Infrastructure 侧服务实现，尚未暴露对象存储 API、Parcel 图片绑定与上传审计豁免接线。
+- 当前配置仍保持占位符与 dry-run 守卫模式，后续如需真实 Bucket 自检或危险动作放行，必须按隔离器要求补充开关、审计与回滚资产。
 
 ## Parcel API 发布门禁 / 使用边界说明
 

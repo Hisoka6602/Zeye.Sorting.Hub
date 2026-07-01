@@ -4,6 +4,7 @@ using Zeye.Sorting.Hub.Application.Services.Parcels;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Domain.Enums;
+using Zeye.Sorting.Hub.Domain.Enums.ObjectStorage;
 using Zeye.Sorting.Hub.Domain.Repositories;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Repositories;
@@ -71,6 +72,23 @@ public sealed class ParcelQueryServicesTests {
         var baseTime = new DateTime(2026, 3, 20, 11, 0, 0, DateTimeKind.Local);
         try {
             var parcel = CreateParcel("BC-DETAIL-1", "BAG-DETAIL", "WS-DETAIL", ParcelStatus.Pending, baseTime.AddMinutes(-2), 930, 931);
+            parcel.AddImageInfo(new Domain.Aggregates.Parcels.ValueObjects.ImageInfo {
+                CameraName = "Cam-Detail",
+                CustomName = "TopCam",
+                CameraSerialNumber = "SN-DETAIL-1",
+                ImageType = ImageType.Scan,
+                RelativePath = string.Empty,
+                StorageProvider = ObjectStorageProvider.Minio,
+                BucketName = "sorting-hub-parcel-images",
+                ObjectKey = "images/2026/03/20/detail-1.jpg",
+                ContentType = "image/jpeg",
+                ObjectSizeBytes = 2048,
+                ETag = "etag-detail-1",
+                Sha256 = "sha256-detail-1",
+                UploadedAtLocal = baseTime,
+                OriginalFileName = "detail-1.jpg",
+                CaptureType = ImageCaptureType.Camera
+            });
             await SeedParcelsAsync(databaseName, [parcel]);
             var repository = CreateRepository(databaseName);
             var service = new GetParcelByIdQueryService(repository);
@@ -79,6 +97,16 @@ public sealed class ParcelQueryServicesTests {
             Assert.NotNull(detail);
             Assert.Equal(parcel.Id, detail.Id);
             Assert.Equal("BC-DETAIL-1", detail.BarCodes);
+            Assert.Single(detail.ImageInfos);
+            Assert.Equal((int)ObjectStorageProvider.Minio, detail.ImageInfos[0].StorageProvider);
+            Assert.Equal("sorting-hub-parcel-images", detail.ImageInfos[0].BucketName);
+            Assert.Equal("images/2026/03/20/detail-1.jpg", detail.ImageInfos[0].ObjectKey);
+            Assert.Equal("image/jpeg", detail.ImageInfos[0].ContentType);
+            Assert.Equal(2048, detail.ImageInfos[0].ObjectSizeBytes);
+            Assert.Equal("etag-detail-1", detail.ImageInfos[0].ETag);
+            Assert.Equal("sha256-detail-1", detail.ImageInfos[0].Sha256);
+            Assert.Equal(baseTime, detail.ImageInfos[0].UploadedAtLocal);
+            Assert.Equal("detail-1.jpg", detail.ImageInfos[0].OriginalFileName);
 
             var none = await service.ExecuteAsync(long.MaxValue, CancellationToken.None);
             Assert.Null(none);

@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 
@@ -11,9 +12,11 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence;
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(SortingHubDbContext))]
-    partial class SortingHubDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260615042538_AddImageObjectStorageMetadata")]
+    partial class AddImageObjectStorageMetadata
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1115,8 +1118,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                                 .HasColumnType("int");
 
                             b1.Property<DateTime?>("UploadedAtLocal")
-                                .HasColumnType("datetime(6)")
-                                .HasComment("上传完成时间（本地时间）");
+                                .HasComment("上传完成时间（本地时间）")
+                                .HasColumnType("datetime(6)");
 
                             b1.HasKey("Id");
 
