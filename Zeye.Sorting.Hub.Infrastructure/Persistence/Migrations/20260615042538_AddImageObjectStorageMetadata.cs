@@ -78,7 +78,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                 nullable: true,
                 comment: "上传完成时间（本地时间）");
 
-            if (ActiveProvider.Contains("MySql", StringComparison.OrdinalIgnoreCase))
+            if (migrationBuilder.ActiveProvider.Contains("MySql", StringComparison.OrdinalIgnoreCase))
             {
                 migrationBuilder.Sql(
                     "CREATE INDEX `IX_Parcel_ImageInfos_BucketName_ObjectKey` ON `Parcel_ImageInfos` (`BucketName`(128), `ObjectKey`(512));");

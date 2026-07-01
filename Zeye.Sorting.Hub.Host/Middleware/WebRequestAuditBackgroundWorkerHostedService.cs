@@ -58,10 +58,12 @@ internal sealed class WebRequestAuditBackgroundWorkerHostedService : BackgroundS
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) {
-            NLogLogger.Info("Web 请求审计后台消费已按停止令牌退出。");
+            NLogLogger.Warn("Web 请求审计后台消费已按停止令牌退出。");
         }
         catch (ObjectDisposedException) when (stoppingToken.IsCancellationRequested) {
-            NLogLogger.Info("Web 请求审计后台消费在宿主释放后安全退出。");
+            // 说明：该分支用于处理宿主释放阶段 Channel / ScopeFactory 已先行释放的收尾场景，
+            // 与停止令牌触发的取消异常互补，避免关闭流程将其误判为后台服务失败。
+            NLogLogger.Warn("Web 请求审计后台消费在宿主释放后安全退出。");
         }
     }
 }
