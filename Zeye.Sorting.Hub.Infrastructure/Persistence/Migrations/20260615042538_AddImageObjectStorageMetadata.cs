@@ -78,11 +78,18 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                 nullable: true,
                 comment: "上传完成时间（本地时间）");
 
-            migrationBuilder.CreateIndex(
-                name: "IX_Parcel_ImageInfos_BucketName_ObjectKey",
-                table: "Parcel_ImageInfos",
-                columns: new[] { "BucketName", "ObjectKey" })
-                .Annotation("MySql:IndexPrefixLength", new[] { 128, 512 });
+            if (ActiveProvider.Contains("MySql", StringComparison.OrdinalIgnoreCase))
+            {
+                migrationBuilder.Sql(
+                    "CREATE INDEX `IX_Parcel_ImageInfos_BucketName_ObjectKey` ON `Parcel_ImageInfos` (`BucketName`(128), `ObjectKey`(512));");
+            }
+            else
+            {
+                migrationBuilder.CreateIndex(
+                    name: "IX_Parcel_ImageInfos_BucketName_ObjectKey",
+                    table: "Parcel_ImageInfos",
+                    columns: new[] { "BucketName", "ObjectKey" });
+            }
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_ImageInfos_StorageProvider",
