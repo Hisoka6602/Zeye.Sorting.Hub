@@ -1,3 +1,4 @@
+# 中文说明：执行数据库底座、编译守卫与文本编码门禁。
 name: database-foundation-gates
 
 on:
@@ -6,6 +7,7 @@ on:
     paths:
       - ".github/scripts/**"
       - ".github/workflows/**"
+      - "Directory.Build.targets"
       - "README.md"
       - "数据库底座门禁说明.md"
       - "检查台账/**"
@@ -34,7 +36,10 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "8.0.x"
+          dotnet-version: "10.0.x"
+
+      - name: Validate garbled Chinese text
+        run: bash ./.github/scripts/validate-garbled-chinese-text.sh
 
       - name: Restore
         run: dotnet restore Zeye.Sorting.Hub.sln

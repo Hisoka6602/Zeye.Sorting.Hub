@@ -26,6 +26,22 @@ export function resolveInt(name, fallback) {
 }
 
 /**
+ * 解析非负数值环境变量。
+ * @param {string} name 变量名。
+ * @param {number} fallback 默认值。
+ * @returns {number} 解析后的数值。
+ */
+export function resolveNumber(name, fallback) {
+    const rawValue = __ENV[name];
+    if (!rawValue) {
+        return fallback;
+    }
+
+    const parsedValue = Number.parseFloat(rawValue);
+    return Number.isFinite(parsedValue) && parsedValue >= 0 ? parsedValue : fallback;
+}
+
+/**
  * 解析持续时间环境变量。
  * @param {string} fallback 默认值。
  * @returns {string} k6 持续时间字符串。
@@ -40,8 +56,39 @@ export function resolveDuration(fallback) {
  */
 export function createJsonRequestParams() {
     return {
+        timeout: __ENV.PERF_REQUEST_TIMEOUT || '15s',
         headers: {
             'Content-Type': 'application/json'
+        }
+    };
+}
+
+/**
+ * 构建统一性能预算，使三个脚本共享同一套可覆盖门禁。
+ * @param {number} defaultP95Milliseconds 默认 P95 毫秒预算。
+ * @param {number} defaultP99Milliseconds 默认 P99 毫秒预算。
+ * @returns {object} k6 阈值配置。
+ */
+export function createPerformanceThresholds(defaultP95Milliseconds, defaultP99Milliseconds) {
+    const errorRate = resolveNumber('PERF_MAX_ERROR_RATE', 0.01);
+    const p95Milliseconds = resolveInt('PERF_P95_MS', defaultP95Milliseconds);
+    const p99Milliseconds = resolveInt('PERF_P99_MS', defaultP99Milliseconds);
+    return {
+        http_req_failed: [`rate<${errorRate}`],
+        http_req_duration: [`p(95)<${p95Milliseconds}`, `p(99)<${p99Milliseconds}`]
+    };
+}
+
+/**
+ * 构建带超时保护的只读请求参数。
+ * @param {string} endpoint 端点指标标签。
+ * @returns {object} k6 请求参数。
+ */
+export function createReadRequestParams(endpoint) {
+    return {
+        timeout: __ENV.PERF_REQUEST_TIMEOUT || '15s',
+        tags: {
+            endpoint
         }
     };
 }

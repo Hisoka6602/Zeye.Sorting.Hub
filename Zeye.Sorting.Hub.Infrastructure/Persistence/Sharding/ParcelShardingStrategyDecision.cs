@@ -20,7 +20,7 @@ public readonly record struct ParcelShardingStrategyDecision(
     ParcelVolumeThresholdAction ThresholdAction,
     ParcelShardingVolumeObservation VolumeObservation,
     bool ThresholdReached,
-    ExpandByDateMode EffectiveDateMode,
+    ParcelTimeShardingGranularity EffectiveDateMode,
     ParcelFinerGranularityExtensionPlan FinerGranularityExtensionPlan,
     string Reason,
     ParcelShardingStrategyConfigSnapshot ConfigSnapshot);

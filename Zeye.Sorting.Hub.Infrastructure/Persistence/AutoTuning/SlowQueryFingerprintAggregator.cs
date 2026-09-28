@@ -7,34 +7,30 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 /// <summary>
 /// 慢查询指纹聚合辅助器。
 /// </summary>
-public static class SlowQueryFingerprintAggregator {
+public static partial class SlowQueryFingerprintAggregator {
     /// <summary>
     /// 多空白折叠正则。
     /// </summary>
-    private static readonly Regex MultiWhitespaceRegex = new(
-        @"\s+",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    [GeneratedRegex(@"\s+", RegexOptions.CultureInvariant)]
+    private static partial Regex MultiWhitespaceRegex();
 
     /// <summary>
     /// EF Core / ADO.NET 命名参数占位符正则。
     /// </summary>
-    private static readonly Regex NamedParameterRegex = new(
-        @"@[A-Za-z_][A-Za-z0-9_]*",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    [GeneratedRegex(@"@[A-Za-z_][A-Za-z0-9_]*", RegexOptions.CultureInvariant)]
+    private static partial Regex NamedParameterRegex();
 
     /// <summary>
     /// 数值字面量正则。
     /// </summary>
-    private static readonly Regex NumericLiteralRegex = new(
-        @"(?<![A-Za-z0-9_])[-+]?(?:\d+\.\d+|\d+)(?![A-Za-z0-9_])",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    [GeneratedRegex(@"(?<![A-Za-z0-9_])[-+]?(?:\d+\.\d+|\d+)(?![A-Za-z0-9_])", RegexOptions.CultureInvariant)]
+    private static partial Regex NumericLiteralRegex();
 
     /// <summary>
     /// 字符串字面量正则。
     /// </summary>
-    private static readonly Regex StringLiteralRegex = new(
-        @"'(?:''|[^'])*'",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    [GeneratedRegex(@"'(?:''|[^'])*'", RegexOptions.CultureInvariant)]
+    private static partial Regex StringLiteralRegex();
 
     /// <summary>
     /// 生成慢查询指纹。
@@ -59,14 +55,14 @@ public static class SlowQueryFingerprintAggregator {
         }
 
         // 步骤 1：剥离字符串与参数占位符，避免业务实参影响指纹稳定性。
-        var withoutStringLiterals = StringLiteralRegex.Replace(sql, "?");
-        var withoutNamedParameters = NamedParameterRegex.Replace(withoutStringLiterals, "?");
+        var withoutStringLiterals = StringLiteralRegex().Replace(sql, "?");
+        var withoutNamedParameters = NamedParameterRegex().Replace(withoutStringLiterals, "?");
 
         // 步骤 2：将直接内联的数值常量统一替换为占位符，覆盖 limit/top/where id=1 等语句。
-        var withoutNumericLiterals = NumericLiteralRegex.Replace(withoutNamedParameters, "?");
+        var withoutNumericLiterals = NumericLiteralRegex().Replace(withoutNamedParameters, "?");
 
         // 步骤 3：压缩空白并统一小写，保证同义 SQL 产生稳定指纹。
-        var normalized = MultiWhitespaceRegex.Replace(withoutNumericLiterals, " ").Trim().ToLowerInvariant();
+        var normalized = MultiWhitespaceRegex().Replace(withoutNumericLiterals, " ").Trim().ToLowerInvariant();
         return normalized.Length <= 512 ? normalized : normalized[..512];
     }
 
@@ -76,8 +72,11 @@ public static class SlowQueryFingerprintAggregator {
     /// <param name="normalizedSql">标准 SQL。</param>
     /// <returns>16 位十六进制指纹。</returns>
     public static string BuildFingerprintId(string normalizedSql) {
-        var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(normalizedSql));
-        return Convert.ToHexString(hashBytes[..8]).ToLowerInvariant();
+        Span<byte> utf8Buffer = stackalloc byte[Encoding.UTF8.GetMaxByteCount(normalizedSql.Length)];
+        var written = Encoding.UTF8.GetBytes(normalizedSql, utf8Buffer);
+        Span<byte> hashBytes = stackalloc byte[32];
+        SHA256.HashData(utf8Buffer[..written], hashBytes);
+        return Convert.ToHexStringLower(hashBytes[..8]);
     }
 
     /// <summary>
@@ -94,14 +93,13 @@ public static class SlowQueryFingerprintAggregator {
         }
 
         // 步骤 1：按发生时间升序准备窗口样本，同时单独提取耗时升序数组用于分位点计算。
-        var orderedSamples = samples
-            .OrderBy(static sample => sample.OccurredTime)
-            .ToArray();
+        var orderedSamples = samples.ToArray();
         var orderedElapsed = orderedSamples
             .Select(static sample => sample.ElapsedMilliseconds)
             .OrderBy(static elapsed => elapsed)
             .ToArray();
-        var latestSample = orderedSamples[^1];
+        var latestSample = orderedSamples[0];
+        var earliestOccurredTime = latestSample.OccurredTime;
 
         // 步骤 2：计算窗口聚合指标。
         var callCount = orderedSamples.Length;
@@ -125,7 +123,20 @@ public static class SlowQueryFingerprintAggregator {
             totalAffectedRows += sample.AffectedRows;
         }
 
-        var averageElapsedMilliseconds = orderedSamples.Average(static sample => sample.ElapsedMilliseconds);
+        var totalElapsedMilliseconds = 0m;
+        foreach (var sample in orderedSamples) {
+            if (sample.OccurredTime > latestSample.OccurredTime) {
+                latestSample = sample;
+            }
+
+            if (sample.OccurredTime < earliestOccurredTime) {
+                earliestOccurredTime = sample.OccurredTime;
+            }
+
+            totalElapsedMilliseconds += sample.ElapsedMilliseconds;
+        }
+
+        var averageElapsedMilliseconds = totalElapsedMilliseconds / callCount;
 
         // 步骤 3：输出窗口起止、脱敏样例 SQL 及高位分位数，供 API 直接返回只读快照。
         return new SlowQueryProfileSnapshot(
@@ -141,7 +152,7 @@ public static class SlowQueryFingerprintAggregator {
             ErrorCount: errorCount,
             DeadlockCount: deadlockCount,
             TotalAffectedRows: totalAffectedRows,
-            WindowStartedAtLocal: orderedSamples[0].OccurredTime,
+            WindowStartedAtLocal: earliestOccurredTime,
             WindowEndedAtLocal: latestSample.OccurredTime,
             LastOccurredAtLocal: latestSample.OccurredTime);
     }
@@ -152,12 +163,12 @@ public static class SlowQueryFingerprintAggregator {
     /// <param name="sortedValues">升序耗时数组。</param>
     /// <param name="percentile">分位点。</param>
     /// <returns>分位点值。</returns>
-    private static double CalculatePercentile(IReadOnlyList<double> sortedValues, int percentile) {
+    private static decimal CalculatePercentile(IReadOnlyList<decimal> sortedValues, int percentile) {
         if (sortedValues.Count == 0) {
-            return 0d;
+            return 0m;
         }
 
-        var rank = (int)Math.Ceiling(percentile / 100d * sortedValues.Count);
+        var rank = (int)Math.Ceiling(percentile / 100m * sortedValues.Count);
         var index = Math.Clamp(rank - 1, 0, sortedValues.Count - 1);
         return sortedValues[index];
     }

@@ -4,6 +4,7 @@ import {
     assertAcceptedResponse,
     createJsonRequestParams,
     createParcelBatchPayload,
+    createPerformanceThresholds,
     resolveBaseUrl,
     resolveDuration,
     resolveInt
@@ -15,10 +16,7 @@ import {
 export const options = {
     vus: resolveInt('PERF_VUS', 2),
     duration: resolveDuration('30s'),
-    thresholds: {
-        http_req_failed: ['rate<0.01'],
-        http_req_duration: ['p(95)<500', 'p(99)<1000']
-    }
+    thresholds: createPerformanceThresholds(500, 1000)
 };
 
 /**
@@ -40,5 +38,5 @@ export default function () {
         });
 
     assertAcceptedResponse(response, 'parcel batch buffer write', [200]);
-    sleep(1);
+    sleep(resolveInt('PERF_SLEEP_SECONDS', 1));
 }

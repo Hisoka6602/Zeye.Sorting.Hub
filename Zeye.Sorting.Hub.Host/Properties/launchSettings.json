@@ -1,13 +1,21 @@
 ﻿{
+  // 本地开发启动配置；仅供开发工具启动宿主时使用。
   "$schema": "http://json.schemastore.org/launchsettings.json",
   "profiles": {
+    // 宿主项目的默认本地启动配置。
     "Zeye.Sorting.Hub.Host": {
+      // 启动方式；Project 表示通过当前项目启动。
       "commandName": "Project",
+      // 是否显示 dotnet run 启动消息。
       "dotnetRunMessages": true,
+      // 是否由开发工具自动打开浏览器。
       "launchBrowser": false,
+      // 浏览器启动时使用的相对路径。
       "launchUrl": "swagger",
+      // 本地监听地址；多个地址使用分号分隔。
       "applicationUrl": "http://localhost:5078;https://localhost:7078",
       "environmentVariables": {
+        // 运行环境名称；可填写 Development、Staging 或 Production。
         "DOTNET_ENVIRONMENT": "Development"
       }
     }

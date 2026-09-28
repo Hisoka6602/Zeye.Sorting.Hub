@@ -48,4 +48,17 @@ public sealed class WriteWebRequestAuditLogCommandService {
             throw;
         }
     }
+
+    /// <summary>
+    /// 批量写入 Web 请求审计日志聚合。
+    /// </summary>
+    /// <param name="auditLogs">审计日志聚合集合。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>写入结果。</returns>
+    public Task<RepositoryResult> WriteBatchAsync(
+        IReadOnlyCollection<WebRequestAuditLog> auditLogs,
+        CancellationToken cancellationToken) {
+        ArgumentNullException.ThrowIfNull(auditLogs);
+        return _webRequestAuditLogRepository.AddRangeAsync(auditLogs, cancellationToken);
+    }
 }

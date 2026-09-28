@@ -1,4 +1,5 @@
 using NLog;
+using Microsoft.Extensions.Options;
 using Zeye.Sorting.Hub.Application.Services.AuditLogs;
 
 namespace Zeye.Sorting.Hub.Host.Middleware;
@@ -19,6 +20,10 @@ internal sealed class WebRequestAuditBackgroundWorkerHostedService : BackgroundS
     /// 服务作用域工厂。
     /// </summary>
     private readonly IServiceScopeFactory _scopeFactory;
+    /// <summary>
+    /// 审计配置。
+    /// </summary>
+    private readonly WebRequestAuditLogOptions _options;
 
     /// <summary>
     /// 构造后台消费服务。
@@ -27,9 +32,11 @@ internal sealed class WebRequestAuditBackgroundWorkerHostedService : BackgroundS
     /// <param name="scopeFactory">服务作用域工厂。</param>
     public WebRequestAuditBackgroundWorkerHostedService(
         WebRequestAuditBackgroundQueue queue,
-        IServiceScopeFactory scopeFactory) {
+        IServiceScopeFactory scopeFactory,
+        IOptions<WebRequestAuditLogOptions> options) {
         _queue = queue;
         _scopeFactory = scopeFactory;
+        _options = options.Value;
     }
 
     /// <summary>
@@ -38,32 +45,80 @@ internal sealed class WebRequestAuditBackgroundWorkerHostedService : BackgroundS
     /// <param name="stoppingToken">停止令牌。</param>
     /// <returns>异步任务。</returns>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
-        try {
-            await foreach (var entry in _queue.Reader.ReadAllAsync(stoppingToken)) {
-                try {
-                    using var scope = _scopeFactory.CreateScope();
-                    var writeService = scope.ServiceProvider.GetRequiredService<WriteWebRequestAuditLogCommandService>();
-                    var result = await writeService.WriteAsync(entry.Log, stoppingToken);
-                    if (!result.IsSuccess) {
-                        NLogLogger.Error("写入 Web 请求审计日志返回失败，TraceId={TraceId}, CorrelationId={CorrelationId}, ErrorCode={ErrorCode}, ErrorMessage={ErrorMessage}",
-                            entry.TraceId,
-                            entry.CorrelationId,
-                            result.ErrorCode,
-                            result.ErrorMessage);
-                    }
+        var batch = new List<WebRequestAuditBackgroundEntry>(_options.BackgroundBatchSize);
+        while (!stoppingToken.IsCancellationRequested) {
+            try {
+                if (!await _queue.Reader.WaitToReadAsync(stoppingToken)) {
+                    break;
                 }
-                catch (Exception ex) {
-                    NLogLogger.Error(ex, "写入 Web 请求审计日志发生异常，TraceId={TraceId}, CorrelationId={CorrelationId}", entry.TraceId, entry.CorrelationId);
+
+                if (_options.BackgroundBatchDelayMs > 0) {
+                    await Task.Delay(_options.BackgroundBatchDelayMs, stoppingToken);
                 }
+
+                await FlushAvailableBatchAsync(batch, stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) {
+                NLogLogger.Warn("Web 请求审计后台消费收到停止信号，消费循环结束。");
+                break;
+            }
+            catch (ObjectDisposedException) when (stoppingToken.IsCancellationRequested) {
+                // 宿主关闭时，队列或服务作用域可能已先于消费者释放。
+                NLogLogger.Warn("Web 请求审计后台消费在宿主释放后安全退出。");
+                break;
+            }
+            catch (Exception ex) {
+                NLogLogger.Error(ex, "批量写入 Web 请求审计日志发生异常，Count={Count}", batch.Count);
             }
         }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) {
-            NLogLogger.Warn("Web 请求审计后台消费已按停止令牌退出。");
+
+        using var drainTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        try {
+            while (_queue.Depth > 0 && await FlushAvailableBatchAsync(batch, drainTimeout.Token) > 0) {
+            }
+        }
+        catch (OperationCanceledException) when (drainTimeout.IsCancellationRequested) {
+            NLogLogger.Warn("Web 请求审计后台队列优雅排空超时，RemainingDepth={RemainingDepth}", _queue.Depth);
         }
         catch (ObjectDisposedException) when (stoppingToken.IsCancellationRequested) {
-            // 说明：该分支用于处理宿主释放阶段 Channel / ScopeFactory 已先行释放的收尾场景，
-            // 与停止令牌触发的取消异常互补，避免关闭流程将其误判为后台服务失败。
-            NLogLogger.Warn("Web 请求审计后台消费在宿主释放后安全退出。");
+            NLogLogger.Warn("Web 请求审计后台队列因宿主释放停止排空，RemainingDepth={RemainingDepth}", _queue.Depth);
         }
+        catch (Exception exception) {
+            NLogLogger.Error(exception, "Web 请求审计后台队列优雅排空失败，RemainingDepth={RemainingDepth}", _queue.Depth);
+        }
+    }
+
+    /// <summary>
+    /// 从队列读取并写入一个可用批次。
+    /// </summary>
+    /// <param name="batch">复用的批次缓冲区。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>本轮读取的数量。</returns>
+    private async Task<int> FlushAvailableBatchAsync(
+        List<WebRequestAuditBackgroundEntry> batch,
+        CancellationToken cancellationToken) {
+        batch.Clear();
+        while (batch.Count < _options.BackgroundBatchSize && _queue.Reader.TryRead(out var entry)) {
+            _queue.MarkDequeued();
+            batch.Add(entry);
+        }
+
+        if (batch.Count == 0) {
+            return 0;
+        }
+
+        await using var scope = _scopeFactory.CreateAsyncScope();
+        var writeService = scope.ServiceProvider.GetRequiredService<WriteWebRequestAuditLogCommandService>();
+        var logs = batch.Select(static entry => entry.Log).ToArray();
+        var result = await writeService.WriteBatchAsync(logs, cancellationToken);
+        if (!result.IsSuccess) {
+            NLogLogger.Error(
+                "批量写入 Web 请求审计日志返回失败，Count={Count}, ErrorCode={ErrorCode}, ErrorMessage={ErrorMessage}",
+                batch.Count,
+                result.ErrorCode,
+                result.ErrorMessage);
+        }
+
+        return batch.Count;
     }
 }

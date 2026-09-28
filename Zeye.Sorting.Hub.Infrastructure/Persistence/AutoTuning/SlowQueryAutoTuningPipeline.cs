@@ -1,12 +1,13 @@
 using Microsoft.Extensions.Configuration;
 using NLog;
+using Zeye.Sorting.Hub.SharedKernel.Diagnostics;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 using System.Text.RegularExpressions;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
 
     /// <summary>慢查询采集、分析与自动动作编排管道</summary>
-    public sealed class SlowQueryAutoTuningPipeline {
+    public sealed partial class SlowQueryAutoTuningPipeline {
         /// <summary>
         /// 自动调优标记前缀，用于识别由自动调优链路生成的对象。
         /// </summary>
@@ -22,23 +23,53 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         /// <summary>
         /// FROM 子句表名提取正则。
         /// </summary>
-        private static readonly Regex FromRegex = new(@"\bfrom\s+(?:[`""\[]?([A-Za-z_][A-Za-z0-9_]*)[`""\]]?\s*\.\s*)?[`""\[]?([A-Za-z_][A-Za-z0-9_]*)[`""\]]?", RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        private static readonly Regex FromRegex = CreateFromRegex();
         /// <summary>
         /// UPDATE 语句表名提取正则。
         /// </summary>
-        private static readonly Regex UpdateRegex = new(@"\bupdate\s+(?:[`""\[]?([A-Za-z_][A-Za-z0-9_]*)[`""\]]?\s*\.\s*)?[`""\[]?([A-Za-z_][A-Za-z0-9_]*)[`""\]]?", RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        private static readonly Regex UpdateRegex = CreateUpdateRegex();
         /// <summary>
         /// WHERE 子句捕获正则。
         /// </summary>
-        private static readonly Regex WhereRegex = new(@"\bwhere\b(?<where>.+?)(\border\s+by\b|\bgroup\s+by\b|\blimit\b|;|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
+        private static readonly Regex WhereRegex = CreateWhereRegex();
         /// <summary>
         /// WHERE 列名与操作符提取正则。
         /// </summary>
-        private static readonly Regex WhereColumnRegex = new(@"(?:[A-Za-z_][A-Za-z0-9_]*\.)?[`""\[]?([A-Za-z_][A-Za-z0-9_]*)[`""\]]?\s*(=|>|<|>=|<=|like\b|in\b)", RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        private static readonly Regex WhereColumnRegex = CreateWhereColumnRegex();
         /// <summary>
         /// 安全标识符校验正则。
         /// </summary>
-        private static readonly Regex SafeIdentifierRegex = new(@"^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        private static readonly Regex SafeIdentifierRegex = CreateSafeIdentifierRegex();
+
+        /// <summary>
+        /// 创建 FROM 子句表名提取正则。
+        /// </summary>
+        [GeneratedRegex(@"\bfrom\s+(?:[`""\[]?([A-Za-z_][A-Za-z0-9_]*)[`""\]]?\s*\.\s*)?[`""\[]?([A-Za-z_][A-Za-z0-9_]*)[`""\]]?", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+        private static partial Regex CreateFromRegex();
+
+        /// <summary>
+        /// 创建 UPDATE 语句表名提取正则。
+        /// </summary>
+        [GeneratedRegex(@"\bupdate\s+(?:[`""\[]?([A-Za-z_][A-Za-z0-9_]*)[`""\]]?\s*\.\s*)?[`""\[]?([A-Za-z_][A-Za-z0-9_]*)[`""\]]?", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+        private static partial Regex CreateUpdateRegex();
+
+        /// <summary>
+        /// 创建 WHERE 子句捕获正则。
+        /// </summary>
+        [GeneratedRegex(@"\bwhere\b(?<where>.+?)(\border\s+by\b|\bgroup\s+by\b|\blimit\b|;|$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Singleline)]
+        private static partial Regex CreateWhereRegex();
+
+        /// <summary>
+        /// 创建 WHERE 列名与操作符提取正则。
+        /// </summary>
+        [GeneratedRegex(@"(?:[A-Za-z_][A-Za-z0-9_]*\.)?[`""\[]?([A-Za-z_][A-Za-z0-9_]*)[`""\]]?\s*(=|>|<|>=|<=|like\b|in\b)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+        private static partial Regex CreateWhereColumnRegex();
+
+        /// <summary>
+        /// 创建安全标识符校验正则。
+        /// </summary>
+        [GeneratedRegex(@"^[A-Za-z_][A-Za-z0-9_]*$", RegexOptions.CultureInvariant)]
+        private static partial Regex CreateSafeIdentifierRegex();
         /// <summary>
         /// 慢查询样本队列，用于聚合分析。
         /// </summary>
@@ -123,6 +154,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         /// </summary>
         private readonly Dictionary<string, AlertTrackingState> _alertStates = new(StringComparer.OrdinalIgnoreCase);
         /// <summary>
+        /// 慢查询画像存储，用于复用本流水线已经生成的指纹与样本。
+        /// </summary>
+        private readonly SlowQueryProfileStore? _profileStore;
+        /// <summary>
         /// 队列溢出时的丢弃样本计数。
         /// </summary>
         private int _droppedCount;
@@ -144,8 +179,12 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         private DateTime _nextAnnualDashboardDate;
 
         /// <summary>初始化慢查询采集、分析和告警阈值配置。</summary>
-        public SlowQueryAutoTuningPipeline(IConfiguration configuration, IAutoTuningObservability observability) {
+        public SlowQueryAutoTuningPipeline(
+            IConfiguration configuration,
+            IAutoTuningObservability observability,
+            SlowQueryProfileStore? profileStore = null) {
             _observability = observability;
+            _profileStore = profileStore;
             _slowQueryThresholdMilliseconds = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationReader.BuildAutoTuningKey("SlowQueryThresholdMilliseconds"), 500);
             _analysisBatchSize = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationReader.BuildAutoTuningKey("AnalysisBatchSize"), 20);
             _triggerCount = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, AutoTuningConfigurationReader.BuildAutoTuningKey("TriggerCount"), 3);
@@ -182,7 +221,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             }
 
             var isError = exception is not null;
-            var elapsedMilliseconds = elapsed.TotalMilliseconds;
+            var elapsedMilliseconds = elapsed.Ticks / (decimal)TimeSpan.TicksPerMillisecond;
             var isSlow = elapsedMilliseconds >= _slowQueryThresholdMilliseconds;
             if (!isSlow && !isError) {
                 return;
@@ -190,22 +229,29 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
 
             var isTimeout = IsTimeoutException(exception);
             var isDeadlock = IsDeadlockException(exception);
-            var slowQueryFingerprint = SlowQueryFingerprintAggregator.Create(commandText);
+            var safeCommandText = commandText.Length <= 4096 ? commandText : commandText[..4096];
+            var slowQueryFingerprint = SlowQueryFingerprintAggregator.Create(safeCommandText);
+            var sample = new SlowQuerySample(
+                commandText: safeCommandText,
+                sqlFingerprint: slowQueryFingerprint.Fingerprint,
+                elapsedMilliseconds: elapsedMilliseconds,
+                affectedRows: Math.Max(affectedRows, 0),
+                isError: isError,
+                isTimeout: isTimeout,
+                isDeadlock: isDeadlock,
+                occurredTime: DateTime.Now);
+            var droppedThisCollect = 0;
             lock (_queueSync) {
                 while (_slowQueries.Count >= _maxQueueSize && _slowQueries.TryDequeue(out _)) {
                     _droppedCount++;
+                    droppedThisCollect++;
                 }
 
-                _slowQueries.Enqueue(new SlowQuerySample(
-                    commandText: commandText,
-                    sqlFingerprint: slowQueryFingerprint.Fingerprint,
-                    elapsedMilliseconds: elapsedMilliseconds,
-                    affectedRows: Math.Max(affectedRows, 0),
-                    isError: isError,
-                    isTimeout: isTimeout,
-                    isDeadlock: isDeadlock,
-                    occurredTime: DateTime.Now));
+                _slowQueries.Enqueue(sample);
             }
+
+            SortingHubPerformanceMetrics.RecordSlowQueryCollected(droppedThisCollect);
+            _profileStore?.Record(slowQueryFingerprint, sample);
         }
 
         /// <summary>
@@ -420,6 +466,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             return alerts;
         }
 
+        /// <summary>
+        /// 尝试记录单项慢查询告警及其状态。
+        /// </summary>
         private void TryTrackAlert(
             DateTime now,
             SlowQueryMetric metric,
@@ -456,6 +505,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                 TriggeredTime: now));
         }
 
+        /// <summary>
+        /// 尝试记录已恢复的慢查询告警。
+        /// </summary>
         private void TryTrackRecoveries(
             DateTime now,
             HashSet<string> observedAlertKeys,
@@ -631,12 +683,12 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         }
 
         /// <summary>计算指定分位点值（输入必须为升序数组）。</summary>
-        private static double CalculatePercentile(IReadOnlyList<double> sorted, int percentile) {
+        private static decimal CalculatePercentile(IReadOnlyList<decimal> sorted, int percentile) {
             if (sorted.Count == 0) {
-                return 0d;
+                return 0m;
             }
 
-            var rank = (int)Math.Ceiling(percentile / 100d * sorted.Count);
+            var rank = (int)Math.Ceiling(percentile / 100m * sorted.Count);
             var index = Math.Clamp(rank - 1, 0, sorted.Count - 1);
             return sorted[index];
         }
@@ -740,7 +792,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             var riskLevel = "low";
             if (metric.DeadlockCount > 0 || metric.TimeoutRatePercent >= 2m || metric.ErrorRatePercent >= 2m) {
                 riskLevel = "high";
-            } else if (metric.TimeoutRatePercent >= 0.5m || metric.ErrorRatePercent >= 0.5m || metric.P99Milliseconds >= 1000d) {
+            } else if (metric.TimeoutRatePercent >= 0.5m || metric.ErrorRatePercent >= 0.5m || metric.P99Milliseconds >= 1000m) {
                 riskLevel = "medium";
             }
 

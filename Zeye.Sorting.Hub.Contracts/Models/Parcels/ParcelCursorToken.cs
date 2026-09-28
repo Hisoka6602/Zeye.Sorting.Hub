@@ -1,6 +1,5 @@
 using NLog;
-using System.Text;
-using System.Text.Json;
+using System.Buffers.Binary;
 
 namespace Zeye.Sorting.Hub.Contracts.Models.Parcels;
 
@@ -8,6 +7,15 @@ namespace Zeye.Sorting.Hub.Contracts.Models.Parcels;
 /// Parcel 游标令牌。
 /// </summary>
 public sealed record ParcelCursorToken {
+    /// <summary>
+    /// 二进制游标载荷字节长度。
+    /// </summary>
+    private const int PayloadLength = 16;
+
+    /// <summary>
+    /// 无填充 Base64Url 游标长度。
+    /// </summary>
+    private const int EncodedLength = 22;
     /// <summary>
     /// NLog 日志器。
     /// </summary>
@@ -28,16 +36,19 @@ public sealed record ParcelCursorToken {
     /// </summary>
     /// <returns>游标字符串。</returns>
     public string Encode() {
-        var payload = new CursorPayload {
-            LastScannedTimeTicks = LastScannedTimeLocal.Ticks,
-            LastId = LastId
-        };
-        var payloadJson = JsonSerializer.Serialize(payload);
-        var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(payloadJson));
-        return encoded
-            .TrimEnd('=')
-            .Replace('+', '-')
-            .Replace('/', '_');
+        Span<byte> payload = stackalloc byte[PayloadLength];
+        BinaryPrimitives.WriteInt64LittleEndian(payload, LastScannedTimeLocal.Ticks);
+        BinaryPrimitives.WriteInt64LittleEndian(payload[sizeof(long)..], LastId);
+        var base64 = Convert.ToBase64String(payload);
+        return string.Create(EncodedLength, base64, static (destination, source) => {
+            for (var index = 0; index < destination.Length; index++) {
+                destination[index] = source[index] switch {
+                    '+' => '-',
+                    '/' => '_',
+                    var value => value
+                };
+            }
+        });
     }
 
     /// <summary>
@@ -52,20 +63,36 @@ public sealed record ParcelCursorToken {
             return true;
         }
 
+        if (token.Length != EncodedLength) {
+            return false;
+        }
+
         try {
-            var paddedToken = PadBase64(token);
-            var base64 = paddedToken
-                .Replace('-', '+')
-                .Replace('_', '/');
-            var payloadJson = Encoding.UTF8.GetString(Convert.FromBase64String(base64));
-            var payload = JsonSerializer.Deserialize<CursorPayload>(payloadJson);
-            if (payload is null || payload.LastId <= 0 || payload.LastScannedTimeTicks <= 0) {
+            Span<char> base64 = stackalloc char[24];
+            for (var index = 0; index < token.Length; index++) {
+                base64[index] = token[index] switch {
+                    '-' => '+',
+                    '_' => '/',
+                    var value => value
+                };
+            }
+
+            base64[22] = '=';
+            base64[23] = '=';
+            Span<byte> payload = stackalloc byte[PayloadLength];
+            if (!Convert.TryFromBase64Chars(base64, payload, out var written) || written != PayloadLength) {
+                return false;
+            }
+
+            var scannedTimeTicks = BinaryPrimitives.ReadInt64LittleEndian(payload);
+            var lastId = BinaryPrimitives.ReadInt64LittleEndian(payload[sizeof(long)..]);
+            if (lastId <= 0 || scannedTimeTicks <= 0 || scannedTimeTicks > DateTime.MaxValue.Ticks) {
                 return false;
             }
 
             cursorToken = new ParcelCursorToken {
-                LastScannedTimeLocal = new DateTime(payload.LastScannedTimeTicks, DateTimeKind.Local),
-                LastId = payload.LastId
+                LastScannedTimeLocal = new DateTime(scannedTimeTicks, DateTimeKind.Local),
+                LastId = lastId
             };
             return true;
         }
@@ -75,32 +102,4 @@ public sealed record ParcelCursorToken {
         }
     }
 
-    /// <summary>
-    /// 补齐 Base64 字符串尾部填充。
-    /// </summary>
-    /// <param name="token">原始游标字符串。</param>
-    /// <returns>补齐后的 Base64 字符串。</returns>
-    private static string PadBase64(string token) {
-        var remainder = token.Length % 4;
-        if (remainder == 0) {
-            return token;
-        }
-
-        return token + new string('=', 4 - remainder);
-    }
-
-    /// <summary>
-    /// 游标序列化载荷。
-    /// </summary>
-    private sealed record CursorPayload {
-        /// <summary>
-        /// 最后一条记录扫码时间 ticks。
-        /// </summary>
-        public long LastScannedTimeTicks { get; init; }
-
-        /// <summary>
-        /// 最后一条记录 Id。
-        /// </summary>
-        public long LastId { get; init; }
-    }
 }

@@ -2,7 +2,7 @@
 
 ## 仓库文件结构（当前）
 
-> 说明：以下结构已包含仓库内的全部受版本控制文件（不含 `.git`、`bin/`、`obj/` 等构建产物目录）。
+> 说明：以下基础结构与“Fusion处理事实与实际物理分表”中的新增文件结构共同组成当前清单（不含 `.git`、`bin/`、`obj/` 等构建产物）。
 
 ```text
 .
@@ -12,6 +12,7 @@
 │   ├── scripts（CI 校验脚本目录）
 │   │   ├── validate-copilot-rules.sh （Copilot 限制规则校验脚本：从 copilot-instructions.md 解析规则并执行自动校验）
 │   │   ├── validate-database-foundation-rules.sh （数据库底座门禁主脚本：集中执行 UTC、README、敏感配置、影分身代码与结构性规则校验）
+│   │   ├── validate-garbled-chinese-text.sh（中文乱码与 UTF-8 编码校验脚本）
 │   │   ├── validate-no-shadow-code.sh （数据库底座影分身代码校验脚本：复用主脚本执行重复方法签名拦截）
 │   │   ├── validate-no-utc.sh （数据库底座 UTC/时区后缀校验脚本：复用主脚本执行本地时间语义门禁）
 │   │   ├── validate-readme-file-tree.sh （数据库底座 README 对账脚本：复用主脚本检查新增/删除文件职责同步）
@@ -24,6 +25,7 @@
 │       └── stability-gates.yml（长期运行稳定性门禁：构建+测试、配置合法性、隔离器边界、回滚资产、健康探针端点、契约兼容性、蓝绿部署验证、演练记录（强制阻断）、分表预建校验、迁移归档验证共 10 项门禁）
 ├── .gitattributes（Git 属性配置）
 ├── .gitignore（Git 忽略规则）
+├── Directory.Build.targets（全仓库编译守卫与 .NET 10 性能构建配置）
 ├── 待完善事项.md（待完善事项列表，仅记录代码中尚未实现的可完善点）
 ├── 更新记录.md（更新记录，按时间倒序记录每次 PR 更新内容）
 ├── README.md（仓库总览、结构清单与维护规范）
@@ -39,13 +41,21 @@
 ├── 备份恢复演练Runbook.md（备份恢复演练手册：覆盖备份失败检查、恢复演练步骤、通过标准与演练归档要求）
 ├── 业务接入前底座验收清单.md（业务接入前底座验收清单：核对 PR-A～PR-T 完成度与最终放行项）
 ├── 无人值守运行检查清单.md（无人值守运行检查清单：按日/周/月/季度沉淀长期巡检项）
-├── performance/（压测工程目录：沉淀 PR-S 的 k6 脚本、说明文档与结果目录占位）
+├── performance/（压测工程目录：沉淀 k6 场景、隔离MySQL包裹报表基准及执行说明）
 │   ├── README.md（压测工程说明：记录覆盖范围、环境变量、手动执行命令与结果沉淀约定）
+│   ├── ParcelAnalyticsBenchmark/（隔离MySQL来源事实写入与跨分表报表基准项目）
+│   │   ├── ParcelAnalyticsBenchmark.csproj（引用真实持久化实现的独立控制台项目）
+│   │   ├── Program.cs（参数校验、确定性样本、写入计时、报表核对与执行计划）
+│   │   ├── AnalyticsSqlCaptureInterceptor.cs（捕获实际报表SQL与参数）
+│   │   └── BenchmarkLatency.cs（定点毫秒分位数结果）
 │   ├── k6/（k6 压测脚本目录）
 │   │   ├── common.js（压测脚本共享逻辑：本地时间格式化、环境变量解析、请求头与写入载荷构造）
 │   │   ├── parcel-cursor-query.js（Parcel 游标分页与普通分页压测脚本）
 │   │   ├── parcel-batch-buffer-write.js（Parcel 批量缓冲写入压测脚本）
 │   │   └── audit-query.js（审计查询、健康检查与慢查询画像压测脚本）
+│   ├── scripts/（压测汇总与受控索引补建脚本）
+│   │   ├── summarize-k6.ps1（汇总多个k6结果的延迟与错误率）
+│   │   └── backfill-processing-occurred-index.ps1（MySQL/SQL Server历史事实分表发生时间索引预览、执行与回滚清单）
 │   └── results/（压测结果目录占位）
 │       └── .gitkeep（保留空目录的占位文件）
 ├── drill-records/（季度/年度稳定性演练记录目录，供演练记录门禁检查；每次演练后在此新增记录文件）
@@ -178,6 +188,7 @@
 │   │       │   ├── ParcelCleanupExpiredResponse.cs（过期清理治理接口响应合同（含决策/计划量/执行量/补偿边界））
 │   │       │   ├── ParcelCreateRequest.cs（管理端新增包裹请求合同）
 │   │       │   └── ParcelUpdateRequest.cs（管理端更新包裹状态请求合同）
+│   │       ├── CursorPayload.cs（Parcel 游标独立序列化载荷）
 │   │       ├── ParcelAdjacentRequest.cs（Parcel 邻近查询请求合同）
 │   │       ├── ParcelAdjacentResponse.cs（Parcel 邻近查询响应合同）
 │   │       ├── ParcelCursorListRequest.cs（Parcel 游标分页查询请求合同）
@@ -392,7 +403,7 @@
 │   ├── AlwaysExistsShardingPhysicalTableProbe.cs（物理表探测测试桩：始终存在场景，支撑分表守卫探测调用断言）
 │   ├── DataArchiveTaskTests.cs（归档任务 dry-run 测试：覆盖创建、分页、后台执行、完成态重试与非法类型校验）
 │   ├── BaselineDataTests.cs（基线数据测试：覆盖配置校验、时区后缀拦截、健康检查、可选种子入口与 Degraded 模式异常隔离）
-│   ├── MigrationGovernanceTests.cs（迁移治理测试：覆盖健康检查、危险 SQL、dry-run 决策、脚本归档与预演异常记录）
+│   ├── MigrationGovernanceTests.cs（迁移治理测试：覆盖健康检查、危险 SQL、dry-run、SQL Server迁移选路与快照一致性）
 │   ├── BackupGovernanceTests.cs（备份治理测试：覆盖 Provider 命令生成、最新备份校验、Runbook/演练资产输出与健康检查状态）
 │   ├── OperationalScopeTests.cs（运营边界测试：覆盖维度标准化、必填校验、可选维度归一化与合同映射）
 │   ├── BusinessModuleTemplateRulesTests.cs（业务模块模板规则测试：覆盖统一结果模型、路由约定与文档模板门禁）
@@ -572,7 +583,10 @@
 │   │   │   ├── 20260507021744_AddInboxMessageSupport.Designer.cs（Inbox 消息迁移元数据，自动生成）
 │   │   │   ├── 20260615042538_AddImageObjectStorageMetadata.cs（图片对象存储元数据骨架迁移）
 │   │   │   ├── 20260615042538_AddImageObjectStorageMetadata.Designer.cs（图片对象存储元数据迁移元数据，自动生成）
+│   │   │   ├── 20260728212817_UseLongSorterCarrierIds.cs（小车标识列升级为 bigint 的 Code First 迁移）
+│   │   │   ├── 20260728212817_UseLongSorterCarrierIds.Designer.cs（小车标识列迁移元数据，自动生成）
 │   │   │   ├── MigrationSchemaResolver.cs（迁移 schema 解析器）
+│   │   │   ├── SqlServerMigrationAssembly.cs（SQL Server专用迁移程序集名称）
 │   │   │   └── SortingHubDbContextModelSnapshot.cs（当前模型快照，自动生成）
 │   │   ├── WriteBuffering（批量缓冲写入基础设施目录）
 │   │   │   ├── BatchWriteMetricsSnapshot.cs（批量缓冲写入指标快照模型）
@@ -598,6 +612,14 @@
 │   │   ├── RepositoryBase.cs（通用仓储基类，接受 NLog.ILogger 构造参数，由派生类传入确保日志来源类名正确）
 │   │   └── WebRequestAuditLogRepository.cs（Web 请求审计日志仓储实现：热表+冷表写入与只读查询）
 │   └── Zeye.Sorting.Hub.Infrastructure.csproj（Infrastructure 项目定义）
+├── Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations（SQL Server专用EF迁移项目）
+│   ├── Migrations（SQL Server迁移与模型快照）
+│   │   ├── 20260928143409_InitialSqlServerSchema.cs（空库初始化与受控回退）
+│   │   ├── 20260928143409_InitialSqlServerSchema.Designer.cs（迁移元数据，自动生成）
+│   │   ├── 20260928160257_AddImageObjectStorageMetadataSqlServer.cs（SQL Server 图片对象存储元数据迁移）
+│   │   ├── 20260928160257_AddImageObjectStorageMetadataSqlServer.Designer.cs（迁移元数据，自动生成）
+│   │   └── SortingHubDbContextModelSnapshot.cs（SQL Server模型快照，自动生成）
+│   └── Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations.csproj（迁移程序集项目定义）
 ├── Zeye.Sorting.Hub.Realtime（实时通信子域，占位工程）
 │   └── Zeye.Sorting.Hub.Realtime.csproj（Realtime 项目定义）
 ├── Zeye.Sorting.Hub.RuleEngine（规则引擎子域，占位工程）
@@ -626,6 +648,112 @@
 
 ## 各层级与各文件作用说明（逐项）
 
+### Fusion处理事实与实际物理分表
+
+```text
+Fusion数据持久化实施与验收.md
+Zeye.Sorting.Hub.Domain/
+  Enums/Parcels/ParcelProcessingStage.cs
+  Aggregates/Parcels/Processing/ParcelProcessingRecord.cs
+  Repositories/IParcelProcessingRepository.cs
+  Repositories/Models/Results/ParcelProcessingWriteResult.cs
+Zeye.Sorting.Hub.Contracts/
+  Serialization/LocalDateTimeJsonConverter.cs
+  Models/Parcels/Analytics/ParcelAnalyticsResponse.cs
+  Models/Parcels/Analytics/ParcelAnalyticsDailyItem.cs
+  Models/Parcels/Analytics/ParcelAnalyticsDistributionItem.cs
+  Models/Parcels/Processing/ParcelProcessingRecordRequest.cs
+  Models/Parcels/Processing/ParcelProcessingRecordResponse.cs
+  Models/Parcels/Processing/ParcelProcessingWriteResponse.cs
+Zeye.Sorting.Hub.Application/
+  Abstractions/Queries/IParcelAnalyticsReadService.cs
+  Services/Parcels/ParcelProcessingApplicationService.cs
+  Services/Parcels/ParcelProcessingContractMapper.cs
+Zeye.Sorting.Hub.Infrastructure/
+  EntityConfigurations/ParcelProcessingRecordEntityTypeConfiguration.cs
+  Queries/ParcelAnalyticsReadService.cs
+  Repositories/ParcelProcessingRepository.cs
+  Persistence/Sharding/ParcelPartitionPeriod.cs
+  Persistence/Sharding/ParcelPartitionCatalogEntry.cs
+  Persistence/Sharding/ParcelLocation.cs
+  Persistence/Sharding/ParcelProcessingReceipt.cs
+  Persistence/Sharding/ParcelPartitionModelCacheKeyFactory.cs
+  Persistence/Sharding/ParcelPartitionStore.cs
+  Persistence/Sharding/ParcelPartitionQueryBuilder.cs
+  Persistence/Sharding/ParcelPartitionDdlCoordinator.cs
+  Persistence/Migrations/20260927203617_PersistFusionProcessing.cs
+  Persistence/Migrations/20260927203617_PersistFusionProcessing.Designer.cs
+  Persistence/Migrations/20260928110851_AddParcelProcessingOccurredAtIndex.cs
+  Persistence/Migrations/20260928110851_AddParcelProcessingOccurredAtIndex.Designer.cs
+Zeye.Sorting.Hub.Host/Routing/ParcelProcessingApiRouteExtensions.cs
+Zeye.Sorting.Hub.Host/Routing/ParcelAnalyticsApiRouteExtensions.cs
+Zeye.Sorting.Hub.Host.Tests/
+  RelationalParcelTestDatabase.cs
+  ParcelCommitFailureInterceptor.cs
+  FusionPersistenceTests.cs
+  FusionApiTestHost.cs
+  FusionProcessingApiTests.cs
+  ParcelAnalyticsTests.cs
+Zeye.Sorting.Hub.Web/src/
+  data/api/client.ts
+  data/api/detectionIdentity.ts
+  data/api/useApiResource.ts
+  data/api/parcelTypes.ts
+  features/parcels/ParcelDetectionPage.tsx
+  features/parcels/ParcelFacts.tsx
+  features/operations/AnalyticsPage.tsx
+Zeye.Sorting.Hub.Web/tests/client.test.mjs
+```
+
+- `Fusion数据持久化实施与验收.md`：完整实施范围、配置说明、来源身份与量测单位约定、验收证据与后续事项。
+- `ParcelProcessingStage.cs`：检测、DWS、路由、分拣、落格、异常与图片阶段枚举。
+- `ParcelProcessingRecord.cs`：不可变来源处理事实，校验规范身份并保留失败、重试、绑定依据与原始数据。
+- `IParcelProcessingRepository.cs`：处理事实与快照的原子持久化领域契约。
+- `ParcelProcessingWriteResult.cs`：稳定中心编号、重复标识和分表定位的仓储结果。
+- `LocalDateTimeJsonConverter.cs`：拒绝时区后缀，保持本地墙钟时间的合同转换。
+- `ParcelAnalyticsResponse.cs`：包裹快照与处理事实的独立统计总体及聚合响应。
+- `ParcelAnalyticsDailyItem.cs`：按首次入库本地日期汇总的每日快照指标。
+- `ParcelAnalyticsDistributionItem.cs`：真实异常类型和来源工作台分布项。
+- `IParcelAnalyticsReadService.cs`：应用层有界只读运营报表查询合同。
+- `ParcelProcessingRecordRequest.cs`：与Fusion通信方式无关的处理事实输入合同。
+- `ParcelProcessingRecordResponse.cs`：全部来源事实及服务端入库、分表时间响应。
+- `ParcelProcessingWriteResponse.cs`：首次写入与幂等重复的明确响应。
+- `ParcelProcessingApplicationService.cs`：验证、服务端入库时间、原子写入与未绑定检索用例。
+- `ParcelProcessingContractMapper.cs`：合同与领域集中映射及内容哈希。
+- `ParcelProcessingRecordEntityTypeConfiguration.cs`：处理事实关系映射、发生时间及其他查询索引与量测精度。
+- `ParcelAnalyticsReadService.cs`：先按入库日期裁剪包裹快照物理表，再在数据库中完成条件计数、分组和平均时效计算；事实发生日仍跨历史表统计。
+- `ParcelProcessingRepository.cs`：去重凭据、定位、处理事实与快照的统一事务实现，并拒绝同一来源三元组的第二次检测误合并。
+- `ParcelPartitionPeriod.cs`：天、ISO周、月的唯一周期计算，默认月。
+- `ParcelPartitionCatalogEntry.cs`：历史分表目录，粒度配置变更后保留可检索性。
+- `ParcelLocation.cs`：全局来源身份与不可变包裹分表定位。
+- `ParcelProcessingReceipt.cs`：跨周期、跨重启的去重凭据与内容冲突检测。
+- `ParcelPartitionModelCacheKeyFactory.cs`：包含物理表后缀的EF模型缓存键。
+- `ParcelPartitionStore.cs`：实际物理表路由与受开关、dry-run、DDL审计约束的预建。
+- `ParcelPartitionQueryBuilder.cs`：统一构造经目录校验的跨周期只读查询，并为包裹首次入库日期提供安全的周期裁剪。
+- `ParcelPartitionDdlCoordinator.cs`：跨实例建表会话锁、实际结构探测和部分DDL失败恢复。
+- `20260927203617_PersistFusionProcessing.cs`：来源身份、未知事实、处理历史及全局目录迁移，含MySQL/SQL Server列类型和受保护回退。
+- `20260927203617_PersistFusionProcessing.Designer.cs`：上述迁移的目标EF模型。
+- `20260928110851_AddParcelProcessingOccurredAtIndex.cs`：为基础事实表新增发生时间索引；历史物理表由独立受控脚本补建。
+- `20260928110851_AddParcelProcessingOccurredAtIndex.Designer.cs`：发生时间索引迁移的目标EF模型。
+- `ParcelProcessingApiRouteExtensions.cs`：处理事实写入和未关联DWS查询入口。
+- `ParcelAnalyticsApiRouteExtensions.cs`：严格本地日期验证和真实报表查询入口。
+- `RelationalParcelTestDatabase.cs`：独立SQLite关系数据库测试环境。
+- `ParcelCommitFailureInterceptor.cs`：真实SQL执行后、提交前的故障注入。
+- `FusionPersistenceTests.cs`：来源身份、真实分表、去重、迟到、事务回滚及跨表查询验收。
+- `FusionApiTestHost.cs`：复用生产路由与真实关系仓储的隔离测试宿主。
+- `FusionProcessingApiTests.cs`：全部处理阶段、并发去重、HTTP冲突及无效合同验收。
+- `ParcelAnalyticsTests.cs`：真实关系分表上的日报、不同总体、晚到事实、入库周期裁剪和查询预算验收。
+- `client.ts`：真实后端请求、问题详情及64位编号无损解析。
+- `detectionIdentity.ts`：依据来源实例、计数会话和来源包裹号生成可跨页面重载的稳定检测记录身份。
+- `useApiResource.ts`：查询取消、加载、空结果、错误与刷新状态。
+- `parcelTypes.ts`：完整后端包裹类型、处理阶段与字段中文标签。
+- `ParcelDetectionPage.tsx`：手工登记来源检测，并复用确定性记录身份提交真实写入接口。
+- `ParcelFacts.tsx`：完整合同字段的可复制展示，未知事实与零值明确区分。
+- `AnalyticsPage.tsx`：真实日期筛选、快照与处理事实指标、分布及每日汇总，并显示错误和空数据。
+- `client.test.mjs`：64位编号、本地时间原文、未知值、稳定检测身份与真实错误响应的客户端验证。
+
+具体实施内容、验证状态和后续可完善点见`Fusion数据持久化实施与验收.md`。
+
 ### 根目录（`.`）
 
 - `.`：解决方案根目录，承载多项目分层结构（Host、Domain、Infrastructure、Application、Contracts 等）。
@@ -638,7 +766,7 @@
 - `更新记录.md`：更新记录，按时间倒序记录每次 PR 更新内容（从 README 独立拆分）。
 - `待完善事项.md`：待完善事项列表，仅记录代码中尚未实现的可完善点（从 README 独立拆分，已实现项不记录）。
 - `数据库底座门禁说明.md`： 数据库底座门禁说明文档，记录 PR-F 当前交付的 CI 门禁组成、本地执行命令、增量扫描边界与下一阶段入口。
-- `performance/`：压测工程目录，集中沉淀 PR-S 的 k6 脚本、执行说明与结果目录占位。
+- `performance/`：压测工程目录，集中沉淀 k6 脚本、隔离MySQL来源事实与报表基准、执行说明和结果目录占位。
 - `性能基线报告.md`：性能基线报告模板，统一记录 RPS、P50/P95/P99、错误率、超时率、连接池占用、写入队列深度、CPU、内存与 GC 次数。
 - `生产运行Runbook.md`：生产运行手册，覆盖 20 个核心故障场景、统一入口、标准排障步骤与恢复后复核要求。
 - `数据库故障应急预案.md`：数据库故障应急预案，集中处理连接失败、连接池耗尽、慢查询暴增、迁移失败、归档失败、备份失败与磁盘空间不足。
@@ -685,11 +813,15 @@
   - `PR-长期数据库底座S-检查台账.md`：长期数据库底座 PR-S 实施台账；记录压测工程、性能基线报告模板、轻量 smoke workflow 与下一 PR 入口。
   - `PR-长期数据库底座T-检查台账.md`：长期数据库底座 PR-T 实施台账；记录生产运行 Runbook、数据库故障应急预案、分表治理/备份恢复手册、最终验收清单与下一阶段入口。
 
+### 根目录构建资产
+- `Directory.Build.targets`：全仓库编译守卫入口；强制 `net10.0`/C# 14，启用 Release 速度优化、分层编译与 PGO，并阻断 UTC API、浮点数、非 `long` 数值 Id、缺失中文注释、混合类型文件、热路径数据库/文件访问、配置文件缺少中文注释及数据库底座能力回退。
+
 ### `.github/`：Copilot 仓库级指令目录
 - `DDD分层接口与实现放置规范.md`：DDD 分层接口定义与实现放置规范文档；明确依赖方向（Host→Infrastructure→Application→Domain）、接口定义归属规则（领域能力/应用编排/基础设施内部三类）、实现类放置约束、目录结构建议与禁止事项清单，供 Copilot 与开发人员统一执行。
 - `copilot-instructions.md`：Copilot 自定义指令，硬性要求禁止 UTC 时间 API，统一使用本地时间语义。
 - `scripts/validate-copilot-rules.sh`：Copilot 限制规则校验脚本；从 `copilot-instructions.md` 解析“Copilot 限制规则”逐条执行，已映射规则做自动校验，未映射规则直接失败，确保规则文档更新后 CI 校验逻辑同步更新。
 - `validate-database-foundation-rules.sh`：数据库底座门禁主脚本；位于 `.github/scripts/`，统一执行 UTC/时区后缀、README 文件树同步、敏感配置、影分身代码与结构性底座规则检查，并支持按模式拆分调用。
+- `validate-garbled-chinese-text.sh`：中文乱码门禁脚本；校验受控文本文件使用有效 UTF-8 编码并拦截常见乱码特征。
 - `validate-no-utc.sh`：数据库底座 UTC 校验脚本；位于 `.github/scripts/`，复用主脚本检查新增/修改代码中的 UTC API 与配置时间时区后缀。
 - `validate-readme-file-tree.sh`：数据库底座 README 对账脚本；位于 `.github/scripts/`，复用主脚本检查新增/删除文件是否同步更新 README 职责说明。
 - `validate-sensitive-config.sh`：数据库底座敏感配置校验脚本；位于 `.github/scripts/`，复用主脚本拦截新增/修改文件中的高风险连接串片段与密钥字段。
@@ -704,11 +836,19 @@
 
 ### `performance/`：压测工程目录
 - `README.md`：压测工程说明，记录覆盖范围、环境变量、手动执行命令、CI 轻量 smoke test 边界与结果沉淀约定。
+- `ParcelAnalyticsBenchmark/`：只允许本机非默认端口与`zeye_bench_`隔离库的来源事实写入和跨分表报表基准。
+  - `ParcelAnalyticsBenchmark.csproj`：引用真实持久化实现的独立控制台项目。
+  - `Program.cs`：生成跨周期、迟到与失败事实，测量写入和1/7/31天报表，核对口径并保存执行计划。
+  - `AnalyticsSqlCaptureInterceptor.cs`：捕获EF实际执行的参数化报表SQL，以原参数取得MySQL执行计划。
+  - `BenchmarkLatency.cs`：使用定点毫秒值保存P50/P95/P99。
 - `k6/`：k6 压测脚本目录。
   - `common.js`：压测脚本共享逻辑，统一处理本地时间格式化、环境变量解析、请求头与批量写入载荷构造。
   - `parcel-cursor-query.js`：Parcel 游标分页与普通分页压测脚本，形成双读取链路基线。
   - `parcel-batch-buffer-write.js`：Parcel 批量缓冲写入压测脚本，覆盖有界队列入队链路。
   - `audit-query.js`：审计日志查询、就绪健康检查与慢查询画像压测脚本。
+- `scripts/`：压测结果整理和历史物理表索引补建脚本目录。
+  - `summarize-k6.ps1`：将多个k6结果合并为延迟与错误率摘要。
+  - `backfill-processing-occurred-index.ps1`：默认仅生成MySQL或SQL Server历史事实分表索引计划、回滚清单与审计，显式双开关后执行。
 - `results/`：压测结果目录占位。
   - `.gitkeep`：保留空结果目录的占位文件。
 
@@ -793,6 +933,7 @@
 - `Zeye.Sorting.Hub.Contracts.csproj`：Contracts 项目定义。
 
 #### `Zeye.Sorting.Hub.Contracts/Models/Parcels/`：Parcel 对外查询合同目录
+- `CursorPayload.cs`：Parcel 游标的独立序列化载荷，承载本地扫码时间刻度与 `long` 主键。
 - `ParcelListRequest.cs`：Parcel 列表查询请求合同（分页 + 过滤参数）。
 - `ParcelListItemResponse.cs`：Parcel 列表项响应合同（扁平化字段，不暴露领域聚合根）。
 - `ParcelListResponse.cs`：Parcel 列表分页响应合同。
@@ -1070,6 +1211,14 @@
 ### `Zeye.Sorting.Hub.Infrastructure/`：基础设施层（EF Core 持久化、仓储实现、DI 注册、数据库方言）
 - `Zeye.Sorting.Hub.Infrastructure.csproj`：Infrastructure 项目定义。
 
+### `Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/`：SQL Server专用迁移项目
+- `Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations.csproj`：引用实体模型所在的Infrastructure和EF设计时工具，供SQL Server独立迁移与快照编译。
+- `20260928143409_InitialSqlServerSchema.cs`：从空SQL Server库建立当前模型；已有表拒绝初始化，回退时有数据或物理分表则拒绝删表。
+- `20260928143409_InitialSqlServerSchema.Designer.cs`：SQL Server迁移元数据，由EF工具生成。
+- `20260928160257_AddImageObjectStorageMetadataSqlServer.cs`：为 SQL Server 图片表增加对象存储元数据及查询索引。
+- `20260928160257_AddImageObjectStorageMetadataSqlServer.Designer.cs`：SQL Server 对象存储迁移元数据，由 EF 工具生成。
+- `SortingHubDbContextModelSnapshot.cs`：SQL Server当前模型快照，由EF工具生成并供模型漂移门禁比对。
+
 #### `Zeye.Sorting.Hub.Infrastructure/DependencyInjection/`：依赖注入扩展目录
 - `ObjectStorageServiceCollectionExtensions.cs`：对象存储服务注册扩展，负责解析 `ObjectStorage:Minio` 运行期配置，并注册 `MinioClient`、Multipart 调用器与 `IObjectStorageService`。
 - `PersistenceServiceCollectionExtensions.cs`：持久化服务注册扩展（数据库提供器选择、连接字符串校验、DbContext 注册、数据库连接诊断/预热、批量缓冲写入、归档 dry-run、备份治理、数据保留、基线数据校验、迁移治理、分表运行期巡检与预建服务注册，并新增 Inbox 消息仓储注册；Parcel 主表保持按 `CreatedTime` 分表；分表时间粒度由 Time/Volume/Hybrid 统一策略决策驱动，Parcel 关联值对象规则继续复用声明式清单与覆盖守卫）。
@@ -1234,7 +1383,10 @@
 - `20260507021744_AddInboxMessageSupport.Designer.cs`：Inbox 消息迁移元数据文件（自动生成，勿手动修改）。
 - `20260615042538_AddImageObjectStorageMetadata.cs`：图片对象存储元数据骨架迁移，向 `Parcel_ImageInfos` 增加对象存储字段与查询索引。
 - `20260615042538_AddImageObjectStorageMetadata.Designer.cs`：图片对象存储元数据迁移元数据文件（自动生成，勿手动修改）。
+- `20260728212817_UseLongSorterCarrierIds.cs`：将 `Parcels` 与 `Parcel_SorterCarrierInfos` 的 `SorterCarrierId` 从 `int` 升级为 `bigint`。
+- `20260728212817_UseLongSorterCarrierIds.Designer.cs`：小车标识列类型迁移元数据文件（自动生成，勿手动修改）。
 - `MigrationSchemaResolver.cs`：迁移共享 schema 解析器。
+- `SqlServerMigrationAssembly.cs`：SQL Server专用迁移程序集名称常量，统一设计时与运行时选路。
 - `SortingHubDbContextModelSnapshot.cs`：当前模型快照（自动生成，勿手动修改）。
 
 #### `Zeye.Sorting.Hub.Infrastructure/Repositories/`：仓储基类与结果模型目录
@@ -1283,7 +1435,7 @@
 - `AlwaysExistsShardingPhysicalTableProbe.cs`：物理表探测测试桩，始终返回存在并记录调用次数。
 - `BaselineDataTests.cs`：基线数据测试，覆盖必要配置、Provider/连接字符串、本地时间配置、健康检查、可选种子入口与 Degraded 模式异常隔离。
 - `DataArchiveTaskTests.cs`：归档任务 dry-run 测试，覆盖创建、分页、后台执行、终态重试与非法类型校验。
-- `MigrationGovernanceTests.cs`：迁移治理测试，覆盖健康检查状态、危险 SQL 识别、dry-run 决策、脚本归档路径与预演异常记录。
+- `MigrationGovernanceTests.cs`：迁移治理测试，覆盖健康检查状态、危险 SQL、dry-run、脚本归档、SQL Server设计时/运行时迁移选路与快照一致性。
 - `BatchSelectiveMissingShardingPhysicalTableProbe.cs`：批量物理表探测测试桩，支持选择性缺失结果与 schema 透传断言。
 - `CountingPlanProbe.cs`：执行计划探针测试桩，记录探针调用次数并返回固定快照。
 - `DomainEventArgsTests.cs`：领域事件载荷单元测试，验证 `ParcelScannedEventArgs`/`ParcelChuteAssignedEventArgs` 业务字段赋值、值语义相等与不等、本地时间约束。
@@ -1330,14 +1482,20 @@
 
 ## 本次更新内容
 
-- 按《MinIO对象存储接入多PR实施方案与Copilot严格门禁.md》继续执行下一阶段，当前阶段进入 PR-C，在 Infrastructure 项目内接入 MinIO SDK，并补齐对象存储运行期实现与 Host 启动接线。
-- 新增 `Zeye.Sorting.Hub.Infrastructure/ObjectStorage/MinioObjectStorageService.cs`、`MinioMultipartOperationInvoker.cs` 与 `MinioObjectStorageClientOptions.cs`，实现单对象上传预签名、对象读取预签名、Multipart 创建/分片签名/完成/中止与对象存在性探测能力。
-- 新增 `Zeye.Sorting.Hub.Infrastructure/DependencyInjection/ObjectStorageServiceCollectionExtensions.cs`，并在 `Program.cs` 中接线 `AddObjectStorageOptions()` + `AddMinioObjectStorage()`，让 Host 在启动期完成对象存储配置校验与服务注册。
-- 更新 `Zeye.Sorting.Hub.Host/appsettings.json`，补齐 `ObjectStorage:Minio` 占位配置（含 Region、Bucket、有效期与 Bootstrap 守卫）。
-- 新增 `Zeye.Sorting.Hub.Host.Tests/MinioObjectStorageServiceTests.cs`，覆盖上传/读取预签名、Multipart 分片预签名与 DI 注册回归。
+- 为SQL Server建立独立EF迁移程序集与空库基线，按Provider选择迁移链；增加历史事实分表索引回填预演和双Provider迁移门禁，并在隔离LocalDB验证迁移、守卫及真实分表索引。
+- 按《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》执行前置核对，确认长期数据库底座 PR-A～PR-T 主体能力已完成，当前补齐点集中在 `PR-A-检查台账.md` 延后的 Copilot 严格门禁覆盖。
+- 补强 `.github/scripts/validate-copilot-rules.sh`：README 历史记录门禁改为识别常见 Markdown 标题变体，并扩展 `.Count() == 0`、`.Where(...).FirstOrDefault()`、`string.Format()` 等性能反模式检测。
+- 新增 `Zeye.Sorting.Hub.Host.Tests/CopilotRuleValidationScriptTests.cs`，对上述门禁补强建立最小回归保护，并同步更新 README、更新记录、文件清单基线与 PR-A 台账补充记录。
+- 按《MinIO对象存储接入多PR实施方案与Copilot严格门禁.md》完成 PR-A～PR-C：图片对象存储元数据、应用抽象、配置校验及 MinIO 基础设施实现。
+- 在 Host 中注册对象存储配置和 MinIO 服务，补充配置、持久化、预签名与 Multipart 回归测试。
+- 合并时为 SQL Server 补充图片对象存储元数据迁移，并按 SQL Server 索引键长度限制使用 Bucket 单列索引。
 
 ## 后续可完善点
 
+- 如需接入已有SQL Server业务库，应先盘点旧迁移历史和数据结构，再制定保留数据的迁移历史过渡方案；目标规模的报表性能仍需按真实件量与保留期验收。
+- 长期数据库底座路线图已完成，后续进入正式业务模块开发时，应继续按 `业务模块接入规范.md` 与 `业务接入前底座验收清单.md` 执行。
+- 当前 `validate-copilot-rules.sh` 仍以增量正则门禁为主，后续可继续补充更多高频 .NET 性能反模式与 README 结构误用场景。
+- 后续需持续补充季度演练记录与真实生产复盘，保证 `drill-records/`、运行手册与验收清单长期保持同步。
 - 下一阶段可按 PR-D 补齐 Multipart 上传会话持久化，将 UploadId、状态、已确认分片与本地时间字段正式入库。
 - 当前 PR-C 仅完成 Infrastructure 侧服务实现，尚未暴露对象存储 API、Parcel 图片绑定与上传审计豁免接线。
 - 当前配置仍保持占位符与 dry-run 守卫模式，后续如需真实 Bucket 自检或危险动作放行，必须按隔离器要求补充开关、审计与回滚资产。

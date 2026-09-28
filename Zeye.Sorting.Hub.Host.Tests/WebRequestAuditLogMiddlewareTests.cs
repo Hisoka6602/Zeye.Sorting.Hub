@@ -11,6 +11,8 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using NLog.Extensions.Logging;
 using Zeye.Sorting.Hub.Application.Services.AuditLogs;
 using Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests;
 using Zeye.Sorting.Hub.Domain.Repositories;
@@ -379,8 +381,8 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         using var client = app.GetTestClient();
         var stopwatch = Stopwatch.StartNew();
         using var response = await client.GetAsync("/ok");
-        var elapsedMilliseconds = stopwatch.Elapsed.TotalMilliseconds;
-        var maxAllowedMilliseconds = Math.Max(400d, repository.AddDelayMilliseconds * 0.5d);
+        var elapsedMilliseconds = stopwatch.Elapsed.Ticks / (decimal)TimeSpan.TicksPerMillisecond;
+        var maxAllowedMilliseconds = decimal.Max(400m, repository.AddDelayMilliseconds * 0.5m);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.True(elapsedMilliseconds < maxAllowedMilliseconds, $"主请求被审计写入阻塞，ElapsedMilliseconds={elapsedMilliseconds}, MaxAllowedMilliseconds={maxAllowedMilliseconds}");
@@ -471,6 +473,9 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         WebRequestAuditLogOptions options,
         Action<IServiceCollection> configureServices) {
         var builder = WebApplication.CreateBuilder();
+        // 测试宿主只使用NLog，避免Windows事件日志写入权限干扰异常审计测试。
+        builder.Logging.ClearProviders();
+        builder.Logging.AddNLog();
         builder.WebHost.UseTestServer();
         builder.Services.AddProblemDetails();
         builder.Services.AddSingleton(new WebRequestAuditBackgroundQueue(Math.Max(1, options.BackgroundQueueCapacity)));

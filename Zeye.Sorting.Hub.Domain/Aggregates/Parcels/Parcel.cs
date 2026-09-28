@@ -4,6 +4,8 @@ using Zeye.Sorting.Hub.Domain.Abstractions;
 using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Primitives;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects;
+using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.Processing;
+using Zeye.Sorting.Hub.Domain.Enums.Parcels;
 
 namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
 
@@ -15,6 +17,142 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
     /// 3) 其余持久化映射（表名、架构、关系、影子属性等）在 Infrastructure/EntityConfigurations 中完成。
     /// </summary>
     public sealed class Parcel : AuditableEntity, IParcelSummaryView {
+
+        /// <summary>来源服务或设备实例标识。</summary>
+        [MaxLength(96)]
+        public string? SourceInstanceId { get; private set; }
+
+        /// <summary>来源编号有效会话，设备计数重置时必须更换。</summary>
+        [MaxLength(96)]
+        public string? SourceRunId { get; private set; }
+
+        /// <summary>来源设备包裹编号；主条码不承担身份语义。</summary>
+        public long? SourceParcelId { get; private set; }
+
+        /// <summary>首次分拣机检测时间，未检测时为空。</summary>
+        public DateTime? DetectedTime { get; private set; }
+
+        /// <summary>最新有效DWS测量时间，未绑定时为空。</summary>
+        public DateTime? MeasurementTime { get; private set; }
+
+        /// <summary>目标格口原始编码，支持非数字编码。</summary>
+        [MaxLength(128)]
+        public string? TargetChuteCode { get; private set; }
+
+        /// <summary>实际落格原始编码。</summary>
+        [MaxLength(128)]
+        public string? ActualChuteCode { get; private set; }
+
+        /// <summary>外部路由任务编码。</summary>
+        [MaxLength(256)]
+        public string? TaskCode { get; private set; }
+
+        /// <summary>体积重量，单位克；不等同于物理体积。</summary>
+        [Precision(18, 3)]
+        public decimal? VolumetricWeightGrams { get; private set; }
+
+        /// <summary>是否已使用兜底格口，未知时为空。</summary>
+        public bool? IsFallbackChuteAssigned { get; private set; }
+
+        /// <summary>是否阻断分拣路由，未知时为空。</summary>
+        public bool? IsRoutingBlocked { get; private set; }
+
+        /// <summary>最近设备异常原始编码。</summary>
+        [MaxLength(128)]
+        public string? SourceExceptionCode { get; private set; }
+
+        /// <summary>记录查询结果，仅用于详情返回，不参与聚合快照映射。</summary>
+        public IReadOnlyList<ParcelProcessingRecord> ProcessingRecords { get; private set; } = [];
+
+        /// <summary>建立仅包含来源身份的包裹，量测、格口与落格时间保持未知。</summary>
+        public static Parcel CreateDetected(long id, ParcelProcessingRecord firstRecord, DateTime registeredAt) {
+            firstRecord.Validate();
+            if (id <= 0 || firstRecord.SourceParcelId is not > 0) throw new ArgumentException("包裹必须具有有效的中心编号和来源编号。");
+            return new Parcel {
+                Id = id,
+                ParcelTimestamp = firstRecord.OccurredAt.Ticks,
+                SourceInstanceId = firstRecord.SourceInstanceId,
+                SourceRunId = firstRecord.SourceRunId,
+                SourceParcelId = firstRecord.SourceParcelId,
+                WorkstationName = firstRecord.WorkstationName ?? firstRecord.SourceInstanceId,
+                ScannedTime = firstRecord.OccurredAt,
+                CreatedTime = registeredAt,
+                Status = ParcelStatus.Pending
+            };
+        }
+
+        /// <summary>附加持久化历史供详情查询使用，不修改已保存的包裹快照。</summary>
+        public void LoadProcessingRecords(IReadOnlyList<ParcelProcessingRecord> records) {
+            ProcessingRecords = records;
+        }
+
+        /// <summary>按来源发生时间重放已保存记录，保证晚到消息不会倒退快照，失败与重试仍保留历史。</summary>
+        public void ApplyProcessingRecords(IReadOnlyList<ParcelProcessingRecord> records) {
+            ProcessingRecords = records;
+            // 重放采用完整历史，先清除派生快照，避免先到的晚期事实影响后续重放结果。
+            DetectedTime = null;
+            MeasurementTime = null;
+            Weight = Length = Width = Height = Volume = VolumetricWeightGrams = null;
+            TargetChuteCode = ActualChuteCode = TaskCode = SourceExceptionCode = null;
+            TargetChuteId = ActualChuteId = null;
+            IsFallbackChuteAssigned = IsRoutingBlocked = null;
+            CompletedTime = DischargeTime = null;
+            LifecycleMilliseconds = null;
+            BarCodes = string.Empty;
+            HasImages = false;
+            RequestStatus = ApiRequestStatus.NotRequested;
+            ApplyStatus(ParcelStatus.Pending, null);
+            foreach (var record in records.OrderBy(x => x.OccurredAt).ThenBy(x => x.AttemptNumber).ThenBy(x => x.RecordId, StringComparer.Ordinal)) {
+                // 步骤1：只接受明确关联到当前来源身份的记录，未绑定DWS不得更新包裹。
+                if (record.ParcelId != Id || record.SourceInstanceId != SourceInstanceId || record.SourceRunId != SourceRunId || record.SourceParcelId != SourceParcelId) continue;
+                if (record.Stage == ParcelProcessingStage.Detected) {
+                    DetectedTime ??= record.OccurredAt;
+                    BarCodes = record.Barcode ?? BarCodes;
+                    WorkstationName = record.WorkstationName ?? WorkstationName;
+                }
+                if (record.Stage == ParcelProcessingStage.DwsBound && record.IsSuccess == true) {
+                    BarCodes = record.Barcode ?? BarCodes;
+                    Weight = record.WeightGrams.HasValue ? record.WeightGrams.Value / 1000m : Weight;
+                    Length = record.LengthMm ?? Length;
+                    Width = record.WidthMm ?? Width;
+                    Height = record.HeightMm ?? Height;
+                    Volume = record.VolumeMm3 ?? Volume;
+                    VolumetricWeightGrams = record.VolumetricWeightGrams ?? VolumetricWeightGrams;
+                    MeasurementTime = record.MeasuredAt ?? record.OccurredAt;
+                    ScannedTime = MeasurementTime.Value;
+                }
+                // 步骤2：接口成功只推进接口状态，实际落格才完成包裹生命周期。
+                if (record.Stage == ParcelProcessingStage.ScanUploaded && record.IsSuccess.HasValue) {
+                    RequestStatus = record.IsSuccess == true ? ApiRequestStatus.Success : ApiRequestStatus.Failed;
+                    if (record.IsSuccess == true) TaskCode = record.TaskCode ?? TaskCode;
+                }
+                if (record.Stage == ParcelProcessingStage.ChuteAssigned && record.IsSuccess == true) {
+                    TargetChuteCode = record.TargetChuteCode ?? TargetChuteCode;
+                    TargetChuteId = long.TryParse(TargetChuteCode, out var chuteId) && chuteId > 0 ? chuteId : null;
+                    TaskCode = record.TaskCode ?? TaskCode;
+                    IsFallbackChuteAssigned = record.IsFallback ?? IsFallbackChuteAssigned;
+                }
+                IsRoutingBlocked = record.IsRoutingBlocked ?? IsRoutingBlocked;
+                if (record.Stage == ParcelProcessingStage.ParcelException) {
+                    SourceExceptionCode = record.ExceptionCode;
+                    if (Status != ParcelStatus.Completed) ApplyStatus(ParcelStatus.SortingException, record.ExceptionCode switch {
+                        "ParcelSpacingViolation" => ParcelExceptionType.ParcelSpacingViolation,
+                        "TargetChuteAssignmentRejected" => ParcelExceptionType.TargetChuteAssignmentRejected,
+                        "RoutingTimeout" => ParcelExceptionType.WaitTargetChuteTimeout,
+                        _ => ParcelExceptionType.SourceDeviceException
+                    });
+                }
+                if (record.Stage == ParcelProcessingStage.SortingCompleted && record.IsSuccess != false) {
+                    ActualChuteCode = record.ActualChuteCode;
+                    ActualChuteId = long.TryParse(ActualChuteCode, out var chuteId) && chuteId > 0 ? chuteId : null;
+                    DischargeTime = record.OccurredAt;
+                    MarkCompleted(record.OccurredAt);
+                    LifecycleMilliseconds = DetectedTime.HasValue ? Math.Max(0, (record.OccurredAt - DetectedTime.Value).Ticks / TimeSpan.TicksPerMillisecond) : null;
+                }
+                if (record.Stage is ParcelProcessingStage.ImageRegistered or ParcelProcessingStage.ImageUploaded && record.IsSuccess != false) HasImages = true;
+            }
+            ModifyTime = records.Count > 0 ? records.Max(x => x.RecordedAt) : ModifyTime;
+        }
 
         /// <summary>
         /// 包裹时间戳
@@ -44,7 +182,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         /// <summary>
         /// 小车编号（可选）
         /// </summary>
-        public int? SorterCarrierId { get; private set; }
+        public long? SorterCarrierId { get; private set; }
 
         /// <summary>
         /// 三段码
@@ -60,12 +198,12 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         /// <summary>
         /// 目标格口 Id（系统路由分配的理论落格位置）
         /// </summary>
-        public long TargetChuteId { get; private set; }
+        public long? TargetChuteId { get; private set; }
 
         /// <summary>
         /// 实际落格 Id（包裹实际到达的格口位置）
         /// </summary>
-        public long ActualChuteId { get; private set; }
+        public long? ActualChuteId { get; private set; }
 
         /// <summary>
         /// 条码（主条码）
@@ -76,8 +214,8 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         /// <summary>
         /// 重量
         /// </summary>
-        [Precision(18, 3)]
-        public decimal Weight { get; private set; }
+        [Precision(21, 6)]
+        public decimal? Weight { get; private set; }
 
         /// <summary>
         /// 外部接口访问状态
@@ -105,25 +243,25 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         /// 长度
         /// </summary>
         [Precision(18, 3)]
-        public decimal Length { get; private set; }
+        public decimal? Length { get; private set; }
 
         /// <summary>
         /// 宽度
         /// </summary>
         [Precision(18, 3)]
-        public decimal Width { get; private set; }
+        public decimal? Width { get; private set; }
 
         /// <summary>
         /// 高度
         /// </summary>
         [Precision(18, 3)]
-        public decimal Height { get; private set; }
+        public decimal? Height { get; private set; }
 
         /// <summary>
         /// 体积
         /// </summary>
         [Precision(18, 3)]
-        public decimal Volume { get; private set; }
+        public decimal? Volume { get; private set; }
 
         /// <summary>
         /// 扫码时间
@@ -133,7 +271,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         /// <summary>
         /// 落格时间
         /// </summary>
-        public DateTime DischargeTime { get; private set; }
+        public DateTime? DischargeTime { get; private set; }
 
         /// <summary>
         /// 包裹完结时间（生命周期结束时间点）
@@ -245,6 +383,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         /// </summary>
         public ParcelPositionInfo? ParcelPositionInfo { get; private set; }
 
+        /// <summary>供持久化层构造聚合，由工厂负责领域初始化。</summary>
         private Parcel() {
             // 说明：保留无参构造，便于持久化层（如 EF Core）构造实体
         }
@@ -274,7 +413,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
             bool hasVideos,
             string coordinate,
             NoReadType noReadType = NoReadType.None,
-            int? sorterCarrierId = null,
+            long? sorterCarrierId = null,
             string? segmentCodes = null,
             long? lifecycleMilliseconds = null) {
             if (id <= 0) {

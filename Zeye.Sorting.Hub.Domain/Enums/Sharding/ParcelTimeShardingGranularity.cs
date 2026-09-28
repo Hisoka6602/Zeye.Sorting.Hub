@@ -16,6 +16,10 @@ namespace Zeye.Sorting.Hub.Domain.Enums.Sharding {
         /// 按天分表。
         /// </summary>
         [Description("按天分表")]
-        PerDay = 1
+        PerDay = 1,
+
+        /// <summary>按周分表，周期从本地时间周一零点开始。</summary>
+        [Description("按周分表")]
+        PerWeek = 2
     }
 }

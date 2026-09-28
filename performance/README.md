@@ -65,6 +65,11 @@ performance/
 | `PARCEL_BATCH_SIZE` | `10` | 批量缓冲写入脚本每次提交的包裹数 |
 | `PARCEL_PAGE_SIZE` | `50` | Parcel 查询脚本页大小 |
 | `AUDIT_PAGE_SIZE` | `50` | 审计日志查询页大小 |
+| `PERF_REQUEST_TIMEOUT` | `15s` | 单请求超时保护 |
+| `PERF_MAX_ERROR_RATE` | `0.01` | 最大错误率门禁 |
+| `PERF_P95_MS` | 场景默认值 | 覆盖 P95 毫秒预算 |
+| `PERF_P99_MS` | 场景默认值 | 覆盖 P99 毫秒预算 |
+| `PERF_SLEEP_SECONDS` | `1` | 每轮场景间隔秒数；容量测试可设为 `0` |
 
 ---
 
@@ -104,13 +109,20 @@ BASE_URL=http://127.0.0.1:5000 PERF_DURATION=90s PERF_VUS=4 AUDIT_PAGE_SIZE=100 
 
 ---
 
-## 七、CI 轻量 smoke test 说明
+## 七、CI 门禁说明
 
-PR-S 引入的 `.github/workflows/performance-smoke-test.yml` 只执行轻量规则验证，不运行真实压测：
+PR-S 引入的 `.github/workflows/performance-smoke-test.yml` 在普通 PR 中只执行轻量规则验证：
 
 1. 仅在压测资产、测试文件或相关文档变更时触发。
 2. 仅执行 `PerformanceBaselineRulesTests`，校验脚本、文档与 workflow 的关键约束。
-3. 完整压测仍由人工在受控环境执行，结果回填到 `性能基线报告.md` 或 `performance/results/` 中的非版本化产物。
+3. 不访问外部测试环境，不会误写业务数据。
+
+`.github/workflows/performance-regression-gate.yml` 负责真实回归压测：
+
+1. 可手动输入目标环境、持续时间和并发数，也可由工作日定时任务读取仓库变量 `PERFORMANCE_BASE_URL`。
+2. 读取场景默认开启，写入场景必须显式选择或设置 `PERFORMANCE_ENABLE_WRITE=true`，避免误写。
+3. k6 阈值失败会直接阻断任务；JSON 原始摘要与 Markdown 汇总作为 30 天构建产物留存。
+4. `performance/scripts/summarize-k6.ps1` 可在本地或 CI 将多个 k6 JSON 摘要合并为统一表格。
 
 ---
 
@@ -119,3 +131,81 @@ PR-S 引入的 `.github/workflows/performance-smoke-test.yml` 只执行轻量规
 1. 基线摘要写入仓库根目录 `性能基线报告.md`。
 2. 原始控制台输出、截图、CSV 或 JSON 结果统一存放在 `performance/results/` 的本地产物中，不提交真实压测数据。
 3. 每次刷新基线时，需说明环境、数据规模、配置快照与结论，避免不同环境结果横向误比。
+
+---
+
+## 九、运行时性能指标
+
+应用通过 `Zeye.Sorting.Hub.Performance` Meter 发布以下低开销指标，可由 OpenTelemetry 或 `dotnet-counters` 订阅：
+
+- `sorting.audit.enqueued`、`sorting.audit.dropped`、`sorting.audit.queue.depth`
+- `sorting.buffered_write.enqueued`、`sorting.buffered_write.dropped`、`sorting.buffered_write.queue.depth`
+- `sorting.slow_query.collected`、`sorting.slow_query.dropped`
+- `sorting.outbox.processed`、`sorting.outbox.succeeded`、`sorting.outbox.failed`、`sorting.outbox.batch.duration`
+
+本地采集示例：
+
+```bash
+dotnet-counters monitor --name Zeye.Sorting.Hub.Host --counters Zeye.Sorting.Hub.Performance,System.Runtime,Microsoft.AspNetCore.Hosting
+```
+
+---
+
+## 十、Fusion来源事实与跨分表报表基准
+
+`ParcelAnalyticsBenchmark`直接调用生产使用的`ParcelProcessingRepository`和`ParcelAnalyticsReadService`，建立跨周期、失败尝试、未绑定DWS及迟到事实的确定性样本。它测量稳态写入和1/7/31天报表的P50/P95/P99，逐次核对报表口径，并对实际参数化SQL运行MySQL `EXPLAIN ANALYZE`。建表耗时单独记录，不计入稳态写入。样本规模可调，未提供设备峰值和保留时长时，不将样本结果称为目标规模达标。
+
+工具强制`ZEYE_BENCH_ISOLATED=1`、本机MySQL、非3306端口及`zeye_bench_`库名前缀，拒绝未迁移或已有事实的数据库。建表调用现有分表DDL隔离器。先创建专用隔离库；用同一连接串生成并审核迁移脚本，再执行迁移与基准：
+
+```powershell
+$env:ZEYE_BENCH_ISOLATED = '1'
+$env:ZEYE_BENCH_MYSQL = 'Server=127.0.0.1;Port=34068;Database=zeye_bench_example;User=root;SslMode=None;'
+$env:ZEYE_BENCH_START_DATE = '2026-08-15'
+$env:ZEYE_BENCH_DAYS = '31'
+$env:ZEYE_BENCH_PARCELS_PER_DAY = '200'
+$env:ZEYE_BENCH_CONCURRENCY = '8'
+$env:ZEYE_BENCH_ITERATIONS = '15'
+$env:ZEYE_BENCH_GRANULARITY = 'PerWeek'
+$env:ConnectionStrings__MySql = $env:ZEYE_BENCH_MYSQL
+New-Item -ItemType Directory -Force .codex-artifacts/benchmark-results | Out-Null
+dotnet ef migrations script --idempotent --project Zeye.Sorting.Hub.Infrastructure --startup-project Zeye.Sorting.Hub.Host --output .codex-artifacts/benchmark-results/isolated-migration-preview.sql -- --provider MySql
+# 审核脚本且确认数据库名称、端口后：
+dotnet ef database update --project Zeye.Sorting.Hub.Infrastructure --startup-project Zeye.Sorting.Hub.Host -- --provider MySql
+dotnet run -c Release --project performance/ParcelAnalyticsBenchmark/ParcelAnalyticsBenchmark.csproj
+```
+
+`ZEYE_BENCH_DAYS`范围31～366，`ZEYE_BENCH_PARCELS_PER_DAY`范围1～10000，`ZEYE_BENCH_CONCURRENCY`范围1～32，`ZEYE_BENCH_ITERATIONS`范围2～100；粒度允许`PerDay`、`PerWeek`、`PerMonth`。默认输出到`.codex-artifacts/benchmark-results/parcel-analytics-sample.json`，可由`ZEYE_BENCH_OUTPUT`覆盖。生成的JSON包含环境和样本参数、写入吞吐、各窗口延迟、SQL及执行计划，不纳入仓库。复测同一库时设置`ZEYE_BENCH_QUERY_ONLY=1`并保持样本参数不变；需要核对同一批事实重放时可设置`ZEYE_BENCH_ALLOW_REPLAY=1`，重复写入耗时不得与首次写入基线混用。
+
+MySQL迁移`20260928110851_AddParcelProcessingOccurredAtIndex`为基础事实表建索引；SQL Server空库基线`20260928143409_InitialSqlServerSchema`直接包含该索引。新周期物理表由当前EF模型自动带上索引。已有事实物理表先预览补建计划与回滚清单，确认维护窗口后再显式双开关执行：
+
+```powershell
+$indexBackfillParameters = @{
+    MySqlExe = 'D:\WorkSpace\Zeye\Zeye.Sorting.Hub\.codex-artifacts\mysql-portable\mysql-8.0.46-winx64\bin\mysql.exe'
+    Server = '127.0.0.1'; Port = 34068; Database = 'zeye_bench_example'; ExpectedDatabase = 'zeye_bench_example'; User = 'root'
+    PlanPath = '.codex-artifacts/benchmark-results/occurred-index-plan.sql'
+    RollbackPath = '.codex-artifacts/benchmark-results/occurred-index-rollback.sql'
+}
+& performance/scripts/backfill-processing-occurred-index.ps1 @indexBackfillParameters
+# 审核计划后，仅对隔离库执行：
+& performance/scripts/backfill-processing-occurred-index.ps1 @indexBackfillParameters -Apply -AllowDangerousActionExecution
+```
+
+SQL Server使用同一脚本的Provider分支；以下示例仅针对独立LocalDB实例，默认仍只生成计划：
+
+```powershell
+$sqlServerBackfill = @{
+    Provider = 'SqlServer'
+    SqlCmdExe = 'C:\Program Files\Microsoft SQL Server\Client SDK\ODBC\170\Tools\Binn\SQLCMD.EXE'
+    Server = '(localdb)\ZeyeHubMigrationIsolated20260928'
+    Database = 'zeye_hub_migration_isolated_20260928'
+    ExpectedDatabase = 'zeye_hub_migration_isolated_20260928'
+    TrustServerCertificate = $true
+    PlanPath = '.codex-artifacts/sqlserver-validation/occurred-index-plan.sql'
+    RollbackPath = '.codex-artifacts/sqlserver-validation/occurred-index-rollback.sql'
+}
+& performance/scripts/backfill-processing-occurred-index.ps1 @sqlServerBackfill
+# 审核计划后，仅对隔离库执行：
+& performance/scripts/backfill-processing-occurred-index.ps1 @sqlServerBackfill -Apply -AllowDangerousActionExecution
+```
+
+脚本逐张验证物理表后缀与现有索引，默认只写计划和反向`DROP INDEX`清单；默认审计文件为计划路径加`.audit.log`，可用`-AuditPath`覆盖。实际执行前必须核对目标数据库名称。SQL Server默认使用集成认证；若提供`-User`，密码只从`SQLCMDPASSWORD`环境变量读取。建索引可能占用I/O和锁，应在生产维护窗口按审查结果分批操作。

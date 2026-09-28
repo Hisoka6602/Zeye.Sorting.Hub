@@ -104,6 +104,39 @@ public sealed class InMemoryWebRequestAuditLogRepository : IWebRequestAuditLogRe
     }
 
     /// <summary>
+    /// 批量写入 Web 请求审计日志。
+    /// </summary>
+    /// <param name="auditLogs">审计日志集合。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>仓储结果。</returns>
+    public async Task<RepositoryResult> AddRangeAsync(
+        IReadOnlyCollection<WebRequestAuditLog> auditLogs,
+        CancellationToken cancellationToken) {
+        ArgumentNullException.ThrowIfNull(auditLogs);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (AddDelayMilliseconds > 0) {
+            await Task.Delay(AddDelayMilliseconds, cancellationToken);
+        }
+
+        Interlocked.Add(ref _writeCount, auditLogs.Count);
+
+        if (ShouldThrowException) {
+            throw new InvalidOperationException("测试仓储抛出异常");
+        }
+
+        if (ShouldReturnFailure) {
+            return RepositoryResult.Fail(_failureMessage, _failureCode);
+        }
+
+        foreach (var auditLog in auditLogs) {
+            _logs.Enqueue(auditLog);
+        }
+
+        return RepositoryResult.Success();
+    }
+
+    /// <summary>
     /// 分页查询日志摘要。
     /// </summary>
     /// <param name="filter">查询过滤条件。</param>
@@ -125,7 +158,7 @@ public sealed class InMemoryWebRequestAuditLogRepository : IWebRequestAuditLogRe
             .Where(log => !filter.IsSuccess.HasValue || log.IsSuccess == filter.IsSuccess.Value)
             .Where(log => string.IsNullOrWhiteSpace(filter.TraceId) || string.Equals(log.TraceId, filter.TraceId.Trim(), StringComparison.Ordinal))
             .Where(log => string.IsNullOrWhiteSpace(filter.CorrelationId) || string.Equals(log.CorrelationId, filter.CorrelationId.Trim(), StringComparison.Ordinal))
-            .Where(log => string.IsNullOrWhiteSpace(filter.RequestPathKeyword) || log.RequestPath.Contains(filter.RequestPathKeyword.Trim(), StringComparison.Ordinal))
+            .Where(log => string.IsNullOrWhiteSpace(filter.RequestPathKeyword) || log.RequestPath.StartsWith(filter.RequestPathKeyword.Trim(), StringComparison.Ordinal))
             .OrderByDescending(log => log.StartedAt)
             .ThenByDescending(log => log.Id)
             .ToList();
@@ -150,7 +183,7 @@ public sealed class InMemoryWebRequestAuditLogRepository : IWebRequestAuditLogRe
             Items = pageItems,
             PageNumber = pageNumber,
             PageSize = pageSize,
-            TotalCount = filtered.Count
+            TotalCount = pageRequest.IncludeTotalCount ? filtered.Count : 0L
         });
     }
 

@@ -42,7 +42,7 @@ public sealed record class QueryIndexRecommendation {
     /// <summary>
     /// 观测到的 P99 耗时（毫秒）。
     /// </summary>
-    public required double ObservedP99Milliseconds { get; init; }
+    public required decimal ObservedP99Milliseconds { get; init; }
 
     /// <summary>
     /// 观测到的调用次数。

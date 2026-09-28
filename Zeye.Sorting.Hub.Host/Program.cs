@@ -29,6 +29,12 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.MigrationGovernance;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Retention;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.WriteBuffering;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using System.IO.Compression;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.Http.Timeouts;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.ResponseCompression;
+using Zeye.Sorting.Hub.Host.Serialization;
 
 // ──────────────────────────────────────────────────────────
 // 启动期引导日志：在 DI 容器就绪之前捕获启动异常
@@ -39,6 +45,12 @@ const string UrlsConfigKey = "urls";
 try {
     var startupLogger = LogManager.GetLogger($"{nameof(Program)}.Startup");
     var builder = WebApplication.CreateBuilder(args);
+    builder.WebHost.ConfigureKestrel(static options => {
+        // 请求体硬上限用于在 JSON 反序列化前阻断异常大批次。
+        options.Limits.MaxRequestBodySize = 8L * 1024L * 1024L;
+        options.Limits.RequestHeadersTimeout = TimeSpan.FromSeconds(15);
+        options.Limits.KeepAliveTimeout = TimeSpan.FromMinutes(2);
+    });
     var hostingOptions = builder.Configuration.GetSection("Hosting").Get<HostingOptions>() ?? new HostingOptions();
     var urlsFromConfiguration = builder.Configuration[UrlsConfigKey];
     if (string.IsNullOrWhiteSpace(urlsFromConfiguration)) {
@@ -69,19 +81,14 @@ try {
     builder.Services.Configure<HostingOptions>(builder.Configuration.GetSection("Hosting"));
     builder.Services.Configure<AuditReadOnlyApiOptions>(builder.Configuration.GetSection(AuditReadOnlyApiOptions.SectionName));
     builder.Services.Configure<ResourceThresholdsOptions>(builder.Configuration.GetSection(ResourceThresholdsOptions.SectionName));
+    builder.Services.Configure<HostOptions>(static options => {
+        options.ServicesStopConcurrently = true;
+        options.ShutdownTimeout = TimeSpan.FromSeconds(30);
+        options.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.StopHost;
+    });
     builder.Services.AddObjectStorageOptions(builder.Configuration);
     builder.Services.AddHostedService<LogCleanupService>();
     builder.Services.AddHostedService<DevelopmentBrowserLauncherHostedService>();
-    builder.Services.AddHostedService<DatabaseConnectionWarmupHostedService>();
-    builder.Services.AddHostedService<ParcelBatchWriteFlushHostedService>();
-    builder.Services.AddHostedService<ShardingPrebuildHostedService>();
-    builder.Services.AddHostedService<ShardingInspectionHostedService>();
-    builder.Services.AddHostedService<DataArchiveHostedService>();
-    builder.Services.AddHostedService<BackupHostedService>();
-    builder.Services.AddHostedService<DataRetentionHostedService>();
-    builder.Services.AddHostedService<BaselineDataValidationHostedService>();
-    builder.Services.AddHostedService<QueryGovernanceReportHostedService>();
-    builder.Services.AddHostedService<OutboxDispatchHostedService>();
     builder.Services.AddSingleton<MigrationGovernanceHostedService>();
     builder.Services.AddHostedService(static serviceProvider =>
         serviceProvider.GetRequiredService<MigrationGovernanceHostedService>());
@@ -92,6 +99,19 @@ try {
     // 显式替换 IAutoTuningObservability：无论 AddSortingHubPersistence 内是否已注册占位空实现，
     // Replace 均保证最终容器中只存在真实的日志观测实现，与注册顺序无关。
     builder.Services.Replace(ServiceDescriptor.Singleton<IAutoTuningObservability, AutoTuningLoggerObservability>());
+    // 数据库启动链路严格按“迁移治理 -> 初始化 -> 预热/后台任务”顺序注册，避免后台查询抢跑迁移。
+    builder.Services.AddHostedService<DatabaseInitializerHostedService>();
+    builder.Services.AddHostedService<DatabaseConnectionWarmupHostedService>();
+    builder.Services.AddHostedService<ParcelBatchWriteFlushHostedService>();
+    builder.Services.AddHostedService<ShardingPrebuildHostedService>();
+    builder.Services.AddHostedService<ShardingInspectionHostedService>();
+    builder.Services.AddHostedService<DataArchiveHostedService>();
+    builder.Services.AddHostedService<BackupHostedService>();
+    builder.Services.AddHostedService<DataRetentionHostedService>();
+    builder.Services.AddHostedService<BaselineDataValidationHostedService>();
+    builder.Services.AddHostedService<QueryGovernanceReportHostedService>();
+    builder.Services.AddHostedService<OutboxDispatchHostedService>();
+    builder.Services.AddHostedService<DatabaseAutoTuningHostedService>();
     // ──────────────────────────────────────────────────────
     // 健康检查：存活探针（/health/live）+ 就绪探针（/health/ready）
     //   - /health/live   仅判断进程健康（无依赖检查），用于容器重启决策
@@ -106,26 +126,61 @@ try {
             tags: ["ready"])
         .AddCheck<BaselineDataHealthCheck>(
             name: "baseline-data",
-            tags: ["ready"])
+            tags: ["deep"])
         .AddCheck<OutboxHealthCheck>(
             name: "outbox",
-            tags: ["ready"])
+            tags: ["deep"])
         .AddCheck<BackupHealthCheck>(
             name: "backup",
-            tags: ["ready"])
+            tags: ["deep"])
         .AddCheck<ReadOnlyDatabaseHealthCheck>(
             name: "read-only-database",
-            tags: ["ready"])
+            tags: ["deep"])
         .AddCheck<DataRetentionHealthCheck>(
             name: "data-retention",
-            tags: ["ready"])
+            tags: ["deep"])
         .AddCheck<MigrationGovernanceHealthCheck>(
             name: "migration-governance",
-            tags: ["ready"])
+            tags: ["deep"])
         .AddCheck<ShardingGovernanceHealthCheck>(
             name: "sharding-governance",
-            tags: ["ready"]);
+            tags: ["deep"]);
     builder.Services.AddProblemDetails();
+    builder.Services.ConfigureHttpJsonOptions(static options => {
+        options.SerializerOptions.TypeInfoResolverChain.Insert(0, SortingHubJsonSerializerContext.Default);
+    });
+    builder.Services.AddResponseCompression(options => {
+        options.EnableForHttps = true;
+        options.Providers.Add<BrotliCompressionProvider>();
+        options.Providers.Add<GzipCompressionProvider>();
+        options.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(["application/problem+json"]);
+    });
+    builder.Services.Configure<BrotliCompressionProviderOptions>(static options => {
+        options.Level = CompressionLevel.Fastest;
+    });
+    builder.Services.Configure<GzipCompressionProviderOptions>(static options => {
+        options.Level = CompressionLevel.Fastest;
+    });
+    builder.Services.AddRequestTimeouts(options => {
+        options.DefaultPolicy = new RequestTimeoutPolicy {
+            Timeout = TimeSpan.FromSeconds(15),
+            TimeoutStatusCode = StatusCodes.Status504GatewayTimeout
+        };
+    });
+    builder.Services.AddRateLimiter(options => {
+        options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+        options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(static _ =>
+            RateLimitPartition.GetConcurrencyLimiter(
+                "global-http-concurrency",
+                static _ => new ConcurrencyLimiterOptions {
+                    PermitLimit = 200,
+                    QueueLimit = 100,
+                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst
+                }));
+    });
+    builder.Services.AddOutputCache(options => {
+        options.AddPolicy("short-diagnostics", policy => policy.Expire(TimeSpan.FromSeconds(3)));
+    });
     builder.Services
         .AddAuthentication(GuardedAuthenticationHandler.SchemeName)
         .AddScheme<AuthenticationSchemeOptions, GuardedAuthenticationHandler>(GuardedAuthenticationHandler.SchemeName, static _ => { });
@@ -156,6 +211,7 @@ try {
     builder.Services.AddScoped<GetParcelPagedQueryService>();
     builder.Services.AddScoped<GetParcelCursorPagedQueryService>();
     builder.Services.AddScoped<GetParcelByIdQueryService>();
+    builder.Services.AddScoped<ParcelProcessingApplicationService>();
     builder.Services.AddScoped<GetAdjacentParcelsQueryService>();
     builder.Services.AddScoped<IdempotencyGuardService>();
     builder.Services.AddScoped<CreateParcelCommandService>();
@@ -175,12 +231,8 @@ try {
     builder.Services.AddScoped<DispatchOutboxMessageCommandService>();
     builder.Services.AddWebRequestAuditLogging(builder.Configuration);
 
-    // Host 启动时执行持久化初始化
-    builder.Services.AddHostedService<DatabaseInitializerHostedService>();
-    builder.Services.AddHostedService<DatabaseAutoTuningHostedService>();
-
     var app = builder.Build();
-    app.UseWebRequestAuditLogging();
+    app.UseResponseCompression();
 
     // ──────────────────────────────────────────────────────
     // 全局异常出口：统一 ProblemDetails + 异常日志落盘
@@ -231,8 +283,13 @@ try {
         app.UseHttpsRedirection();
     }
     app.UseRouting();
+    // 路由解析后再进入审计，使中间件可以按端点元数据和路径排除探针流量。
+    app.UseWebRequestAuditLogging();
+    app.UseRequestTimeouts();
+    app.UseRateLimiter();
     app.UseAuthentication();
     app.UseAuthorization();
+    app.UseOutputCache();
     var isSwaggerEnabled = app.Environment.IsDevelopment() && hostingOptions.Swagger.Enabled;
     if (isSwaggerEnabled) {
         app.UseSwagger(options => {
@@ -260,6 +317,7 @@ try {
         ResponseWriter = HealthCheckResponseWriter.WriteJsonResponseAsync
     })
     .WithName("LivenessProbe")
+    .DisableRateLimiting()
     .WithSummary("存活探针")
     .WithDescription("进程级存活探测，不包含依赖检查。容器重启策略依据此端点决策。");
 
@@ -269,16 +327,30 @@ try {
         ResponseWriter = HealthCheckResponseWriter.WriteJsonResponseAsync
     })
     .WithName("ReadinessProbe")
+    .DisableRateLimiting()
     .WithSummary("就绪探针")
     .WithDescription("包含数据库连接探测，表示实例可接受流量。流量切入决策依据此端点。");
+
+    app.MapHealthChecks("/health/deep", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions {
+        // 深度诊断同时执行流量关键项与后台治理项，不应作为高频容器探针。
+        Predicate = static check => check.Tags.Contains("ready") || check.Tags.Contains("deep"),
+        ResponseWriter = HealthCheckResponseWriter.WriteJsonResponseAsync
+    })
+    .WithName("DeepHealthDiagnostics")
+    .DisableRateLimiting()
+    .WithSummary("深度健康诊断")
+    .WithDescription("包含备份、归档、Outbox、迁移与分片治理，仅用于低频运维诊断。");
 
     // 兼容端点：保持旧版 /health 接入链路可用
     app.MapGet("/health", () => Results.Ok(new { status = "Healthy" }))
         .WithName("HealthCheck")
+        .DisableRateLimiting()
         .WithSummary("服务健康检查（兼容端点）")
         .WithDescription("兼容历史接入路径，等价于存活探针。建议新接入方改用 /health/live 或 /health/ready。");
     // Parcel 只读查询端点：统一走 Application 查询服务，不直接暴露领域模型。
     app.MapParcelReadOnlyApis();
+    app.MapParcelAnalyticsApis();
+    app.MapParcelProcessingApis();
     // Parcel 管理端写接口：普通写操作 + 危险治理接口（cleanup-expired）分开治理。
     app.MapParcelAdminApis();
     // 审计日志只读查询端点：默认关闭，需显式开启配置后再接线。

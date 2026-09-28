@@ -28,7 +28,7 @@ public static class ParcelReadOnlyApiRouteExtensions {
         group.MapGet(string.Empty, GetParcelListAsync)
             .WithName("GetParcelList")
             .WithSummary("分页查询 Parcel 列表")
-            .WithDescription("按页码、分页大小与可选过滤条件（条码检索词、集包号、状态、异常类型、格口、扫码时间范围）查询包裹摘要列表。时间参数必须为本地时间字符串，不允许 UTC 或时区偏移。未指定时间范围时默认仅查询最近 24 小时；页码最大限制为 10000。\n\nBarCodeKeyword Provider 语义：MySQL 使用 FULLTEXT Boolean 模式，其他 Provider 使用 Contains 子串匹配。")
+            .WithDescription("按页码、分页大小与可选过滤条件（条码检索词、集包号、状态、异常类型、格口、扫码时间范围）查询包裹摘要列表。时间参数必须为本地时间字符串，不允许 UTC 或时区偏移。未指定时间范围时默认仅查询最近 24 小时；页码最大限制为 1000。\n\nBarCodeKeyword Provider 语义：MySQL 使用 FULLTEXT Boolean 模式，其他 Provider 使用 Contains 子串匹配。")
             .Produces<ParcelListResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest);
 
@@ -78,6 +78,7 @@ public static class ParcelReadOnlyApiRouteExtensions {
             var request = new ParcelListRequest {
                 PageNumber = query.PageNumber,
                 PageSize = query.PageSize,
+                IncludeTotalCount = query.IncludeTotalCount ?? false,
                 BarCodeKeyword = query.BarCodeKeyword,
                 BagCode = query.BagCode,
                 WorkstationName = query.WorkstationName,

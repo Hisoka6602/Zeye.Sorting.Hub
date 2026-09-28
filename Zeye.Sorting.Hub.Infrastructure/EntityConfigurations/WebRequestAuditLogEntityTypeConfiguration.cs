@@ -30,16 +30,16 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
             builder.Property(x => x.ResourceId).HasMaxLength(128);
 
             // 写优化索引：围绕时间序列、追踪链路与高频筛选组合建立索引。
-            builder.HasIndex(x => x.StartedAt).HasDatabaseName(WebRequestAuditLogIndexNames.StartedAt);
-            builder.HasIndex(x => new { x.StatusCode, x.StartedAt }).HasDatabaseName(WebRequestAuditLogIndexNames.StatusCodeStartedAt);
-            builder.HasIndex(x => new { x.IsSuccess, x.StartedAt }).HasDatabaseName(WebRequestAuditLogIndexNames.IsSuccessStartedAt);
-            builder.HasIndex(x => new { x.OperationName, x.StartedAt }).HasDatabaseName(WebRequestAuditLogIndexNames.OperationNameStartedAt);
-            builder.HasIndex(x => new { x.RequestPath, x.StartedAt }).HasDatabaseName(WebRequestAuditLogIndexNames.RequestPathStartedAt);
+            builder.HasIndex(x => new { x.StartedAt, x.Id }).HasDatabaseName(WebRequestAuditLogIndexNames.StartedAt);
+            builder.HasIndex(x => new { x.StatusCode, x.StartedAt, x.Id }).HasDatabaseName(WebRequestAuditLogIndexNames.StatusCodeStartedAt);
+            builder.HasIndex(x => new { x.IsSuccess, x.StartedAt, x.Id }).HasDatabaseName(WebRequestAuditLogIndexNames.IsSuccessStartedAt);
+            builder.HasIndex(x => new { x.OperationName, x.StartedAt, x.Id }).HasDatabaseName(WebRequestAuditLogIndexNames.OperationNameStartedAt);
+            builder.HasIndex(x => new { x.RequestPath, x.StartedAt, x.Id }).HasDatabaseName(WebRequestAuditLogIndexNames.RequestPathStartedAt);
             builder.HasIndex(x => x.TraceId).HasDatabaseName(WebRequestAuditLogIndexNames.TraceId);
             builder.HasIndex(x => x.CorrelationId).HasDatabaseName(WebRequestAuditLogIndexNames.CorrelationId);
-            builder.HasIndex(x => new { x.UserId, x.StartedAt }).HasDatabaseName(WebRequestAuditLogIndexNames.UserIdStartedAt);
-            builder.HasIndex(x => new { x.TenantId, x.StartedAt }).HasDatabaseName(WebRequestAuditLogIndexNames.TenantIdStartedAt);
-            builder.HasIndex(x => new { x.AuditResourceType, x.ResourceId, x.StartedAt }).HasDatabaseName(WebRequestAuditLogIndexNames.AuditResourceTypeResourceIdStartedAt);
+            builder.HasIndex(x => new { x.UserId, x.StartedAt, x.Id }).HasDatabaseName(WebRequestAuditLogIndexNames.UserIdStartedAt);
+            builder.HasIndex(x => new { x.TenantId, x.StartedAt, x.Id }).HasDatabaseName(WebRequestAuditLogIndexNames.TenantIdStartedAt);
+            builder.HasIndex(x => new { x.AuditResourceType, x.ResourceId, x.StartedAt, x.Id }).HasDatabaseName(WebRequestAuditLogIndexNames.AuditResourceTypeResourceIdStartedAt);
 
             builder.HasOne(x => x.Detail)
                 .WithOne(x => x.WebRequestAuditLog)

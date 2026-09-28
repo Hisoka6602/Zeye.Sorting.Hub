@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.Extensions.Configuration;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
 
@@ -34,11 +35,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
     internal sealed class SqlServerContextFactory {
 
         /// <summary>
-        /// 设计时兜底占位连接字符串，仅在无法从 <c>appsettings.json</c> 读取时使用。
-        /// 此值仅用于 <c>dotnet ef</c> 工具链的设计时模型分析，不影响运行时连接。
+        /// 无凭据设计时占位连接字符串，仅在无法从配置读取时用于模型分析，不用于数据库更新。
         /// </summary>
         private const string FallbackConnectionString =
-            "Server=127.0.0.1,1433;Database=zeye_sorting_hub;User Id=sa;Password=Admin@1234;TrustServerCertificate=True;Encrypt=False;";
+            "Server=127.0.0.1,1433;Database=design_time_only;Integrated Security=True;TrustServerCertificate=True;Encrypt=False;";
 
         /// <summary>
         /// 为 SQL Server 场景构建设计时 DbContext（供统一设计时工厂内部复用）。
@@ -55,7 +55,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
             var connectionString = config.GetConnectionString(ConfiguredProviderNames.SqlServer) ?? FallbackConnectionString;
 
             var options = new DbContextOptionsBuilder<SortingHubDbContext>()
-                .UseSqlServer(connectionString)
+                .UseSqlServer(connectionString, sqlServer => sqlServer.MigrationsAssembly(SqlServerMigrationAssembly.Name))
                 .Options;
 
             return new SortingHubDbContext(options);

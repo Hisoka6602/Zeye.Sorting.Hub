@@ -66,7 +66,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <summary>
         /// 高 P99 判定阈值（毫秒）。
         /// </summary>
-        private const double HighP99ThresholdMilliseconds = 1000d;
+        private const decimal HighP99ThresholdMilliseconds = 1000m;
         /// <summary>
         /// 高超时率判定阈值（百分比）。
         /// </summary>
@@ -318,7 +318,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// 当 sharding hit rate 低于此值时，阻断影响分表查询的自动索引动作并记录告警。
         /// 可填写范围：0.0~1.0，0.0 = 不启用，默认值 0.0。
         /// </summary>
-        private readonly double _shardingGovernanceHitRateThreshold;
+        private readonly decimal _shardingGovernanceHitRateThreshold;
         /// <summary>
         /// 表级热度计数（用于策略评估）。
         /// </summary>
@@ -455,7 +455,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             _resourceThresholds = resourceThresholdsOptions.Value;
             _monthlyReportArchivePath = configuration[AutoTuningConfigurationReader.BuildAutoTuningKey("MonthlyReportArchivePath")] ?? string.Empty;
             _annualDashboardArchivePath = configuration[AutoTuningConfigurationReader.BuildAutoTuningKey("AnnualDashboardArchivePath")] ?? string.Empty;
-            _shardingGovernanceHitRateThreshold = (double)Math.Clamp(
+            _shardingGovernanceHitRateThreshold = Math.Clamp(
                 AutoTuningConfigurationReader.GetNonNegativeDecimalOrDefault(configuration, AutoTuningConfigurationReader.BuildAutoTuningKey("ShardingGovernanceHitRateThreshold"), 0m),
                 0m, 1m);
         }
@@ -614,9 +614,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <param name="cancellationToken">取消令牌，用于归档写文件时的优雅停止。</param>
         private async Task EmitMonthlyReportAsync(SlowQueryAnalysisResult result, CancellationToken cancellationToken) {
             // 无动作尝试时成功率默认为 100%（无失败即满分，符合无操作无风险语义）
-            const double FullSuccessRatePercent = 100d;
+            const decimal FullSuccessRatePercent = 100m;
             var analysisSuccessRate = _monthlyActionsAttempted > 0
-                ? (double)_monthlyActionsSucceeded / _monthlyActionsAttempted * 100
+                ? (decimal)_monthlyActionsSucceeded / _monthlyActionsAttempted * 100m
                 : FullSuccessRatePercent;
             NLogLogger.Info(
                 "月度巡检报告：Provider={Provider}, GeneratedTime={GeneratedTime}, AnalysisCycles={AnalysisCycles}, ActionsAttempted={ActionsAttempted}, ActionsSucceeded={ActionsSucceeded}, ActionsFailed={ActionsFailed}, ActionSuccessRate={ActionSuccessRate:F1}%, RollbackCount={RollbackCount}, AlertCount={AlertCount}, ActiveHotTables={ActiveHotTables}",
@@ -666,7 +666,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <param name="result">分析结果（含生成时间与慢查询 Top 快照）。</param>
         /// <param name="actionSuccessRate">动作成功率（百分比）。</param>
         /// <param name="cancellationToken">取消令牌，透传给文件写入以支持宿主停止时优雅中断。</param>
-        private async Task ArchiveMonthlyReportToFileAsync(SlowQueryAnalysisResult result, double actionSuccessRate, CancellationToken cancellationToken) {
+        private async Task ArchiveMonthlyReportToFileAsync(SlowQueryAnalysisResult result, decimal actionSuccessRate, CancellationToken cancellationToken) {
             try {
                 // 步骤 1：解析归档目录为绝对路径
                 var archiveDir = Path.IsPathRooted(_monthlyReportArchivePath)
@@ -704,7 +704,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <param name="result">分析结果。</param>
         /// <param name="actionSuccessRate">动作成功率（百分比）。</param>
         /// <returns>报告文本。</returns>
-        private string BuildMonthlyReportContent(SlowQueryAnalysisResult result, double actionSuccessRate) {
+        private string BuildMonthlyReportContent(SlowQueryAnalysisResult result, decimal actionSuccessRate) {
             var sb = new System.Text.StringBuilder();
             sb.AppendLine("========================================");
             sb.AppendLine($"月度巡检报告");
@@ -734,9 +734,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <param name="result">分析结果。</param>
         /// <param name="cancellationToken">取消令牌，用于归档写文件时的优雅停止。</param>
         private async Task EmitAnnualDashboardAsync(SlowQueryAnalysisResult result, CancellationToken cancellationToken) {
-            const double FullSuccessRatePercent = 100d;
+            const decimal FullSuccessRatePercent = 100m;
             var annualSuccessRate = _annualActionsAttempted > 0
-                ? (double)_annualActionsSucceeded / _annualActionsAttempted * 100
+                ? (decimal)_annualActionsSucceeded / _annualActionsAttempted * 100m
                 : FullSuccessRatePercent;
             var pendingRollbackCount = _pendingRollbackByFingerprint.Count;
             var activeHotTables = _tableHeatByTable.Count(static pair => pair.Value > 0);
@@ -786,7 +786,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <param name="result">分析结果（含生成时间）。</param>
         /// <param name="actionSuccessRate">动作成功率（百分比）。</param>
         /// <param name="cancellationToken">取消令牌，透传给文件写入以支持宿主停止时优雅中断。</param>
-        private async Task ArchiveAnnualDashboardToFileAsync(SlowQueryAnalysisResult result, double actionSuccessRate, CancellationToken cancellationToken) {
+        private async Task ArchiveAnnualDashboardToFileAsync(SlowQueryAnalysisResult result, decimal actionSuccessRate, CancellationToken cancellationToken) {
             try {
                 // 步骤 1：解析归档目录为绝对路径
                 var archiveDir = Path.IsPathRooted(_annualDashboardArchivePath)
@@ -822,7 +822,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <param name="result">分析结果（含生成时间与慢查询 Top 快照）。</param>
         /// <param name="actionSuccessRate">年度动作成功率（百分比）。</param>
         /// <returns>年度看板文本。</returns>
-        private string BuildAnnualDashboardContent(SlowQueryAnalysisResult result, double actionSuccessRate) {
+        private string BuildAnnualDashboardContent(SlowQueryAnalysisResult result, decimal actionSuccessRate) {
             var sb = new System.Text.StringBuilder();
             sb.AppendLine("========================================");
             sb.AppendLine($"年度运行看板");
@@ -850,8 +850,12 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             sb.AppendLine();
             return sb.ToString();
         }
-
-
+        /// <summary>
+        /// 执行本轮数据库自动调优动作。
+        /// </summary>
+        /// <param name="result">慢查询分析结果。</param>
+        /// <param name="metricsByFingerprint">按指纹索引的查询指标。</param>
+        /// <param name="cancellationToken">取消令牌。</param>
         private async Task ExecuteAutoTuningActionsAsync(
             SlowQueryAnalysisResult result,
             IReadOnlyDictionary<string, SlowQueryMetric> metricsByFingerprint,
@@ -935,8 +939,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                             TableKey: tableKey,
                             CreatedTime: now,
                             CreatedCycle: _analysisCycleCounter,
-                            BaselineP95Milliseconds: currentMetric?.P95Milliseconds ?? 0d,
-                            BaselineP99Milliseconds: currentMetric?.P99Milliseconds ?? 0d,
+                            BaselineP95Milliseconds: currentMetric?.P95Milliseconds ?? 0m,
+                            BaselineP99Milliseconds: currentMetric?.P99Milliseconds ?? 0m,
                             BaselineErrorRatePercent: currentMetric?.ErrorRatePercent ?? 0m,
                             BaselineTimeoutRatePercent: currentMetric?.TimeoutRatePercent ?? 0m,
                             BaselineDeadlockCount: currentMetric?.DeadlockCount ?? 0,
@@ -985,7 +989,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     var evidenceForUnavailable = BuildEvidenceContext(rollback.ActionId, rollback.Fingerprint);
                     _observability.EmitMetric(
                         "autotuning.validation.metric_unavailable",
-                        1d,
+                        1m,
                         new Dictionary<string, string> {
                             ["provider"] = _dialect.ProviderName,
                             ["stage"] = AutoTuningClosedLoopStage.Verify.ToString(),
@@ -1118,7 +1122,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     var triggerReason = severeRegression ? "validation-severe-rollback-triggered" : "validation-regression-rollback-triggered";
                     _observability.EmitMetric(
                         "autotuning.validation.rollback_triggered",
-                        1d,
+                        1m,
                         new Dictionary<string, string> {
                             ["provider"] = _dialect.ProviderName,
                             ["stage"] = AutoTuningClosedLoopStage.Verify.ToString(),
@@ -1286,7 +1290,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 _annualActionsAttempted++;
             }
             if (executed) {
-                _observability.EmitMetric("autotuning.action.executed", 1d, new Dictionary<string, string> {
+                _observability.EmitMetric("autotuning.action.executed", 1m, new Dictionary<string, string> {
                     ["provider"] = _dialect.ProviderName,
                     ["is_rollback"] = isRollback ? "true" : "false"
                 });
@@ -1342,17 +1346,17 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         /// <summary>计算百分比增幅（仅统计正向增长）。</summary>
-        private static decimal CalculateIncreasePercent(double previousValue, double currentValue) {
-            if (previousValue <= 0d) {
-                return currentValue > 0d ? 100m : 0m;
+        private static decimal CalculateIncreasePercent(decimal previousValue, decimal currentValue) {
+            if (previousValue <= 0m) {
+                return currentValue > 0m ? 100m : 0m;
             }
 
             var increase = currentValue - previousValue;
-            if (increase <= 0d) {
+            if (increase <= 0m) {
                 return 0m;
             }
 
-            return (decimal)(increase / previousValue * 100d);
+            return increase / previousValue * 100m;
         }
 
         /// <summary>根据锁等待超时标志推断自动调优不可用原因。</summary>
@@ -1418,7 +1422,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 evidence.CorrelationId);
             _observability.EmitMetric(
                 "autotuning.closed_loop.stage_transition",
-                1d,
+                1m,
                 new Dictionary<string, string> {
                     ["provider"] = _dialect.ProviderName,
                     ["stage"] = _currentStage.ToString(),
@@ -1459,7 +1463,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             var evidence = BuildEvidenceContext(rollback.ActionId, rollback.Fingerprint);
             tags["evidence_id"] = evidence.EvidenceId;
             tags["correlation_id"] = evidence.CorrelationId;
-            _observability.EmitMetric("autotuning.validation.result", 1d, tags);
+            _observability.EmitMetric("autotuning.validation.result", 1m, tags);
             _observability.EmitEvent(
                 "autotuning.validation.result",
                 level,
@@ -1526,7 +1530,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             var seed = $"{rollback.ActionId}:{rollback.Fingerprint}";
             var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(seed));
             var bucket = BinaryPrimitives.ReadUInt32LittleEndian(hashBytes) % 10000u;
-            var threshold = (int)Math.Round((double)(_planProbeSampleRate * 10000m), MidpointRounding.AwayFromZero);
+            var threshold = (int)decimal.Round(_planProbeSampleRate * 10000m, MidpointRounding.AwayFromZero);
             return bucket < (uint)threshold;
         }
 
@@ -1684,7 +1688,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <returns>需要阻断 CreateIndex 建议的候选 SQL 指纹集合（匹配到分表查询且 hit rate 不达标）。</returns>
         private HashSet<string> ValidateShardingStrategyGate(IReadOnlyList<SlowQueryMetric> metrics) {
             // 门禁未启用（阈值为 0）则返回空集合，不阻断任何候选
-            if (_shardingGovernanceHitRateThreshold <= 0d || metrics.Count == 0) {
+            if (_shardingGovernanceHitRateThreshold <= 0m || metrics.Count == 0) {
                 return [];
             }
 
@@ -1704,7 +1708,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 return [];
             }
 
-            var hitRate = Math.Clamp((double)shardingHitCalls / totalCalls, 0d, 1d);
+            var hitRate = decimal.Clamp((decimal)shardingHitCalls / totalCalls, 0m, 1m);
 
             // 步骤 2：hit rate 满足阈值则不拦截
             if (hitRate >= _shardingGovernanceHitRateThreshold) {
@@ -1891,7 +1895,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             // 步骤 1：对历史热度做衰减（仅全自动模式下维护热度，避免旧热点长期占用容量）。
             if (_enableFullAutomation) {
                 foreach (var table in _tableHeatByTable.Keys.ToArray()) {
-                    var decayed = (int)Math.Floor(_tableHeatByTable[table] * 0.9d);
+                    var decayed = (int)decimal.Floor(_tableHeatByTable[table] * 0.9m);
                     if (decayed <= 0) {
                         _tableHeatByTable.Remove(table);
                         continue;
@@ -1962,15 +1966,15 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
 
             var shardingHitCalls = metrics.Sum(static metric => IsShardingHitQuery(metric.SampleSql) ? metric.CallCount : 0);
-            var hitRate = Math.Clamp((double)shardingHitCalls / totalCalls, 0d, 1d);
+            var hitRate = decimal.Clamp((decimal)shardingHitCalls / totalCalls, 0m, 1m);
             var crossTableCalls = metrics.Sum(static metric => IsCrossTableQuery(metric.SampleSql) ? metric.CallCount : 0);
-            var crossTableRatio = Math.Clamp((double)crossTableCalls / totalCalls, 0d, 1d);
+            var crossTableRatio = decimal.Clamp((decimal)crossTableCalls / totalCalls, 0m, 1m);
 
-            var hotTableSkew = 0d;
+            var hotTableSkew = 0m;
             if (tableSamples.Count > 0) {
                 var maxCalls = tableSamples.Values.Max(static sample => sample.Calls);
-                var averageCalls = tableSamples.Values.Average(static sample => sample.Calls);
-                hotTableSkew = averageCalls > 0d ? maxCalls / averageCalls : 0d;
+                var averageCalls = tableSamples.Values.Sum(static sample => sample.Calls) / (decimal)tableSamples.Count;
+                hotTableSkew = averageCalls > 0m ? maxCalls / averageCalls : 0m;
             }
 
             var tags = new Dictionary<string, string> {
@@ -1991,8 +1995,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             var ordered = snapshots.ToArray();
             var first = ordered[0];
             var last = ordered[^1];
-            var observationWindowSeconds = (last.CapturedLocalTime - first.CapturedLocalTime).TotalSeconds;
-            if (observationWindowSeconds <= 0d) {
+            var observationWindowSeconds = (last.CapturedLocalTime - first.CapturedLocalTime).Ticks / (decimal)TimeSpan.TicksPerSecond;
+            if (observationWindowSeconds <= 0m) {
                 NLogLogger.Warn(
                     "闭环自治查询体量趋势预测跳过：Provider={Provider}, Table={Table}, ElapsedSeconds={ElapsedSeconds:F0}, Reason={Reason}",
                     _dialect.ProviderName,
@@ -2002,7 +2006,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 return;
             }
 
-            var minimumElapsedSeconds = _analyzeIntervalSeconds * 3d;
+            var minimumElapsedSeconds = _analyzeIntervalSeconds * 3m;
             if (observationWindowSeconds < minimumElapsedSeconds) {
                 NLogLogger.Info(
                     "闭环自治查询体量趋势预测跳过：Provider={Provider}, Table={Table}, ElapsedSeconds={ElapsedSeconds:F0}, MinimumElapsedSeconds={MinimumElapsedSeconds:F0}, Reason={Reason}",
@@ -2015,8 +2019,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
 
             // 步骤 2：按窗口样本均值估算投影体量（AffectedRows 为每轮窗口值，不能直接做首尾差分增长）。
-            var averageRowsPerCycle = ordered.Average(static snapshot => (double)snapshot.AffectedRows);
-            var cyclesPerDay = TimeSpan.FromDays(1).TotalSeconds / _analyzeIntervalSeconds;
+            var averageRowsPerCycle = ordered.Sum(static snapshot => snapshot.AffectedRows) / (decimal)ordered.Length;
+            var cyclesPerDay = TimeSpan.TicksPerDay / (decimal)TimeSpan.TicksPerSecond / _analyzeIntervalSeconds;
             var projectedWindowRows = averageRowsPerCycle * cyclesPerDay * _capacityProjectionDays;
             if (projectedWindowRows < _capacityGrowthAlertRows) {
                 return;
@@ -2169,7 +2173,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             AuditBaselineItem("TriggerCount", _configuredTriggerCount, 3);
             AuditBaselineItem("MaxActionsPerCycle", _configuredMaxSuggestionsPerCycle, 3);
             AuditBaselineItem("AlertP99Milliseconds", _configuredAlertP99Milliseconds, 500);
-            AuditBaselineItem("AlertTimeoutRatePercent", (double)_configuredAlertTimeoutRatePercent, 1d);
+            AuditBaselineItem("AlertTimeoutRatePercent", _configuredAlertTimeoutRatePercent, 1m);
             AuditBaselineItem("AlertDeadlockCount", _configuredAlertDeadlockCount, 1);
 
             // 资源阈值边界审计：记录配置的连接池与内存告警阈值，超出推荐上限时告警
@@ -2193,18 +2197,18 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
         /// <summary>输出单个参数的基线审计结果。</summary>
         private void AuditBaselineItem(string key, int configured, int baseline) {
-            AuditBaselineItem(key, (double)configured, baseline);
+            AuditBaselineItem(key, configured, baseline);
         }
 
         /// <summary>审计单条基线配置项是否在合理范围，偏差时写入告警日志。</summary>
-        private void AuditBaselineItem(string key, double configured, double baseline) {
-            if (Math.Abs(configured - baseline) < 0.0001d) {
+        private void AuditBaselineItem(string key, decimal configured, decimal baseline) {
+            if (decimal.Abs(configured - baseline) < 0.0001m) {
                 NLogLogger.Info("运行参数基线审计通过：Key={Key}, Current={Current}, Baseline={Baseline}", key, configured, baseline);
                 return;
             }
 
-            var ratio = baseline <= 0d ? 1d : Math.Abs(configured - baseline) / baseline;
-            var level = ratio >= 0.5d ? "high" : ratio >= 0.2d ? "medium" : "low";
+            var ratio = baseline <= 0m ? 1m : decimal.Abs(configured - baseline) / baseline;
+            var level = ratio >= 0.5m ? "high" : ratio >= 0.2m ? "medium" : "low";
             NLogLogger.Warn(
                 "运行参数基线审计告警：Key={Key}, Current={Current}, Baseline={Baseline}, DeviationLevel={DeviationLevel}, Recommended={Recommended}",
                 key,

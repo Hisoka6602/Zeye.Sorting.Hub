@@ -202,7 +202,6 @@ public sealed class OutboxMessageTests {
         builder.Services.AddScoped<GetOutboxMessagePagedQueryService>();
         builder.Services.AddScoped<DispatchOutboxMessageCommandService>();
         builder.Services.AddSingleton<OutboxDispatchHostedService>();
-        builder.Services.AddHostedService(static serviceProvider => serviceProvider.GetRequiredService<OutboxDispatchHostedService>());
         builder.Services.AddSingleton<OutboxHealthCheck>();
         var app = builder.Build();
         app.UseAuthorization();

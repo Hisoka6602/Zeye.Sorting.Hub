@@ -13,27 +13,41 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
     /// Parcel 聚合 EF Core 映射（Infrastructure 层）
     /// </summary>
     public sealed class ParcelEntityTypeConfiguration : IEntityTypeConfiguration<Parcel> {
+        /// <summary>
+        /// 是否使用 SQL Server 对象键索引配置。
+        /// </summary>
+        private readonly bool _isSqlServer;
+
+        /// <summary>
+        /// 初始化 Parcel 映射配置。
+        /// </summary>
+        /// <param name="isSqlServer">是否使用 SQL Server 提供器。</param>
+        public ParcelEntityTypeConfiguration(bool isSqlServer) {
+            _isSqlServer = isSqlServer;
+        }
+
         /// <summary>配置 Parcel 实体的 EF Core 映射规则（列类型、索引、值对象拥有关系等）。</summary>
         public void Configure(EntityTypeBuilder<Parcel> builder) {
             builder.ToTable("Parcels");
+            builder.Ignore(x => x.ProcessingRecords);
 
             builder.HasKey(x => x.Id);
             builder.Property(x => x.Id).ValueGeneratedNever();
             builder.HasIndex(x => x.ParcelTimestamp);
-            builder.HasIndex(x => x.ScannedTime);
+            builder.HasIndex(x => new { x.ScannedTime, x.Id });
             builder.HasIndex(x => x.CreatedTime);
             // BagCode 等值 + ScannedTime 范围/排序，升级为复合索引覆盖 GetByBagCodeAsync 路径
-            builder.HasIndex(x => new { x.BagCode, x.ScannedTime });
-            builder.HasIndex(x => new { x.Status, x.ScannedTime });
-            builder.HasIndex(x => new { x.NoReadType, x.ScannedTime });
-            builder.HasIndex(x => new { x.RequestStatus, x.ScannedTime });
-            builder.HasIndex(x => new { x.Status, x.ExceptionType, x.ScannedTime });
+            builder.HasIndex(x => new { x.BagCode, x.ScannedTime, x.Id });
+            builder.HasIndex(x => new { x.Status, x.ScannedTime, x.Id });
+            builder.HasIndex(x => new { x.NoReadType, x.ScannedTime, x.Id });
+            builder.HasIndex(x => new { x.RequestStatus, x.ScannedTime, x.Id });
+            builder.HasIndex(x => new { x.Status, x.ExceptionType, x.ScannedTime, x.Id });
             // 保留 (ActualChuteId, DischargeTime) 用于落格时间维度查询/统计
             builder.HasIndex(x => new { x.ActualChuteId, x.DischargeTime });
             // 新增 (ActualChuteId, ScannedTime) 覆盖 GetByChuteAsync 的过滤 + ScannedTime 排序路径
-            builder.HasIndex(x => new { x.ActualChuteId, x.ScannedTime });
-            builder.HasIndex(x => new { x.TargetChuteId, x.ScannedTime });
-            builder.HasIndex(x => new { x.WorkstationName, x.ScannedTime });
+            builder.HasIndex(x => new { x.ActualChuteId, x.ScannedTime, x.Id });
+            builder.HasIndex(x => new { x.TargetChuteId, x.ScannedTime, x.Id });
+            builder.HasIndex(x => new { x.WorkstationName, x.ScannedTime, x.Id });
 
             // BagInfo：多 Parcel -> 1 BagInfo（独立表实体 + 影子外键）
             builder.Property<long?>("BagId").HasColumnName("BagId");
@@ -50,7 +64,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
                 b.Property<long>("Id").ValueGeneratedOnAdd();
                 b.HasKey("Id");
 
-                b.HasIndex("ParcelId");
+                b.HasIndex("ParcelId").IsUnique();
             });
 
             builder.OwnsOne(x => x.ChuteInfo, b => {
@@ -59,7 +73,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
                 b.Property<long>("Id").ValueGeneratedOnAdd();
                 b.HasKey("Id");
 
-                b.HasIndex("ParcelId");
+                b.HasIndex("ParcelId").IsUnique();
                 b.HasIndex("TargetChuteId");
                 b.HasIndex("ActualChuteId");
             });
@@ -70,7 +84,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
                 b.Property<long>("Id").ValueGeneratedOnAdd();
                 b.HasKey("Id");
 
-                b.HasIndex("ParcelId");
+                b.HasIndex("ParcelId").IsUnique();
                 b.HasIndex("SorterCarrierId");
             });
 
@@ -81,7 +95,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
                 b.Property<long>("Id").ValueGeneratedOnAdd();
                 b.HasKey("Id");
 
-                b.HasIndex("ParcelId");
+                b.HasIndex("ParcelId").IsUnique();
                 b.HasIndex("MachineCode");
             });
 
@@ -91,7 +105,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
                 b.Property<long>("Id").ValueGeneratedOnAdd();
                 b.HasKey("Id");
 
-                b.HasIndex("ParcelId");
+                b.HasIndex("ParcelId").IsUnique();
                 b.HasIndex("CarrierNumber");
             });
 
@@ -102,7 +116,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
                 b.Property<long>("Id").ValueGeneratedOnAdd();
                 b.HasKey("Id");
 
-                b.HasIndex("ParcelId");
+                b.HasIndex("ParcelId").IsUnique();
             });
 
             builder.OwnsOne(x => x.ParcelPositionInfo, b => {
@@ -112,7 +126,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
                 b.Property<long>("Id").ValueGeneratedOnAdd();
                 b.HasKey("Id");
 
-                b.HasIndex("ParcelId");
+                b.HasIndex("ParcelId").IsUnique();
             });
 
             // 值对象：一对多（独立表）
@@ -179,7 +193,13 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
                 b.HasIndex("ImageType");
                 b.HasIndex("StorageProvider");
                 b.HasIndex("UploadedAtLocal");
-                b.HasIndex("BucketName", "ObjectKey").HasPrefixLength(128, 512);
+                if (_isSqlServer) {
+                    // SQL Server 的复合键长度限制不允许直接索引完整的 1024 字符对象键。
+                    b.HasIndex("BucketName");
+                }
+                else {
+                    b.HasIndex("BucketName", "ObjectKey").HasPrefixLength(128, 512);
+                }
             });
 
             builder.OwnsMany(x => x.VideoInfos, b => {

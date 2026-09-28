@@ -175,16 +175,13 @@ public sealed class ParcelBatchWriteFlushService {
                 break;
             }
 
-            var waitToReadTask = _writeChannel.WaitToReadAsync(cancellationToken).AsTask();
-            var delayTask = Task.Delay(remainingTime, cancellationToken);
-            var completedTask = await Task.WhenAny(waitToReadTask, delayTask);
-            if (completedTask == delayTask) {
-                break;
+            // 仅创建一个合批计时器；到达窗口后再一次性排空，避免遗留 WaitToRead 任务。
+            await Task.Delay(remainingTime, cancellationToken);
+            while (batch.Count < _options.BatchSize && _writeChannel.TryDequeue(out var delayedItem)) {
+                batch.Add(delayedItem);
             }
 
-            if (!await waitToReadTask) {
-                break;
-            }
+            break;
         }
     }
 
@@ -194,7 +191,7 @@ public sealed class ParcelBatchWriteFlushService {
     /// <param name="batch">待落库批次。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     private async Task FlushBatchAsync(List<BufferedParcelWriteItem> batch, CancellationToken cancellationToken) {
-        using var scope = _serviceScopeFactory.CreateScope();
+        await using var scope = _serviceScopeFactory.CreateAsyncScope();
         var parcelRepository = scope.ServiceProvider.GetRequiredService<IParcelRepository>();
         var parcels = batch.Select(static item => item.Parcel).ToArray();
         RepositoryResult repositoryResult;
@@ -223,7 +220,7 @@ public sealed class ParcelBatchWriteFlushService {
             throw new OperationCanceledException(cancellationToken);
         }
 
-        HandleFailedBatch(batch, failureMessage);
+        await HandleFailedBatchAsync(batch, failureMessage, cancellationToken);
     }
 
     /// <summary>
@@ -246,9 +243,18 @@ public sealed class ParcelBatchWriteFlushService {
     /// </summary>
     /// <param name="batch">失败批次。</param>
     /// <param name="errorMessage">失败消息。</param>
-    private void HandleFailedBatch(
+    private async Task HandleFailedBatchAsync(
         List<BufferedParcelWriteItem> batch,
-        string errorMessage) {
+        string errorMessage,
+        CancellationToken cancellationToken) {
+        var retryDelayMilliseconds = Math.Min(
+            _options.MaxRetryDelayMilliseconds,
+            _options.RetryBaseDelayMilliseconds * (1 << Math.Min(batch.Max(static item => item.RetryCount), 6)));
+        if (retryDelayMilliseconds > 0) {
+            retryDelayMilliseconds += Random.Shared.Next(0, Math.Max(1, _options.RetryJitterMilliseconds));
+            await Task.Delay(retryDelayMilliseconds, cancellationToken);
+        }
+
         // 步骤 1：优先重试；超过最大重试次数后转死信，确保失败项可观测且不阻塞后续批次。
         foreach (var batchItem in batch) {
             var nextRetryCount = batchItem.RetryCount + 1;

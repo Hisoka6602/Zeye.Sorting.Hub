@@ -68,7 +68,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests {
         public string AuthorizationType { get; set; } = string.Empty;
 
         /// <summary>
-        /// User-Agent。
+        /// 客户端用户代理标识。
         /// </summary>
         public string UserAgent { get; set; } = string.Empty;
 

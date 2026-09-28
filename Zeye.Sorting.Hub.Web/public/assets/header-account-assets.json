@@ -1,0 +1,296 @@
+{
+  "P01": {
+    "file": "header-account-P01.png",
+    "source": "P01-workbench.png",
+    "crop": [
+      1362,
+      11,
+      1395,
+      45
+    ],
+    "width": 33,
+    "height": 34,
+    "gap": 9,
+    "offsetY": 0.0
+  },
+  "P02": {
+    "file": "header-account-P02.png",
+    "source": "P02-parcel-list.png",
+    "crop": [
+      1362,
+      11,
+      1395,
+      45
+    ],
+    "width": 33,
+    "height": 34,
+    "gap": 9,
+    "offsetY": 0.0
+  },
+  "P03": {
+    "file": "header-account-P03.png",
+    "source": "P03-parcel-detail.png",
+    "crop": [
+      1454,
+      11,
+      1490,
+      47
+    ],
+    "width": 36,
+    "height": 36,
+    "gap": 11,
+    "offsetY": 1.0
+  },
+  "P04": {
+    "file": "header-account-P04.png",
+    "source": "P04-parcel-create.png",
+    "crop": [
+      1363,
+      11,
+      1396,
+      45
+    ],
+    "width": 33,
+    "height": 34,
+    "gap": 8.5,
+    "offsetY": 0.0
+  },
+  "P05": {
+    "file": "header-account-P05.png",
+    "source": "P05-parcel-batch.png",
+    "crop": [
+      1362,
+      11,
+      1395,
+      45
+    ],
+    "width": 33,
+    "height": 34,
+    "gap": 9,
+    "offsetY": 0.0
+  },
+  "P06": {
+    "file": "header-account-P06.png",
+    "source": "P06-expired-cleanup.png",
+    "crop": [
+      1362,
+      11,
+      1395,
+      45
+    ],
+    "width": 33,
+    "height": 34,
+    "gap": 9,
+    "offsetY": 0.0
+  },
+  "P07": {
+    "file": "header-account-P07.png",
+    "source": "P07-request-audit-list.png",
+    "crop": [
+      1362,
+      11,
+      1395,
+      45
+    ],
+    "width": 33,
+    "height": 34,
+    "gap": 9,
+    "offsetY": 0.0
+  },
+  "P08": {
+    "file": "header-account-P08.png",
+    "source": "P08-request-audit-detail.png",
+    "crop": [
+      1362,
+      11,
+      1395,
+      45
+    ],
+    "width": 33,
+    "height": 34,
+    "gap": 9,
+    "offsetY": 0.0
+  },
+  "P09": {
+    "file": "header-account-P09.png",
+    "source": "P09-slow-query-list.png",
+    "crop": [
+      1453,
+      12,
+      1488,
+      48
+    ],
+    "width": 35,
+    "height": 36,
+    "gap": 12,
+    "offsetY": 0.5
+  },
+  "P10": {
+    "file": "header-account-P10.png",
+    "source": "P10-slow-query-detail.png",
+    "crop": [
+      1363,
+      11,
+      1396,
+      45
+    ],
+    "width": 33,
+    "height": 34,
+    "gap": 8,
+    "offsetY": 0.0
+  },
+  "P11": {
+    "file": "header-account-P11.png",
+    "source": "P11-archive-tasks.png",
+    "crop": [
+      1465,
+      11,
+      1498,
+      45
+    ],
+    "width": 33,
+    "height": 34,
+    "gap": 7,
+    "offsetY": 0.0
+  },
+  "P12": {
+    "file": "header-account-P12.png",
+    "source": "P12-outbox-messages.png",
+    "crop": [
+      1362,
+      11,
+      1395,
+      45
+    ],
+    "width": 33,
+    "height": 34,
+    "gap": 9,
+    "offsetY": 0.0
+  },
+  "P13": {
+    "file": "header-account-P13.png",
+    "source": "P13-health-check.png",
+    "crop": [
+      1453,
+      12,
+      1489,
+      48
+    ],
+    "width": 36,
+    "height": 36,
+    "gap": 11.5,
+    "offsetY": 0.5
+  },
+  "P14": {
+    "file": "header-account-P14.png",
+    "source": "P14-help.png",
+    "crop": [
+      1449,
+      9,
+      1484,
+      43
+    ],
+    "width": 35,
+    "height": 34,
+    "gap": 14,
+    "offsetY": 1.0
+  },
+  "P15b": {
+    "file": "header-account-P15b.png",
+    "source": "P15b-users-roles.png",
+    "crop": [
+      1362,
+      11,
+      1395,
+      45
+    ],
+    "width": 33,
+    "height": 34,
+    "gap": 9,
+    "offsetY": 0.0
+  },
+  "P16": {
+    "file": "header-account-P16.png",
+    "source": "P16-live-operations.png",
+    "crop": [
+      1362,
+      11,
+      1395,
+      45
+    ],
+    "width": 33,
+    "height": 34,
+    "gap": 9,
+    "offsetY": 0.0
+  },
+  "P17": {
+    "file": "header-account-P17.png",
+    "source": "P17-rules.png",
+    "crop": [
+      1362,
+      11,
+      1395,
+      45
+    ],
+    "width": 33,
+    "height": 34,
+    "gap": 9,
+    "offsetY": 0.0
+  },
+  "P18": {
+    "file": "header-account-P18.png",
+    "source": "P18-analytics.png",
+    "crop": [
+      1362,
+      10,
+      1396,
+      43
+    ],
+    "width": 34,
+    "height": 33,
+    "gap": 8.5,
+    "offsetY": 1.5
+  },
+  "P19": {
+    "file": "header-account-P19.png",
+    "source": "P19-backup-recovery.png",
+    "crop": [
+      1458,
+      11,
+      1494,
+      48
+    ],
+    "width": 36,
+    "height": 37,
+    "gap": 8.5,
+    "offsetY": 0.0
+  },
+  "P20": {
+    "file": "header-account-P20.png",
+    "source": "P20-partition-management.png",
+    "crop": [
+      1453,
+      12,
+      1489,
+      48
+    ],
+    "width": 36,
+    "height": 36,
+    "gap": 12,
+    "offsetY": 0.5
+  },
+  "P21": {
+    "file": "header-account-P21.png",
+    "source": "P21-settings.png",
+    "crop": [
+      1362,
+      11,
+      1396,
+      44
+    ],
+    "width": 34,
+    "height": 33,
+    "gap": 8.5,
+    "offsetY": -0.5
+  }
+}

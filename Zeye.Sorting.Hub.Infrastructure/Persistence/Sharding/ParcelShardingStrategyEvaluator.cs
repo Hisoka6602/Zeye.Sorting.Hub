@@ -204,7 +204,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
                 raw,
                 TimeGranularityConfigKey,
                 ParcelTimeShardingGranularity.PerMonth,
-                "PerMonth/PerDay",
+                "PerMonth/PerWeek/PerDay",
                 validationErrors);
         }
 
@@ -546,20 +546,18 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
         /// <param name="thresholdAction">阈值动作。</param>
         /// <param name="thresholdReached">是否命中阈值。</param>
         /// <returns>最终时间分表粒度。</returns>
-        private static ExpandByDateMode ResolveEffectiveDateMode(
+        private static ParcelTimeShardingGranularity ResolveEffectiveDateMode(
             ParcelShardingStrategyMode mode,
             ParcelTimeShardingGranularity timeGranularity,
             ParcelVolumeThresholdAction thresholdAction,
             bool thresholdReached) {
-            var configuredMode = timeGranularity == ParcelTimeShardingGranularity.PerDay
-                ? ExpandByDateMode.PerDay
-                : ExpandByDateMode.PerMonth;
+            var configuredMode = timeGranularity;
             if (mode is not (ParcelShardingStrategyMode.Volume or ParcelShardingStrategyMode.Hybrid)) {
                 return configuredMode;
             }
 
             if (thresholdReached && thresholdAction == ParcelVolumeThresholdAction.SwitchToPerDay) {
-                return ExpandByDateMode.PerDay;
+                return ParcelTimeShardingGranularity.PerDay;
             }
 
             return configuredMode;
@@ -579,13 +577,13 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
             ParcelShardingStrategyMode mode,
             ParcelVolumeThresholdAction thresholdAction,
             bool thresholdReached,
-            ExpandByDateMode effectiveDateMode,
+            ParcelTimeShardingGranularity effectiveDateMode,
             string thresholdTrigger,
             ParcelFinerGranularityStrategySnapshot finerGranularityStrategy) {
             var shouldPlanExtension = mode is ParcelShardingStrategyMode.Volume or ParcelShardingStrategyMode.Hybrid
                 && thresholdAction == ParcelVolumeThresholdAction.SwitchToPerDay
                 && thresholdReached
-                && effectiveDateMode == ExpandByDateMode.PerDay
+                && effectiveDateMode == ParcelTimeShardingGranularity.PerDay
                 && finerGranularityStrategy.ModeWhenPerDayStillHot != ParcelFinerGranularityMode.None;
             if (!shouldPlanExtension) {
                 return new ParcelFinerGranularityExtensionPlan(
@@ -610,7 +608,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
         /// <param name="thresholdTrigger">阈值触发来源。</param>
         /// <param name="effectiveDateMode">当前生效分表粒度。</param>
         /// <returns>原因文本。</returns>
-        private static string BuildNotTriggeredPlanReason(string thresholdTrigger, ExpandByDateMode effectiveDateMode) {
+        private static string BuildNotTriggeredPlanReason(string thresholdTrigger, ParcelTimeShardingGranularity effectiveDateMode) {
             return $"not-triggered; Trigger={thresholdTrigger}; EffectiveDateMode={effectiveDateMode}";
         }
 
@@ -646,7 +644,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
             ParcelTimeShardingGranularity timeGranularity,
             ParcelVolumeThresholdAction thresholdAction,
             bool thresholdReached,
-            ExpandByDateMode effectiveDateMode,
+            ParcelTimeShardingGranularity effectiveDateMode,
             string observationSource,
             string thresholdTrigger,
             ParcelFinerGranularityExtensionPlan finerGranularityExtensionPlan) {

@@ -37,8 +37,8 @@ public sealed class OutboxHealthCheck : IHealthCheck {
             return HealthCheckResult.Unhealthy("Outbox 队列存在死信消息。", data: data);
         }
 
-        if (snapshot.FailedCount > 0 || snapshot.ProcessingCount > 0) {
-            return HealthCheckResult.Degraded("Outbox 队列存在失败重试或处理中消息。", data: data);
+        if (snapshot.FailedCount > 0) {
+            return HealthCheckResult.Degraded("Outbox 队列存在失败重试消息。", data: data);
         }
 
         // `OldestActiveCreatedAt` 与 `DateTime.Now` 均为本地时间语义，可直接比较积压时长。

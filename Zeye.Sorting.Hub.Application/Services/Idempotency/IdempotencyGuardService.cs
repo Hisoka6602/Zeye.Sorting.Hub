@@ -71,25 +71,7 @@ public sealed class IdempotencyGuardService {
         ArgumentNullException.ThrowIfNull(executeAsync);
         ArgumentNullException.ThrowIfNull(loadExistingAsync);
 
-        // 步骤 1：先读取当前幂等键是否已存在记录；若已存在，则按状态决定回放、拒绝或重试接管。
-        var currentRecord = await _idempotencyRepository.GetByKeyAsync(
-            sourceSystem,
-            operationName,
-            businessKey,
-            payloadHash,
-            cancellationToken);
-        if (currentRecord is not null) {
-            return await HandleExistingRecordAsync(
-                currentRecord,
-                sourceSystem,
-                operationName,
-                businessKey,
-                executeAsync,
-                loadExistingAsync,
-                cancellationToken);
-        }
-
-        // 步骤 2：创建 Pending 记录；若并发竞争导致唯一键冲突，则回退到“已存在记录”分支统一处理。
+        // 步骤 1：正常路径直接创建 Pending；仅唯一键冲突时回读，避免每个首次请求先做一次查询。
         var pendingRecord = IdempotencyRecord.CreatePending(sourceSystem, operationName, businessKey, payloadHash);
         var addResult = await _idempotencyRepository.AddAsync(pendingRecord, cancellationToken);
         if (!addResult.IsSuccess) {
@@ -123,6 +105,7 @@ public sealed class IdempotencyGuardService {
                 addResult.ErrorMessage ?? "新增幂等记录失败。");
         }
 
+        // 步骤 2：当前请求成功占有幂等键，进入真实业务执行。
         return await ExecuteWithRecordAsync(
             pendingRecord,
             sourceSystem,

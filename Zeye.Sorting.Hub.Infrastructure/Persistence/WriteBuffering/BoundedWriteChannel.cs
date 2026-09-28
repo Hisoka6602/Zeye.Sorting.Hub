@@ -1,4 +1,5 @@
 using System.Threading.Channels;
+using Zeye.Sorting.Hub.SharedKernel.Diagnostics;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.WriteBuffering;
 
@@ -16,11 +17,6 @@ public sealed class BoundedWriteChannel<TItem> {
     /// 当前深度计数。
     /// </summary>
     private int _depth;
-
-    /// <summary>
-    /// 写入深度预占最大自旋次数。
-    /// </summary>
-    private const int MaxDepthReservationSpinCount = 10;
 
     /// <summary>
     /// 累计丢弃计数。
@@ -62,31 +58,22 @@ public sealed class BoundedWriteChannel<TItem> {
     /// <param name="item">通道项。</param>
     /// <returns>写入成功返回 true。</returns>
     public bool TryEnqueue(TItem item) {
-        var spinWait = new SpinWait();
-        while (true) {
-            var currentDepth = Volatile.Read(ref _depth);
-            if (currentDepth >= Capacity) {
-                Interlocked.Increment(ref _droppedCount);
-                return false;
-            }
-
-            if (Interlocked.CompareExchange(ref _depth, currentDepth + 1, currentDepth) == currentDepth) {
-                break;
-            }
-
-            spinWait.SpinOnce();
-            if (spinWait.Count > MaxDepthReservationSpinCount) {
-                Interlocked.Increment(ref _droppedCount);
-                return false;
-            }
+        var reservedDepth = Interlocked.Increment(ref _depth);
+        if (reservedDepth > Capacity) {
+            Interlocked.Decrement(ref _depth);
+            Interlocked.Increment(ref _droppedCount);
+            SortingHubPerformanceMetrics.RecordBufferedWriteDropped();
+            return false;
         }
 
         if (_channel.Writer.TryWrite(item)) {
+            SortingHubPerformanceMetrics.RecordBufferedWriteEnqueued();
             return true;
         }
 
         Interlocked.Decrement(ref _depth);
         Interlocked.Increment(ref _droppedCount);
+        SortingHubPerformanceMetrics.RecordBufferedWriteDropped();
         return false;
     }
 
@@ -108,6 +95,7 @@ public sealed class BoundedWriteChannel<TItem> {
         if (_channel.Reader.TryRead(out var readItem)) {
             item = readItem;
             Interlocked.Decrement(ref _depth);
+            SortingHubPerformanceMetrics.RecordBufferedWriteDequeued();
             return true;
         }
 

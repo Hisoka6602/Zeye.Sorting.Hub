@@ -21,7 +21,7 @@ public sealed class ArchiveTaskEntityTypeConfiguration : IEntityTypeConfiguratio
             builder.Property(x => x.PlanSummary).HasMaxLength(1024);
         builder.Property(x => x.FailureMessage).HasMaxLength(2048);
         builder.Property(x => x.CheckpointPayload);
-        builder.HasIndex(x => new { x.Status, x.CreatedAt });
-        builder.HasIndex(x => new { x.TaskType, x.CreatedAt });
+        builder.HasIndex(x => new { x.Status, x.CreatedAt, x.Id });
+        builder.HasIndex(x => new { x.TaskType, x.CreatedAt, x.Id });
     }
 }

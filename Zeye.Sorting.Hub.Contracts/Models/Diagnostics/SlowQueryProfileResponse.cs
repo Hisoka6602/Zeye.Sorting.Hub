@@ -27,22 +27,22 @@ public sealed record SlowQueryProfileResponse {
     /// <summary>
     /// 平均耗时（毫秒）。
     /// </summary>
-    public double AverageElapsedMilliseconds { get; init; }
+    public decimal AverageElapsedMilliseconds { get; init; }
 
     /// <summary>
     /// P95 耗时（毫秒）。
     /// </summary>
-    public double P95Milliseconds { get; init; }
+    public decimal P95Milliseconds { get; init; }
 
     /// <summary>
     /// P99 耗时（毫秒）。
     /// </summary>
-    public double P99Milliseconds { get; init; }
+    public decimal P99Milliseconds { get; init; }
 
     /// <summary>
     /// 最大耗时（毫秒）。
     /// </summary>
-    public double MaxMilliseconds { get; init; }
+    public decimal MaxMilliseconds { get; init; }
 
     /// <summary>
     /// 超时次数。

@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
@@ -27,6 +27,8 @@
     <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="9.0.0" />
     <!-- 覆盖 EFCore.Sharding.MySql 9.0.10 引入的旧版本传递依赖，使其与 EF Core 9 对齐 -->
     <PackageReference Include="Pomelo.EntityFrameworkCore.MySql.NetTopologySuite" Version="9.0.0" />
+    <!-- 覆盖 System.ServiceModel.Primitives 引入的漏洞版本，并与 net10.0 的已修复补丁线对齐。 -->
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.10" />
   </ItemGroup>
 
   <ItemGroup>

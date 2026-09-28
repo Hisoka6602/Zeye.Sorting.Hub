@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Zeye.Sorting.Hub.Contracts.Models.Parcels.Admin;
 
 /// <summary>
@@ -7,11 +9,13 @@ public sealed record ParcelCreateRequest {
     /// <summary>
     /// 包裹 Id，由调用方传入，必须大于 0，且全局唯一。
     /// </summary>
+    [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]
     public required long Id { get; init; }
 
     /// <summary>
     /// 包裹时间戳（Unix Ticks）。
     /// </summary>
+    [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]
     public required long ParcelTimestamp { get; init; }
 
     /// <summary>
@@ -25,7 +29,7 @@ public sealed record ParcelCreateRequest {
     public required string BarCodes { get; init; }
 
     /// <summary>
-    /// 重量（千克，精度 3 位小数）。
+    /// 重量（千克，精度 6 位小数）。
     /// </summary>
     public required decimal Weight { get; init; }
 
@@ -49,11 +53,13 @@ public sealed record ParcelCreateRequest {
     /// <summary>
     /// 目标格口 Id（必须大于 0）。
     /// </summary>
+    [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]
     public required long TargetChuteId { get; init; }
 
     /// <summary>
     /// 实际格口 Id（必须大于 0）。
     /// </summary>
+    [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]
     public required long ActualChuteId { get; init; }
 
     /// <summary>
@@ -114,7 +120,8 @@ public sealed record ParcelCreateRequest {
     /// <summary>
     /// 小车编号（可空）。
     /// </summary>
-    public int? SorterCarrierId { get; init; }
+    [JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]
+    public long? SorterCarrierId { get; init; }
 
     /// <summary>
     /// 三段码（可空）。

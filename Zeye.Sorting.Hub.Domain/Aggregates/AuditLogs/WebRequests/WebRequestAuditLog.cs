@@ -24,7 +24,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests {
         public string CorrelationId { get; set; } = string.Empty;
 
         /// <summary>
-        /// Span Id。
+        /// 分布式跟踪跨度标识。
         /// </summary>
         public string SpanId { get; set; } = string.Empty;
 

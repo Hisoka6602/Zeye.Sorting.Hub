@@ -7,6 +7,7 @@ on:
       - ".github/workflows/ef-migration-validation.yml"
       - "Zeye.Sorting.Hub.Domain/**"
       - "Zeye.Sorting.Hub.Infrastructure/**"
+      - "Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/**"
       - "Zeye.Sorting.Hub.Host/**"
       - "EFCore数据库迁移指南.md"
 
@@ -14,8 +15,8 @@ permissions:
   contents: read
 
 env:
-  MYSQL_ROOT_PASSWORD: "Admin@1234"
-  MSSQL_SA_PASSWORD: "Admin@1234"
+  MYSQL_ROOT_PASSWORD: "CI_${{ github.run_id }}_MySql@1"
+  MSSQL_SA_PASSWORD: "CI_${{ github.run_id }}_SqlServer@1"
 
 jobs:
   mysql-ef-validation:
@@ -29,7 +30,7 @@ jobs:
         ports:
           - 3306:3306
         options: >-
-          --health-cmd "mysqladmin ping -h 127.0.0.1 -pAdmin@1234 --silent"
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -p${{ env.MYSQL_ROOT_PASSWORD }} --silent"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 30
@@ -41,7 +42,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "8.0.x"
+          dotnet-version: "10.0.x"
 
       - name: Install dotnet-ef
         run: dotnet tool install --global dotnet-ef --version 9.0.14
@@ -55,6 +56,11 @@ jobs:
           ConnectionStrings__MySql: "server=127.0.0.1;port=3306;database=zeye_sorting_hub_ci;uid=root;pwd=${{ env.MYSQL_ROOT_PASSWORD }};SslMode=None;"
         run: |
           dotnet ef migrations list \
+            --project Zeye.Sorting.Hub.Infrastructure \
+            --startup-project Zeye.Sorting.Hub.Infrastructure \
+            --context SortingHubDbContext \
+            -- --provider MySql
+          dotnet ef migrations has-pending-model-changes \
             --project Zeye.Sorting.Hub.Infrastructure \
             --startup-project Zeye.Sorting.Hub.Infrastructure \
             --context SortingHubDbContext \
@@ -97,7 +103,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "8.0.x"
+          dotnet-version: "10.0.x"
 
       - name: Install dotnet-ef
         run: dotnet tool install --global dotnet-ef --version 9.0.14
@@ -105,18 +111,61 @@ jobs:
       - name: Add dotnet tools to PATH
         run: echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
 
-      - name: Validate EF design-time configuration (info / list)
+      - name: Validate SQL Server snapshot, migration, and guarded rollback
         env:
           ConnectionStrings__SqlServer: "Server=127.0.0.1,1433;Database=zeye_sorting_hub_ci;User Id=sa;Password=${{ env.MSSQL_SA_PASSWORD }};TrustServerCertificate=True;Encrypt=False;"
+          SQLSERVER_CONNECTION: "Server=127.0.0.1,1433;Database=zeye_sorting_hub_ci;User Id=sa;Password=${{ env.MSSQL_SA_PASSWORD }};TrustServerCertificate=True;Encrypt=False;"
         run: |
           dotnet ef dbcontext info \
-            --project Zeye.Sorting.Hub.Infrastructure \
-            --startup-project Zeye.Sorting.Hub.Infrastructure \
+            --project Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations \
+            --startup-project Zeye.Sorting.Hub.Host \
             --context SortingHubDbContext \
             -- --provider SqlServer
           dotnet ef migrations list \
-            --project Zeye.Sorting.Hub.Infrastructure \
-            --startup-project Zeye.Sorting.Hub.Infrastructure \
+            --project Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations \
+            --startup-project Zeye.Sorting.Hub.Host \
             --context SortingHubDbContext \
             --no-connect \
+            --no-build \
+            -- --provider SqlServer
+          dotnet ef migrations has-pending-model-changes \
+            --project Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations \
+            --startup-project Zeye.Sorting.Hub.Host \
+            --context SortingHubDbContext \
+            --no-build \
+            -- --provider SqlServer
+          dotnet ef migrations script --idempotent \
+            --project Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations \
+            --startup-project Zeye.Sorting.Hub.Host \
+            --context SortingHubDbContext \
+            --no-build \
+            --output /tmp/sqlserver-migration-up.sql \
+            -- --provider SqlServer
+          dotnet ef migrations script 20260928143409_InitialSqlServerSchema 0 \
+            --project Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations \
+            --startup-project Zeye.Sorting.Hub.Host \
+            --context SortingHubDbContext \
+            --no-build \
+            --output /tmp/sqlserver-migration-down.sql \
+            -- --provider SqlServer
+          dotnet ef database update \
+            --project Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations \
+            --startup-project Zeye.Sorting.Hub.Host \
+            --context SortingHubDbContext \
+            --no-build \
+            --connection "$SQLSERVER_CONNECTION" \
+            -- --provider SqlServer
+          dotnet ef database update 0 \
+            --project Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations \
+            --startup-project Zeye.Sorting.Hub.Host \
+            --context SortingHubDbContext \
+            --no-build \
+            --connection "$SQLSERVER_CONNECTION" \
+            -- --provider SqlServer
+          dotnet ef database update \
+            --project Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations \
+            --startup-project Zeye.Sorting.Hub.Host \
+            --context SortingHubDbContext \
+            --no-build \
+            --connection "$SQLSERVER_CONNECTION" \
             -- --provider SqlServer

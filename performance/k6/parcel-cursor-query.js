@@ -3,6 +3,8 @@ import { group, sleep } from 'k6';
 import {
     assertAcceptedResponse,
     createLocalWindow,
+    createPerformanceThresholds,
+    createReadRequestParams,
     resolveBaseUrl,
     resolveDuration,
     resolveInt
@@ -14,10 +16,7 @@ import {
 export const options = {
     vus: resolveInt('PERF_VUS', 4),
     duration: resolveDuration('30s'),
-    thresholds: {
-        http_req_failed: ['rate<0.01'],
-        http_req_duration: ['p(95)<300', 'p(99)<600']
-    }
+    thresholds: createPerformanceThresholds(300, 600)
 };
 
 /**
@@ -32,23 +31,15 @@ export default function () {
         // 步骤 1：先访问游标分页链路，验证高频列表默认读取性能。
         const cursorResponse = http.get(
             `${baseUrl}/api/parcels/cursor?pageSize=${pageSize}&scannedTimeStart=${encodeURIComponent(timeWindow.start)}&scannedTimeEnd=${encodeURIComponent(timeWindow.end)}`,
-            {
-                tags: {
-                    endpoint: 'parcel-cursor'
-                }
-            });
+            createReadRequestParams('parcel-cursor'));
         assertAcceptedResponse(cursorResponse, 'parcel cursor query', [200]);
 
         // 步骤 2：再访问普通分页链路，形成同一窗口下的双路径基线对照。
         const pageResponse = http.get(
             `${baseUrl}/api/parcels?pageNumber=1&pageSize=${pageSize}&scannedTimeStart=${encodeURIComponent(timeWindow.start)}&scannedTimeEnd=${encodeURIComponent(timeWindow.end)}`,
-            {
-                tags: {
-                    endpoint: 'parcel-page'
-                }
-            });
+            createReadRequestParams('parcel-page'));
         assertAcceptedResponse(pageResponse, 'parcel page query', [200]);
     });
 
-    sleep(1);
+    sleep(resolveInt('PERF_SLEEP_SECONDS', 1));
 }

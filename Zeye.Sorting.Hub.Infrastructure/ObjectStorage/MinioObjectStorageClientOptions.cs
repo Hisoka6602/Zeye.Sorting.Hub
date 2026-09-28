@@ -52,7 +52,7 @@ internal sealed class MinioObjectStorageClientOptions {
     public required string SecretKey { get; init; }
 
     /// <summary>
-    /// Region。
+    /// 存储区域。
     /// </summary>
     public required string Region { get; init; }
 
@@ -137,7 +137,7 @@ internal sealed class MinioObjectStorageClientOptions {
             return false;
         }
 
-        var extractedValue = value[2..^1];
+        var extractedValue = value.Substring(2, value.Length - 3);
         for (var index = 0; index < extractedValue.Length; index++) {
             var character = extractedValue[index];
             if (!char.IsAsciiLetterOrDigit(character) && character != '_') {

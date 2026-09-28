@@ -1,0 +1,90 @@
+# 中文说明：在受控性能环境执行真实 k6 回归门禁并保存机器可读结果。
+name: performance-regression-gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "已部署待测服务的基础地址"
+        required: true
+        type: string
+      duration:
+        description: "每个场景持续时间"
+        required: true
+        default: "2m"
+        type: string
+      vus:
+        description: "每个场景虚拟用户数"
+        required: true
+        default: "8"
+        type: string
+      run_write_scenario:
+        description: "是否执行会写入测试数据的批量写场景"
+        required: true
+        default: false
+        type: boolean
+  schedule:
+    - cron: "30 18 * * 1-5"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: performance-regression-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  k6-regression:
+    name: 真实性能回归门禁
+    if: github.event_name == 'workflow_dispatch' || vars.PERFORMANCE_BASE_URL != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BASE_URL: ${{ inputs.base_url || vars.PERFORMANCE_BASE_URL }}
+      PERF_DURATION: ${{ inputs.duration || '2m' }}
+      PERF_VUS: ${{ inputs.vus || '8' }}
+      PERF_REQUEST_TIMEOUT: "15s"
+      PERF_MAX_ERROR_RATE: "0.01"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup k6
+        uses: grafana/setup-k6-action@v1
+
+      - name: Preflight readiness
+        shell: bash
+        run: curl --fail --show-error --silent --retry 6 --retry-delay 5 "${BASE_URL}/health/ready"
+
+      - name: Prepare result directory
+        shell: bash
+        run: mkdir -p performance/results
+
+      - name: Parcel read regression gate
+        run: k6 run --summary-export performance/results/parcel-read.json performance/k6/parcel-cursor-query.js
+
+      - name: Audit and diagnostics regression gate
+        run: k6 run --summary-export performance/results/audit-diagnostics.json performance/k6/audit-query.js
+
+      - name: Parcel buffered-write regression gate
+        if: inputs.run_write_scenario == true || (github.event_name == 'schedule' && vars.PERFORMANCE_ENABLE_WRITE == 'true')
+        run: k6 run --summary-export performance/results/parcel-write.json performance/k6/parcel-batch-buffer-write.js
+
+      - name: Build Markdown summary
+        shell: pwsh
+        if: always()
+        run: ./performance/scripts/summarize-k6.ps1 -InputPath (Get-ChildItem performance/results/*.json).FullName -OutputPath performance/results/summary.md
+
+      - name: Publish job summary
+        shell: bash
+        if: always()
+        run: test ! -f performance/results/summary.md || cat performance/results/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload performance results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: performance-results-${{ github.run_id }}
+          path: performance/results/
+          if-no-files-found: warn
+          retention-days: 30

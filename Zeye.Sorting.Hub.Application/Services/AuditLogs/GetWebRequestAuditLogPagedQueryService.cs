@@ -12,6 +12,20 @@ namespace Zeye.Sorting.Hub.Application.Services.AuditLogs;
 /// </summary>
 public sealed class GetWebRequestAuditLogPagedQueryService {
     /// <summary>
+    /// 审计查询默认时间跨度。
+    /// </summary>
+    private static readonly TimeSpan DefaultQueryRange = TimeSpan.FromDays(1);
+
+    /// <summary>
+    /// 审计查询允许的最大时间跨度。
+    /// </summary>
+    private static readonly TimeSpan MaxQueryRange = TimeSpan.FromDays(31);
+
+    /// <summary>
+    /// 普通分页允许的最大页码。
+    /// </summary>
+    private const int MaxPageNumber = 1000;
+    /// <summary>
     /// NLog 日志器。
     /// </summary>
     private static readonly ILogger NLogLogger = LogManager.GetCurrentClassLogger();
@@ -45,9 +59,10 @@ public sealed class GetWebRequestAuditLogPagedQueryService {
         ValidateRequest(request);
 
         try {
+            var normalizedRange = NormalizeTimeRange(request.StartedAtStart, request.StartedAtEnd);
             var filter = new WebRequestAuditLogQueryFilter {
-                StartedAtStart = request.StartedAtStart,
-                StartedAtEnd = request.StartedAtEnd,
+                StartedAtStart = normalizedRange.Start,
+                StartedAtEnd = normalizedRange.End,
                 StatusCode = request.StatusCode,
                 IsSuccess = request.IsSuccess,
                 TraceId = request.TraceId,
@@ -56,7 +71,8 @@ public sealed class GetWebRequestAuditLogPagedQueryService {
             };
             var pageRequest = new PageRequest {
                 PageNumber = request.PageNumber,
-                PageSize = request.PageSize
+                PageSize = request.PageSize,
+                IncludeTotalCount = request.IncludeTotalCount
             };
             var pageResult = await _webRequestAuditLogQueryRepository.GetPagedAsync(filter, pageRequest, cancellationToken);
             var items = pageResult.Items
@@ -66,7 +82,8 @@ public sealed class GetWebRequestAuditLogPagedQueryService {
                 Items = items,
                 PageNumber = pageResult.PageNumber,
                 PageSize = pageResult.PageSize,
-                TotalCount = pageResult.TotalCount
+                TotalCount = pageResult.TotalCount,
+                HasTotalCount = request.IncludeTotalCount
             };
         }
         catch (Exception exception) {
@@ -93,6 +110,9 @@ public sealed class GetWebRequestAuditLogPagedQueryService {
     private static void ValidateRequest(WebRequestAuditLogListRequest request) {
         Guard.ThrowIfZeroOrNegative(request.PageNumber, nameof(request.PageNumber), "页码必须大于 0。", "分页查询 Web 请求审计日志");
         Guard.ThrowIfZeroOrNegative(request.PageSize, nameof(request.PageSize), "页大小必须大于 0。", "分页查询 Web 请求审计日志");
+        if (request.PageNumber > MaxPageNumber) {
+            throw new ArgumentOutOfRangeException(nameof(request.PageNumber), $"页码不能超过 {MaxPageNumber}，更深结果请改用时间范围缩小查询。");
+        }
 
         if (request.StartedAtStart.HasValue && request.StartedAtEnd.HasValue && request.StartedAtEnd.Value < request.StartedAtStart.Value) {
             NLogLogger.Warn(
@@ -106,5 +126,25 @@ public sealed class GetWebRequestAuditLogPagedQueryService {
             NLogLogger.Warn("分页查询 Web 请求审计日志参数非法，StatusCode={StatusCode}", request.StatusCode);
             throw new ArgumentOutOfRangeException(nameof(request.StatusCode), "statusCode 必须大于 0。");
         }
+    }
+
+    /// <summary>
+    /// 补齐并限制审计查询时间范围。
+    /// </summary>
+    /// <param name="start">可选起始时间。</param>
+    /// <param name="end">可选结束时间。</param>
+    /// <returns>规范化后的闭区间。</returns>
+    private static (DateTime Start, DateTime End) NormalizeTimeRange(DateTime? start, DateTime? end) {
+        var normalizedEnd = end ?? DateTime.Now;
+        var normalizedStart = start ?? normalizedEnd - DefaultQueryRange;
+        if (normalizedEnd < normalizedStart) {
+            throw new ArgumentException("startedAtEnd 不能早于 startedAtStart。");
+        }
+
+        if (normalizedEnd - normalizedStart > MaxQueryRange) {
+            throw new ArgumentOutOfRangeException(nameof(start), "审计查询时间跨度不能超过 31 天。");
+        }
+
+        return (normalizedStart, normalizedEnd);
     }
 }

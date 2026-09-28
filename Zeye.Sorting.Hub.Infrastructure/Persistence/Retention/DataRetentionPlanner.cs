@@ -212,7 +212,7 @@ public sealed class DataRetentionPlanner {
         where TEntity : class {
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
         var query = whereBuilder(dbContext.Set<TEntity>().AsNoTracking());
-        return await orderBuilder(query)
+        return await query
             .Take(batchSize)
             .CountAsync(cancellationToken);
     }
@@ -233,13 +233,13 @@ public sealed class DataRetentionPlanner {
         CancellationToken cancellationToken)
         where TEntity : class {
         await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-        var entities = await orderBuilder(whereBuilder(dbContext.Set<TEntity>()))
-            .Take(batchSize)
-            .ToListAsync(cancellationToken);
-        if (entities.Count == 0) {
-            return 0;
+        var batchQuery = orderBuilder(whereBuilder(dbContext.Set<TEntity>())).Take(batchSize);
+        if (dbContext.Database.IsRelational()) {
+            return await batchQuery.ExecuteDeleteAsync(cancellationToken);
         }
 
+        // InMemory 测试提供程序不支持 ExecuteDelete，保留仅用于测试的跟踪删除回退。
+        var entities = await batchQuery.ToListAsync(cancellationToken);
         dbContext.Set<TEntity>().RemoveRange(entities);
         await dbContext.SaveChangesAsync(cancellationToken);
         return entities.Count;
@@ -253,20 +253,10 @@ public sealed class DataRetentionPlanner {
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>删除数量。</returns>
     private async Task<int> DeleteWebRequestAuditLogsAsync(DateTime expireBefore, int batchSize, CancellationToken cancellationToken) {
-        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-        var entities = await dbContext.Set<WebRequestAuditLog>()
-            .Include(x => x.Detail)
-            .Where(x => x.CreatedAt <= expireBefore)
-            .OrderBy(x => x.CreatedAt)
-            .ThenBy(x => x.Id)
-            .Take(batchSize)
-            .ToListAsync(cancellationToken);
-        if (entities.Count == 0) {
-            return 0;
-        }
-
-        dbContext.Set<WebRequestAuditLog>().RemoveRange(entities);
-        await dbContext.SaveChangesAsync(cancellationToken);
-        return entities.Count;
+        return await DeleteAsync<WebRequestAuditLog>(
+            query => query.Where(x => x.CreatedAt <= expireBefore),
+            query => query.OrderBy(x => x.CreatedAt).ThenBy(x => x.Id),
+            batchSize,
+            cancellationToken);
     }
 }

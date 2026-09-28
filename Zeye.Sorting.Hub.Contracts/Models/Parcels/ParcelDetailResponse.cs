@@ -6,6 +6,8 @@ namespace Zeye.Sorting.Hub.Contracts.Models.Parcels;
 /// Parcel 详情响应合同（包含所有联表值对象内容）。
 /// </summary>
 public sealed record ParcelDetailResponse : ParcelListItemResponse {
+    /// <summary>已保存处理事实，包含失败、重试、绑定依据、原始报文及接口请求响应。</summary>
+    public IReadOnlyList<Processing.ParcelProcessingRecordResponse> ProcessingRecords { get; init; } = [];
     /// <summary>
     /// 条码明细集合。
     /// </summary>

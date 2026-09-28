@@ -4,6 +4,31 @@ namespace Zeye.Sorting.Hub.Application.Services.Parcels;
 /// Parcel 合同映射参数。
 /// </summary>
 internal readonly record struct ParcelResponseArgs {
+    /// <summary>来源服务或设备实例标识。</summary>
+    public string? SourceInstanceId { get; init; }
+    /// <summary>来源编号会话，设备编号重置后更换。</summary>
+    public string? SourceRunId { get; init; }
+    /// <summary>来源设备包裹编号。</summary>
+    public long? SourceParcelId { get; init; }
+    /// <summary>首次分拣机检测本地时间。</summary>
+    public DateTime? DetectedTime { get; init; }
+    /// <summary>最新有效DWS测量本地时间。</summary>
+    public DateTime? MeasurementTime { get; init; }
+    /// <summary>目标格口原始编码。</summary>
+    public string? TargetChuteCode { get; init; }
+    /// <summary>实际格口原始编码。</summary>
+    public string? ActualChuteCode { get; init; }
+    /// <summary>外部路由任务编码。</summary>
+    public string? TaskCode { get; init; }
+    /// <summary>体积重量，单位克。</summary>
+    public decimal? VolumetricWeightGrams { get; init; }
+    /// <summary>是否使用兜底格口，未知时为空。</summary>
+    public bool? IsFallbackChuteAssigned { get; init; }
+    /// <summary>是否阻断分拣路由，未知时为空。</summary>
+    public bool? IsRoutingBlocked { get; init; }
+    /// <summary>设备异常原始编码。</summary>
+    public string? SourceExceptionCode { get; init; }
+
     /// <summary>
     /// 包裹 Id。
     /// </summary>
@@ -52,7 +77,7 @@ internal readonly record struct ParcelResponseArgs {
     /// <summary>
     /// 小车编号。
     /// </summary>
-    public required int? SorterCarrierId { get; init; }
+    public required long? SorterCarrierId { get; init; }
 
     /// <summary>
     /// 三段码。
@@ -67,12 +92,12 @@ internal readonly record struct ParcelResponseArgs {
     /// <summary>
     /// 目标格口 Id。
     /// </summary>
-    public required long TargetChuteId { get; init; }
+    public required long? TargetChuteId { get; init; }
 
     /// <summary>
     /// 实际格口 Id。
     /// </summary>
-    public required long ActualChuteId { get; init; }
+    public required long? ActualChuteId { get; init; }
 
     /// <summary>
     /// 包裹主条码。
@@ -82,7 +107,7 @@ internal readonly record struct ParcelResponseArgs {
     /// <summary>
     /// 重量。
     /// </summary>
-    public required decimal Weight { get; init; }
+    public required decimal? Weight { get; init; }
 
     /// <summary>
     /// 外部接口访问状态。
@@ -107,22 +132,22 @@ internal readonly record struct ParcelResponseArgs {
     /// <summary>
     /// 长度。
     /// </summary>
-    public required decimal Length { get; init; }
+    public required decimal? Length { get; init; }
 
     /// <summary>
     /// 宽度。
     /// </summary>
-    public required decimal Width { get; init; }
+    public required decimal? Width { get; init; }
 
     /// <summary>
     /// 高度。
     /// </summary>
-    public required decimal Height { get; init; }
+    public required decimal? Height { get; init; }
 
     /// <summary>
     /// 体积。
     /// </summary>
-    public required decimal Volume { get; init; }
+    public required decimal? Volume { get; init; }
 
     /// <summary>
     /// 扫码时间。
@@ -132,7 +157,7 @@ internal readonly record struct ParcelResponseArgs {
     /// <summary>
     /// 落格时间。
     /// </summary>
-    public required DateTime DischargeTime { get; init; }
+    public required DateTime? DischargeTime { get; init; }
 
     /// <summary>
     /// 包裹完结时间。

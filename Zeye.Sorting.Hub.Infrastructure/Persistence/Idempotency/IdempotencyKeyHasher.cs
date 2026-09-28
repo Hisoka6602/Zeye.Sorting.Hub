@@ -1,5 +1,5 @@
 using System.Security.Cryptography;
-using System.Text;
+using System.Buffers;
 using System.Text.Json;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Idempotency;
@@ -24,9 +24,13 @@ public sealed class IdempotencyKeyHasher {
     public string ComputeHash(object payload) {
         ArgumentNullException.ThrowIfNull(payload);
 
-        var payloadJson = JsonSerializer.Serialize(payload, SerializerOptions);
-        var payloadBytes = Encoding.UTF8.GetBytes(payloadJson);
-        var hashBytes = SHA256.HashData(payloadBytes);
+        var buffer = new ArrayBufferWriter<byte>();
+        using (var writer = new Utf8JsonWriter(buffer)) {
+            JsonSerializer.Serialize(writer, payload, payload.GetType(), SerializerOptions);
+        }
+
+        Span<byte> hashBytes = stackalloc byte[32];
+        SHA256.HashData(buffer.WrittenSpan, hashBytes);
         return Convert.ToHexString(hashBytes);
     }
 }

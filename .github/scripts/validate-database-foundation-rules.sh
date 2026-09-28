@@ -323,7 +323,7 @@ check_background_loop_cancellation() {
       continue
     fi
 
-    if ! grep -qE 'IsCancellationRequested|WaitForNextTickAsync\([^)]*Token|Delay\([^)]*Token' "${file}"; then
+    if ! grep -qE 'IsCancellationRequested|ThrowIfCancellationRequested|WaitForNextTickAsync\([^)]*Token|Delay\([^)]*Token' "${file}"; then
       record_failure "后台循环未消费 CancellationToken：${file}"
     fi
   done < <(collect_changed_files "AM" "*HostedService*.cs" "*/HostedServices/*.cs")

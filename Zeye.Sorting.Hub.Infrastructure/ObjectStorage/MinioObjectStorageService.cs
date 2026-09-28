@@ -362,7 +362,10 @@ internal sealed class MinioObjectStorageService : IObjectStorageService {
             return partSizeBytes;
         }
 
-        var requiredPartSize = (long)Math.Ceiling(objectSizeBytes.Value / (double)MinioObjectStorageClientOptions.MaxMultipartPartCount);
+        var requiredPartSize = objectSizeBytes.Value / MinioObjectStorageClientOptions.MaxMultipartPartCount;
+        if (objectSizeBytes.Value % MinioObjectStorageClientOptions.MaxMultipartPartCount != 0) {
+            requiredPartSize++;
+        }
         requiredPartSize = Math.Max(requiredPartSize, MinioObjectStorageClientOptions.MinMultipartPartSizeBytes);
         if (requiredPartSize > int.MaxValue) {
             NLogLogger.Error("对象过大，无法为 Multipart 计算合法分片大小，ObjectSizeBytes: {ObjectSizeBytes}", objectSizeBytes.Value);
@@ -383,7 +386,12 @@ internal sealed class MinioObjectStorageService : IObjectStorageService {
             return null;
         }
 
-        return (int)Math.Ceiling(objectSizeBytes.Value / (double)partSizeBytes);
+        var partCount = objectSizeBytes.Value / partSizeBytes;
+        if (objectSizeBytes.Value % partSizeBytes != 0) {
+            partCount++;
+        }
+
+        return checked((int)partCount);
     }
 
     /// <summary>

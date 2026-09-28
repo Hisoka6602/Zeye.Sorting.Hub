@@ -72,14 +72,20 @@ public sealed class WebRequestAuditLogMiddleware {
     /// <param name="context">HTTP 上下文。</param>
     /// <returns>异步任务。</returns>
     public async Task InvokeAsync(HttpContext context) {
-        if (!_options.Enabled || !ShouldSample(_options.SampleRate)) {
+        if (!_options.Enabled || ShouldExclude(context.Request.Path, _options.ExcludedPathPrefixes)) {
+            await _next(context);
+            return;
+        }
+
+        var isSampled = ShouldSample(_options.SampleRate);
+        if (!isSampled && !_options.AlwaysAuditFailedRequests && _options.SlowRequestThresholdMs <= 0L) {
             await _next(context);
             return;
         }
 
         // 步骤 1：初始化请求期采集上下文。
         var startedAt = DateTime.Now;
-        var stopwatch = Stopwatch.StartNew();
+        var startedTimestamp = Stopwatch.GetTimestamp();
         var traceId = ResolveTraceId(context);
         var correlationId = ResolveCorrelationId(context, traceId);
         var routeTemplate = string.Empty;
@@ -88,7 +94,7 @@ public sealed class WebRequestAuditLogMiddleware {
         var capturedException = (Exception?)null;
         var requestSizeBytes = context.Request.ContentLength ?? 0L;
 
-        if (_options.IncludeRequestBody) {
+        if (isSampled && _options.IncludeRequestBody) {
             try {
                 requestBodyCapture = await CaptureRequestBodyAsync(context.Request, _options.MaxRequestBodyLength);
                 requestSizeBytes = requestBodyCapture.OriginalLengthBytes;
@@ -100,7 +106,7 @@ public sealed class WebRequestAuditLogMiddleware {
         }
 
         var originalResponseBody = context.Response.Body;
-        var responseCaptureStream = _options.IncludeResponseBody
+        var responseCaptureStream = isSampled && _options.IncludeResponseBody
             ? new ResponseCaptureTeeStream(originalResponseBody, _options.MaxResponseBodyLength)
             : null;
         if (responseCaptureStream is not null) {
@@ -117,7 +123,6 @@ public sealed class WebRequestAuditLogMiddleware {
             capturedException = ex;
             exceptionDispatchInfo = ExceptionDispatchInfo.Capture(ex);
             routeTemplate = ResolveRouteTemplate(context, routeTemplate);
-            NLogLogger.Error(ex, "Web 请求审计过程中发生管道执行异常，Path={Path}, TraceId={TraceId}", context.Request.Path, traceId);
         }
         finally {
             // 步骤 4：恢复响应流并完成响应体采集（失败不得污染主请求）。
@@ -149,61 +154,65 @@ public sealed class WebRequestAuditLogMiddleware {
 
             // 步骤 5：后台异步写审计，不等待写库完成，确保不阻塞主请求返回。
             var endedAt = DateTime.Now;
-            var durationMs = stopwatch.ElapsedMilliseconds;
-            var statusCode = context.Response.StatusCode;
-            var isSuccess = statusCode is >= StatusCodes.Status200OK and < StatusCodes.Status400BadRequest;
+            var durationMs = (long)(Stopwatch.GetElapsedTime(startedTimestamp).Ticks / (decimal)TimeSpan.TicksPerMillisecond);
             var resolvedException = capturedException ?? context.Features.Get<IExceptionHandlerFeature>()?.Error;
-            try {
-                var detail = BuildDetail(
-                    context,
-                    startedAt,
-                    requestBodyCapture,
-                    responseBodyCapture,
-                    resolvedException,
-                    traceId,
-                    correlationId);
-                var log = new WebRequestAuditLog {
-                    TraceId = traceId,
-                    CorrelationId = correlationId,
-                    SpanId = ResolveSpanId(),
-                    OperationName = ResolveOperationName(context, routeTemplate),
-                    RequestMethod = context.Request.Method,
-                    RequestScheme = context.Request.Scheme,
-                    RequestHost = context.Request.Host.Host,
-                    RequestPort = context.Request.Host.Port,
-                    RequestPath = context.Request.Path.Value ?? string.Empty,
-                    RequestRouteTemplate = routeTemplate,
-                    UserName = context.User.Identity?.Name ?? string.Empty,
-                    IsAuthenticated = context.User.Identity?.IsAuthenticated ?? false,
-                    RequestPayloadType = ResolveRequestPayloadType(context.Request.ContentType, requestBodyCapture.HasBody),
-                    RequestSizeBytes = Math.Max(0L, requestSizeBytes),
-                    HasRequestBody = requestBodyCapture.HasBody,
-                    IsRequestBodyTruncated = requestBodyCapture.IsTruncated,
-                    ResponsePayloadType = ResolveResponsePayloadType(context.Response.ContentType, responseBodyCapture.HasBody),
-                    ResponseSizeBytes = Math.Max(0L, responseBodyCapture.OriginalLengthBytes),
-                    HasResponseBody = responseBodyCapture.HasBody,
-                    IsResponseBodyTruncated = responseBodyCapture.IsTruncated,
-                    StatusCode = statusCode,
-                    IsSuccess = isSuccess,
-                    HasException = resolvedException is not null,
-                    AuditResourceType = AuditResourceType.Api,
-                    ResourceId = context.Request.Path.Value ?? string.Empty,
-                    StartedAt = startedAt,
-                    EndedAt = endedAt,
-                    DurationMs = Math.Max(0L, durationMs),
-                    CreatedAt = endedAt,
-                    Detail = detail
-                };
-                if (!_backgroundQueue.TryEnqueue(new WebRequestAuditBackgroundEntry {
+            var statusCode = resolvedException is null
+                ? context.Response.StatusCode
+                : StatusCodes.Status500InternalServerError;
+            var isSuccess = statusCode is >= StatusCodes.Status200OK and < StatusCodes.Status400BadRequest;
+            var shouldForceAudit = (_options.AlwaysAuditFailedRequests && (!isSuccess || resolvedException is not null))
+                || (_options.SlowRequestThresholdMs > 0L && durationMs >= _options.SlowRequestThresholdMs);
+            if (isSampled || shouldForceAudit) {
+                try {
+                    var detail = BuildDetail(
+                        context,
+                        startedAt,
+                        requestBodyCapture,
+                        responseBodyCapture,
+                        resolvedException,
+                        traceId,
+                        correlationId);
+                    var log = new WebRequestAuditLog {
+                        TraceId = traceId,
+                        CorrelationId = correlationId,
+                        SpanId = ResolveSpanId(),
+                        OperationName = ResolveOperationName(context, routeTemplate),
+                        RequestMethod = context.Request.Method,
+                        RequestScheme = context.Request.Scheme,
+                        RequestHost = context.Request.Host.Host,
+                        RequestPort = context.Request.Host.Port,
+                        RequestPath = context.Request.Path.Value ?? string.Empty,
+                        RequestRouteTemplate = routeTemplate,
+                        UserName = context.User.Identity?.Name ?? string.Empty,
+                        IsAuthenticated = context.User.Identity?.IsAuthenticated ?? false,
+                        RequestPayloadType = ResolveRequestPayloadType(context.Request.ContentType, requestBodyCapture.HasBody),
+                        RequestSizeBytes = Math.Max(0L, requestSizeBytes),
+                        HasRequestBody = requestBodyCapture.HasBody,
+                        IsRequestBodyTruncated = requestBodyCapture.IsTruncated,
+                        ResponsePayloadType = ResolveResponsePayloadType(context.Response.ContentType, responseBodyCapture.HasBody),
+                        ResponseSizeBytes = Math.Max(0L, responseBodyCapture.OriginalLengthBytes),
+                        HasResponseBody = responseBodyCapture.HasBody,
+                        IsResponseBodyTruncated = responseBodyCapture.IsTruncated,
+                        StatusCode = statusCode,
+                        IsSuccess = isSuccess,
+                        HasException = resolvedException is not null,
+                        AuditResourceType = AuditResourceType.Api,
+                        ResourceId = context.Request.Path.Value ?? string.Empty,
+                        StartedAt = startedAt,
+                        EndedAt = endedAt,
+                        DurationMs = Math.Max(0L, durationMs),
+                        CreatedAt = endedAt,
+                        Detail = detail
+                    };
+                    _backgroundQueue.TryEnqueue(new WebRequestAuditBackgroundEntry {
                         Log = log,
                         TraceId = traceId,
                         CorrelationId = correlationId
-                    })) {
-                    NLogLogger.Warn("Web 请求审计入队失败，已触发丢弃保护。TraceId={TraceId}, CorrelationId={CorrelationId}", traceId, correlationId);
+                    });
                 }
-            }
-            catch (Exception exception) {
-                NLogLogger.Error(exception, "Web 请求审计构建或入队失败，已降级忽略，Path={Path}, TraceId={TraceId}, CorrelationId={CorrelationId}", context.Request.Path, traceId, correlationId);
+                catch (Exception exception) {
+                    NLogLogger.Error(exception, "Web 请求审计构建或入队失败，已降级忽略，Path={Path}, TraceId={TraceId}, CorrelationId={CorrelationId}", context.Request.Path, traceId, correlationId);
+                }
             }
         }
 
@@ -391,16 +400,39 @@ public sealed class WebRequestAuditLogMiddleware {
     /// </summary>
     /// <param name="sampleRate">采样率。</param>
     /// <returns>是否采样。</returns>
-    private static bool ShouldSample(double sampleRate) {
-        if (sampleRate <= 0D) {
+    private static bool ShouldSample(decimal sampleRate) {
+        if (sampleRate <= 0m) {
             return false;
         }
 
-        if (sampleRate >= 1D) {
+        if (sampleRate >= 1m) {
             return true;
         }
 
-        return Random.Shared.NextDouble() <= sampleRate;
+        var threshold = decimal.ToInt64(decimal.Floor(sampleRate * 1_000_000m));
+        return Random.Shared.NextInt64(1_000_000L) < threshold;
+    }
+
+    /// <summary>
+    /// 判断请求路径是否命中审计排除前缀。
+    /// </summary>
+    /// <param name="path">请求路径。</param>
+    /// <param name="excludedPathPrefixes">排除前缀集合。</param>
+    /// <returns>命中排除规则返回 true。</returns>
+    private static bool ShouldExclude(PathString path, IReadOnlyCollection<string>? excludedPathPrefixes) {
+        if (excludedPathPrefixes is null || excludedPathPrefixes.Count == 0) {
+            return false;
+        }
+
+        var pathValue = path.Value ?? string.Empty;
+        foreach (var prefix in excludedPathPrefixes) {
+            if (!string.IsNullOrWhiteSpace(prefix)
+                && pathValue.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

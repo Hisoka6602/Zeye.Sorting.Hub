@@ -9,7 +9,7 @@ public sealed class NullAutoTuningObservability : IAutoTuningObservability {
     /// <summary>
     /// 空实现：不输出指标观测数据，用于禁用观测链路时保持调用兼容。
     /// </summary>
-    public void EmitMetric(string name, double value, IReadOnlyDictionary<string, string>? tags = null) {
+    public void EmitMetric(string name, decimal value, IReadOnlyDictionary<string, string>? tags = null) {
     }
 
     /// <summary>

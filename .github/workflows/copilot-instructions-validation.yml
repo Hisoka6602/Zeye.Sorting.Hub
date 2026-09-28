@@ -1,3 +1,4 @@
+# 中文说明：校验 Copilot 仓库规则，防止约束在变更中失效。
 name: copilot-instructions-validation
 
 on:

@@ -13,7 +13,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <summary>
         /// 将指标数值写入 NLog Info 日志，确保指标落盘（所有业务日志必须落盘）。
         /// </summary>
-        public void EmitMetric(string name, double value, IReadOnlyDictionary<string, string>? tags = null) {
+        public void EmitMetric(string name, decimal value, IReadOnlyDictionary<string, string>? tags = null) {
             Logger.Info("AutoTuningMetric: Name={Name}, Value={Value}, Tags={Tags}", name, value, FormatTags(tags));
         }
 

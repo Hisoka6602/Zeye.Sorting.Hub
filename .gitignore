@@ -365,3 +365,5 @@ MigrationBackup/
 FodyWeavers.xsd
 # 运行时日志文件（Serilog 落盘，不提交到版本库）
 logs/
+# 整改验证依赖缓存、构建产物与测试结果由本地运行生成。
+.codex-artifacts/

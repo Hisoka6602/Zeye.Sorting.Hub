@@ -3,6 +3,7 @@
 .github/copilot-instructions.md
 .github/scripts/validate-copilot-rules.sh
 .github/scripts/validate-database-foundation-rules.sh
+.github/scripts/validate-garbled-chinese-text.sh
 .github/scripts/validate-no-shadow-code.sh
 .github/scripts/validate-no-utc.sh
 .github/scripts/validate-readme-file-tree.sh
@@ -15,6 +16,7 @@
 .gitignore
 Copilot-MinIO接入执行指令.md
 Copilot-业务模块新增模板.md
+Directory.Build.targets
 EFCore数据库迁移指南.md
 MinIO对象存储接入多PR实施方案与Copilot严格门禁.md
 Parcel属性新增操作指南.md
@@ -93,6 +95,7 @@ Zeye.Sorting.Hub.Contracts/Models/Parcels/Admin/ParcelCleanupExpiredRequest.cs
 Zeye.Sorting.Hub.Contracts/Models/Parcels/Admin/ParcelCleanupExpiredResponse.cs
 Zeye.Sorting.Hub.Contracts/Models/Parcels/Admin/ParcelCreateRequest.cs
 Zeye.Sorting.Hub.Contracts/Models/Parcels/Admin/ParcelUpdateRequest.cs
+Zeye.Sorting.Hub.Contracts/Models/Parcels/CursorPayload.cs
 Zeye.Sorting.Hub.Contracts/Models/Parcels/ParcelAdjacentRequest.cs
 Zeye.Sorting.Hub.Contracts/Models/Parcels/ParcelAdjacentResponse.cs
 Zeye.Sorting.Hub.Contracts/Models/Parcels/ParcelCursorListRequest.cs
@@ -338,6 +341,12 @@ Zeye.Sorting.Hub.Host/Zeye.Sorting.Hub.Host.csproj
 Zeye.Sorting.Hub.Host/appsettings.Development.json
 Zeye.Sorting.Hub.Host/appsettings.json
 Zeye.Sorting.Hub.Host/nlog.config
+Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations/20260928143409_InitialSqlServerSchema.Designer.cs
+Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations/20260928143409_InitialSqlServerSchema.cs
+Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations/20260928160257_AddImageObjectStorageMetadataSqlServer.Designer.cs
+Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations/20260928160257_AddImageObjectStorageMetadataSqlServer.cs
+Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations/SortingHubDbContextModelSnapshot.cs
+Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations.csproj
 Zeye.Sorting.Hub.Infrastructure/DependencyInjection/ObjectStorageServiceCollectionExtensions.cs
 Zeye.Sorting.Hub.Infrastructure/DependencyInjection/ParcelAggregateShardingRule.cs
 Zeye.Sorting.Hub.Infrastructure/DependencyInjection/PersistenceServiceCollectionExtensions.cs
@@ -437,6 +446,8 @@ Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/20260507021744_AddInboxMe
 Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/20260507021744_AddInboxMessageSupport.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/20260615042538_AddImageObjectStorageMetadata.Designer.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/20260615042538_AddImageObjectStorageMetadata.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/20260728212817_UseLongSorterCarrierIds.Designer.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/20260728212817_UseLongSorterCarrierIds.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/AddArchiveTaskDryRunSupport.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/AddArchiveTaskDryRunSupportDesigner.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/MigrationSchemaResolver.cs

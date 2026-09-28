@@ -140,7 +140,7 @@ public sealed class QueryGovernanceReportHostedService : BackgroundService {
             AutoTuningConfigurationReader.GetPositiveIntOrDefault(
                 configuration,
                 AutoTuningConfigurationReader.BuildAutoTuningKey(ReportIntervalHoursConfigKey),
-                (int)DefaultReportInterval.TotalHours),
+                (int)(DefaultReportInterval.Ticks / TimeSpan.TicksPerHour)),
             1,
             24);
         return TimeSpan.FromHours(reportIntervalHours);

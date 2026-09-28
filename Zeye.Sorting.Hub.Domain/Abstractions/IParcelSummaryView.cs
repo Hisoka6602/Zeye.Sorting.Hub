@@ -8,6 +8,31 @@ namespace Zeye.Sorting.Hub.Domain.Abstractions;
 /// 供 Application 层映射器统一消费，消除影分身映射代码。
 /// </summary>
 public interface IParcelSummaryView {
+    /// <summary>来源服务或设备实例标识。</summary>
+    string? SourceInstanceId { get; }
+    /// <summary>来源编号会话，设备编号重置后更换。</summary>
+    string? SourceRunId { get; }
+    /// <summary>来源设备包裹编号。</summary>
+    long? SourceParcelId { get; }
+    /// <summary>首次分拣机检测本地时间。</summary>
+    DateTime? DetectedTime { get; }
+    /// <summary>最新有效DWS测量本地时间。</summary>
+    DateTime? MeasurementTime { get; }
+    /// <summary>目标格口原始编码。</summary>
+    string? TargetChuteCode { get; }
+    /// <summary>实际格口原始编码。</summary>
+    string? ActualChuteCode { get; }
+    /// <summary>外部路由任务编码。</summary>
+    string? TaskCode { get; }
+    /// <summary>体积重量，单位克。</summary>
+    decimal? VolumetricWeightGrams { get; }
+    /// <summary>是否使用兜底格口，未知时为空。</summary>
+    bool? IsFallbackChuteAssigned { get; }
+    /// <summary>是否阻断分拣路由，未知时为空。</summary>
+    bool? IsRoutingBlocked { get; }
+    /// <summary>设备异常原始编码。</summary>
+    string? SourceExceptionCode { get; }
+
     /// <summary>包裹数据库主键 Id。</summary>
     long Id { get; }
 
@@ -36,7 +61,7 @@ public interface IParcelSummaryView {
     NoReadType NoReadType { get; }
 
     /// <summary>小车编号（可空）。</summary>
-    int? SorterCarrierId { get; }
+    long? SorterCarrierId { get; }
 
     /// <summary>三段码（可空）。</summary>
     string? SegmentCodes { get; }
@@ -45,16 +70,16 @@ public interface IParcelSummaryView {
     long? LifecycleMilliseconds { get; }
 
     /// <summary>目标格口 Id。</summary>
-    long TargetChuteId { get; }
+    long? TargetChuteId { get; }
 
     /// <summary>实际格口 Id。</summary>
-    long ActualChuteId { get; }
+    long? ActualChuteId { get; }
 
     /// <summary>包裹主条码。</summary>
     string BarCodes { get; }
 
     /// <summary>重量。</summary>
-    decimal Weight { get; }
+    decimal? Weight { get; }
 
     /// <summary>外部接口访问状态。</summary>
     ApiRequestStatus RequestStatus { get; }
@@ -69,22 +94,22 @@ public interface IParcelSummaryView {
     bool IsSticking { get; }
 
     /// <summary>长度。</summary>
-    decimal Length { get; }
+    decimal? Length { get; }
 
     /// <summary>宽度。</summary>
-    decimal Width { get; }
+    decimal? Width { get; }
 
     /// <summary>高度。</summary>
-    decimal Height { get; }
+    decimal? Height { get; }
 
     /// <summary>体积。</summary>
-    decimal Volume { get; }
+    decimal? Volume { get; }
 
     /// <summary>扫码时间。</summary>
     DateTime ScannedTime { get; }
 
     /// <summary>落格时间。</summary>
-    DateTime DischargeTime { get; }
+    DateTime? DischargeTime { get; }
 
     /// <summary>包裹完结时间（可空）。</summary>
     DateTime? CompletedTime { get; }

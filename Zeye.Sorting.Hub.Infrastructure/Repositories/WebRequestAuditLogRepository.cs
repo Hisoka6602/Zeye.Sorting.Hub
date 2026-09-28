@@ -58,6 +58,35 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
             }
         }
 
+        /// <inheritdoc />
+        public async Task<RepositoryResult> AddRangeAsync(
+            IReadOnlyCollection<WebRequestAuditLog> auditLogs,
+            CancellationToken cancellationToken) {
+            if (auditLogs is null || auditLogs.Count == 0) {
+                return RepositoryResult.Success();
+            }
+
+            foreach (var auditLog in auditLogs) {
+                if (auditLog.Detail is not null && auditLog.Detail.StartedAt == default) {
+                    auditLog.Detail.StartedAt = auditLog.StartedAt;
+                }
+            }
+
+            try {
+                await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
+                db.Set<WebRequestAuditLog>().AddRange(auditLogs);
+                await db.SaveChangesAsync(cancellationToken);
+                return RepositoryResult.Success();
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+                return RepositoryResult.Fail("操作已取消");
+            }
+            catch (Exception exception) {
+                NLogLogger.Error(exception, "批量写入 Web 请求审计日志失败，Count={Count}", auditLogs.Count);
+                return RepositoryResult.Fail("批量写入 Web 请求审计日志失败");
+            }
+        }
+
         /// <summary>
         /// 按过滤条件分页查询审计日志摘要。
         /// </summary>
@@ -83,7 +112,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
             try {
                 await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
                 var query = ApplyFilter(db.Set<WebRequestAuditLog>().AsNoTracking(), filter);
-                var totalCount = await query.LongCountAsync(cancellationToken);
+                var totalCount = pageRequest.IncludeTotalCount
+                    ? await query.LongCountAsync(cancellationToken)
+                    : 0L;
                 var items = await query
                     .OrderByDescending(x => x.StartedAt)
                     .ThenByDescending(x => x.Id)
@@ -264,7 +295,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
 
             if (!string.IsNullOrWhiteSpace(filter.RequestPathKeyword)) {
                 var requestPathKeyword = filter.RequestPathKeyword.Trim();
-                query = query.Where(x => x.RequestPath.Contains(requestPathKeyword));
+                query = query.Where(x => x.RequestPath.StartsWith(requestPathKeyword));
             }
 
             return query;

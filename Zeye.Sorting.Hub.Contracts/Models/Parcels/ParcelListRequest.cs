@@ -15,7 +15,12 @@ public sealed record ParcelListRequest {
     public int PageSize { get; init; } = 20;
 
     /// <summary>
-    /// 条码检索词（MySQL 使用 FULLTEXT Boolean 模式；其他 Provider 使用 Contains 子串匹配）。
+    /// 是否返回精确总记录数；关闭后可避免一次额外计数查询。
+    /// </summary>
+    public bool IncludeTotalCount { get; init; } = true;
+
+    /// <summary>
+    /// 条码检索词（所有提供器使用一致的子串匹配语义）。
     /// </summary>
     public string? BarCodeKeyword { get; init; }
 

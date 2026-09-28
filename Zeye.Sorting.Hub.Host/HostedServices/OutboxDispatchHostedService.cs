@@ -34,7 +34,7 @@ public sealed class OutboxDispatchHostedService : BackgroundService {
     /// <summary>
     /// 默认批次大小。
     /// </summary>
-    private const int DefaultBatchSize = 20;
+    private const int DefaultBatchSize = 100;
 
     /// <summary>
     /// 默认最大重试次数。
@@ -99,11 +99,21 @@ public sealed class OutboxDispatchHostedService : BackgroundService {
     /// <returns>后台任务。</returns>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
         try {
-            await DispatchAndLogAsync(stoppingToken);
+            var emptyPollCount = 0;
+            while (!stoppingToken.IsCancellationRequested) {
+                var handledCount = await DispatchAndLogAsync(stoppingToken);
+                if (handledCount >= _batchSize) {
+                    emptyPollCount = 0;
+                    await Task.Yield();
+                    continue;
+                }
 
-            using var timer = new PeriodicTimer(_pollInterval);
-            while (await timer.WaitForNextTickAsync(stoppingToken)) {
-                await DispatchAndLogAsync(stoppingToken);
+                emptyPollCount = handledCount == 0 ? Math.Min(emptyPollCount + 1, 4) : 0;
+                var delayMultiplier = 1 << emptyPollCount;
+                var delay = TimeSpan.FromTicks(Math.Min(
+                    _pollInterval.Ticks * delayMultiplier,
+                    TimeSpan.FromMinutes(1).Ticks));
+                await Task.Delay(delay, stoppingToken);
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) {
@@ -116,15 +126,21 @@ public sealed class OutboxDispatchHostedService : BackgroundService {
     /// </summary>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>异步任务。</returns>
-    private async Task DispatchAndLogAsync(CancellationToken cancellationToken) {
+    private async Task<int> DispatchAndLogAsync(CancellationToken cancellationToken) {
         try {
             var handledCount = await RunOnceAsync(cancellationToken);
             if (handledCount > 0) {
-                NLogLogger.Info("Outbox 消息派发完成，HandledCount={HandledCount}, BatchSize={BatchSize}, MaxRetryCount={MaxRetryCount}", handledCount, _batchSize, _maxRetryCount);
+                NLogLogger.Debug("Outbox 消息派发完成，HandledCount={HandledCount}, BatchSize={BatchSize}, MaxRetryCount={MaxRetryCount}", handledCount, _batchSize, _maxRetryCount);
             }
+
+            return handledCount;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            throw;
         }
         catch (Exception exception) {
             NLogLogger.Error(exception, "Outbox 消息派发后台服务执行失败。");
+            return 0;
         }
     }
 
@@ -134,7 +150,8 @@ public sealed class OutboxDispatchHostedService : BackgroundService {
     /// <param name="configuration">配置根。</param>
     /// <returns>轮询间隔。</returns>
     private static TimeSpan ResolvePollInterval(IConfiguration configuration) {
-        var seconds = configuration.GetValue<int?>(PollIntervalSecondsConfigKey) ?? (int)DefaultPollInterval.TotalSeconds;
+        var seconds = configuration.GetValue<int?>(PollIntervalSecondsConfigKey)
+            ?? (int)(DefaultPollInterval.Ticks / TimeSpan.TicksPerSecond);
         return TimeSpan.FromSeconds(Math.Clamp(seconds, 1, 300));
     }
 

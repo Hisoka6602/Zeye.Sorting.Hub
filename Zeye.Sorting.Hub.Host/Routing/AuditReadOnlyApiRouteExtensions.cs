@@ -72,6 +72,7 @@ public static class AuditReadOnlyApiRouteExtensions {
             var request = new WebRequestAuditLogListRequest {
                 PageNumber = query.PageNumber,
                 PageSize = query.PageSize,
+                IncludeTotalCount = query.IncludeTotalCount ?? false,
                 StartedAtStart = startedAtStart,
                 StartedAtEnd = startedAtEnd,
                 StatusCode = query.StatusCode,

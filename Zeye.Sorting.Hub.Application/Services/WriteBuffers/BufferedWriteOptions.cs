@@ -90,6 +90,21 @@ public sealed class BufferedWriteOptions {
     public int MaxRetryCount { get; set; } = 3;
 
     /// <summary>
+    /// 首次重试基础延迟（毫秒）。
+    /// </summary>
+    public int RetryBaseDelayMilliseconds { get; set; } = 250;
+
+    /// <summary>
+    /// 重试最大延迟（毫秒）。
+    /// </summary>
+    public int MaxRetryDelayMilliseconds { get; set; } = 5000;
+
+    /// <summary>
+    /// 重试随机抖动上限（毫秒）。
+    /// </summary>
+    public int RetryJitterMilliseconds { get; set; } = 200;
+
+    /// <summary>
     /// 触发背压拒绝的队列深度阈值。
     /// 可填写范围：1~ChannelCapacity。
     /// </summary>

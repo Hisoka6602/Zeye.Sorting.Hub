@@ -12,7 +12,7 @@ public interface IAutoTuningObservability {
     /// <param name="name">指标名称。</param>
     /// <param name="value">指标数值。</param>
     /// <param name="tags">可选标签集合。</param>
-    void EmitMetric(string name, double value, IReadOnlyDictionary<string, string>? tags = null);
+    void EmitMetric(string name, decimal value, IReadOnlyDictionary<string, string>? tags = null);
 
     /// <summary>
     /// 发送事件日志。

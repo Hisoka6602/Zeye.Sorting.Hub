@@ -46,10 +46,10 @@ public sealed class ReportingQueryBudgetPlanner {
         }
 
         var range = normalizedRangeEndLocal - normalizedRangeStartLocal;
-        if (range.TotalDays > _options.MaxReportTimeRangeDays) {
+        if (range.Ticks > (long)_options.MaxReportTimeRangeDays * TimeSpan.TicksPerDay) {
             Logger.Error(
                 "报表查询预算校验失败：时间范围超限，RangeDays={RangeDays}, MaxReportTimeRangeDays={MaxReportTimeRangeDays}",
-                range.TotalDays,
+                range.Ticks / (decimal)TimeSpan.TicksPerDay,
                 _options.MaxReportTimeRangeDays);
             throw new InvalidOperationException($"报表查询时间范围不能超过 {_options.MaxReportTimeRangeDays} 天。");
         }

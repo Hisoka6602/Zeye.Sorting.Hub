@@ -59,6 +59,22 @@ public sealed class PerformanceBaselineRulesTests {
     }
 
     /// <summary>
+    /// 真实回归工作流应执行读取门禁、显式保护写入场景并留存机器可读结果。
+    /// </summary>
+    [Fact]
+    public void PerformanceRegressionWorkflow_ShouldRunThresholdGatesAndPublishResults() {
+        var workflowContent = RepositoryFileReader.ReadAllText(".github", "workflows", "performance-regression-gate.yml");
+
+        Assert.Contains("grafana/setup-k6-action@v1", workflowContent, StringComparison.Ordinal);
+        Assert.Contains("parcel-cursor-query.js", workflowContent, StringComparison.Ordinal);
+        Assert.Contains("audit-query.js", workflowContent, StringComparison.Ordinal);
+        Assert.Contains("run_write_scenario", workflowContent, StringComparison.Ordinal);
+        Assert.Contains("--summary-export", workflowContent, StringComparison.Ordinal);
+        Assert.Contains("actions/upload-artifact@v4", workflowContent, StringComparison.Ordinal);
+        Assert.Contains("summarize-k6.ps1", workflowContent, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// 性能基线报告模板应包含 PR-S 强制指标与全部场景。
     /// </summary>
     [Fact]

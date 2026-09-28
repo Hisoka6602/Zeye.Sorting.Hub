@@ -20,6 +20,11 @@ public sealed class DatabaseConnectionDiagnosticsService : IDatabaseConnectionDi
     private readonly object _syncLock = new();
 
     /// <summary>
+    /// 并发探测合并锁，同一时刻仅允许一个真实连接探测。
+    /// </summary>
+    private readonly SemaphoreSlim _probeGate = new(1, 1);
+
+    /// <summary>
     /// 短生命周期 DbContext 工厂。
     /// </summary>
     private readonly IDbContextFactory<SortingHubDbContext> _dbContextFactory;
@@ -63,6 +68,27 @@ public sealed class DatabaseConnectionDiagnosticsService : IDatabaseConnectionDi
 
     /// <inheritdoc />
     public async Task<DatabaseConnectionHealthSnapshot> ProbeAsync(CancellationToken cancellationToken) {
+        var cachedSnapshot = GetFreshSnapshot();
+        if (cachedSnapshot is not null) {
+            return cachedSnapshot;
+        }
+
+        await _probeGate.WaitAsync(cancellationToken);
+        try {
+            cachedSnapshot = GetFreshSnapshot();
+            return cachedSnapshot ?? await ProbeCoreAsync(cancellationToken);
+        }
+        finally {
+            _probeGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// 执行一次真实数据库连接探测。
+    /// </summary>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>连接健康快照。</returns>
+    private async Task<DatabaseConnectionHealthSnapshot> ProbeCoreAsync(CancellationToken cancellationToken) {
         var probeTimestamp = Stopwatch.GetTimestamp();
         using var timeoutTokenSource = CreateTimeoutTokenSource(cancellationToken);
 
@@ -85,6 +111,27 @@ public sealed class DatabaseConnectionDiagnosticsService : IDatabaseConnectionDi
             var elapsedMilliseconds = GetElapsedMilliseconds(probeTimestamp);
             Logger.Error(ex, "数据库连接诊断探测失败");
             return RecordFailureSnapshot("Unknown", "Unknown", elapsedMilliseconds, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// 获取仍在复用窗口内的诊断快照。
+    /// </summary>
+    /// <returns>可复用快照；不存在时返回 null。</returns>
+    private DatabaseConnectionHealthSnapshot? GetFreshSnapshot() {
+        if (_options.ProbeCacheMilliseconds <= 0) {
+            return null;
+        }
+
+        lock (_syncLock) {
+            if (_latestSnapshot is null) {
+                return null;
+            }
+
+            var age = DateTime.Now - _latestSnapshot.CheckedAtLocal;
+            return age <= TimeSpan.FromMilliseconds(_options.ProbeCacheMilliseconds)
+                ? _latestSnapshot
+                : null;
         }
     }
 
@@ -194,6 +241,6 @@ public sealed class DatabaseConnectionDiagnosticsService : IDatabaseConnectionDi
     /// <returns>毫秒耗时。</returns>
     private static long GetElapsedMilliseconds(long probeTimestamp) {
         var elapsed = Stopwatch.GetElapsedTime(probeTimestamp);
-        return (long)elapsed.TotalMilliseconds;
+        return elapsed.Ticks / TimeSpan.TicksPerMillisecond;
     }
 }

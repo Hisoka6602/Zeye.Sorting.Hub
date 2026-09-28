@@ -4,6 +4,8 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
+using Zeye.Sorting.Hub.Infrastructure.EntityConfigurations;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence {
 
@@ -11,6 +13,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence {
     /// 分拣中心 DbContext（仅负责映射与 DbSet，不执行运维动作）
     /// </summary>
     public sealed class SortingHubDbContext : DbContext {
+        /// <summary>当前包裹物理表后缀，空值表示历史基础表；只允许工厂在首次访问模型前设置。</summary>
+        internal string ParcelPartitionSuffix { get; init; } = string.Empty;
         /// <summary>
         /// SQL Server 默认 schema。
         /// </summary>
@@ -31,8 +35,32 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence {
                 modelBuilder.HasDefaultSchema(SqlServerDefaultSchema);
             }
 
-            // 统一应用所有 IEntityTypeConfiguration
-            modelBuilder.ApplyConfigurationsFromAssembly(typeof(SortingHubDbContext).Assembly);
+            // 统一应用实体配置，Parcel 的索引根据数据库提供器单独配置。
+            modelBuilder.ApplyConfigurationsFromAssembly(
+                typeof(SortingHubDbContext).Assembly,
+                type => type != typeof(ParcelEntityTypeConfiguration));
+            modelBuilder.ApplyConfiguration(new ParcelEntityTypeConfiguration(Database.ProviderName == DbProviderNames.SqlServer));
+
+            // 步骤1：全局目录与去重凭据保持基础表名，跨分表身份不随粒度变化。
+            modelBuilder.Entity<ParcelPartitionCatalogEntry>(b => {
+                b.ToTable("ParcelPartitionCatalog"); b.HasKey(x => x.Suffix); b.Property(x => x.Suffix).HasMaxLength(32);
+            });
+            modelBuilder.Entity<ParcelLocation>(b => {
+                b.ToTable("ParcelLocations"); b.HasKey(x => x.Id); b.Property(x => x.Id).ValueGeneratedNever();
+                b.Property(x => x.SourceKey).HasMaxLength(64); b.HasIndex(x => x.SourceKey).IsUnique(); b.Property(x => x.Suffix).HasMaxLength(32);
+            });
+            modelBuilder.Entity<ParcelProcessingReceipt>(b => {
+                b.ToTable("ParcelProcessingReceipts"); b.HasKey(x => x.Key); b.Property(x => x.Key).HasMaxLength(64);
+                b.Property(x => x.PayloadHash).HasMaxLength(64); b.Property(x => x.Suffix).HasMaxLength(32);
+                b.HasIndex(x => new { x.ParcelId, x.RecordedAt });
+            });
+            // 步骤2：包裹及其拥有的值对象、处理记录始终在同一周期，集包保持全局共享。
+            if (ParcelPartitionSuffix.Length > 0) {
+                foreach (var entity in modelBuilder.Model.GetEntityTypes()) {
+                    var table = entity.GetTableName();
+                    if (table == "Parcels" || table?.StartsWith("Parcel_", StringComparison.Ordinal) == true) entity.SetTableName(table + "_" + ParcelPartitionSuffix);
+                }
+            }
 
             base.OnModelCreating(modelBuilder);
         }

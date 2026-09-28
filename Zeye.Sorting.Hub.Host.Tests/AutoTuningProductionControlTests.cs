@@ -31,8 +31,8 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 
 /// <summary>自动调优生产控制相关功能的集成测试集合。</summary>
 public sealed class AutoTuningProductionControlTests {
-    /// <summary>浮点精度比较容差（用于断言 double 近似相等）。</summary>
-    private const double DoublePrecisionTolerance = 0.0001d;
+    /// <summary>定点小数精度比较容差。</summary>
+    private const decimal DecimalPrecisionTolerance = 0.0001m;
 
     /// <summary>
     /// NLog 全局配置切换互斥锁：防止并行测试对全局 <see cref="NLog.LogManager.Configuration"/> 的竞争写入。
@@ -263,7 +263,7 @@ public sealed class AutoTuningProductionControlTests {
         Assert.Empty(evaluation.ValidationErrors);
         Assert.Equal(ParcelShardingStrategyMode.Hybrid, evaluation.Decision.Mode);
         Assert.True(evaluation.Decision.ThresholdReached);
-        Assert.Equal(ExpandByDateMode.PerDay, evaluation.Decision.EffectiveDateMode);
+        Assert.Equal(ParcelTimeShardingGranularity.PerDay, evaluation.Decision.EffectiveDateMode);
         Assert.True(evaluation.Decision.FinerGranularityExtensionPlan.ShouldPlanExtension);
         Assert.Equal(ParcelFinerGranularityMode.PerHour, evaluation.Decision.FinerGranularityExtensionPlan.SuggestedMode);
         Assert.Equal(ParcelFinerGranularityPlanLifecycle.PlanOnly, evaluation.Decision.FinerGranularityExtensionPlan.Lifecycle);
@@ -290,7 +290,7 @@ public sealed class AutoTuningProductionControlTests {
 
         Assert.Empty(evaluation.ValidationErrors);
         Assert.True(evaluation.Decision.ThresholdReached);
-        Assert.Equal(ExpandByDateMode.PerDay, evaluation.Decision.EffectiveDateMode);
+        Assert.Equal(ParcelTimeShardingGranularity.PerDay, evaluation.Decision.EffectiveDateMode);
         Assert.Contains("Trigger=hot", evaluation.Decision.Reason, StringComparison.Ordinal);
         Assert.True(evaluation.Decision.FinerGranularityExtensionPlan.ShouldPlanExtension);
     }
@@ -311,7 +311,7 @@ public sealed class AutoTuningProductionControlTests {
 
         Assert.Empty(evaluation.ValidationErrors);
         Assert.Equal(ParcelShardingStrategyMode.Time, evaluation.Decision.Mode);
-        Assert.Equal(ExpandByDateMode.PerDay, evaluation.Decision.EffectiveDateMode);
+        Assert.Equal(ParcelTimeShardingGranularity.PerDay, evaluation.Decision.EffectiveDateMode);
         Assert.False(evaluation.Decision.ThresholdReached);
         Assert.False(evaluation.Decision.FinerGranularityExtensionPlan.ShouldPlanExtension);
     }
@@ -355,7 +355,7 @@ public sealed class AutoTuningProductionControlTests {
         Assert.Contains(evaluation.ValidationErrors, message => message.Contains("Strategy:Mode", StringComparison.Ordinal));
         Assert.Contains(evaluation.ValidationErrors, message => message.Contains("Strategy:Time:Granularity", StringComparison.Ordinal));
         Assert.Equal(ParcelShardingStrategyMode.Time, evaluation.Decision.Mode);
-        Assert.Equal(ExpandByDateMode.PerMonth, evaluation.Decision.EffectiveDateMode);
+        Assert.Equal(ParcelTimeShardingGranularity.PerMonth, evaluation.Decision.EffectiveDateMode);
     }
 
     /// <summary>
@@ -414,7 +414,7 @@ public sealed class AutoTuningProductionControlTests {
         Assert.NotEmpty(evaluation.ValidationErrors);
         Assert.Contains(evaluation.ValidationErrors, message => message.Contains("MaxRowsPerShard", StringComparison.Ordinal));
         Assert.Contains(evaluation.ValidationErrors, message => message.Contains("HotThresholdRatio", StringComparison.Ordinal));
-        Assert.Equal(ExpandByDateMode.PerMonth, evaluation.Decision.EffectiveDateMode);
+        Assert.Equal(ParcelTimeShardingGranularity.PerMonth, evaluation.Decision.EffectiveDateMode);
     }
 
     /// <summary>
@@ -462,7 +462,7 @@ public sealed class AutoTuningProductionControlTests {
         Assert.Equal(1500, evaluation.Decision.VolumeObservation.EstimatedRowsPerShard);
         Assert.Equal(0.2m, evaluation.Decision.VolumeObservation.ObservedHotRatio);
         Assert.True(evaluation.Decision.ThresholdReached);
-        Assert.Equal(ExpandByDateMode.PerDay, evaluation.Decision.EffectiveDateMode);
+        Assert.Equal(ParcelTimeShardingGranularity.PerDay, evaluation.Decision.EffectiveDateMode);
         Assert.True(evaluation.Decision.FinerGranularityExtensionPlan.ShouldPlanExtension);
     }
 
@@ -652,7 +652,7 @@ public sealed class AutoTuningProductionControlTests {
             ThresholdAction: ParcelVolumeThresholdAction.SwitchToPerDay,
             VolumeObservation: new ParcelShardingVolumeObservation("config-static", 2000, 0.9m),
             ThresholdReached: true,
-            EffectiveDateMode: ExpandByDateMode.PerDay,
+            EffectiveDateMode: ParcelTimeShardingGranularity.PerDay,
             FinerGranularityExtensionPlan: new ParcelFinerGranularityExtensionPlan(
                 ShouldPlanExtension: true,
                 SuggestedMode: ParcelFinerGranularityMode.PerHour,
@@ -688,7 +688,7 @@ public sealed class AutoTuningProductionControlTests {
             ThresholdAction: ParcelVolumeThresholdAction.AlertOnly,
             VolumeObservation: new ParcelShardingVolumeObservation("config-static", null, null),
             ThresholdReached: false,
-            EffectiveDateMode: ExpandByDateMode.PerDay,
+            EffectiveDateMode: ParcelTimeShardingGranularity.PerDay,
             FinerGranularityExtensionPlan: new ParcelFinerGranularityExtensionPlan(
                 ShouldPlanExtension: false,
                 SuggestedMode: ParcelFinerGranularityMode.None,
@@ -724,7 +724,7 @@ public sealed class AutoTuningProductionControlTests {
             ThresholdAction: ParcelVolumeThresholdAction.SwitchToPerDay,
             VolumeObservation: new ParcelShardingVolumeObservation("config-static", 2000, 0.9m),
             ThresholdReached: true,
-            EffectiveDateMode: ExpandByDateMode.PerMonth,
+            EffectiveDateMode: ParcelTimeShardingGranularity.PerMonth,
             FinerGranularityExtensionPlan: new ParcelFinerGranularityExtensionPlan(
                 ShouldPlanExtension: true,
                 SuggestedMode: ParcelFinerGranularityMode.PerHour,
@@ -760,7 +760,7 @@ public sealed class AutoTuningProductionControlTests {
             ThresholdAction: ParcelVolumeThresholdAction.SwitchToPerDay,
             VolumeObservation: new ParcelShardingVolumeObservation("config-static", 2000, 0.9m),
             ThresholdReached: true,
-            EffectiveDateMode: ExpandByDateMode.PerDay,
+            EffectiveDateMode: ParcelTimeShardingGranularity.PerDay,
             FinerGranularityExtensionPlan: new ParcelFinerGranularityExtensionPlan(
                 ShouldPlanExtension: true,
                 SuggestedMode: ParcelFinerGranularityMode.PerHour,
@@ -956,7 +956,7 @@ public sealed class AutoTuningProductionControlTests {
             ThresholdAction: ParcelVolumeThresholdAction.AlertOnly,
             VolumeObservation: new ParcelShardingVolumeObservation("test", null, null),
             ThresholdReached: false,
-            EffectiveDateMode: ExpandByDateMode.PerMonth,
+            EffectiveDateMode: ParcelTimeShardingGranularity.PerMonth,
             FinerGranularityExtensionPlan: new ParcelFinerGranularityExtensionPlan(
                 ShouldPlanExtension: false,
                 SuggestedMode: ParcelFinerGranularityMode.None,
@@ -1059,7 +1059,7 @@ public sealed class AutoTuningProductionControlTests {
         var executedMetric = Assert.Single(
             observability.MetricEntries,
             static entry => string.Equals(entry.Name, "web_request_audit_log.retention.executed_count", StringComparison.Ordinal));
-        Assert.Equal(0d, executedMetric.Value);
+        Assert.Equal(0m, executedMetric.Value);
         Assert.Contains(
             observability.EventEntries,
             entry => string.Equals(entry.Name, "web_request_audit_log.retention.skipped", StringComparison.Ordinal));
@@ -1361,9 +1361,9 @@ public sealed class AutoTuningProductionControlTests {
                     0m,
                     0m,
                     0,
-                    100d,
-                    120d,
-                    150d,
+                    100m,
+                    120m,
+                    150m,
                     null),
                 new SlowQueryMetric(
                     "fp-2",
@@ -1373,9 +1373,9 @@ public sealed class AutoTuningProductionControlTests {
                     0m,
                     0m,
                     0,
-                    80d,
-                    100d,
-                    110d,
+                    80m,
+                    100m,
+                    110m,
                     null),
                 new SlowQueryMetric(
                     "fp-3",
@@ -1385,9 +1385,9 @@ public sealed class AutoTuningProductionControlTests {
                     0m,
                     0m,
                     0,
-                    90d,
-                    110d,
-                    130d,
+                    90m,
+                    110m,
+                    130m,
                     null)
             ],
             [
@@ -1409,7 +1409,7 @@ public sealed class AutoTuningProductionControlTests {
         Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.cross_table_query_ratio");
         Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hot_table_skew");
         // 命中调用数 = 5 + 20 = 25，总调用数 = 10 + 5 + 20 = 35。
-        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hit_rate" && Math.Abs(entry.Value - (25d / 35d)) < DoublePrecisionTolerance);
+        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hit_rate" && Math.Abs(entry.Value - (25m / 35m)) < DecimalPrecisionTolerance);
     }
 
     /// <summary>
@@ -1441,8 +1441,8 @@ public sealed class AutoTuningProductionControlTests {
             fixedNow,
             0,
             [
-                new SlowQueryMetric("partial-1", "select * from parcels where code=@p0", 10, 100, 0m, 0m, 0, 10d, 20d, 30d, null),
-                new SlowQueryMetric("partial-2", "show status", 10, 0, 0m, 0m, 0, 10d, 20d, 30d, null)
+                new SlowQueryMetric("partial-1", "select * from parcels where code=@p0", 10, 100, 0m, 0m, 0, 10m, 20m, 30m, null),
+                new SlowQueryMetric("partial-2", "show status", 10, 0, 0m, 0m, 0, 10m, 20m, 30m, null)
             ],
             Array.Empty<SlowQueryTuningCandidate>(),
             Array.Empty<string>(),
@@ -1454,14 +1454,14 @@ public sealed class AutoTuningProductionControlTests {
             false,
             false);
         updateAutonomousSignals.Invoke(service, [partial, fixedNow]);
-        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hit_rate" && Math.Abs(entry.Value - 0.5d) < DoublePrecisionTolerance);
+        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hit_rate" && Math.Abs(entry.Value - 0.5m) < DecimalPrecisionTolerance);
 
         observability.MetricEntries.Clear();
         var none = new SlowQueryAnalysisResult(
             fixedNow,
             0,
             [
-                new SlowQueryMetric("none-1", "show status", 7, 0, 0m, 0m, 0, 10d, 20d, 30d, null)
+                new SlowQueryMetric("none-1", "show status", 7, 0, 0m, 0m, 0, 10m, 20m, 30m, null)
             ],
             Array.Empty<SlowQueryTuningCandidate>(),
             Array.Empty<string>(),
@@ -1473,7 +1473,7 @@ public sealed class AutoTuningProductionControlTests {
             false,
             false);
         updateAutonomousSignals.Invoke(service, [none, fixedNow]);
-        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hit_rate" && Math.Abs(entry.Value) < DoublePrecisionTolerance);
+        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hit_rate" && Math.Abs(entry.Value) < DecimalPrecisionTolerance);
     }
 
     /// <summary>
@@ -1512,9 +1512,9 @@ public sealed class AutoTuningProductionControlTests {
                     0m,
                     0m,
                     0,
-                    100d,
-                    120d,
-                    130d,
+                    100m,
+                    120m,
+                    130m,
                     null),
                 new SlowQueryMetric(
                     "single-table",
@@ -1524,9 +1524,9 @@ public sealed class AutoTuningProductionControlTests {
                     0m,
                     0m,
                     0,
-                    90d,
-                    110d,
-                    130d,
+                    90m,
+                    110m,
+                    130m,
                     null)
             ],
             Array.Empty<SlowQueryTuningCandidate>(),
@@ -1540,8 +1540,8 @@ public sealed class AutoTuningProductionControlTests {
             false);
 
         updateAutonomousSignals.Invoke(service, [result, fixedNow]);
-        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.cross_table_query_ratio" && Math.Abs(entry.Value - 0.5d) < DoublePrecisionTolerance);
-        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hit_rate" && Math.Abs(entry.Value - 0.5d) < DoublePrecisionTolerance);
+        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.cross_table_query_ratio" && Math.Abs(entry.Value - 0.5m) < DecimalPrecisionTolerance);
+        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hit_rate" && Math.Abs(entry.Value - 0.5m) < DecimalPrecisionTolerance);
     }
 
     /// <summary>
@@ -1580,9 +1580,9 @@ public sealed class AutoTuningProductionControlTests {
                     0m,
                     0m,
                     0,
-                    80d,
-                    100d,
-                    120d,
+                    80m,
+                    100m,
+                    120m,
                     null),
                 new SlowQueryMetric(
                     "comma-from",
@@ -1592,9 +1592,9 @@ public sealed class AutoTuningProductionControlTests {
                     0m,
                     0m,
                     0,
-                    80d,
-                    100d,
-                    120d,
+                    80m,
+                    100m,
+                    120m,
                     null)
             ],
             Array.Empty<SlowQueryTuningCandidate>(),
@@ -1608,7 +1608,7 @@ public sealed class AutoTuningProductionControlTests {
             false);
 
         updateAutonomousSignals.Invoke(service, [result, fixedNow]);
-        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.cross_table_query_ratio" && Math.Abs(entry.Value - 0.5d) < DoublePrecisionTolerance);
+        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.cross_table_query_ratio" && Math.Abs(entry.Value - 0.5m) < DecimalPrecisionTolerance);
     }
 
     /// <summary>
@@ -1639,8 +1639,8 @@ public sealed class AutoTuningProductionControlTests {
             fixedNow,
             0,
             [
-                new SlowQueryMetric("table-a", "select * from parcels where code=@p0", 30, 300, 0m, 0m, 0, 10d, 20d, 30d, null),
-                new SlowQueryMetric("table-b", "select * from parcel_positions where id=@p1", 10, 120, 0m, 0m, 0, 10d, 20d, 30d, null)
+                new SlowQueryMetric("table-a", "select * from parcels where code=@p0", 30, 300, 0m, 0m, 0, 10m, 20m, 30m, null),
+                new SlowQueryMetric("table-b", "select * from parcel_positions where id=@p1", 10, 120, 0m, 0m, 0, 10m, 20m, 30m, null)
             ],
             Array.Empty<SlowQueryTuningCandidate>(),
             Array.Empty<string>(),
@@ -1653,7 +1653,7 @@ public sealed class AutoTuningProductionControlTests {
             false);
 
         updateAutonomousSignals.Invoke(service, [result, fixedNow]);
-        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hot_table_skew" && Math.Abs(entry.Value - 1.5d) < DoublePrecisionTolerance);
+        Assert.Contains(observability.MetricEntries, entry => entry.Name == "autotuning.sharding.hot_table_skew" && Math.Abs(entry.Value - 1.5m) < DecimalPrecisionTolerance);
     }
 
     /// <summary>
@@ -1685,7 +1685,7 @@ public sealed class AutoTuningProductionControlTests {
             DateTime.Now,
             0,
             [
-                new SlowQueryMetric("fp-covered", "select * from parcels where code=@p0", 3, 10, 0m, 0m, 0, 100d, 200d, 220d, null)
+                new SlowQueryMetric("fp-covered", "select * from parcels where code=@p0", 3, 10, 0m, 0m, 0, 100m, 200m, 220m, null)
             ],
             [
                 new SlowQueryTuningCandidate(
@@ -1754,7 +1754,7 @@ public sealed class AutoTuningProductionControlTests {
             DateTime.Now,
             0,
             [
-                new SlowQueryMetric("fp-keep", "select * from parcels where code=@p0", 7, 100, 0m, 0m, 0, 100d, 800d, 900d, null)
+                new SlowQueryMetric("fp-keep", "select * from parcels where code=@p0", 7, 100, 0m, 0m, 0, 100m, 800m, 900m, null)
             ],
             [
                 new SlowQueryTuningCandidate(
@@ -1825,7 +1825,7 @@ public sealed class AutoTuningProductionControlTests {
             DateTime.Now,
             0,
             [
-                new SlowQueryMetric("fp-composite", "select * from parcels where code=@p0 and id=@p1", 8, 200, 0m, 0m, 0, 100d, 900d, 950d, null)
+                new SlowQueryMetric("fp-composite", "select * from parcels where code=@p0 and id=@p1", 8, 200, 0m, 0m, 0, 100m, 900m, 950m, null)
             ],
             [
                 new SlowQueryTuningCandidate(
@@ -1892,8 +1892,8 @@ public sealed class AutoTuningProductionControlTests {
             DateTime.Now,
             0,
             [
-                new SlowQueryMetric("fp-sharding", "select * from parcels where code=@p0", 5, 50, 0m, 0m, 0, 300d, 600d, 700d, null),
-                new SlowQueryMetric("fp-cross", "select * from parcels p join parcel_positions pp on p.id=pp.parcel_id where p.code=@p1", 20, 200, 0m, 0m, 0, 100d, 200d, 250d, null)
+                new SlowQueryMetric("fp-sharding", "select * from parcels where code=@p0", 5, 50, 0m, 0m, 0, 300m, 600m, 700m, null),
+                new SlowQueryMetric("fp-cross", "select * from parcels p join parcel_positions pp on p.id=pp.parcel_id where p.code=@p1", 20, 200, 0m, 0m, 0, 100m, 200m, 250m, null)
             ],
             [
                 new SlowQueryTuningCandidate(
@@ -1953,8 +1953,8 @@ public sealed class AutoTuningProductionControlTests {
             DateTime.Now,
             0,
             [
-                new SlowQueryMetric("fp-sharding", "select * from parcels where code=@p0", 20, 200, 0m, 0m, 0, 300d, 600d, 700d, null),
-                new SlowQueryMetric("fp-cross", "select * from parcels p join parcel_positions pp on p.id=pp.parcel_id where p.code=@p1", 5, 50, 0m, 0m, 0, 100d, 200d, 250d, null)
+                new SlowQueryMetric("fp-sharding", "select * from parcels where code=@p0", 20, 200, 0m, 0m, 0, 300m, 600m, 700m, null),
+                new SlowQueryMetric("fp-cross", "select * from parcels p join parcel_positions pp on p.id=pp.parcel_id where p.code=@p1", 5, 50, 0m, 0m, 0, 100m, 200m, 250m, null)
             ],
             [
                 new SlowQueryTuningCandidate(
@@ -2363,10 +2363,13 @@ public sealed class AutoTuningProductionControlTests {
     public void PerDayShardingBaseTableNames_ShouldResolveFromEfModelWithoutHardcodedTableList() {
         using var dbContext = CreateTestingDbContext();
         var tableNames = DatabaseInitializerHostedService.ResolvePerDayShardingBaseTableNames(dbContext);
-        Assert.Equal(8, tableNames.Count);
+        Assert.Equal(dbContext.Model.GetEntityTypes().Select(x => x.GetTableName()).Where(x => x == "Parcels" || x?.StartsWith("Parcel_", StringComparison.Ordinal) == true).Distinct().Count(), tableNames.Count);
         Assert.Contains("Parcels", tableNames);
         Assert.Contains("Parcel_WeightInfos", tableNames);
         Assert.Contains("Parcel_CommandInfos", tableNames);
+        Assert.Contains("Parcel_ImageInfos", tableNames);
+        Assert.Contains("Parcel_ProcessingRecords", tableNames);
+        Assert.DoesNotContain("Bags", tableNames);
     }
 
     /// <summary>
@@ -2456,9 +2459,9 @@ public sealed class AutoTuningProductionControlTests {
                     2m,
                     3m,
                     2,
-                    1200d,
-                    1800d,
-                    1800d,
+                    1200m,
+                    1800m,
+                    1800m,
                     null)
             ],
             Array.Empty<SlowQueryTuningCandidate>(),
@@ -2545,9 +2548,9 @@ public sealed class AutoTuningProductionControlTests {
                     2m,
                     3m,
                     2,
-                    1200d,
-                    1800d,
-                    1800d,
+                    1200m,
+                    1800m,
+                    1800m,
                     null)
             ],
             Array.Empty<SlowQueryTuningCandidate>(),
@@ -2571,6 +2574,9 @@ public sealed class AutoTuningProductionControlTests {
             }
         }
     }
+
+    /// <summary>
+    /// 验证非法执行计划采样率会回退到默认值并调用探针。
     /// </summary>
     [Fact]
     public async Task WhenPlanProbeSampleRateInvalid_FallsBackToDefaultAndInvokesProbe() {
@@ -2612,9 +2618,9 @@ public sealed class AutoTuningProductionControlTests {
                     2m,
                     3m,
                     2,
-                    1200d,
-                    1800d,
-                    1800d,
+                    1200m,
+                    1800m,
+                    1800m,
                     null)
             ],
             Array.Empty<SlowQueryTuningCandidate>(),
@@ -2678,9 +2684,9 @@ public sealed class AutoTuningProductionControlTests {
                     2m,
                     3m,
                     2,
-                    1200d,
-                    1800d,
-                    1800d,
+                    1200m,
+                    1800m,
+                    1800m,
                     null)
             ],
             Array.Empty<SlowQueryTuningCandidate>(),
@@ -2727,7 +2733,7 @@ public sealed class AutoTuningProductionControlTests {
         const string seed = "action-001:fingerprint-001";
         var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(seed));
         var bucket = BinaryPrimitives.ReadUInt32LittleEndian(hashBytes) % 10000u;
-        var threshold = (uint)Math.Round(0.1234d * 10000d, MidpointRounding.AwayFromZero);
+        var threshold = (uint)Math.Round(0.1234m * 10000m, MidpointRounding.AwayFromZero);
         Assert.Equal(bucket < threshold, sampled);
     }
 
@@ -2802,8 +2808,8 @@ public sealed class AutoTuningProductionControlTests {
             "parcels",
             DateTime.Now,
             1,
-            200d,
-            300d,
+            200m,
+            300m,
             0m,
             0m,
             0,

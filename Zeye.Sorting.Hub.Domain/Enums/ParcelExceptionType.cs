@@ -78,5 +78,17 @@ namespace Zeye.Sorting.Hub.Domain.Enums {
         /// </summary>
         [Description("飘格")]
         DriftChute = 12,
+
+        /// <summary>设备检测到包裹间距违规。</summary>
+        [Description("包裹间距违规")]
+        ParcelSpacingViolation = 13,
+
+        /// <summary>目标格口分配被拒绝。</summary>
+        [Description("目标格口分配被拒绝")]
+        TargetChuteAssignmentRejected = 14,
+
+        /// <summary>其他来源设备异常，具体编码保存在处理事实中。</summary>
+        [Description("来源设备异常")]
+        SourceDeviceException = 15,
     }
 }

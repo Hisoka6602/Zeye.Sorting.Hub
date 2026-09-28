@@ -15,7 +15,7 @@ public readonly record struct ObjectStorageMultipartUploadSession {
     public required string ObjectKey { get; init; }
 
     /// <summary>
-    /// Multipart UploadId。
+    /// Multipart 上传标识。
     /// </summary>
     public required string UploadId { get; init; }
 

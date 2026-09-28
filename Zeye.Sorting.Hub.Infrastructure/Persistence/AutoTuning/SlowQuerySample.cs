@@ -11,7 +11,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         public string SqlFingerprint { get; init; }
 
         /// <summary>执行耗时（毫秒）。</summary>
-        public double ElapsedMilliseconds { get; init; }
+        public decimal ElapsedMilliseconds { get; init; }
 
         /// <summary>影响行数；不可用时为 0。</summary>
         public int AffectedRows { get; init; }
@@ -42,7 +42,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         public SlowQuerySample(
             string commandText,
             string sqlFingerprint,
-            double elapsedMilliseconds,
+            decimal elapsedMilliseconds,
             int affectedRows,
             bool isError,
             bool isTimeout,

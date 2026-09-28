@@ -276,9 +276,10 @@ public sealed class InboxMessageTests {
         var databaseName = $"inbox-cleanup-{Guid.NewGuid():N}";
         try {
             var options = BuildOptions(databaseName);
-            var expiredAt = LocalTimeTestConstraint.CreateLocalTime(2026, 5, 1, 8, 0, 0);
-            var provisionalExpiresAt = DateTime.Now.AddDays(2);
-            var activeExpiresAt = LocalTimeTestConstraint.CreateLocalTime(2026, 7, 1, 8, 0, 0);
+            var cleanupAt = DateTime.Now;
+            var expiredAt = cleanupAt.AddMinutes(-1);
+            var provisionalExpiresAt = cleanupAt.AddDays(2);
+            var activeExpiresAt = cleanupAt.AddDays(30);
             await using (var dbContext = new SortingHubDbContext(options)) {
                 var expiredRecord = InboxMessage.CreatePending("WCS", "MSG-1005", "ParcelArchived", provisionalExpiresAt);
                 expiredRecord.MarkProcessing();
@@ -297,7 +298,7 @@ public sealed class InboxMessageTests {
             var factory = new SortingHubTestDbContextFactory(options);
             var repository = new InboxMessageRepository(factory);
             var candidates = await repository.GetCleanupCandidatesAsync(
-                LocalTimeTestConstraint.CreateLocalTime(2026, 5, 2, 0, 0, 0),
+                cleanupAt,
                 10,
                 CancellationToken.None);
 

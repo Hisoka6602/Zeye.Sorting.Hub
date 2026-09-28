@@ -151,7 +151,7 @@ internal static class ParcelContractMapper {
                 BackgroundY1 = parcel.ParcelPositionInfo.BackgroundY1,
                 BackgroundY2 = parcel.ParcelPositionInfo.BackgroundY2
             }
-        );
+        ) { ProcessingRecords = parcel.ProcessingRecords.Select(ParcelProcessingContractMapper.ToResponse).ToArray() };
     }
 
     /// <summary>
@@ -161,6 +161,18 @@ internal static class ParcelContractMapper {
     /// <returns>映射参数对象。</returns>
     private static ParcelResponseArgs BuildFrom(IParcelSummaryView view) {
         return new ParcelResponseArgs {
+            SourceInstanceId = view.SourceInstanceId,
+            SourceRunId = view.SourceRunId,
+            SourceParcelId = view.SourceParcelId,
+            DetectedTime = view.DetectedTime,
+            MeasurementTime = view.MeasurementTime,
+            TargetChuteCode = view.TargetChuteCode,
+            ActualChuteCode = view.ActualChuteCode,
+            TaskCode = view.TaskCode,
+            VolumetricWeightGrams = view.VolumetricWeightGrams,
+            IsFallbackChuteAssigned = view.IsFallbackChuteAssigned,
+            IsRoutingBlocked = view.IsRoutingBlocked,
+            SourceExceptionCode = view.SourceExceptionCode,
             Id = view.Id,
             CreatedTime = view.CreatedTime,
             ModifyTime = view.ModifyTime,
@@ -201,6 +213,18 @@ internal static class ParcelContractMapper {
     /// <returns>列表项合同。</returns>
     private static ParcelListItemResponse CreateParcelListItemResponse(ParcelResponseArgs args) {
         return new ParcelListItemResponse {
+            SourceInstanceId = args.SourceInstanceId,
+            SourceRunId = args.SourceRunId,
+            SourceParcelId = args.SourceParcelId,
+            DetectedTime = args.DetectedTime,
+            MeasurementTime = args.MeasurementTime,
+            TargetChuteCode = args.TargetChuteCode,
+            ActualChuteCode = args.ActualChuteCode,
+            TaskCode = args.TaskCode,
+            VolumetricWeightGrams = args.VolumetricWeightGrams,
+            IsFallbackChuteAssigned = args.IsFallbackChuteAssigned,
+            IsRoutingBlocked = args.IsRoutingBlocked,
+            SourceExceptionCode = args.SourceExceptionCode,
             Id = args.Id,
             CreatedTime = args.CreatedTime,
             ModifyTime = args.ModifyTime,

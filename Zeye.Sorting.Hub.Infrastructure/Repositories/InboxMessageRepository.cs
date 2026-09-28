@@ -137,7 +137,7 @@ public sealed class InboxMessageRepository : IInboxMessageRepository {
                     return inboxMessage;
                 }
                 catch (DbUpdateConcurrencyException exception) {
-                    Logger.Warn(
+                    Logger.Debug(
                         exception,
                         "接管 Inbox 消息发生并发冲突，RecordId={RecordId}, SourceSystem={SourceSystem}, MessageId={MessageId}, Attempt={Attempt}",
                         inboxMessage.Id,
@@ -145,6 +145,7 @@ public sealed class InboxMessageRepository : IInboxMessageRepository {
                         messageId,
                         attempt + 1);
                     dbContext.ChangeTracker.Clear();
+                    await Task.Delay(Random.Shared.Next(5, 25), cancellationToken);
                 }
             }
 
@@ -205,14 +206,10 @@ public sealed class InboxMessageRepository : IInboxMessageRepository {
 
         try {
             await using var dbContext = await _contextFactory.CreateDbContextAsync(cancellationToken);
-            var persistedMessage = await dbContext.Set<InboxMessage>()
-                .FirstOrDefaultAsync(x => x.Id == inboxMessage.Id, cancellationToken);
-            if (persistedMessage is null) {
-                return RepositoryResult.Fail("Inbox 消息不存在。");
-            }
-
-            dbContext.Entry(persistedMessage).Property(x => x.Status).OriginalValue = expectedStatus;
-            dbContext.Entry(persistedMessage).CurrentValues.SetValues(inboxMessage);
+            dbContext.Attach(inboxMessage);
+            var entry = dbContext.Entry(inboxMessage);
+            entry.State = EntityState.Modified;
+            entry.Property(x => x.Status).OriginalValue = expectedStatus;
             await dbContext.SaveChangesAsync(cancellationToken);
             return RepositoryResult.Success();
         }

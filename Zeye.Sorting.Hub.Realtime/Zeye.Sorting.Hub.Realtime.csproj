@@ -1,7 +1,8 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
+  <!-- 中文说明：实时通信模块的构建与依赖配置。 -->
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>

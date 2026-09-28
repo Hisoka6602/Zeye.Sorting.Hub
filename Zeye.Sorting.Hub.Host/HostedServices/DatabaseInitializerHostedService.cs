@@ -298,7 +298,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     onRetry: (ex, ts, attempt, _) => {
                         NLogLogger.Warn(ex,
                             "数据库初始化重试中，Attempt={Attempt}, DelaySeconds={DelaySeconds}, Provider={Provider}",
-                            attempt, ts.TotalSeconds, _dialect.ProviderName);
+                            attempt, ts.Ticks / (decimal)TimeSpan.TicksPerSecond, _dialect.ProviderName);
                     });
         }
 
@@ -370,6 +370,20 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     }
 
                     await AssertMigrationConsistencyAsync(db, ct);
+
+                    // 包裹聚合实际路由使用同周期物理表；启动预建与写入建表共用隔离器和DDL审计。
+                    if (_createShardingTableOnStarting) {
+                        var partitions = scope.ServiceProvider.GetRequiredService<ParcelPartitionStore>();
+                        var currentPeriod = partitions.Resolve(DateTime.Now);
+                        await partitions.EnsureCreatedAsync(currentPeriod, ct);
+                        var end = DateTime.Now.AddHours(_shardingPrebuildWindowHours);
+                        var period = partitions.Resolve(currentPeriod.End);
+                        do {
+                            ct.ThrowIfCancellationRequested();
+                            await partitions.EnsureCreatedAsync(period, ct);
+                            period = partitions.Resolve(period.End);
+                        } while (period.Start <= end);
+                    }
 
                     foreach (var sql in _dialect.GetOptionalBootstrapSql()) {
                         try {
@@ -1098,7 +1112,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <param name="decision">分表策略决策快照。</param>
         /// <returns>当前生效粒度为 PerDay 时返回 true。</returns>
         internal static bool ShouldEnforcePerDayPrebuildGuard(ParcelShardingStrategyDecision decision) {
-            return decision.EffectiveDateMode == ExpandByDateMode.PerDay;
+            return decision.EffectiveDateMode == ParcelTimeShardingGranularity.PerDay;
         }
 
         /// <summary>
@@ -1421,7 +1435,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             };
 
             if (retentionDecision.Decision != ActionIsolationDecision.Execute) {
-                _observability.EmitMetric("web_request_audit_log.retention.executed_count", 0d, tags);
+                _observability.EmitMetric("web_request_audit_log.retention.executed_count", 0m, tags);
                 _observability.EmitEvent(
                     name: "web_request_audit_log.retention.skipped",
                     level: NLog.LogLevel.Info,
@@ -1431,7 +1445,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
 
             if (candidatePhysicalTableNames.Count == 0) {
-                _observability.EmitMetric("web_request_audit_log.retention.executed_count", 0d, tags);
+                _observability.EmitMetric("web_request_audit_log.retention.executed_count", 0m, tags);
                 return 0;
             }
 

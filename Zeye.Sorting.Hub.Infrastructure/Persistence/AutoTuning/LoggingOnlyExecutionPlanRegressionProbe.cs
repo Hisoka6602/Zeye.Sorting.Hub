@@ -40,7 +40,7 @@ public sealed class LoggingOnlyExecutionPlanRegressionProbe : IProviderAwareExec
         var snapshot = BuildSnapshot(normalizedProvider, normalizedFingerprint);
         _observability.EmitMetric(
             "autotuning.plan_probe.evaluation",
-            1d,
+            1m,
             new Dictionary<string, string> {
                 ["provider"] = normalizedProvider,
                 ["fingerprint"] = normalizedFingerprint,

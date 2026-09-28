@@ -59,7 +59,15 @@ public sealed class DataArchivePlanner {
             var baseQuery = dbContext.Set<WebRequestAuditLog>()
                 .AsNoTracking()
                 .Where(x => x.StartedAt < cutoffTime);
-            var plannedItemCount = await baseQuery.LongCountAsync(cancellationToken);
+            var aggregate = await baseQuery
+                .GroupBy(static _ => 1)
+                .Select(group => new {
+                    PlannedItemCount = group.LongCount(),
+                    MinStartedAt = group.Min(x => x.StartedAt),
+                    MaxStartedAt = group.Max(x => x.StartedAt)
+                })
+                .FirstOrDefaultAsync(cancellationToken);
+            var plannedItemCount = aggregate?.PlannedItemCount ?? 0L;
             var summarySample = await baseQuery
                 .OrderBy(x => x.StartedAt)
                 .ThenBy(x => x.Id)
@@ -72,13 +80,9 @@ public sealed class DataArchivePlanner {
                     x.StatusCode
                 })
                 .ToArrayAsync(cancellationToken);
-            var range = await baseQuery
-                .GroupBy(static _ => 1)
-                .Select(group => new {
-                    MinStartedAt = group.Min(x => x.StartedAt),
-                    MaxStartedAt = group.Max(x => x.StartedAt)
-                })
-                .FirstOrDefaultAsync(cancellationToken);
+            var range = aggregate is null
+                ? null
+                : new { aggregate.MinStartedAt, aggregate.MaxStartedAt };
             var checkpointObject = new {
                 archiveTaskId = archiveTask.Id,
                 taskType = archiveTask.TaskType.ToString(),

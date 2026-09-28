@@ -68,6 +68,11 @@ public sealed class DatabaseConnectionDiagnosticsOptions {
     public int ProbeTimeoutMilliseconds { get; set; } = 3000;
 
     /// <summary>
+    /// 成功或失败探测快照的复用时长（毫秒）。
+    /// </summary>
+    public int ProbeCacheMilliseconds { get; set; }
+
+    /// <summary>
     /// 进入 Unhealthy 所需的连续失败次数。
     /// 可填写范围：1~20。
     /// </summary>

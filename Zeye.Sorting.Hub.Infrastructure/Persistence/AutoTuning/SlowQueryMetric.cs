@@ -11,7 +11,7 @@ public sealed record SlowQueryMetric(
     decimal ErrorRatePercent,
     decimal TimeoutRatePercent,
     int DeadlockCount,
-    double P95Milliseconds,
-    double P99Milliseconds,
-    double MaxMilliseconds,
+    decimal P95Milliseconds,
+    decimal P99Milliseconds,
+    decimal MaxMilliseconds,
     int? LockWaitCount);

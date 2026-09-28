@@ -27,7 +27,7 @@ public sealed record WebRequestAuditLogDetailReadModel {
     public required string CorrelationId { get; init; }
 
     /// <summary>
-    /// Span Id。
+    /// 分布式跟踪跨度标识。
     /// </summary>
     public required string SpanId { get; init; }
 
@@ -222,7 +222,7 @@ public sealed record WebRequestAuditLogDetailReadModel {
     public required string AuthorizationType { get; init; }
 
     /// <summary>
-    /// User-Agent。
+    /// 客户端用户代理标识。
     /// </summary>
     public required string UserAgent { get; init; }
 

@@ -1,11 +1,17 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.DependencyInjection;
 using Zeye.Sorting.Hub.Host.HealthChecks;
 using Zeye.Sorting.Hub.Host.HostedServices;
+using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.MigrationGovernance;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations;
 
 namespace Zeye.Sorting.Hub.Host.Tests;
 
@@ -13,6 +19,37 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 /// 迁移治理测试。
 /// </summary>
 public sealed class MigrationGovernanceTests {
+    /// <summary>SQL Server必须使用专用迁移与快照，且快照应与当前模型一致。</summary>
+    [Fact]
+    public void SqlServerMigrationAssembly_ShouldContainProviderModelSnapshot() {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> {
+            ["ConnectionStrings:SqlServer"] = "Server=127.0.0.1;Database=design_time_only;Integrated Security=True;Encrypt=False;"
+        }).Build();
+        using var context = new SqlServerContextFactory().CreateDbContext(configuration);
+
+        var migrations = context.GetService<IMigrationsAssembly>();
+        Assert.Equal(SqlServerMigrationAssembly.Name, migrations.Assembly.GetName().Name);
+        Assert.Contains(migrations.Migrations.Keys, id => id.EndsWith("_InitialSqlServerSchema", StringComparison.Ordinal));
+        Assert.False(context.Database.HasPendingModelChanges());
+    }
+
+    /// <summary>运行时注册的SQL Server上下文也必须选用专用迁移程序集。</summary>
+    [Fact]
+    public void SqlServerRuntimeOptions_ShouldSelectProviderMigrationAssembly() {
+        var configuration = new ConfigurationBuilder().Build();
+        var profiles = new SlowQueryProfileStore(configuration);
+        var pipeline = new SlowQueryAutoTuningPipeline(configuration, new NullAutoTuningObservability(), profiles);
+        var interceptor = new SlowQueryCommandInterceptor(pipeline, profiles);
+        using var services = new ServiceCollection().AddSingleton<IConfiguration>(configuration)
+            .AddSingleton(interceptor).BuildServiceProvider();
+        var options = new DbContextOptionsBuilder<SortingHubDbContext>();
+        PersistenceServiceCollectionExtensions.ConfigureSqlServerDbContextOptions(services, options,
+            "Server=127.0.0.1;Database=design_time_only;Integrated Security=True;Encrypt=False;");
+        using var context = new SortingHubDbContext(options.Options);
+
+        Assert.Equal(SqlServerMigrationAssembly.Name, context.GetService<IMigrationsAssembly>().Assembly.GetName().Name);
+    }
+
     /// <summary>
     /// 无待执行迁移时健康检查应返回 Healthy。
     /// </summary>

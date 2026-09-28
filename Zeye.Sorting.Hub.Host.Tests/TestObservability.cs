@@ -31,7 +31,7 @@ internal sealed class TestObservability : IAutoTuningObservability {
     /// <summary>
     /// 验证场景：EmitMetric。
     /// </summary>
-    public void EmitMetric(string name, double value, IReadOnlyDictionary<string, string>? tags = null) {
+    public void EmitMetric(string name, decimal value, IReadOnlyDictionary<string, string>? tags = null) {
         Metrics.Add(name);
         MetricEntries.Add(new ObservabilityEntry(name, value, CloneTags(tags)));
     }
@@ -41,7 +41,7 @@ internal sealed class TestObservability : IAutoTuningObservability {
     /// </summary>
     public void EmitEvent(string name, LogLevel level, string message, IReadOnlyDictionary<string, string>? tags = null) {
         Events.Add($"{name}:{message}");
-        EventEntries.Add(new ObservabilityEntry(name, 0d, CloneTags(tags)));
+        EventEntries.Add(new ObservabilityEntry(name, 0m, CloneTags(tags)));
     }
 
     /// <summary>

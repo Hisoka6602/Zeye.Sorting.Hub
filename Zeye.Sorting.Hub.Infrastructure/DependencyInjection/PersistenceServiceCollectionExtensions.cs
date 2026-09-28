@@ -25,6 +25,7 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Diagnostics;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Idempotency;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.MigrationGovernance;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.QueryGovernance;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.ReadModels;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Retention;
@@ -40,26 +41,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
     /// 持久化模块注册扩展（仅负责能力注册，不负责进程启动编排）
     /// </summary>
     public static class PersistenceServiceCollectionExtensions {
-        /// <summary>
-        /// 针对“无天然时间字段/时间字段可为空”的属性表，采用固定哈希分表。
-        /// </summary>
-        /// <remarks>
-        /// 说明：
-        /// 1) 这些表若直接按可空时间分表，插入时可能出现路由不稳定或无法命中分表；
-        /// 2) 采用哈希分表可以确保“具备分表能力”，并在数据持续增长时横向分散压力；
-        /// 3) 该常量仅作为默认值，实际模数可通过配置项 Persistence:Sharding:ParcelRelatedHashShardingMod 覆盖。
-        /// </remarks>
-        private const int DefaultParcelRelatedHashShardingMod = 16;
-
-        /// <summary>
-        /// Parcel 关联属性表使用的外键字段名。
-        /// </summary>
-        /// <remarks>
-        /// 这些值对象表通过 `WithOwner().HasForeignKey("ParcelId")` 建模，
-        /// 并在值对象 CLR 类型上显式声明 `ParcelId` 属性用于分片字段识别；
-        /// 因此这里集中定义常量，避免魔法字符串散落。
-        /// </remarks>
-        private const string ParcelIdField = "ParcelId";
 
         /// <summary>
         /// 检测配置字符串结尾是否携带时区后缀（Z、+08:00、-0500 等）。
@@ -75,25 +56,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// </summary>
         private static readonly Logger NLogLogger = LogManager.GetCurrentClassLogger();
         /// <summary>
-        /// Parcel 关联值对象分表规则：以声明式清单注册，避免注册点继续膨胀为手工长列表。
-        /// </summary>
-        private static readonly IReadOnlyList<ParcelAggregateShardingRule> ParcelAggregateShardingRules = [
-            CreateHashShardingRule<BagInfo>(nameof(BagInfo.BagCode)),
-            CreateDateShardingRule<VolumeInfo>(nameof(VolumeInfo.MeasurementTime)),
-            CreateDateShardingRule<ChuteInfo>(nameof(ChuteInfo.LandedTime)),
-            CreateDateShardingRule<SorterCarrierInfo>(nameof(SorterCarrierInfo.LoadedTime)),
-            CreateDateShardingRule<GrayDetectorInfo>(nameof(GrayDetectorInfo.ResultTime)),
-            CreateHashShardingRule<ParcelDeviceInfo>(ParcelIdField),
-            CreateHashShardingRule<ParcelPositionInfo>(ParcelIdField),
-            CreateHashShardingRule<StickingParcelInfo>(ParcelIdField),
-            CreateDateShardingRule<ApiRequestInfo>(nameof(ApiRequestInfo.RequestTime)),
-            CreateDateShardingRule<CommandInfo>(nameof(CommandInfo.GeneratedTime)),
-            CreateDateShardingRule<WeightInfo>(nameof(WeightInfo.WeighingTime)),
-            CreateHashShardingRule<BarCodeInfo>(ParcelIdField),
-            CreateHashShardingRule<ImageInfo>(ParcelIdField),
-            CreateHashShardingRule<VideoInfo>(ParcelIdField)
-        ];
-        /// <summary>
         /// WebRequestAuditLog 冷热模型分表规则：StartedAt 统一按日分表（与治理探测同源）。
         /// </summary>
         private static readonly IReadOnlyList<(Type EntityType, string ShardingField)> WebRequestAuditLogPerDayShardingRules = [
@@ -107,6 +69,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// EF Core 运行时 providerName 语义由 <see cref="DbProviderNames"/> 统一定义。
         /// </summary>
         public static IServiceCollection AddSortingHubPersistence(this IServiceCollection services, IConfiguration configuration) {
+            AssertParcelAggregateShardingCoverage();
             RegisterDatabaseConnectionDiagnostics(services, configuration);
             RegisterBufferedWriteServices(services, configuration);
             RegisterShardingGovernanceServices(services, configuration);
@@ -119,9 +82,12 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             var provider = configuration["Persistence:Provider"];
             var commandTimeoutSeconds = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
             var minCommandElapsedMilliseconds = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:MinCommandElapsedMilliseconds", 50);
+            var dbContextPoolSize = Math.Clamp(
+                AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:DbContextPoolSize", 128),
+                16,
+                1024);
             var parcelShardingStartTime = GetShardingStartTime(configuration);
             var createShardingTableOnStarting = AutoTuningConfigurationReader.GetBoolOrDefault(configuration, "Persistence:Sharding:CreateShardingTableOnStarting", false);
-            var parcelRelatedHashShardingMod = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, "Persistence:Sharding:ParcelRelatedHashShardingMod", DefaultParcelRelatedHashShardingMod);
             var parcelShardingStrategyEvaluation = ParcelShardingStrategyEvaluator.Evaluate(configuration);
             var parcelShardingStrategyDecision = parcelShardingStrategyEvaluation.Decision;
             if (parcelShardingStrategyEvaluation.ValidationErrors.Count > 0) {
@@ -151,11 +117,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                     throw new InvalidOperationException($"缺少连接字符串：ConnectionStrings:{ConfiguredProviderNames.MySql}");
                 }
 
-                // DbContextPool：更低分配、更稳吞吐
-                // AddDbContextPool：兼容现有直接注入 SortingHubDbContext 的路径（如 HostedService）。
-                // AddPooledDbContextFactory：供仓储基类通过 IDbContextFactory 按调用创建短生命周期上下文。
-                services.AddDbContextPool<SortingHubDbContext>(ConfigureMySqlDbContextOptions);
-                services.AddPooledDbContextFactory<SortingHubDbContext>(ConfigureMySqlDbContextOptions);
+                // 全部持久化调用统一复用一个池化工厂，避免同时注册两套 DbContext 池。
+                services.AddPooledDbContextFactory<SortingHubDbContext>(ConfigureMySqlDbContextOptions, dbContextPoolSize);
 
                 services.AddEFCoreSharding(shardingBuilder => {
                     shardingBuilder
@@ -165,7 +128,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                         .CreateShardingTableOnStarting(createShardingTableOnStarting)
                         .UseDatabase(connectionString, DatabaseType.MySql, typeof(Parcel).Namespace!, static _ => { });
 
-                    ConfigureParcelAggregateSharding(shardingBuilder, parcelShardingStartTime, parcelRelatedHashShardingMod, parcelShardingStrategyDecision);
                     ConfigureWebRequestAuditLogSharding(shardingBuilder, parcelShardingStartTime);
                 });
 
@@ -182,10 +144,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                     throw new InvalidOperationException($"缺少连接字符串：ConnectionStrings:{ConfiguredProviderNames.SqlServer}");
                 }
 
-                // AddDbContextPool：兼容现有直接注入 SortingHubDbContext 的路径（如 HostedService）。
-                // AddPooledDbContextFactory：供仓储基类通过 IDbContextFactory 按调用创建短生命周期上下文。
-                services.AddDbContextPool<SortingHubDbContext>(ConfigureSqlServerDbContextOptions);
-                services.AddPooledDbContextFactory<SortingHubDbContext>(ConfigureSqlServerDbContextOptions);
+                // 全部持久化调用统一复用一个池化工厂，避免同时注册两套 DbContext 池。
+                services.AddPooledDbContextFactory<SortingHubDbContext>(ConfigureSqlServerDbContextOptions, dbContextPoolSize);
 
                 services.AddEFCoreSharding(shardingBuilder => {
                     shardingBuilder
@@ -195,7 +155,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                         .CreateShardingTableOnStarting(createShardingTableOnStarting)
                         .UseDatabase(connectionString, DatabaseType.SqlServer, typeof(Parcel).Namespace!, static _ => { });
 
-                    ConfigureParcelAggregateSharding(shardingBuilder, parcelShardingStartTime, parcelRelatedHashShardingMod, parcelShardingStrategyDecision);
                     ConfigureWebRequestAuditLogSharding(shardingBuilder, parcelShardingStartTime);
                 });
 
@@ -211,6 +170,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             }
 
             services.AddScoped<IParcelRepository, ParcelRepository>();
+            services.AddSingleton<ParcelPartitionStore>();
+            services.AddScoped<IParcelProcessingRepository, ParcelProcessingRepository>();
+            services.AddScoped<Zeye.Sorting.Hub.Application.Abstractions.Queries.IParcelAnalyticsReadService, Zeye.Sorting.Hub.Infrastructure.Queries.ParcelAnalyticsReadService>();
             services.AddScoped<IArchiveTaskRepository, ArchiveTaskRepository>();
             services.AddScoped<IIdempotencyRepository, IdempotencyRepository>();
             services.AddScoped<IInboxMessageRepository, InboxMessageRepository>();
@@ -238,6 +200,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 .Validate(
                     static options => options.ProbeTimeoutMilliseconds is >= DatabaseConnectionDiagnosticsOptions.MinProbeTimeoutMilliseconds and <= DatabaseConnectionDiagnosticsOptions.MaxProbeTimeoutMilliseconds,
                     $"ProbeTimeoutMilliseconds 必须在 {DatabaseConnectionDiagnosticsOptions.MinProbeTimeoutMilliseconds}~{DatabaseConnectionDiagnosticsOptions.MaxProbeTimeoutMilliseconds} 之间")
+                .Validate(static options => options.ProbeCacheMilliseconds is >= 0 and <= 60000, "ProbeCacheMilliseconds 必须在 0~60000 之间")
                 .Validate(
                     static options => options.FailureThreshold is >= DatabaseConnectionDiagnosticsOptions.MinFailureThreshold and <= DatabaseConnectionDiagnosticsOptions.MaxFailureThreshold,
                     $"FailureThreshold 必须在 {DatabaseConnectionDiagnosticsOptions.MinFailureThreshold}~{DatabaseConnectionDiagnosticsOptions.MaxFailureThreshold} 之间")
@@ -328,6 +291,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 .Validate(
                     static options => options.MaxRetryCount is >= BufferedWriteOptions.MinMaxRetryCount and <= BufferedWriteOptions.MaxMaxRetryCount,
                     $"MaxRetryCount 必须在 {BufferedWriteOptions.MinMaxRetryCount}~{BufferedWriteOptions.MaxMaxRetryCount} 之间")
+                .Validate(static options => options.RetryBaseDelayMilliseconds >= 0, "RetryBaseDelayMilliseconds 不能小于 0")
+                .Validate(static options => options.MaxRetryDelayMilliseconds >= options.RetryBaseDelayMilliseconds, "MaxRetryDelayMilliseconds 不能小于 RetryBaseDelayMilliseconds")
+                .Validate(static options => options.RetryJitterMilliseconds >= 0, "RetryJitterMilliseconds 不能小于 0")
                 .Validate(
                     static options => options.DeadLetterCapacity is >= BufferedWriteOptions.MinDeadLetterCapacity and <= BufferedWriteOptions.MaxDeadLetterCapacity,
                     $"DeadLetterCapacity 必须在 {BufferedWriteOptions.MinDeadLetterCapacity}~{BufferedWriteOptions.MaxDeadLetterCapacity} 之间")
@@ -464,6 +430,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             options.BatchSize = ReadIntSetting(configuration, $"{BufferedWriteOptions.SectionPath}:BatchSize", options.BatchSize);
             options.FlushIntervalMilliseconds = ReadIntSetting(configuration, $"{BufferedWriteOptions.SectionPath}:FlushIntervalMilliseconds", options.FlushIntervalMilliseconds);
             options.MaxRetryCount = ReadIntSetting(configuration, $"{BufferedWriteOptions.SectionPath}:MaxRetryCount", options.MaxRetryCount);
+            options.RetryBaseDelayMilliseconds = ReadIntSetting(configuration, $"{BufferedWriteOptions.SectionPath}:RetryBaseDelayMilliseconds", options.RetryBaseDelayMilliseconds);
+            options.MaxRetryDelayMilliseconds = ReadIntSetting(configuration, $"{BufferedWriteOptions.SectionPath}:MaxRetryDelayMilliseconds", options.MaxRetryDelayMilliseconds);
+            options.RetryJitterMilliseconds = ReadIntSetting(configuration, $"{BufferedWriteOptions.SectionPath}:RetryJitterMilliseconds", options.RetryJitterMilliseconds);
             options.BackpressureRejectThreshold = ReadIntSetting(configuration, $"{BufferedWriteOptions.SectionPath}:BackpressureRejectThreshold", options.BackpressureRejectThreshold);
             options.DeadLetterCapacity = ReadIntSetting(configuration, $"{BufferedWriteOptions.SectionPath}:DeadLetterCapacity", options.DeadLetterCapacity);
         }
@@ -566,6 +535,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             options.IsWarmupEnabled = ReadBooleanSetting(configuration, $"{DatabaseConnectionDiagnosticsOptions.SectionPath}:IsWarmupEnabled", options.IsWarmupEnabled);
             options.WarmupConnectionCount = ReadIntSetting(configuration, $"{DatabaseConnectionDiagnosticsOptions.SectionPath}:WarmupConnectionCount", options.WarmupConnectionCount);
             options.ProbeTimeoutMilliseconds = ReadIntSetting(configuration, $"{DatabaseConnectionDiagnosticsOptions.SectionPath}:ProbeTimeoutMilliseconds", options.ProbeTimeoutMilliseconds);
+            options.ProbeCacheMilliseconds = ReadIntSetting(configuration, $"{DatabaseConnectionDiagnosticsOptions.SectionPath}:ProbeCacheMilliseconds", options.ProbeCacheMilliseconds);
             options.FailureThreshold = ReadIntSetting(configuration, $"{DatabaseConnectionDiagnosticsOptions.SectionPath}:FailureThreshold", options.FailureThreshold);
             options.RecoveryThreshold = ReadIntSetting(configuration, $"{DatabaseConnectionDiagnosticsOptions.SectionPath}:RecoveryThreshold", options.RecoveryThreshold);
         }
@@ -720,8 +690,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             var maxRetryDelaySeconds = AutoTuningConfigurationReader.GetPositiveIntOrDefault(cfg, "Persistence:PerformanceTuning:MaxRetryDelaySeconds", 10);
 
             options.UseSqlServer(connectionString, sqlServerOptions => {
-                // 迁移程序集通常指向 Host 或 Infrastructure，按迁移放置位置调整
-                // sqlServerOptions.MigrationsAssembly("Zeye.Sorting.Hub.Host");
+                sqlServerOptions.MigrationsAssembly(SqlServerMigrationAssembly.Name);
                 sqlServerOptions.EnableRetryOnFailure(
                     maxRetryCount: maxRetryCount,
                     maxRetryDelay: TimeSpan.FromSeconds(maxRetryDelaySeconds),
@@ -759,16 +728,12 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         }
 
         /// <summary>
-        /// 获取 Parcel 体系按日分表治理需要关注的实体类型清单（与分表注册规则同源）。
+        /// 获取按首次入库周期共用分区的全部聚合实体类型。
         /// </summary>
         /// <returns>实体类型清单。</returns>
         public static IReadOnlyList<Type> GetParcelPerDayShardingEntityTypes() {
-            return ParcelAggregateShardingRules
-                .Where(static rule => rule.RuleKind == ParcelAggregateShardingRuleKind.Date)
-                .Select(static rule => rule.EntityType)
-                .Prepend(typeof(Parcel))
-                .Distinct()
-                .ToArray();
+            return DiscoverParcelAggregateShardingCandidates().Where(type => type != typeof(BagInfo)).Prepend(typeof(Parcel))
+                .Append(typeof(Zeye.Sorting.Hub.Domain.Aggregates.Parcels.Processing.ParcelProcessingRecord)).ToArray();
         }
 
         /// <summary>
@@ -782,47 +747,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 .ToArray();
         }
 
-        /// <summary>
-        /// 统一注册 Parcel 主表与属性表的分表规则。
-        /// </summary>
-        /// <param name="shardingBuilder">分表构建器。</param>
-        /// <param name="parcelShardingStartTime">Parcel 月分表起始时间。</param>
-        /// <param name="parcelRelatedHashShardingMod">Parcel 关联属性表哈希分片模数。</param>
-        /// <param name="parcelShardingStrategyDecision">Parcel 分表策略决策快照。</param>
-        /// <remarks>
-        /// 设计目标：
-        /// - Parcel 主表继续基于 CreatedTime 做时间路由；
-        /// - 与 Parcel 同步增长的属性表也必须具备分表能力，避免单表无限膨胀；
-        /// - 对“有稳定必填时间字段”的表按策略决策采用按月/按天分表；
-        /// - 对“无时间字段/时间可空”的表采用哈希分表，保证可路由且可扩展。
-        /// </remarks>
-        private static void ConfigureParcelAggregateSharding(
-            IShardingBuilder shardingBuilder,
-            DateTime parcelShardingStartTime,
-            int parcelRelatedHashShardingMod,
-            ParcelShardingStrategyDecision parcelShardingStrategyDecision) {
-            AssertParcelAggregateShardingCoverage();
-
-            // 分表起始时间在进入规则注册前统一归一化为“本地时间语义”，
-            // 避免外部配置传入未指定 Kind 的时间值时产生路由歧义。
-            var localShardingStartTime = AutoTuningConfigurationReader.NormalizeToLocalTime(parcelShardingStartTime);
-
-            // ------------------------------
-            // 1) 主表：Parcel（CreatedTime + 策略决策粒度）
-            // ------------------------------
-            shardingBuilder.SetDateSharding<Parcel>(
-                shardingField: nameof(Parcel.CreatedTime),
-                expandByDateMode: parcelShardingStrategyDecision.EffectiveDateMode,
-                startTime: localShardingStartTime,
-                sourceName: ShardingConstant.DefaultSource);
-
-            // ------------------------------
-            // 2) Parcel 关联值对象：按规则清单统一注册
-            // ------------------------------
-            foreach (var rule in ParcelAggregateShardingRules) {
-                rule.Register(shardingBuilder, localShardingStartTime, parcelRelatedHashShardingMod, parcelShardingStrategyDecision.EffectiveDateMode);
-            }
-        }
 
         /// <summary>
         /// 注册 WebRequestAuditLog 冷热模型分表规则（统一 StartedAt 按日分表）。
@@ -853,9 +777,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// 避免运行期出现“路由命中但物理分表规则缺失”的异常。
         /// </remarks>
         internal static void AssertParcelAggregateShardingCoverage() {
-            var configured = ParcelAggregateShardingRules
-                .Select(static rule => rule.EntityType)
-                .ToHashSet();
+            // 启动检查直接以关系模型为准，不维护第二份手工分表注册清单。
+            using var db = new SortingHubDbContext(new DbContextOptionsBuilder<SortingHubDbContext>()
+                .UseSqlServer("Server=localhost;Database=SortingHubModelValidation;Integrated Security=True;TrustServerCertificate=True").Options);
+            var configured = db.Model.GetEntityTypes().Where(x => x.GetTableName()?.StartsWith("Parcel_", StringComparison.Ordinal) == true || x.ClrType == typeof(BagInfo) && x.GetTableName() == "Bags")
+                .Select(x => x.ClrType).ToHashSet();
             var discoveredCandidates = DiscoverParcelAggregateShardingCandidates();
             var missing = discoveredCandidates
                 .Where(type => !configured.Contains(type))
@@ -867,7 +793,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             }
 
             throw new InvalidOperationException(
-                $"检测到 Parcel 值对象分表规则缺失：{string.Join(", ", missing)}。请在 ConfigureParcelAggregateSharding 中同步补充分表规则，并确认 EF Core 迁移与分表治理配置已对齐。");
+                $"检测到 Parcel 值对象分表规则缺失：{string.Join(", ", missing)}。请在 ParcelEntityTypeConfiguration 中补充聚合表映射，并同步 EF Core 迁移。");
         }
 
         /// <summary>发现 Parcel 值对象目录下需要分表治理的候选类型。</summary>
@@ -882,41 +808,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                     && string.Equals(type.Namespace, valueObjectNamespace, StringComparison.Ordinal)
                     && type.Name.EndsWith("Info", StringComparison.Ordinal))
                 .ToArray();
-        }
-
-        /// <summary>
-        /// 创建“按时间粒度分表”规则描述。
-        /// </summary>
-        /// <typeparam name="TEntity">实体类型。</typeparam>
-        /// <param name="shardingField">分片字段名。</param>
-        /// <returns>规则描述对象。</returns>
-        private static ParcelAggregateShardingRule CreateDateShardingRule<TEntity>(string shardingField)
-            where TEntity : class {
-            return new ParcelAggregateShardingRule(
-                EntityType: typeof(TEntity),
-                RuleKind: ParcelAggregateShardingRuleKind.Date,
-                Register: (builder, startTime, _, dateMode) => builder.SetDateSharding<TEntity>(
-                    shardingField: shardingField,
-                    expandByDateMode: dateMode,
-                    startTime: startTime,
-                    sourceName: ShardingConstant.DefaultSource));
-        }
-
-        /// <summary>
-        /// 创建“哈希分表”规则描述。
-        /// </summary>
-        /// <typeparam name="TEntity">实体类型。</typeparam>
-        /// <param name="shardingField">分片字段名。</param>
-        /// <returns>规则描述对象。</returns>
-        private static ParcelAggregateShardingRule CreateHashShardingRule<TEntity>(string shardingField)
-            where TEntity : class {
-            return new ParcelAggregateShardingRule(
-                EntityType: typeof(TEntity),
-                RuleKind: ParcelAggregateShardingRuleKind.Hash,
-                Register: (builder, _, mod, _) => builder.SetHashModSharding<TEntity>(
-                    shardingField: shardingField,
-                    mod: mod,
-                    sourceName: ShardingConstant.DefaultSource));
         }
 
         /// <summary>获取分表起始时间（基于当前本地时间的整点对齐值）。</summary>

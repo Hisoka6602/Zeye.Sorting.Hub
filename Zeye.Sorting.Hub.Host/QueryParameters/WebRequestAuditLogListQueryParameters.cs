@@ -15,6 +15,11 @@ internal sealed record WebRequestAuditLogListQueryParameters {
     public int PageSize { get; init; } = 20;
 
     /// <summary>
+    /// 是否执行精确总数查询；HTTP 接口默认关闭。
+    /// </summary>
+    public bool? IncludeTotalCount { get; init; }
+
+    /// <summary>
     /// 请求开始时间起点（字符串，本地时间语义）。
     /// </summary>
     public string? StartedAtStart { get; init; }

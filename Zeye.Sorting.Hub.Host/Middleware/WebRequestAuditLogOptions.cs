@@ -17,7 +17,22 @@ public sealed class WebRequestAuditLogOptions {
     /// <summary>
     /// 采样率（0~1）。
     /// </summary>
-    public double SampleRate { get; set; } = 1D;
+    public decimal SampleRate { get; set; } = 0.1m;
+
+    /// <summary>
+    /// 是否始终记录失败请求，即使请求未命中常规采样。
+    /// </summary>
+    public bool AlwaysAuditFailedRequests { get; set; } = true;
+
+    /// <summary>
+    /// 慢请求强制审计阈值（毫秒，0 表示关闭）。
+    /// </summary>
+    public long SlowRequestThresholdMs { get; set; } = 1000L;
+
+    /// <summary>
+    /// 不参与审计的请求路径前缀。
+    /// </summary>
+    public string[] ExcludedPathPrefixes { get; set; } = ["/health", "/swagger", "/favicon.ico"];
 
     /// <summary>
     /// 是否采集请求体。
@@ -43,4 +58,19 @@ public sealed class WebRequestAuditLogOptions {
     /// 审计写入后台队列容量（超过上限后触发丢弃保护）。
     /// </summary>
     public int BackgroundQueueCapacity { get; set; } = 1024;
+
+    /// <summary>
+    /// 后台单次批量写入的最大审计日志数。
+    /// </summary>
+    public int BackgroundBatchSize { get; set; } = 64;
+
+    /// <summary>
+    /// 后台消费者为合并小批次等待的毫秒数。
+    /// </summary>
+    public int BackgroundBatchDelayMs { get; set; } = 20;
+
+    /// <summary>
+    /// 队列丢弃日志聚合输出间隔（秒）。
+    /// </summary>
+    public int DropLogIntervalSeconds { get; set; } = 30;
 }

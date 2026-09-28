@@ -23,4 +23,9 @@ public sealed record WebRequestAuditLogListResponse {
     /// 总记录数。
     /// </summary>
     public required long TotalCount { get; init; }
+
+    /// <summary>
+    /// 是否已执行并返回精确总数查询。
+    /// </summary>
+    public bool HasTotalCount { get; init; }
 }

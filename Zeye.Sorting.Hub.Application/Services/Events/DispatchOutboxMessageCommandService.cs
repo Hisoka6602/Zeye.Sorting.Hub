@@ -1,7 +1,9 @@
 using System.Text.Json;
+using System.Diagnostics;
 using NLog;
 using Zeye.Sorting.Hub.Domain.Repositories;
 using Zeye.Sorting.Hub.SharedKernel.Utilities;
+using Zeye.Sorting.Hub.SharedKernel.Diagnostics;
 
 namespace Zeye.Sorting.Hub.Application.Services.Events;
 
@@ -45,12 +47,18 @@ public sealed class DispatchOutboxMessageCommandService {
             throw new ArgumentOutOfRangeException(nameof(maxRetryCount), "maxRetryCount 必须大于 0。");
         }
 
-        var handledCount = 0;
-        for (var index = 0; index < batchSize; index++) {
-            var outboxMessage = await _outboxMessageRepository.TryAcquireNextDispatchableAsync(maxRetryCount, cancellationToken);
-            if (outboxMessage is null) {
-                break;
-            }
+        var outboxMessages = await _outboxMessageRepository.TryAcquireDispatchableBatchAsync(
+            batchSize,
+            maxRetryCount,
+            cancellationToken);
+        if (outboxMessages.Count == 0) {
+            return 0;
+        }
+
+        var startedTimestamp = Stopwatch.GetTimestamp();
+        var succeededCount = 0;
+        var failedCount = 0;
+        foreach (var outboxMessage in outboxMessages) {
 
             // 步骤 1：尝试做最小派发模拟，当前阶段仅校验 JSON 并输出日志，不对接外部 MQ。
             // 步骤 2：成功则推进到 Succeeded；失败则推进到 Failed/DeadLettered，保证无人值守场景可恢复。
@@ -58,32 +66,36 @@ public sealed class DispatchOutboxMessageCommandService {
             try {
                 var safeEventType = LineBreakNormalizer.ReplaceLineBreaksToSpace(outboxMessage.EventType);
                 using var payloadDocument = JsonDocument.Parse(outboxMessage.PayloadJson);
-                Logger.Info(
+                Logger.Debug(
                     "Outbox 模拟派发成功，MessageId={MessageId}, EventType={EventType}, PayloadKind={PayloadKind}",
                     outboxMessage.Id,
                     safeEventType,
                     payloadDocument.RootElement.ValueKind);
                 outboxMessage.MarkDispatchSucceeded();
+                succeededCount++;
             }
             catch (JsonException exception) {
                 var safeEventType = LineBreakNormalizer.ReplaceLineBreaksToSpace(outboxMessage.EventType);
                 Logger.Error(exception, "Outbox 消息载荷解析失败，MessageId={MessageId}, EventType={EventType}", outboxMessage.Id, safeEventType);
                 outboxMessage.MarkDispatchFailed("Outbox 载荷不是合法 JSON。", maxRetryCount);
+                failedCount++;
             }
             catch (Exception exception) {
                 var safeEventType = LineBreakNormalizer.ReplaceLineBreaksToSpace(outboxMessage.EventType);
                 Logger.Error(exception, "Outbox 模拟派发失败，MessageId={MessageId}, EventType={EventType}", outboxMessage.Id, safeEventType);
                 outboxMessage.MarkDispatchFailed("Outbox 模拟派发失败。", maxRetryCount);
+                failedCount++;
             }
 
-            var updateResult = await _outboxMessageRepository.UpdateAsync(outboxMessage, cancellationToken);
-            if (!updateResult.IsSuccess) {
-                throw new InvalidOperationException(updateResult.ErrorMessage ?? "更新 Outbox 消息状态失败。");
-            }
-
-            handledCount++;
         }
 
-        return handledCount;
+        var updateResult = await _outboxMessageRepository.UpdateRangeAsync(outboxMessages, cancellationToken);
+        if (!updateResult.IsSuccess) {
+            throw new InvalidOperationException(updateResult.ErrorMessage ?? "批量更新 Outbox 消息状态失败。");
+        }
+
+        var elapsedMilliseconds = Stopwatch.GetElapsedTime(startedTimestamp).Ticks / (decimal)TimeSpan.TicksPerMillisecond;
+        SortingHubPerformanceMetrics.RecordOutboxBatch(outboxMessages.Count, succeededCount, failedCount, elapsedMilliseconds);
+        return outboxMessages.Count;
     }
 }

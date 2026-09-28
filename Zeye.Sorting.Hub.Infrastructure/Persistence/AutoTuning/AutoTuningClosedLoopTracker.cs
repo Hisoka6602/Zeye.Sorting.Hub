@@ -10,6 +10,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 /// </para>
 /// </summary>
 public sealed class AutoTuningClosedLoopTracker {
+    /// <summary>
+    /// 阶段历史记录的最大保留数量。
+    /// </summary>
     private const int MaxStageHistory = 1000;
 
     /// <summary>

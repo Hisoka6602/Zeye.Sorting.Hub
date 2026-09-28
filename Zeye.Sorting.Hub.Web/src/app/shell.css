@@ -1,0 +1,98 @@
+/* Shared blue/white shell. Page-specific CSS belongs in content components. */
+.shared-shell { height: 100dvh; min-height: 100vh; overflow: hidden; background: #f3f5f7; }
+.shared-shell .app-sider {
+  position: fixed !important; inset: 0 auto 0 0; z-index: 20;
+  background: #f6f7f9 !important; border-right: 1px solid #e1e7f0;
+  overflow: hidden;
+}
+.shared-shell .app-sider .ant-layout-sider-children {
+  display: flex; flex-direction: column; height: 100dvh; min-height: 0;
+}
+.shared-shell .brand {
+  height: 56px; flex: none; display: flex; align-items: center; padding: 0 24px;
+  background: #fff; border-bottom: 1px solid #e1e7f0;
+  white-space: nowrap; cursor: pointer;
+}
+.shared-shell .header-wordmark { display: block; flex: none; }
+.shared-shell .app-sider.ant-layout-sider-collapsed .brand { padding: 0; justify-content: center; }
+.shared-shell .side-menu {
+  flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; scrollbar-color: transparent transparent;
+  padding: 10px 0; border-inline-end: 0 !important; background: transparent !important;
+  font-size: 16px; color: #455775;
+}
+.shared-shell .side-menu:hover,
+.shared-shell .side-menu:focus-within { scrollbar-color: #b9c1ce transparent; }
+.shared-shell .side-menu .ant-menu-item,
+.shared-shell .side-menu .ant-menu-submenu-title {
+  height: 44px !important; line-height: 44px !important;
+  margin: 2px 8px !important; width: calc(100% - 16px) !important;
+  border-radius: 5px; font-weight: 400;
+}
+.shared-shell .side-menu .ant-menu-submenu { margin: 0; }
+.shared-shell .side-menu .ant-menu-sub { padding: 0; background: transparent; }
+.shared-shell .side-menu .ant-menu-submenu-title { font-weight: 500; }
+.shared-shell .side-menu .ant-menu-sub .ant-menu-item { padding-left: 50px !important; }
+.shared-shell .side-menu .ant-menu-item-selected { background: #e7efff; color: #0964e8; }
+.shared-shell .side-menu .ant-menu-submenu-selected > .ant-menu-submenu-title { color: #0964e8; }
+.shared-shell .shell-nav-icon { vertical-align: middle; }
+.shared-shell .collapse-button {
+  position: static; flex: none; align-self: flex-end; margin: 8px 12px;
+  background: transparent; color: #8290aa;
+}
+.shared-shell .body-layout {
+  height: 100dvh; min-width: 0; overflow: visible;
+  margin-left: 246px; margin-right: var(--panel-width, 0px);
+  transition: margin-left .2s; background: #f3f5f7;
+}
+.shared-shell .app-sider.ant-layout-sider-collapsed + .body-layout { margin-left: 72px; }
+.shared-shell .app-header {
+  position: sticky; top: 0; z-index: 10; display: flex; flex: none; align-items: center; gap: 12px;
+  height: 56px; line-height: 56px; width: calc(100% + var(--panel-width, 0px));
+  padding: 0 24px; background: #fff; border-bottom: 1px solid #e1e7f0;
+}
+.shared-shell .header-spacer { flex: 1; }
+.shared-shell .header-icon { width: 36px; height: 36px; font-size: 22px; color: #405273; }
+.shared-shell .account-button {
+  display: flex; align-items: center; gap: 10px; height: 40px;
+  padding: 0 2px 0 5px; font-size: 16px; color: #263957;
+}
+.shared-shell .account-button .ant-avatar { flex: none; border: 0; }
+.shared-shell .account-chevron { font-size: 12px; color: #536680; margin-left: 2px; }
+.shared-shell .app-content { flex: 1; min-height: 0; padding: 24px 30px 44px; background: #f3f5f7; overflow-x: hidden; overflow-y: auto; scrollbar-color: transparent transparent; }
+.shared-shell .app-content:hover,
+.shared-shell .app-content:focus-within { scrollbar-color: #b9c1ce transparent; }
+.shared-shell .page-body { min-width: 0; }
+@media (min-width: 821px) {
+  .shared-shell .page-body {
+    position: relative;
+    left: var(--content-offset-x, 0px);
+    top: max(var(--content-offset-y, 0px), 0px);
+    margin-top: min(var(--content-offset-y, 0px), 0px);
+    width: calc(100% + var(--content-width-correction, 0px));
+  }
+}
+.shared-shell .page-breadcrumb { margin: 0 0 20px; font-size: 16px; line-height: 24px; color: #152342; }
+.shared-shell .page-breadcrumb a { color: #536580; }
+.shared-shell .page-breadcrumb a:hover { color: #1677ff; }
+.shared-shell .page-breadcrumb a:focus-visible { outline: 2px solid #1677ff; outline-offset: 3px; border-radius: 2px; }
+.shared-shell .mobile-menu-button, .shared-shell .mobile-scrim { display: none; }
+
+/* Drawer widths are state-specific content reservations; the header stays full width. */
+body:has(.archive-drawer.ant-drawer-open) .shared-shell .body-layout { --panel-width: 362px; }
+body:has(.outbox-drawer.ant-drawer-open) .shared-shell .body-layout { --panel-width: 368px; }
+body:has(.live-drawer.ant-drawer-open) .shared-shell .body-layout { --panel-width: 347px; }
+body:has(.rules-drawer.ant-drawer-open) .shared-shell .body-layout { --panel-width: 392px; }
+body:has(.access-drawer.ant-drawer-open) .shared-shell .body-layout { --panel-width: 398px; }
+
+@media (max-width: 820px) {
+  .shared-shell .app-sider { transform: translateX(-100%); transition: transform .2s; }
+  .shared-shell .app-sider.mobile-open { transform: translateX(0); width: 246px !important; max-width: 80vw; }
+  .shared-shell .body-layout, .shared-shell .app-sider.ant-layout-sider-collapsed + .body-layout { margin-left: 0; margin-right: 0; }
+  .shared-shell .app-header { width: 100%; padding: 0 14px; }
+  .shared-shell .app-content { padding: 18px 14px 28px; }
+  .shared-shell .mobile-menu-button { display: inline-flex; }
+  .shared-shell .mobile-scrim { display: block; position: fixed; inset: 0; z-index: 19; background: #10213f66; }
+}
+@media (max-width: 520px) {
+  .shared-shell .account-button > span:not(.ant-avatar) { display: none; }
+}

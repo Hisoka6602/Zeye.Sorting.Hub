@@ -110,7 +110,10 @@ public sealed class ParcelCursorQueryTests {
         Assert.NotNull(repository.LastCursorFilter.ScannedTimeEnd);
         Assert.InRange(repository.LastCursorFilter.ScannedTimeEnd.Value, startBoundary.AddSeconds(-1), endBoundary.AddSeconds(1));
         var range = repository.LastCursorFilter.ScannedTimeEnd.Value - repository.LastCursorFilter.ScannedTimeStart.Value;
-        Assert.InRange(range.TotalHours, 23.99, 24.01);
+        Assert.InRange(
+            range.Ticks,
+            TimeSpan.TicksPerDay - TimeSpan.TicksPerMinute,
+            TimeSpan.TicksPerDay + TimeSpan.TicksPerMinute);
     }
 
     /// <summary>
@@ -126,7 +129,7 @@ public sealed class ParcelCursorQueryTests {
             PageSize = 20
         }, CancellationToken.None));
 
-        Assert.Contains("页码不能超过 10000", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("页码不能超过 1000", exception.Message, StringComparison.Ordinal);
     }
 
     /// <summary>

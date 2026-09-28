@@ -15,6 +15,11 @@ public sealed record WebRequestAuditLogListRequest {
     public int PageSize { get; init; } = 20;
 
     /// <summary>
+    /// 是否执行精确总数查询。
+    /// </summary>
+    public bool IncludeTotalCount { get; init; } = true;
+
+    /// <summary>
     /// 请求开始时间起点（含边界，本地时间语义）。
     /// </summary>
     public DateTime? StartedAtStart { get; init; }

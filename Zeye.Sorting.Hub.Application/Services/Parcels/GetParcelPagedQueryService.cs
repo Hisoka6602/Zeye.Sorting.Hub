@@ -15,7 +15,7 @@ public sealed class GetParcelPagedQueryService {
     /// <summary>
     /// 普通分页允许的最大页码。
     /// </summary>
-    private const int MaxPageNumber = 10000;
+    private const int MaxPageNumber = 1000;
 
     /// <summary>
     /// NLog 日志器。
@@ -53,7 +53,8 @@ public sealed class GetParcelPagedQueryService {
             var filter = ParcelQueryRequestMapper.BuildFilter(request);
             var pageRequest = new PageRequest {
                 PageNumber = request.PageNumber,
-                PageSize = request.PageSize
+                PageSize = request.PageSize,
+                IncludeTotalCount = request.IncludeTotalCount
             };
             // 步骤 2：调用仓储获取分页读模型。
             var pageResult = await _parcelRepository.GetPagedAsync(filter, pageRequest, cancellationToken);
@@ -65,7 +66,8 @@ public sealed class GetParcelPagedQueryService {
                 Items = items,
                 PageNumber = pageResult.PageNumber,
                 PageSize = pageResult.PageSize,
-                TotalCount = pageResult.TotalCount
+                TotalCount = pageResult.TotalCount,
+                HasTotalCount = request.IncludeTotalCount
             };
         }
         catch (Exception ex) {

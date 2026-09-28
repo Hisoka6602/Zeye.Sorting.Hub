@@ -1,0 +1,763 @@
+<Project>
+  <!-- 中文说明：定义仓库级编码、结构、性能和数据库编译守卫。 -->
+  <PropertyGroup>
+    <EnableChineseGarbledTextCheck Condition="'$(EnableChineseGarbledTextCheck)' == ''">true</EnableChineseGarbledTextCheck>
+    <ChineseGarbledTextCheckRoot Condition="'$(ChineseGarbledTextCheckRoot)' == ''">$(MSBuildThisFileDirectory)</ChineseGarbledTextCheckRoot>
+    <EnableRepositoryCompilationGuards Condition="'$(EnableRepositoryCompilationGuards)' == ''">true</EnableRepositoryCompilationGuards>
+    <LangVersion>14.0</LangVersion>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <Optimize Condition="'$(Configuration)' == 'Release'">true</Optimize>
+    <OptimizationPreference Condition="'$(Configuration)' == 'Release'">Speed</OptimizationPreference>
+    <TieredCompilation>true</TieredCompilation>
+    <TieredPGO>true</TieredPGO>
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(EnableChineseGarbledTextCheck)' == 'true'">
+    <_ChineseGarbledTextCheckFiles Include="$(ChineseGarbledTextCheckRoot)**\*.cs" />
+    <_ChineseGarbledTextCheckFiles Include="$(ChineseGarbledTextCheckRoot)**\*.csproj" />
+    <_ChineseGarbledTextCheckFiles Include="$(ChineseGarbledTextCheckRoot)**\*.json" />
+    <_ChineseGarbledTextCheckFiles Include="$(ChineseGarbledTextCheckRoot)**\*.config" />
+    <_ChineseGarbledTextCheckFiles Include="$(ChineseGarbledTextCheckRoot)**\*.xml" />
+    <_ChineseGarbledTextCheckFiles Include="$(ChineseGarbledTextCheckRoot)**\*.props" />
+    <_ChineseGarbledTextCheckFiles Include="$(ChineseGarbledTextCheckRoot)**\*.targets" />
+    <_ChineseGarbledTextCheckFiles Include="$(ChineseGarbledTextCheckRoot)**\*.yml" />
+    <_ChineseGarbledTextCheckFiles Include="$(ChineseGarbledTextCheckRoot)**\*.yaml" />
+    <_ChineseGarbledTextCheckFiles Remove="$(ChineseGarbledTextCheckRoot)**\bin\**" />
+    <_ChineseGarbledTextCheckFiles Remove="$(ChineseGarbledTextCheckRoot)**\obj\**" />
+    <_ChineseGarbledTextCheckFiles Remove="$(ChineseGarbledTextCheckRoot).git\**" />
+    <_ChineseGarbledTextCheckFiles Remove="$(ChineseGarbledTextCheckRoot).vs\**" />
+    <!-- 第三方依赖与测试产物不属于仓库源代码，避免编码字典误触发乱码门禁。 -->
+    <_ChineseGarbledTextCheckFiles Remove="$(ChineseGarbledTextCheckRoot).codex-artifacts\**" />
+    <_ChineseGarbledTextCheckFiles Remove="$(ChineseGarbledTextCheckRoot)**\node_modules\**" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(EnableRepositoryCompilationGuards)' == 'true'">
+    <_RepositoryConfigurationFiles Include="$(MSBuildThisFileDirectory)**\*.csproj" />
+    <_RepositoryConfigurationFiles Include="$(MSBuildThisFileDirectory)**\*.json" />
+    <_RepositoryConfigurationFiles Include="$(MSBuildThisFileDirectory)**\*.config" />
+    <_RepositoryConfigurationFiles Include="$(MSBuildThisFileDirectory)**\*.xml" />
+    <_RepositoryConfigurationFiles Include="$(MSBuildThisFileDirectory)**\*.props" />
+    <_RepositoryConfigurationFiles Include="$(MSBuildThisFileDirectory)**\*.targets" />
+    <_RepositoryConfigurationFiles Include="$(MSBuildThisFileDirectory)**\*.yml" />
+    <_RepositoryConfigurationFiles Include="$(MSBuildThisFileDirectory)**\*.yaml" />
+    <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory)**\bin\**" />
+    <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory)**\obj\**" />
+    <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory).git\**" />
+    <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory).vs\**" />
+    <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory).config\**" />
+    <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory).codex-artifacts\**" />
+    <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory)**\node_modules\**" />
+    <!-- 中文说明：前端依赖清单、TypeScript工具配置及生成的设计数据不是后端运行配置。 -->
+    <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory)**\dist\**" />
+    <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory)Zeye.Sorting.Hub.Web\qa\**" />
+    <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory)Zeye.Sorting.Hub.Web\public\assets\**" />
+    <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory)Zeye.Sorting.Hub.Web\package*.json" />
+    <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory)Zeye.Sorting.Hub.Web\tsconfig*.json" />
+    <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory)design\**" />
+  </ItemGroup>
+
+  <UsingTask
+    TaskName="CheckChineseGarbledText"
+    TaskFactory="RoslynCodeTaskFactory"
+    AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Files ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System" />
+      <Using Namespace="System.Collections.Generic" />
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Linq" />
+      <Using Namespace="System.Text" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        var suspiciousTokens = new[]
+        {
+            "\u951F",
+            "\u951B",
+            "\u9286",
+            "\u9225",
+            "\u922B",
+            "\u9359",
+            "\u93C3",
+            "\u7487",
+            "\u95C2",
+            "\u6D63",
+            "\u93C2"
+        };
+
+        var utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+        var loggedErrors = 0;
+        const int maxLoggedErrors = 20;
+
+        string Shorten(string value, int maxLength)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return "(empty line)";
+            }
+
+            var compact = value.Trim();
+            return compact.Length <= maxLength ? compact : compact.Substring(0, maxLength) + "...";
+        }
+
+        int CountOccurrences(string source, string token)
+        {
+            var count = 0;
+            var startIndex = 0;
+
+            while ((startIndex = source.IndexOf(token, startIndex, StringComparison.Ordinal)) >= 0)
+            {
+                count++;
+                startIndex += token.Length;
+            }
+
+            return count;
+        }
+
+        bool IsSuspiciousLine(string line)
+        {
+            if (string.IsNullOrEmpty(line))
+            {
+                return false;
+            }
+
+            if (line.IndexOf('\uFFFD') >= 0)
+            {
+                return true;
+            }
+
+            var score = 0;
+            foreach (var token in suspiciousTokens)
+            {
+                score += CountOccurrences(line, token);
+                if (score >= 2)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        foreach (var file in Files ?? Array.Empty<Microsoft.Build.Framework.ITaskItem>())
+        {
+            var path = file.GetMetadata("FullPath");
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            {
+                continue;
+            }
+
+            string content;
+            try
+            {
+                content = File.ReadAllText(path, utf8);
+            }
+            catch (DecoderFallbackException)
+            {
+                Log.LogError(
+                    subcategory: null,
+                    errorCode: "ZG001",
+                    helpKeyword: null,
+                    file: path,
+                    lineNumber: 1,
+                    columnNumber: 1,
+                    endLineNumber: 1,
+                    endColumnNumber: 1,
+                    message: "Invalid UTF-8 or illegal byte sequence detected. Build blocked.");
+                loggedErrors++;
+                if (loggedErrors >= maxLoggedErrors)
+                {
+                    Log.LogError("Too many garbled-text or encoding violations. Stopped logging additional errors.");
+                    break;
+                }
+
+                continue;
+            }
+
+            var lines = content.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+            for (var index = 0; index < lines.Length; index++)
+            {
+                if (!IsSuspiciousLine(lines[index]))
+                {
+                    continue;
+                }
+
+                Log.LogError(
+                    subcategory: null,
+                    errorCode: "ZG002",
+                    helpKeyword: null,
+                    file: path,
+                    lineNumber: index + 1,
+                    columnNumber: 1,
+                    endLineNumber: index + 1,
+                    endColumnNumber: Math.Max(1, lines[index].Length),
+                    message: $"Suspicious garbled Chinese text detected. Build blocked. Snippet: {Shorten(lines[index], 120)}");
+                loggedErrors++;
+                if (loggedErrors >= maxLoggedErrors)
+                {
+                    Log.LogError("Too many garbled-text violations. Stopped logging additional errors.");
+                    break;
+                }
+            }
+
+            if (loggedErrors >= maxLoggedErrors)
+            {
+                break;
+            }
+        }
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <Target
+    Name="FailBuildWhenChineseTextLooksGarbled"
+    BeforeTargets="BeforeBuild"
+    Condition="'$(EnableChineseGarbledTextCheck)' == 'true' and '$(DesignTimeBuild)' != 'true'"
+    Inputs="@(_ChineseGarbledTextCheckFiles);$(MSBuildThisFileFullPath)"
+    Outputs="$(IntermediateOutputPath)chinese-text-guard.stamp">
+    <CheckChineseGarbledText Files="@(_ChineseGarbledTextCheckFiles)" />
+    <MakeDir Directories="$(IntermediateOutputPath)" />
+    <Touch Files="$(IntermediateOutputPath)chinese-text-guard.stamp" AlwaysCreate="true" />
+  </Target>
+
+  <UsingTask
+    TaskName="CheckCSharpCompilationRules"
+    TaskFactory="RoslynCodeTaskFactory"
+    AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <Files ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+      <ConfigurationFiles ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="false" />
+      <ProjectName ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System" />
+      <Using Namespace="System.Collections.Generic" />
+      <Using Namespace="System.IO" />
+      <Using Namespace="System.Linq" />
+      <Using Namespace="System.Text" />
+      <Using Namespace="System.Text.RegularExpressions" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        var utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+        var chinesePattern = new Regex("[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]", RegexOptions.CultureInvariant);
+        var utcPattern = new Regex(
+            @"\b(DateTime\.UtcNow|DateTimeOffset\.UtcNow|DateTimeKind\.Utc|DateTimeStyles\.(AssumeUniversal|AdjustToUniversal)|UtcDateTime|ToUniversalTime\s*\()",
+            RegexOptions.CultureInvariant);
+        var floatingPointPattern = new Regex(
+            @"\b(float|double|Half)\b|(?<![A-Za-z0-9_\.])(?:(?:\d+\.\d*|\.\d+)(?:[eE][+-]?\d+)?[dDfF]?|\d+[eE][+-]?\d+[dDfF]?|\d+[dDfF])(?![A-Za-z0-9_])|\.Total(?:Days|Hours|Minutes|Seconds|Milliseconds)\b|\bMathF\.|\bMath\.(?:Acos|Acosh|Asin|Asinh|Atan|Atan2|Atanh|Cbrt|Cos|Cosh|Exp|Hypot|IEEERemainder|Log|Log2|Log10|Pow|Sin|Sinh|Sqrt|Tan|Tanh)\s*\(",
+            RegexOptions.CultureInvariant);
+        var typeDeclarationPattern = new Regex(
+            @"^\s*(?:(?:public|internal|private|protected|sealed|abstract|static|partial|readonly|ref|file)\s+)*(?<kind>class|enum|record)\s+(?:(?<struct>struct)\s+)?(?<name>[A-Za-z_][A-Za-z0-9_]*)",
+            RegexOptions.CultureInvariant);
+        var documentableDeclarationPattern = new Regex(
+            @"^\s*(?:(?:public|internal|private|protected|sealed|abstract|static|partial|readonly|ref|file|virtual|override|async|unsafe|new|required)\s+)+(?:class|record\b|[A-Za-z_][A-Za-z0-9_<>,\.\?\[\]\s]*\s+[A-Za-z_][A-Za-z0-9_]*\s*(?:\{|=>|=|;|\())",
+            RegexOptions.CultureInvariant);
+        var idDeclarationPattern = new Regex(
+            @"\b(?<type>byte|sbyte|short|ushort|int|uint|long|ulong|nint|nuint|Guid|string|System\.(?:Byte|SByte|Int16|UInt16|Int32|UInt32|Int64|UInt64|IntPtr|UIntPtr|Guid|String))\??\s+(?<name>[A-Za-z_][A-Za-z0-9_]*Id)\b",
+            RegexOptions.CultureInvariant);
+        var numericIdTypePattern = new Regex(
+            @"^(?:byte|sbyte|short|ushort|int|uint|ulong|nint|nuint|System\.(?:Byte|SByte|Int16|UInt16|Int32|UInt32|UInt64|IntPtr|UIntPtr))$",
+            RegexOptions.CultureInvariant);
+        var hotPathAccessPattern = new Regex(
+            @"\b(File|Directory)\s*\.|\b(?:FileStream|DbContext|IDbContextFactory|DbCommand|DbConnection)\b|\.(?:Database|ExecuteSql\w*|FromSql\w*|SqlQuery\w*)\b|\bI[A-Za-z0-9_]*Repository\b",
+            RegexOptions.CultureInvariant);
+        var loggedErrors = 0;
+        const int maxLoggedErrors = 100;
+
+        bool IsGeneratedFile(string path, string content)
+        {
+            return path.IndexOf($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) >= 0
+                || path.EndsWith(".g.cs", StringComparison.OrdinalIgnoreCase)
+                || path.EndsWith(".g.i.cs", StringComparison.OrdinalIgnoreCase)
+                || path.EndsWith(".Designer.cs", StringComparison.OrdinalIgnoreCase)
+                || content.IndexOf("<auto-generated", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        bool IsMigrationFile(string path)
+        {
+            return path.IndexOf($"{Path.DirectorySeparatorChar}Migrations{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        bool IsHotPathFile(string path)
+        {
+            var normalizedPath = path.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+            return normalizedPath.IndexOf($"{Path.DirectorySeparatorChar}Middleware{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) >= 0
+                || normalizedPath.IndexOf($"{Path.DirectorySeparatorChar}Controllers{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) >= 0
+                || normalizedPath.IndexOf($"{Path.DirectorySeparatorChar}Routing{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        string SanitizeCodeLine(
+            string line,
+            ref bool inBlockComment,
+            ref bool inVerbatimString,
+            ref bool inRawString)
+        {
+            var builder = new StringBuilder(line.Length);
+            for (var index = 0; index < line.Length; index++)
+            {
+                if (inBlockComment)
+                {
+                    if (index + 1 < line.Length && line[index] == '*' && line[index + 1] == '/')
+                    {
+                        inBlockComment = false;
+                        builder.Append("  ");
+                        index++;
+                    }
+                    else
+                    {
+                        builder.Append(' ');
+                    }
+
+                    continue;
+                }
+
+                if (inRawString)
+                {
+                    if (index + 2 < line.Length && line[index] == '"' && line[index + 1] == '"' && line[index + 2] == '"')
+                    {
+                        inRawString = false;
+                        builder.Append("   ");
+                        index += 2;
+                    }
+                    else
+                    {
+                        builder.Append(' ');
+                    }
+
+                    continue;
+                }
+
+                if (inVerbatimString)
+                {
+                    if (line[index] == '"')
+                    {
+                        if (index + 1 < line.Length && line[index + 1] == '"')
+                        {
+                            builder.Append("  ");
+                            index++;
+                        }
+                        else
+                        {
+                            inVerbatimString = false;
+                            builder.Append(' ');
+                        }
+                    }
+                    else
+                    {
+                        builder.Append(' ');
+                    }
+
+                    continue;
+                }
+
+                if (index + 1 < line.Length && line[index] == '/' && line[index + 1] == '/')
+                {
+                    builder.Append(' ', line.Length - index);
+                    break;
+                }
+
+                if (index + 1 < line.Length && line[index] == '/' && line[index + 1] == '*')
+                {
+                    inBlockComment = true;
+                    builder.Append("  ");
+                    index++;
+                    continue;
+                }
+
+                if (index + 2 < line.Length && line[index] == '"' && line[index + 1] == '"' && line[index + 2] == '"')
+                {
+                    inRawString = true;
+                    builder.Append("   ");
+                    index += 2;
+                    continue;
+                }
+
+                if (line[index] == '@' && index + 1 < line.Length && line[index + 1] == '"')
+                {
+                    inVerbatimString = true;
+                    builder.Append("  ");
+                    index++;
+                    continue;
+                }
+
+                if (line[index] == '"')
+                {
+                    builder.Append(' ');
+                    index++;
+                    while (index < line.Length)
+                    {
+                        builder.Append(' ');
+                        if (line[index] == '\\')
+                        {
+                            if (index + 1 < line.Length)
+                            {
+                                builder.Append(' ');
+                                index++;
+                            }
+                        }
+                        else if (line[index] == '"')
+                        {
+                            break;
+                        }
+
+                        index++;
+                    }
+
+                    continue;
+                }
+
+                if (line[index] == '\'')
+                {
+                    builder.Append(' ');
+                    index++;
+                    while (index < line.Length)
+                    {
+                        builder.Append(' ');
+                        if (line[index] == '\\' && index + 1 < line.Length)
+                        {
+                            builder.Append(' ');
+                            index++;
+                        }
+                        else if (line[index] == '\'')
+                        {
+                            break;
+                        }
+
+                        index++;
+                    }
+
+                    continue;
+                }
+
+                builder.Append(line[index]);
+            }
+
+            return builder.ToString();
+        }
+
+        void LogLineError(string code, string message, string path, int lineNumber, int lineLength)
+        {
+            if (loggedErrors >= maxLoggedErrors)
+            {
+                return;
+            }
+
+            Log.LogError(
+                subcategory: "RepositoryCompilationGuards",
+                errorCode: code,
+                helpKeyword: null,
+                file: path,
+                lineNumber: lineNumber,
+                columnNumber: 1,
+                endLineNumber: lineNumber,
+                endColumnNumber: Math.Max(1, lineLength),
+                message: message);
+            loggedErrors++;
+        }
+
+        bool ContainsChineseComment(string source)
+        {
+            var inConfigurationBlockComment = false;
+            foreach (var sourceLine in source.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'))
+            {
+                var trimmedSourceLine = sourceLine.Trim();
+                if (trimmedSourceLine.StartsWith("//", StringComparison.Ordinal)
+                    || trimmedSourceLine.StartsWith("#", StringComparison.Ordinal))
+                {
+                    if (chinesePattern.IsMatch(trimmedSourceLine))
+                    {
+                        return true;
+                    }
+                }
+
+                if (trimmedSourceLine.StartsWith("/*", StringComparison.Ordinal)
+                    || trimmedSourceLine.StartsWith("<!--", StringComparison.Ordinal))
+                {
+                    inConfigurationBlockComment = true;
+                }
+
+                if (inConfigurationBlockComment && chinesePattern.IsMatch(trimmedSourceLine))
+                {
+                    return true;
+                }
+
+                if (trimmedSourceLine.IndexOf("*/", StringComparison.Ordinal) >= 0
+                    || trimmedSourceLine.IndexOf("-->", StringComparison.Ordinal) >= 0)
+                {
+                    inConfigurationBlockComment = false;
+                }
+            }
+
+            return false;
+        }
+
+        foreach (var file in Files ?? Array.Empty<Microsoft.Build.Framework.ITaskItem>())
+        {
+            if (loggedErrors >= maxLoggedErrors)
+            {
+                break;
+            }
+
+            var path = file.GetMetadata("FullPath");
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            {
+                continue;
+            }
+
+            string content;
+            try
+            {
+                content = File.ReadAllText(path, utf8);
+            }
+            catch (DecoderFallbackException)
+            {
+                Log.LogError("RepositoryCompilationGuards", "ZG101", null, path, 1, 1, 1, 1, "C# 文件必须使用有效 UTF-8 编码。");
+                loggedErrors++;
+                continue;
+            }
+
+            if (IsGeneratedFile(path, content))
+            {
+                continue;
+            }
+
+            var isMigrationFile = IsMigrationFile(path);
+            var isHotPathFile = IsHotPathFile(path);
+            var standaloneDeclarations = 0;
+            var documentationHasChinese = false;
+            var documentationIsInherited = false;
+            var inBlockComment = false;
+            var inVerbatimString = false;
+            var inRawString = false;
+            var lines = content.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+
+            for (var lineIndex = 0; lineIndex < lines.Length; lineIndex++)
+            {
+                var line = lines[lineIndex];
+                var trimmedLine = line.Trim();
+                var lineNumber = lineIndex + 1;
+
+                if (trimmedLine.StartsWith("///", StringComparison.Ordinal)
+                    || trimmedLine.StartsWith("//", StringComparison.Ordinal)
+                    || trimmedLine.StartsWith("/*", StringComparison.Ordinal)
+                    || trimmedLine.StartsWith("*", StringComparison.Ordinal))
+                {
+                    documentationHasChinese |= chinesePattern.IsMatch(trimmedLine);
+                    documentationIsInherited |= trimmedLine.IndexOf("<inheritdoc", StringComparison.OrdinalIgnoreCase) >= 0;
+                }
+
+                var code = SanitizeCodeLine(line, ref inBlockComment, ref inVerbatimString, ref inRawString);
+                if (string.IsNullOrWhiteSpace(code))
+                {
+                    continue;
+                }
+
+                var typeMatch = typeDeclarationPattern.Match(code);
+                if (typeMatch.Success && !isMigrationFile)
+                {
+                    var kind = typeMatch.Groups["kind"].Value;
+                    var isRecordStruct = string.Equals(kind, "record", StringComparison.Ordinal)
+                        && typeMatch.Groups["struct"].Success;
+                    var declarationName = typeMatch.Groups["name"].Value;
+                    var isEventPayload = path.IndexOf($"{Path.DirectorySeparatorChar}Events{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) >= 0
+                        || declarationName.EndsWith("EventArgs", StringComparison.Ordinal)
+                        || declarationName.EndsWith("EventPayload", StringComparison.Ordinal);
+                    if (!isRecordStruct || isEventPayload)
+                    {
+                        standaloneDeclarations++;
+                        if (standaloneDeclarations > 1)
+                        {
+                            LogLineError("ZG103", "类、枚举和事件载荷必须各自位于独立文件。", path, lineNumber, line.Length);
+                        }
+                    }
+                }
+
+                if (!isMigrationFile && documentableDeclarationPattern.IsMatch(code))
+                {
+                    if (!documentationHasChinese && !documentationIsInherited)
+                    {
+                        LogLineError("ZG102", "类、记录、属性、字段和方法必须包含中文 XML 注释。", path, lineNumber, line.Length);
+                    }
+                }
+
+                if (!isMigrationFile && floatingPointPattern.IsMatch(code))
+                {
+                    LogLineError("ZG104", "禁止使用 float/double/Half 或浮点字面量；小数必须使用 decimal 或整数缩放定点数。", path, lineNumber, line.Length);
+                }
+
+                if (utcPattern.IsMatch(code))
+                {
+                    LogLineError("ZG105", "禁止使用 UTC 时间 API，统一保持本地时间语义。", path, lineNumber, line.Length);
+                }
+
+                if (!isMigrationFile)
+                {
+                    foreach (Match idMatch in idDeclarationPattern.Matches(code))
+                    {
+                        var idType = idMatch.Groups["type"].Value;
+                        var idName = idMatch.Groups["name"].Value;
+                        var mustBeLong = string.Equals(idName, "Id", StringComparison.Ordinal)
+                            || numericIdTypePattern.IsMatch(idType);
+                        if (mustBeLong
+                            && !string.Equals(idType, "long", StringComparison.Ordinal)
+                            && !string.Equals(idType, "System.Int64", StringComparison.Ordinal))
+                        {
+                            LogLineError("ZG107", $"标识符 {idName} 必须使用 long/long?，当前类型为 {idType}。", path, lineNumber, line.Length);
+                        }
+                    }
+                }
+
+                if (isHotPathFile && hotPathAccessPattern.IsMatch(code))
+                {
+                    LogLineError("ZG106", "热路径禁止直接读写数据库或文件；必须改用内存、缓存或异步缓冲队列。", path, lineNumber, line.Length);
+                }
+
+                if (!trimmedLine.StartsWith("[", StringComparison.Ordinal)
+                    && !trimmedLine.StartsWith("///", StringComparison.Ordinal)
+                    && !trimmedLine.StartsWith("//", StringComparison.Ordinal)
+                    && !trimmedLine.StartsWith("/*", StringComparison.Ordinal)
+                    && !trimmedLine.StartsWith("*", StringComparison.Ordinal)
+                    && !trimmedLine.StartsWith("*/", StringComparison.Ordinal))
+                {
+                    documentationHasChinese = false;
+                    documentationIsInherited = false;
+                }
+            }
+        }
+
+        if (loggedErrors >= maxLoggedErrors)
+        {
+            Log.LogError($"编译守卫发现至少 {maxLoggedErrors} 个问题，已停止输出更多错误。");
+        }
+
+        if (string.Equals(ProjectName, "Zeye.Sorting.Hub.Host", StringComparison.Ordinal))
+        {
+            foreach (var configurationFile in ConfigurationFiles ?? Array.Empty<Microsoft.Build.Framework.ITaskItem>())
+            {
+                var configurationPath = configurationFile.GetMetadata("FullPath");
+                if (string.IsNullOrWhiteSpace(configurationPath) || !File.Exists(configurationPath))
+                {
+                    continue;
+                }
+
+                var configurationContent = File.ReadAllText(configurationPath, utf8);
+                if (!ContainsChineseComment(configurationContent))
+                {
+                    Log.LogError(
+                        "RepositoryCompilationGuards",
+                        "ZG109",
+                        null,
+                        configurationPath,
+                        1,
+                        1,
+                        1,
+                        1,
+                        "配置文件必须包含中文注释。");
+                }
+            }
+        }
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <UsingTask
+    TaskName="CheckDatabaseFoundationAssets"
+    TaskFactory="RoslynCodeTaskFactory"
+    AssemblyFile="$(MSBuildToolsPath)/Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <RepositoryRoot ParameterType="System.String" Required="true" />
+    </ParameterGroup>
+    <Task>
+      <Using Namespace="System" />
+      <Using Namespace="System.Collections.Generic" />
+      <Using Namespace="System.IO" />
+      <Code Type="Fragment" Language="cs"><![CDATA[
+        var requiredTextByFile = new Dictionary<string, string[]>
+        {
+            ["Zeye.Sorting.Hub.Infrastructure/Zeye.Sorting.Hub.Infrastructure.csproj"] =
+            [
+                "Microsoft.EntityFrameworkCore",
+                "Microsoft.EntityFrameworkCore.Design",
+                "EFCore.Sharding"
+            ],
+            ["Zeye.Sorting.Hub.Host/HostedServices/DatabaseInitializerHostedService.cs"] =
+            [
+                "CreateDatabaseAsync",
+                "MigrateAsync",
+                "HasPendingModelChanges"
+            ],
+            ["Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/SortingHubDbContextModelSnapshot.cs"] =
+            [
+                "ModelSnapshot"
+            ],
+            ["Zeye.Sorting.Hub.Host/HostedServices/DatabaseAutoTuningHostedService.cs"] =
+            [
+                "SlowQueryAutoTuningPipeline"
+            ],
+            ["Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding/ParcelPartitionStore.cs"] =
+            [
+                "EnsureCreatedAsync",
+                "ValidateSuffix",
+                "ParcelPartitionDdlCoordinator.AcquireAsync"
+            ],
+            ["Zeye.Sorting.Hub.Infrastructure/DependencyInjection/PersistenceServiceCollectionExtensions.cs"] =
+            [
+                "IShardingBuilder",
+                "AssertParcelAggregateShardingCoverage"
+            ]
+        };
+
+        foreach (var pair in requiredTextByFile)
+        {
+            var path = Path.Combine(RepositoryRoot, pair.Key.Replace('/', Path.DirectorySeparatorChar));
+            if (!File.Exists(path))
+            {
+                Log.LogError("RepositoryCompilationGuards", "ZG108", null, path, 1, 1, 1, 1, "数据库底座关键资产缺失，禁止继续构建。");
+                continue;
+            }
+
+            var content = File.ReadAllText(path);
+            foreach (var requiredText in pair.Value)
+            {
+                if (content.IndexOf(requiredText, StringComparison.Ordinal) < 0)
+                {
+                    Log.LogError(
+                        "RepositoryCompilationGuards",
+                        "ZG108",
+                        null,
+                        path,
+                        1,
+                        1,
+                        1,
+                        1,
+                        $"数据库底座关键能力 {requiredText} 缺失；必须保留 EF Core、Code First、自动建库/迁移、自动调优和自动分表能力。");
+                }
+            }
+        }
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <Target
+    Name="ValidateRepositoryCompilationGuards"
+    BeforeTargets="CoreCompile"
+    Condition="'$(EnableRepositoryCompilationGuards)' == 'true' and '$(DesignTimeBuild)' != 'true'"
+    Inputs="@(Compile);@(_RepositoryConfigurationFiles);$(MSBuildThisFileFullPath)"
+    Outputs="$(IntermediateOutputPath)repository-compilation-guards.stamp">
+    <Error
+      Code="ZG100"
+      Condition="'$(TargetFramework)' != 'net10.0'"
+      Text="项目必须以 net10.0 为目标框架，确保可使用 .NET 10 / C# 14 性能特性。" />
+    <CheckCSharpCompilationRules
+      Files="@(Compile)"
+      ConfigurationFiles="@(_RepositoryConfigurationFiles)"
+      ProjectName="$(MSBuildProjectName)" />
+    <CheckDatabaseFoundationAssets
+      RepositoryRoot="$(MSBuildThisFileDirectory)"
+      Condition="'$(MSBuildProjectName)' == 'Zeye.Sorting.Hub.Host'" />
+    <MakeDir Directories="$(IntermediateOutputPath)" />
+    <Touch Files="$(IntermediateOutputPath)repository-compilation-guards.stamp" AlwaysCreate="true" />
+  </Target>
+</Project>

@@ -22,7 +22,8 @@ public sealed class OutboxMessageEntityTypeConfiguration : IEntityTypeConfigurat
         builder.Property(x => x.FailureMessage).HasMaxLength(OutboxMessage.MaxFailureMessageLength);
         builder.Property(x => x.Status).HasConversion<int>().IsConcurrencyToken();
 
-        builder.HasIndex(x => new { x.Status, x.CreatedAt });
-        builder.HasIndex(x => new { x.EventType, x.CreatedAt });
+        builder.HasIndex(x => new { x.Status, x.CreatedAt, x.Id });
+        builder.HasIndex(x => new { x.Status, x.LastAttemptedAt, x.UpdatedAt, x.Id });
+        builder.HasIndex(x => new { x.EventType, x.CreatedAt, x.Id });
     }
 }

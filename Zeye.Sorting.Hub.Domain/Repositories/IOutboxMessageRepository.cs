@@ -47,6 +47,18 @@ public interface IOutboxMessageRepository {
     Task<OutboxMessage?> TryAcquireNextDispatchableAsync(int maxRetryCount, CancellationToken cancellationToken);
 
     /// <summary>
+    /// 原子领取一批可派发消息，并切换到处理中。
+    /// </summary>
+    /// <param name="batchSize">最大领取数量。</param>
+    /// <param name="maxRetryCount">最大重试次数。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>成功领取的消息集合。</returns>
+    Task<IReadOnlyList<OutboxMessage>> TryAcquireDispatchableBatchAsync(
+        int batchSize,
+        int maxRetryCount,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// 获取 Outbox 健康快照。
     /// </summary>
     /// <param name="cancellationToken">取消令牌。</param>
@@ -60,4 +72,14 @@ public interface IOutboxMessageRepository {
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>仓储结果。</returns>
     Task<RepositoryResult> UpdateAsync(OutboxMessage outboxMessage, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// 批量更新 Outbox 消息状态。
+    /// </summary>
+    /// <param name="outboxMessages">待更新消息集合。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>仓储结果。</returns>
+    Task<RepositoryResult> UpdateRangeAsync(
+        IReadOnlyCollection<OutboxMessage> outboxMessages,
+        CancellationToken cancellationToken);
 }

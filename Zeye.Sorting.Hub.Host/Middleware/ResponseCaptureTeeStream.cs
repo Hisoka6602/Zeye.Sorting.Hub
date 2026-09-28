@@ -1,4 +1,5 @@
 using System.Text;
+using System.Buffers;
 
 namespace Zeye.Sorting.Hub.Host.Middleware;
 
@@ -24,7 +25,12 @@ public sealed class ResponseCaptureTeeStream : Stream {
     /// <summary>
     /// 已采集字节缓冲。
     /// </summary>
-    private readonly MemoryStream _capturedBytes = new();
+    private byte[]? _capturedBytes;
+
+    /// <summary>
+    /// 已采集字节数量。
+    /// </summary>
+    private int _capturedLength;
 
     /// <summary>
     /// 写出的响应总字节数。
@@ -45,6 +51,7 @@ public sealed class ResponseCaptureTeeStream : Stream {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
         _captureMaxChars = Math.Max(0, captureMaxLength);
         _captureMaxBytes = _captureMaxChars == 0 ? 0 : Math.Max(1, Encoding.UTF8.GetMaxByteCount(_captureMaxChars));
+        _capturedBytes = _captureMaxBytes == 0 ? null : ArrayPool<byte>.Shared.Rent(_captureMaxBytes);
     }
 
     /// <inheritdoc />
@@ -87,9 +94,9 @@ public sealed class ResponseCaptureTeeStream : Stream {
     }
 
     /// <inheritdoc />
-    public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) {
+    public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) {
         CaptureBytes(buffer.Span);
-        await _inner.WriteAsync(buffer, cancellationToken);
+        return _inner.WriteAsync(buffer, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -108,9 +115,9 @@ public sealed class ResponseCaptureTeeStream : Stream {
             return new ResponseCaptureResult(string.Empty, hasBody, hasBody, _totalWrittenBytes);
         }
 
-        _capturedBytes.Position = 0;
-        using var reader = new StreamReader(_capturedBytes, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, leaveOpen: true);
-        var decoded = reader.ReadToEnd();
+        var decoded = _capturedBytes is null || _capturedLength == 0
+            ? string.Empty
+            : Encoding.UTF8.GetString(_capturedBytes, 0, _capturedLength);
         if (decoded.Length > _captureMaxChars) {
             return new ResponseCaptureResult(decoded[.._captureMaxChars], hasBody, true, _totalWrittenBytes);
         }
@@ -132,16 +139,34 @@ public sealed class ResponseCaptureTeeStream : Stream {
             return;
         }
 
-        var remain = _captureMaxBytes - (int)_capturedBytes.Length;
+        var remain = _captureMaxBytes - _capturedLength;
         if (remain <= 0) {
             _isTruncated = true;
             return;
         }
 
         var writeCount = Math.Min(remain, buffer.Length);
-        _capturedBytes.Write(buffer[..writeCount]);
+        buffer[..writeCount].CopyTo(_capturedBytes.AsSpan(_capturedLength));
+        _capturedLength += writeCount;
         if (writeCount < buffer.Length) {
             _isTruncated = true;
         }
+    }
+
+    /// <inheritdoc />
+    protected override void Dispose(bool disposing) {
+        var capturedBytes = Interlocked.Exchange(ref _capturedBytes, null);
+        if (capturedBytes is not null) {
+            ArrayPool<byte>.Shared.Return(capturedBytes, clearArray: true);
+        }
+
+        base.Dispose(disposing);
+    }
+
+    /// <inheritdoc />
+    public override ValueTask DisposeAsync() {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+        return ValueTask.CompletedTask;
     }
 }

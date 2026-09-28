@@ -30,6 +30,11 @@ public sealed record PageRequest {
     public int PageSize { get; init; } = DefaultPageSize;
 
     /// <summary>
+    /// 是否执行精确总数查询。
+    /// </summary>
+    public bool IncludeTotalCount { get; init; } = true;
+
+    /// <summary>
     /// 将页码归一化到有效区间。
     /// </summary>
     public int NormalizePageNumber() {

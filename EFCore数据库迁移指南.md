@@ -9,7 +9,7 @@
 | DbContext | `Zeye.Sorting.Hub.Infrastructure/Persistence/SortingHubDbContext.cs` |
 | 实体映射配置 | `Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/` |
 | 设计时工厂 | `Zeye.Sorting.Hub.Infrastructure/Persistence/DesignTime/MySqlContextFactory.cs`<br>`Zeye.Sorting.Hub.Infrastructure/Persistence/DesignTime/SqlServerContextFactory.cs` |
-| 迁移文件存放目录 | `Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/` |
+| 迁移文件存放目录 | MySQL：`Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/`<br>SQL Server：`Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations/` |
 | 运行时自动迁移服务 | `Zeye.Sorting.Hub.Host/HostedServices/DatabaseInitializerHostedService.cs` |
 
 ---
@@ -20,17 +20,17 @@
 |------|------|
 | CodeFirst 模式 | ✅ 是 |
 | 设计时工厂 (`IDesignTimeDbContextFactory`) | ✅ 已实现 |
-| 初始迁移 (`InitialCreate`) | ✅ 已生成 |
+| MySQL迁移链与SQL Server独立基线 | ✅ 已生成；两种Provider分别维护模型快照 |
 | 运行时自动应用 (`Database.MigrateAsync`) | ✅ 已配置 |
 
-初始迁移文件：`Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/20260316184030_InitialCreate.cs`
+MySQL初始迁移为`20260324094539_RebuildBaseline20260324`；SQL Server初始迁移为`20260928143409_InitialSqlServerSchema`。
 
 ### 2.1 SQL Server 迁移策略（明确）
 
-- **当前落地策略**：采用“**单迁移目录（同一程序集）**”策略，迁移统一存放在 `Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/`。
+- **当前落地策略**：MySQL保留现有迁移链；SQL Server使用独立迁移程序集和SQL Server模型快照，运行时由Provider自动选路。两边共用同一实体模型，不复制业务代码。
 - **提供器约定**：SQL Server 相关 `dotnet ef` 命令统一追加 `-- --provider SqlServer`，MySQL 相关命令统一使用 `-- --provider MySql`（或默认值）。
-- **发布门禁**：发布前必须通过 CI 的 `list/update/script` 验收流水线。
-- **演进预留**：若后续出现明显的跨提供器分叉，再升级为“独立迁移目录/独立迁移程序集”策略。
+- **发布门禁**：MySQL与SQL Server分别检查模型漂移；SQL Server还在隔离库执行升级、空库回退和再次升级。
+- **历史库边界**：SQL Server初始迁移只允许空库。有旧共享迁移历史或现存业务表时，必须另定保留数据的过渡方案；基线会主动拒绝直接覆盖。
 
 ---
 
@@ -86,9 +86,9 @@ Host 启动
 
 ```bash
 dotnet ef migrations add <迁移名称> \
-  --project Zeye.Sorting.Hub.Infrastructure \
-  --startup-project Zeye.Sorting.Hub.Infrastructure \
-  --output-dir Persistence/Migrations \
+  --project Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations \
+  --startup-project Zeye.Sorting.Hub.Host \
+  --output-dir Migrations \
   --context SortingHubDbContext \
   -- --provider MySql
 ```
@@ -124,8 +124,8 @@ dotnet ef migrations remove \
 
 ```bash
 dotnet ef migrations list \
-  --project Zeye.Sorting.Hub.Infrastructure \
-  --startup-project Zeye.Sorting.Hub.Infrastructure \
+  --project Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations \
+  --startup-project Zeye.Sorting.Hub.Host \
   --context SortingHubDbContext \
   -- --provider MySql
 ```
@@ -146,8 +146,8 @@ dotnet ef migrations list \
 
 ```bash
 dotnet ef database update \
-  --project Zeye.Sorting.Hub.Infrastructure \
-  --startup-project Zeye.Sorting.Hub.Infrastructure \
+  --project Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations \
+  --startup-project Zeye.Sorting.Hub.Host \
   --context SortingHubDbContext \
   --connection "server=<HOST>;port=3306;database=zeye_sorting_hub;uid=<USER>;Password=<PWD>;SslMode=None;" \
   -- --provider MySql
@@ -172,8 +172,8 @@ dotnet ef database update \
 
 ```bash
 dotnet ef migrations script \
-  --project Zeye.Sorting.Hub.Infrastructure \
-  --startup-project Zeye.Sorting.Hub.Infrastructure \
+  --project Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations \
+  --startup-project Zeye.Sorting.Hub.Host \
   --context SortingHubDbContext \
   --output migration.sql \
   -- --provider MySql
@@ -194,13 +194,13 @@ dotnet ef migrations script \
 
 ## 4.6 CI / 部署前 EF 验收流水线（真实执行）
 
-仓库已提供工作流：`.github/workflows/ef-migration-validation.yml`，分别在 **MySQL** 与 **SQL Server** 容器上执行以下三条真实命令：
+仓库已提供工作流：`.github/workflows/ef-migration-validation.yml`，分别在 **MySQL** 与 **SQL Server** 容器检查迁移列表、模型快照差异、正向脚本和真实升级；SQL Server再验证空库回退与重新升级。含业务数据或物理分表的回退由迁移内守卫拒绝。
 
 1. `dotnet ef migrations list`
 2. `dotnet ef database update`
 3. `dotnet ef migrations script`
 
-用途：作为发布前门禁，确保“迁移可枚举、可落库、可导出脚本”三项在多 Provider 路径同时通过。
+历史物理事实表的`OccurredAt`索引由`performance/scripts/backfill-processing-occurred-index.ps1`生成计划、审计和回滚清单；新物理周期通过当前模型自带索引。用法见`performance/README.md`。
 
 ---
 
@@ -279,14 +279,14 @@ dotnet ef migrations script \
 
 ## 7. 分表（Sharding）与迁移的关系
 
-本项目通过 **EFCore.Sharding** 库实现按月/按哈希分表（见 `PersistenceServiceCollectionExtensions.cs`）。
+本项目的Parcel聚合通过`ParcelPartitionStore`按首次入库周期创建物理表，其他分表治理见`PersistenceServiceCollectionExtensions.cs`。
 
-**迁移只负责"基表"结构**，分表变体（如 `Parcels_202601`、`Parcels_202602`）由 EFCore.Sharding 在运行时按需创建。两者职责分离：
+**迁移只负责基础表结构**，分表变体（如`Parcels_202601`、`Parcels_202602`）由`ParcelPartitionStore`在显式允许且非dry-run时创建。两者职责分离：
 
 | 职责 | 负责方 |
 |------|--------|
 | 创建/变更表结构（列、索引、约束） | EF Core 迁移 |
-| 按月/按哈希创建分片表 | EFCore.Sharding 运行时 |
+| 按周期创建Parcel物理表 | ParcelPartitionStore运行时DDL隔离器 |
 | `__EFMigrationsHistory` 版本记录 | EF Core |
 
 ---

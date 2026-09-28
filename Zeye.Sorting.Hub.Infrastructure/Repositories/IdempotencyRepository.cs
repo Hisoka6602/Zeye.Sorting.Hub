@@ -47,6 +47,23 @@ public sealed class IdempotencyRepository : IIdempotencyRepository {
 
         try {
             await using var dbContext = await _contextFactory.CreateDbContextAsync(cancellationToken);
+            if (string.Equals(
+                    dbContext.Database.ProviderName,
+                    "Microsoft.EntityFrameworkCore.InMemory",
+                    StringComparison.Ordinal)) {
+                var exists = await dbContext.Set<IdempotencyRecord>()
+                    .AsNoTracking()
+                    .AnyAsync(
+                        x => x.SourceSystem == idempotencyRecord.SourceSystem
+                             && x.OperationName == idempotencyRecord.OperationName
+                             && x.BusinessKey == idempotencyRecord.BusinessKey
+                             && x.PayloadHash == idempotencyRecord.PayloadHash,
+                        cancellationToken);
+                if (exists) {
+                    return RepositoryResult.Fail(DuplicateRecordErrorMessage, RepositoryErrorCodes.IdempotencyRecordConflict);
+                }
+            }
+
             await dbContext.Set<IdempotencyRecord>().AddAsync(idempotencyRecord, cancellationToken);
             await dbContext.SaveChangesAsync(cancellationToken);
             return RepositoryResult.Success();

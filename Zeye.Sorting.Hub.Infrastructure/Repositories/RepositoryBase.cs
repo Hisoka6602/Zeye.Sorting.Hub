@@ -88,7 +88,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
 
             try {
                 await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
-                await db.Set<TEntity>().AddRangeAsync(entities, cancellationToken);
+                db.Set<TEntity>().AddRange(entities);
                 await db.SaveChangesAsync(cancellationToken);
                 return RepositoryResult.Success();
             }

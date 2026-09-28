@@ -14,5 +14,13 @@ namespace Zeye.Sorting.Hub.Domain.Repositories {
         /// <param name="cancellationToken">取消令牌。</param>
         /// <returns>仓储执行结果。</returns>
         Task<RepositoryResult> AddAsync(WebRequestAuditLog auditLog, CancellationToken cancellationToken);
+
+        /// <summary>
+        /// 批量新增 Web 请求审计日志聚合。
+        /// </summary>
+        /// <param name="auditLogs">审计日志聚合集合。</param>
+        /// <param name="cancellationToken">取消令牌。</param>
+        /// <returns>仓储执行结果。</returns>
+        Task<RepositoryResult> AddRangeAsync(IReadOnlyCollection<WebRequestAuditLog> auditLogs, CancellationToken cancellationToken);
     }
 }

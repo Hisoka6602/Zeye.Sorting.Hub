@@ -44,11 +44,16 @@ public sealed class ShardingPhysicalTablePlanBuilder {
         var tableNames = new HashSet<string>(StringComparer.Ordinal);
 
         // 步骤 1：Parcel 主表与日期型值对象按当前策略决策的粒度生成巡检目标。
-        var parcelBaseTableNames = ResolveBaseTableNames(
-            dbContext,
-            PersistenceServiceCollectionExtensions.GetParcelPerDayShardingEntityTypes());
-        var parcelDateMode = _parcelShardingStrategyDecision.EffectiveDateMode;
-        AddPhysicalTables(tableNames, parcelBaseTableNames, parcelDateMode, normalizedStartAtLocal, endAtLocal, shouldIncludeNextPeriod);
+        var parcelBaseTableNames = dbContext.Model.GetEntityTypes().Select(x => x.GetTableName())
+            .Where(x => x == "Parcels" || x?.StartsWith("Parcel_", StringComparison.Ordinal) == true).Cast<string>().Distinct().ToArray();
+        var granularity = _parcelShardingStrategyDecision.ThresholdReached && _parcelShardingStrategyDecision.ThresholdAction == ParcelVolumeThresholdAction.SwitchToPerDay
+            ? ParcelTimeShardingGranularity.PerDay : _parcelShardingStrategyDecision.TimeGranularity;
+        var firstPeriod = ParcelPartitionPeriod.Resolve(normalizedStartAtLocal, granularity);
+        var lastPeriod = ParcelPartitionPeriod.Resolve(endAtLocal, granularity);
+        if (shouldIncludeNextPeriod && lastPeriod.Start == firstPeriod.Start) lastPeriod = ParcelPartitionPeriod.Resolve(firstPeriod.End, granularity);
+        for (var period = firstPeriod; period.Start <= lastPeriod.Start; period = ParcelPartitionPeriod.Resolve(period.End, granularity)) {
+            foreach (var table in parcelBaseTableNames) tableNames.Add(table + "_" + period.Suffix);
+        }
 
         // 步骤 2：WebRequestAuditLog 热表与详情表固定按日治理。
         var auditBaseTableNames = ResolveBaseTableNames(

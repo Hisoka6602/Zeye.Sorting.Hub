@@ -1,6 +1,8 @@
 using System.ComponentModel.DataAnnotations;
 using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Data.SqlClient;
 using MySqlConnector;
@@ -14,6 +16,8 @@ using Zeye.Sorting.Hub.Domain.Repositories.Models.ReadModels;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.Results;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
+using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.Processing;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
 
@@ -21,6 +25,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
 /// Parcel 仓储第一阶段实现。
 /// </summary>
 public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContext>, IParcelRepository {
+    /// <summary>实际分表路由，独立单元测试可省略以使用基础表模型。</summary>
+    private readonly ParcelPartitionStore? _partitions;
     /// <summary>
     /// NLog 日志器（静态，无需 DI 注入；日志来源类名为 ParcelRepository）。
     /// </summary>
@@ -99,8 +105,10 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     /// </summary>
     public ParcelRepository(
         IDbContextFactory<SortingHubDbContext> contextFactory,
-        IConfiguration? configuration)
+        IConfiguration? configuration,
+        ParcelPartitionStore? partitions = null)
         : base(contextFactory, NLogLogger) {
+        _partitions = partitions;
         var effectiveConfiguration = configuration ?? EmptyConfiguration;
         // 步骤 1：守卫开关默认开启（保守默认值，避免危险动作默认放开）。
         _removeExpiredEnableGuard = AutoTuningConfigurationReader.GetBoolOrDefault(
@@ -128,8 +136,18 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
         }
 
         try {
-            await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
+            var suffix = string.Empty;
+            if (_partitions is not null) {
+                await using var lookup = await ContextFactory.CreateDbContextAsync(cancellationToken);
+                if (await lookup.Set<ParcelLocation>().AnyAsync(x => x.Id == parcel.Id, cancellationToken) || await lookup.Set<Parcel>().AnyAsync(x => x.Id == parcel.Id, cancellationToken))
+                    return RepositoryResult.Fail(DuplicateParcelIdErrorMessage, RepositoryErrorCodes.ParcelIdConflict);
+                var period = _partitions.Resolve(parcel.CreatedTime);
+                await _partitions.EnsureCreatedAsync(period, cancellationToken);
+                suffix = period.Suffix;
+            }
+            await using var db = _partitions is null ? await ContextFactory.CreateDbContextAsync(cancellationToken) : await _partitions.CreateContextAsync(suffix, cancellationToken);
             await db.Set<Parcel>().AddAsync(parcel, cancellationToken);
+            if (_partitions is not null) db.Add(new ParcelLocation { Id = parcel.Id, Suffix = suffix, CreatedTime = parcel.CreatedTime });
             await db.SaveChangesAsync(cancellationToken);
             return RepositoryResult.Success();
         }
@@ -170,8 +188,20 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
         }
 
         try {
-            await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
-            return await Query(db)
+            await using var db = await CreateContextForIdAsync(id, cancellationToken);
+            var parcel = await BuildDetailQuery(db)
+                .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
+            if (parcel?.SourceInstanceId is not null) parcel.LoadProcessingRecords(await db.Set<ParcelProcessingRecord>().AsNoTracking().Where(x => x.ParcelId == id).OrderBy(x => x.OccurredAt).ThenBy(x => x.AttemptNumber).ThenBy(x => x.RecordId).ToListAsync(cancellationToken));
+            return parcel;
+        }
+        catch (Exception ex) {
+            Logger.Error(ex, "根据 Id 查询包裹详情失败，Id={ParcelId}", id);
+            throw;
+        }
+    }
+
+    /// <summary>统一完整聚合查询，详情与更新复用同一关系覆盖清单。</summary>
+    private static IQueryable<Parcel> BuildDetailQuery(SortingHubDbContext db) => db.Set<Parcel>().AsNoTracking()
                 .Include(x => x.BagInfo)
                 .Include(x => x.VolumeInfo)
                 .Include(x => x.ChuteInfo)
@@ -186,13 +216,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
                 .Include(x => x.CommandInfos)
                 .Include(x => x.ImageInfos)
                 .Include(x => x.VideoInfos)
-                .FirstOrDefaultAsync(x => x.Id == id, cancellationToken);
-        }
-        catch (Exception ex) {
-            Logger.Error(ex, "根据 Id 查询包裹详情失败，Id={ParcelId}", id);
-            throw;
-        }
-    }
+                .AsSplitQuery();
 
     /// <summary>
     /// 按过滤条件执行分页查询（返回摘要读模型）。
@@ -333,7 +357,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
 
         try {
             await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
-            var query = Query(db);
+            var query = await BuildPartitionQueryAsync(db, cancellationToken);
             var anchor = await query
                 .Where(x => x.Id == id)
                 .Select(x => new { x.Id, x.ScannedTime })
@@ -424,23 +448,38 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
             var totalDeleted = 0;
 
             // 步骤 3：按批次真实删除，保留单次上限保护，避免长事务与大批量误删风险。
-            while (totalDeleted < MaxExpiredDeleteCountPerCall) {
+            var suffixes = _partitions is null ? new[] { string.Empty } : (await _partitions.GetReadSuffixesAsync(cancellationToken)).Reverse().ToArray();
+            foreach (var suffix in suffixes) {
+              await using var physical = _partitions is null ? await ContextFactory.CreateDbContextAsync(cancellationToken) : await _partitions.CreateContextAsync(suffix, cancellationToken);
+              while (totalDeleted < MaxExpiredDeleteCountPerCall) {
                 var remainingDeleteBudget = MaxExpiredDeleteCountPerCall - totalDeleted;
                 var currentBatchSize = Math.Min(remainingDeleteBudget, ExpiredDeleteBatchSize);
 
-                var expiredBatch = await db.Set<Parcel>()
+                var expiredBatchQuery = physical.Set<Parcel>()
                     .Where(x => x.CreatedTime < createdBefore)
-                    .Take(currentBatchSize)
-                    .ToListAsync(cancellationToken);
+                    .OrderBy(x => x.CreatedTime)
+                    .ThenBy(x => x.Id)
+                    .Take(currentBatchSize);
 
-                if (expiredBatch.Count == 0) {
+                int currentDeleted;
+                if (physical.Database.IsRelational()) {
+                    currentDeleted = await expiredBatchQuery.ExecuteDeleteAsync(cancellationToken);
+                }
+                else {
+                    // InMemory 测试提供程序不支持 ExecuteDelete，保留测试兼容回退。
+                    var expiredBatch = await expiredBatchQuery.ToListAsync(cancellationToken);
+                    physical.Set<Parcel>().RemoveRange(expiredBatch);
+                    await physical.SaveChangesAsync(cancellationToken);
+                    currentDeleted = expiredBatch.Count;
+                }
+
+                if (currentDeleted == 0) {
                     break;
                 }
 
-                // 步骤 4：通过 EF 跟踪删除当前批次并立即提交，缩短事务占用时间。
-                db.Set<Parcel>().RemoveRange(expiredBatch);
-                await db.SaveChangesAsync(cancellationToken);
-                totalDeleted += expiredBatch.Count;
+                totalDeleted += currentDeleted;
+              }
+              if (totalDeleted >= MaxExpiredDeleteCountPerCall) break;
             }
 
             // 步骤 5：如果触达上限则记录告警，防止误调用造成大范围清理。
@@ -491,19 +530,15 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     /// <summary>
     /// 统计过期清理计划量（受单次上限保护）。
     /// </summary>
-    private static async Task<int> CountPlannedExpiredAsync(
+    private async Task<int> CountPlannedExpiredAsync(
         SortingHubDbContext db,
         DateTime createdBefore,
         CancellationToken cancellationToken) {
-        // 步骤 1：在数据库侧按单次上限读取主键集合，确保统计开销具备明确上界。
-        var plannedIds = await db.Set<Parcel>()
-            .AsNoTracking()
+        // 步骤 1：在数据库侧对有界子查询执行计数，避免把主键集合传回进程。
+        return await (await BuildPartitionQueryAsync(db, cancellationToken))
             .Where(x => x.CreatedTime < createdBefore)
-            .Select(x => x.Id)
             .Take(MaxExpiredDeleteCountPerCall)
-            .ToListAsync(cancellationToken);
-        // 步骤 2：计划处理量即为上界化读取后的候选计数。
-        return plannedIds.Count;
+            .CountAsync(cancellationToken);
     }
 
     /// <summary>
@@ -568,9 +603,11 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
 
         try {
             await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
-            var query = queryBuilder(db, Query(db));
+            var query = queryBuilder(db, await BuildPartitionQueryAsync(db, cancellationToken));
 
-            var totalCount = await query.LongCountAsync(cancellationToken);
+            var totalCount = pageRequest.IncludeTotalCount
+                ? await query.LongCountAsync(cancellationToken)
+                : 0L;
             var items = await query
                 .OrderByDescending(x => x.ScannedTime)
                 .ThenByDescending(x => x.Id)
@@ -607,7 +644,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
 
         try {
             await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
-            var query = queryBuilder(db, Query(db));
+            var query = queryBuilder(db, await BuildPartitionQueryAsync(db, cancellationToken));
             var items = await query
                 .OrderByDescending(x => x.ScannedTime)
                 .ThenByDescending(x => x.Id)
@@ -616,9 +653,11 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
                 .ToListAsync(cancellationToken);
 
             var hasMore = items.Count > pageSize;
-            var pageItems = hasMore
-                ? items.Take(pageSize).ToArray()
-                : items.ToArray();
+            if (hasMore) {
+                items.RemoveAt(pageSize);
+            }
+
+            var pageItems = items.ToArray();
             var nextItem = hasMore && pageItems.Length > 0
                 ? pageItems[^1]
                 : null;
@@ -651,10 +690,8 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     private static IQueryable<Parcel> ApplyFilter(IQueryable<Parcel> query, ParcelQueryFilter filter, string? providerName) {
         if (!string.IsNullOrWhiteSpace(filter.BarCodeKeyword)) {
             var barCodeKeyword = filter.BarCodeKeyword.Trim();
-            // 步骤 1：MySQL 优先使用 MATCH...AGAINST(Boolean Mode)；其他 Provider 回退到 Contains 子串匹配。
-            query = string.Equals(providerName, DbProviderNames.MySql, StringComparison.Ordinal)
-                ? query.Where(x => EF.Functions.IsMatch(x.BarCodes, barCodeKeyword, MySqlMatchSearchMode.Boolean))
-                : query.Where(x => x.BarCodes.Contains(barCodeKeyword));
+            // 分表和基础表使用一致的子串检索语义。
+            query = query.Where(x => x.BarCodes.Contains(barCodeKeyword));
         }
 
         if (!string.IsNullOrWhiteSpace(filter.BagCode)) {
@@ -694,9 +731,93 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
         return query;
     }
 
-    /// <summary>
-    /// 校验查询过滤参数。
-    /// </summary>
+    /// <summary>在数据库内合并全部已登记的包裹分表，分页与排序只执行一次；表名全部来自受校验目录。</summary>
+    private async Task<IQueryable<Parcel>> BuildPartitionQueryAsync(SortingHubDbContext db, CancellationToken cancellationToken) {
+        if (_partitions is null) return Query(db);
+        return await ParcelPartitionQueryBuilder.BuildAsync<Parcel>(db, _partitions, cancellationToken);
+    }
+
+    /// <summary>使用全局定位创建读取或修改指定包裹的上下文。</summary>
+    private async Task<SortingHubDbContext> CreateContextForIdAsync(long id, CancellationToken cancellationToken) => _partitions is null
+        ? await ContextFactory.CreateDbContextAsync(cancellationToken)
+        : await _partitions.CreateContextAsync(await _partitions.LocateAsync(id, cancellationToken), cancellationToken);
+
+    /// <summary>按固定定位更新聚合，后续阶段不会重新计算分表。</summary>
+    public override async Task<RepositoryResult> UpdateAsync(Parcel parcel, CancellationToken cancellationToken) {
+        try {
+            await using var db = await CreateContextForIdAsync(parcel.Id, cancellationToken);
+            var stored = await BuildDetailQuery(db).AsTracking().SingleOrDefaultAsync(x => x.Id == parcel.Id, cancellationToken);
+            if (stored is null) return RepositoryResult.Fail("包裹不存在。");
+            // 步骤1：更新已跟踪主表，保留查询返回对象中不存在的EF影子主键。
+            db.Entry(stored).CurrentValues.SetValues(parcel);
+            // 步骤2：记录集合按领域值追加，读取后再次更新不会把已有明细当作新记录插入。
+            foreach (var value in parcel.BarCodeInfos.Except(stored.BarCodeInfos)) stored.AddBarCodeInfo(value);
+            foreach (var value in parcel.WeightInfos.Except(stored.WeightInfos)) stored.AddWeightInfo(value);
+            foreach (var value in parcel.ApiRequests.Except(stored.ApiRequests)) stored.AddApiRequest(value);
+            foreach (var value in parcel.CommandInfos.Except(stored.CommandInfos)) stored.AddCommandInfo(value);
+            foreach (var value in parcel.ImageInfos.Except(stored.ImageInfos)) stored.AddImageInfo(value);
+            foreach (var value in parcel.VideoInfos.Except(stored.VideoInfos)) stored.AddVideoInfo(value);
+            if (parcel.VolumeInfo is not null && !Equals(parcel.VolumeInfo, stored.VolumeInfo)) stored.SetVolumeInfo(parcel.VolumeInfo);
+            if (parcel.ChuteInfo is not null && !Equals(parcel.ChuteInfo, stored.ChuteInfo)) stored.SetChuteInfo(parcel.ChuteInfo);
+            if (parcel.SorterCarrierInfo is not null && !Equals(parcel.SorterCarrierInfo, stored.SorterCarrierInfo)) stored.SetSorterCarrierInfo(parcel.SorterCarrierInfo);
+            if (parcel.DeviceInfo is not null && !Equals(parcel.DeviceInfo, stored.DeviceInfo)) stored.SetDeviceInfo(parcel.DeviceInfo);
+            if (parcel.GrayDetectorInfo is not null && !Equals(parcel.GrayDetectorInfo, stored.GrayDetectorInfo)) stored.SetGrayDetectorInfo(parcel.GrayDetectorInfo);
+            if (parcel.StickingParcelInfo is not null && !Equals(parcel.StickingParcelInfo, stored.StickingParcelInfo)) stored.SetStickingParcelInfo(parcel.StickingParcelInfo);
+            if (parcel.ParcelPositionInfo is not null && !Equals(parcel.ParcelPositionInfo, stored.ParcelPositionInfo)) stored.SetParcelPositionInfo(parcel.ParcelPositionInfo);
+            if (parcel.BagInfo is not null && !Equals(parcel.BagInfo, stored.BagInfo)) {
+                var bag = await db.Set<Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects.BagInfo>().AsTracking().SingleOrDefaultAsync(x => x.BagCode == parcel.BagInfo.BagCode, cancellationToken);
+                if (bag is not null) db.Entry(bag).CurrentValues.SetValues(parcel.BagInfo);
+                stored.SetBagInfo(bag ?? parcel.BagInfo);
+            }
+            await db.SaveChangesAsync(cancellationToken);
+            return RepositoryResult.Success();
+        }
+        catch (Exception ex) { Logger.Error(ex, "更新包裹失败，Id={Id}", parcel.Id); return RepositoryResult.Fail("更新包裹失败"); }
+    }
+
+    /// <summary>在包裹原始分表删除聚合，保留全局身份与追加事实审计。</summary>
+    public override async Task<RepositoryResult> RemoveAsync(Parcel parcel, CancellationToken cancellationToken) {
+        try {
+            await using var db = await CreateContextForIdAsync(parcel.Id, cancellationToken);
+            db.Remove(parcel);
+            await db.SaveChangesAsync(cancellationToken);
+            return RepositoryResult.Success();
+        }
+        catch (Exception ex) { Logger.Error(ex, "删除包裹失败，Id={Id}", parcel.Id); return RepositoryResult.Fail("删除包裹失败"); }
+    }
+
+    /// <summary>按首次入库周期批量保存，所有分表与全局索引共用一个数据库事务。</summary>
+    public override async Task<RepositoryResult> AddRangeAsync(IReadOnlyCollection<Parcel> parcels, CancellationToken cancellationToken) {
+        if (_partitions is null) return await base.AddRangeAsync(parcels, cancellationToken);
+        if (parcels is null || parcels.Count == 0) return RepositoryResult.Fail("实体集合不能为空");
+        try {
+            var ids = parcels.Select(x => x.Id).ToArray();
+            if (ids.Distinct().Count() != ids.Length) return RepositoryResult.Fail(DuplicateParcelIdErrorMessage, RepositoryErrorCodes.ParcelIdConflict);
+            await using var lookup = await ContextFactory.CreateDbContextAsync(cancellationToken);
+            if (await lookup.Set<Parcel>().AnyAsync(x => ids.Contains(x.Id), cancellationToken) || await lookup.Set<ParcelLocation>().AnyAsync(x => ids.Contains(x.Id), cancellationToken))
+                return RepositoryResult.Fail(DuplicateParcelIdErrorMessage, RepositoryErrorCodes.ParcelIdConflict);
+            var groups = parcels.GroupBy(x => _partitions.Resolve(x.CreatedTime).Suffix).ToArray();
+            foreach (var group in groups) await _partitions.EnsureCreatedAsync(_partitions.Resolve(group.First().CreatedTime), cancellationToken);
+            await using var template = await ContextFactory.CreateDbContextAsync(cancellationToken);
+            return await template.Database.CreateExecutionStrategy().ExecuteAsync(async () => {
+                await using var owner = await _partitions.CreateContextAsync(groups[0].Key, cancellationToken);
+                await using var transaction = await owner.Database.BeginTransactionAsync(cancellationToken);
+                foreach (var group in groups) {
+                    await using var db = await _partitions.CreateContextAsync(group.Key, cancellationToken);
+                    db.Database.SetDbConnection(owner.Database.GetDbConnection(), contextOwnsConnection: false);
+                    await db.Database.UseTransactionAsync(transaction.GetDbTransaction(), cancellationToken);
+                    db.AddRange(group);
+                    db.AddRange(group.Select(x => new ParcelLocation { Id = x.Id, Suffix = group.Key, CreatedTime = x.CreatedTime }));
+                    await db.SaveChangesAsync(cancellationToken);
+                }
+                await transaction.CommitAsync(cancellationToken);
+                return RepositoryResult.Success();
+            });
+        }
+        catch (Exception ex) { Logger.Error(ex, "批量保存分表包裹失败"); return RepositoryResult.Fail("批量新增包裹失败"); }
+    }
+
+    /// <summary>校验查询过滤参数。</summary>
     private static void ValidateQueryFilter(ParcelQueryFilter filter) {
         var validationContext = new ValidationContext(filter);
         var validationResults = new List<ValidationResult>();
@@ -724,6 +845,18 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     /// Parcel 摘要投影表达式。
     /// </summary>
     private static readonly Expression<Func<Parcel, ParcelSummaryReadModel>> SelectSummaryExpression = x => new ParcelSummaryReadModel {
+        SourceInstanceId = x.SourceInstanceId,
+        SourceRunId = x.SourceRunId,
+        SourceParcelId = x.SourceParcelId,
+        DetectedTime = x.DetectedTime,
+        MeasurementTime = x.MeasurementTime,
+        TargetChuteCode = x.TargetChuteCode,
+        ActualChuteCode = x.ActualChuteCode,
+        TaskCode = x.TaskCode,
+        VolumetricWeightGrams = x.VolumetricWeightGrams,
+        IsFallbackChuteAssigned = x.IsFallbackChuteAssigned,
+        IsRoutingBlocked = x.IsRoutingBlocked,
+        SourceExceptionCode = x.SourceExceptionCode,
         Id = x.Id,
         CreatedTime = x.CreatedTime,
         ModifyTime = x.ModifyTime,

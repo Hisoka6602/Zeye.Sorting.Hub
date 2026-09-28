@@ -24,7 +24,7 @@ public sealed class InboxMessageEntityTypeConfiguration : IEntityTypeConfigurati
         builder.Property(x => x.Status).HasConversion<int>().IsConcurrencyToken();
 
         builder.HasIndex(x => new { x.SourceSystem, x.MessageId }).IsUnique();
-        builder.HasIndex(x => new { x.Status, x.CreatedAt });
-        builder.HasIndex(x => new { x.ExpiresAt, x.Status });
+        builder.HasIndex(x => new { x.Status, x.CreatedAt, x.Id });
+        builder.HasIndex(x => new { x.ExpiresAt, x.Status, x.Id });
     }
 }

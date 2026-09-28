@@ -46,7 +46,7 @@ internal static class HealthCheckResponseWriter {
                 writer.WriteString("description", value.Description);
             }
             if (value.Duration != TimeSpan.Zero) {
-                writer.WriteNumber("durationMs", (long)value.Duration.TotalMilliseconds);
+                writer.WriteNumber("durationMs", value.Duration.Ticks / TimeSpan.TicksPerMillisecond);
             }
             if (value.Data.Count > 0) {
                 writer.WriteStartObject("data");
@@ -84,12 +84,6 @@ internal static class HealthCheckResponseWriter {
                 return;
             case long longValue:
                 writer.WriteNumber(key, longValue);
-                return;
-            case double doubleValue:
-                writer.WriteNumber(key, doubleValue);
-                return;
-            case float floatValue:
-                writer.WriteNumber(key, floatValue);
                 return;
             case decimal decimalValue:
                 writer.WriteNumber(key, decimalValue);

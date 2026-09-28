@@ -29,11 +29,14 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
     ///   <item><description>当前工作目录（适用于从 Host 或解决方案根目录运行 <c>dotnet ef</c>）</description></item>
     ///   <item><description>当前工作目录的相邻 <c>Zeye.Sorting.Hub.Host</c> 子目录（适用于从 Infrastructure 目录运行）</description></item>
     ///   <item><description>向上遍历父目录寻找 <c>Zeye.Sorting.Hub.Host</c> 子目录</description></item>
-    ///   <item><description>以上均未找到时使用硬编码占位连接字符串（仅影响设计时工具链，不影响运行时）</description></item>
+    ///   <item><description>以上均未找到时使用无凭据的设计时占位连接字符串（仅用于模型分析，不应执行数据库更新）</description></item>
     /// </list>
     /// </para>
     /// </remarks>
     internal sealed class MySqlContextFactory : IDesignTimeDbContextFactory<SortingHubDbContext> {
+        /// <summary>
+        /// 数据库提供程序命令行参数名称。
+        /// </summary>
         private const string ProviderArgumentName = "--provider";
 
         /// <summary>
@@ -43,10 +46,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
 
         /// <summary>
         /// 设计时兜底占位连接字符串，仅在无法从 <c>appsettings.json</c> 读取时使用。
-        /// 此值仅用于 <c>dotnet ef</c> 工具链的设计时模型分析，不影响运行时连接。
+        /// 使用不存在的专用库及身份，避免设计时工具误连业务库；数据库更新必须显式配置连接。
         /// </summary>
         private const string FallbackConnectionString =
-            "server=127.0.0.1;port=3306;database=zeye_sorting_hub;uid=root;pwd=Admin@1234;SslMode=None;";
+            "server=127.0.0.1;port=3306;database=design_time_only;user=design_time_only;SslMode=None;";
 
         /// <inheritdoc />
         public SortingHubDbContext CreateDbContext(string[] args) {

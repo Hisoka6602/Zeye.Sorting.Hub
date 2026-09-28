@@ -183,6 +183,65 @@ public sealed class OutboxMessageRepository : RepositoryBase<OutboxMessage, Sort
         }
     }
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<OutboxMessage>> TryAcquireDispatchableBatchAsync(
+        int batchSize,
+        int maxRetryCount,
+        CancellationToken cancellationToken) {
+        if (batchSize <= 0) {
+            throw new ArgumentOutOfRangeException(nameof(batchSize), "批次大小必须大于 0。");
+        }
+
+        if (maxRetryCount <= 0) {
+            throw new ArgumentOutOfRangeException(nameof(maxRetryCount), "最大重试次数必须大于 0。");
+        }
+
+        await using var dbContext = await ContextFactory.CreateDbContextAsync(cancellationToken);
+        for (var attempt = 0; attempt < MaxAcquireAttempts; attempt++) {
+            var processingRecoveryCutoff = DateTime.Now - ProcessingRecoveryTimeout;
+            var messages = await dbContext.Set<OutboxMessage>()
+                .Where(x => x.Status == OutboxMessageStatus.Pending
+                            || (x.Status == OutboxMessageStatus.Failed && x.RetryCount < maxRetryCount)
+                            || (x.Status == OutboxMessageStatus.Processing
+                                && x.RetryCount < maxRetryCount
+                                && (x.LastAttemptedAt ?? x.UpdatedAt) <= processingRecoveryCutoff))
+                .OrderBy(x => x.CreatedAt)
+                .ThenBy(x => x.Id)
+                .Take(Math.Min(batchSize, 200))
+                .ToListAsync(cancellationToken);
+            if (messages.Count == 0) {
+                return [];
+            }
+
+            var dispatchableMessages = new List<OutboxMessage>(messages.Count);
+            foreach (var message in messages) {
+                if (message.Status == OutboxMessageStatus.Processing) {
+                    if (message.RecoverTimedOutProcessing(maxRetryCount)) {
+                        dispatchableMessages.Add(message);
+                    }
+                }
+                else {
+                    message.MarkProcessing();
+                    dispatchableMessages.Add(message);
+                }
+            }
+
+            try {
+                await dbContext.SaveChangesAsync(cancellationToken);
+                return dispatchableMessages;
+            }
+            catch (DbUpdateConcurrencyException) {
+                dbContext.ChangeTracker.Clear();
+                if (attempt + 1 < MaxAcquireAttempts) {
+                    await Task.Delay(Random.Shared.Next(5, 25), cancellationToken);
+                }
+            }
+        }
+
+        Logger.Warn("批量领取 Outbox 消息并发重试次数已耗尽，BatchSize={BatchSize}", batchSize);
+        return [];
+    }
+
     /// <summary>
     /// 获取 Outbox 健康快照。
     /// </summary>
@@ -252,6 +311,37 @@ public sealed class OutboxMessageRepository : RepositoryBase<OutboxMessage, Sort
         catch (Exception exception) {
             Logger.Error(exception, "更新 Outbox 消息失败，MessageId={MessageId}, Status={Status}", outboxMessage.Id, outboxMessage.Status);
             return RepositoryResult.Fail("更新 Outbox 消息失败。");
+        }
+    }
+
+
+    /// <inheritdoc />
+    public async Task<RepositoryResult> UpdateRangeAsync(
+        IReadOnlyCollection<OutboxMessage> outboxMessages,
+        CancellationToken cancellationToken) {
+        if (outboxMessages is null || outboxMessages.Count == 0) {
+            return RepositoryResult.Success();
+        }
+
+        try {
+            await using var dbContext = await ContextFactory.CreateDbContextAsync(cancellationToken);
+            foreach (var outboxMessage in outboxMessages) {
+                dbContext.Attach(outboxMessage);
+                var entry = dbContext.Entry(outboxMessage);
+                entry.State = EntityState.Modified;
+                entry.Property(static message => message.Status).OriginalValue = OutboxMessageStatus.Processing;
+            }
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return RepositoryResult.Success();
+        }
+        catch (DbUpdateConcurrencyException exception) {
+            Logger.Warn(exception, "批量更新 Outbox 消息发生并发冲突，Count={Count}", outboxMessages.Count);
+            return RepositoryResult.Fail("Outbox 消息状态已发生变化，请刷新后重试。");
+        }
+        catch (Exception exception) {
+            Logger.Error(exception, "批量更新 Outbox 消息失败，Count={Count}", outboxMessages.Count);
+            return RepositoryResult.Fail("批量更新 Outbox 消息失败。");
         }
     }
 

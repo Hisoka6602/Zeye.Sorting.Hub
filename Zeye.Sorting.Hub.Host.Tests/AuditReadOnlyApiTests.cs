@@ -31,7 +31,7 @@ public sealed class AuditReadOnlyApiTests {
         await using var app = await BuildConditionalAuditRouteAppAsync(repository, enabled: true);
         using var client = app.GetTestClient();
 
-        var response = await client.GetAsync("/api/audit/web-requests?pageNumber=1&pageSize=10");
+        var response = await client.GetAsync("/api/audit/web-requests?pageNumber=1&pageSize=10&includeTotalCount=true&startedAtStart=2026-03-20 00:00:00&startedAtEnd=2026-03-21 00:00:00");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
@@ -63,7 +63,7 @@ public sealed class AuditReadOnlyApiTests {
         await using var app = await BuildTestAppAsync(repository);
         using var client = app.GetTestClient();
 
-        var response = await client.GetAsync("/api/audit/web-requests?pageNumber=1&pageSize=10");
+        var response = await client.GetAsync("/api/audit/web-requests?pageNumber=1&pageSize=10&includeTotalCount=true&startedAtStart=2026-03-20 00:00:00&startedAtEnd=2026-03-21 00:00:00");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var payload = await response.Content.ReadFromJsonAsync<WebRequestAuditLogListResponse>();
@@ -84,7 +84,7 @@ public sealed class AuditReadOnlyApiTests {
         await using var app = await BuildTestAppAsync(repository);
         using var client = app.GetTestClient();
 
-        var response = await client.GetAsync("/api/audit/web-requests?pageNumber=1&pageSize=10&startedAtStart=2026-03-20 09:00:00&startedAtEnd=2026-03-20 10:30:00&statusCode=200&isSuccess=true&traceId=trace-filter&correlationId=corr-filter");
+        var response = await client.GetAsync("/api/audit/web-requests?pageNumber=1&pageSize=10&includeTotalCount=true&startedAtStart=2026-03-20 09:00:00&startedAtEnd=2026-03-20 10:30:00&statusCode=200&isSuccess=true&traceId=trace-filter&correlationId=corr-filter");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var payload = await response.Content.ReadFromJsonAsync<WebRequestAuditLogListResponse>();
@@ -238,7 +238,7 @@ public sealed class AuditReadOnlyApiTests {
             await Task.Delay(50);
         }
 
-        var queryResponse = await client.GetAsync("/api/audit/web-requests?pageNumber=1&pageSize=10&requestPathKeyword=%2Fok");
+        var queryResponse = await client.GetAsync("/api/audit/web-requests?pageNumber=1&pageSize=10&includeTotalCount=true&requestPathKeyword=%2Fok");
         Assert.Equal(HttpStatusCode.OK, queryResponse.StatusCode);
         var payload = await queryResponse.Content.ReadFromJsonAsync<WebRequestAuditLogListResponse>();
         Assert.NotNull(payload);

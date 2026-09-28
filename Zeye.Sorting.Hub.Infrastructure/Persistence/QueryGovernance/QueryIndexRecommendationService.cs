@@ -29,9 +29,9 @@ public sealed class QueryIndexRecommendationService {
     private readonly int _minimumCallCount;
 
     /// <summary>
-    /// 浮点毫秒值相等比较容差。
+    /// 定点毫秒值相等比较容差。
     /// </summary>
-    private const double MillisecondComparisonTolerance = 0.01d;
+    private const decimal MillisecondComparisonTolerance = 0.01m;
 
     /// <summary>
     /// 建议置信度基线值。
@@ -289,7 +289,7 @@ public sealed class QueryIndexRecommendationService {
             TableName = tableName,
             RecommendedIndex = recommendedIndex,
             Reason = $"模板 {template.TemplateName} 在当前窗口内出现慢查询，P99={profile.P99Milliseconds:F1}ms，调用次数={profile.CallCount}，建议优先核查声明索引 {recommendedIndex}。",
-            RiskLevel = profile.TimeoutCount > 0 || profile.ErrorCount > 0 ? "高" : profile.P99Milliseconds >= 1000d ? "中" : "低",
+            RiskLevel = profile.TimeoutCount > 0 || profile.ErrorCount > 0 ? "高" : profile.P99Milliseconds >= 1000m ? "中" : "低",
             Confidence = confidence,
             ObservedP99Milliseconds = profile.P99Milliseconds,
             ObservedCallCount = profile.CallCount,
@@ -331,7 +331,7 @@ public sealed class QueryIndexRecommendationService {
     private static decimal CalculateConfidence(QueryTemplateDescriptor template, SlowQueryProfileReadModel profile) {
         var coverage = CalculateMatchScore(template, profile.NormalizedSql);
         var callCountFactor = Math.Min(profile.CallCount, (int)MaxNormalizedCallCount) / MaxNormalizedCallCount;
-        var latencyFactor = Math.Min((decimal)profile.P99Milliseconds, MaxNormalizedLatencyMilliseconds) / MaxNormalizedLatencyMilliseconds;
+        var latencyFactor = Math.Min(profile.P99Milliseconds, MaxNormalizedLatencyMilliseconds) / MaxNormalizedLatencyMilliseconds;
         return decimal.Clamp(
             BaseConfidence + coverage / CoverageNormalizationFactor + callCountFactor * CallCountWeight + latencyFactor * LatencyWeight,
             0m,

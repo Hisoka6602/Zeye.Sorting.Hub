@@ -49,8 +49,8 @@ public sealed class SlowQueryFingerprintTests {
         Assert.Equal(3, snapshot.CallCount);
         Assert.Equal(1, snapshot.TimeoutCount);
         Assert.Equal(1, snapshot.ErrorCount);
-        Assert.Equal(1200d, snapshot.MaxMilliseconds, 3);
-        Assert.Equal(1200d, snapshot.P99Milliseconds, 3);
+        Assert.Equal(1200m, snapshot.MaxMilliseconds);
+        Assert.Equal(1200m, snapshot.P99Milliseconds);
         Assert.Equal("select * from parcels where id = ?", snapshot.NormalizedSql);
         Assert.Equal(snapshot.NormalizedSql, snapshot.SampleSql);
     }
@@ -107,8 +107,8 @@ public sealed class SlowQueryFingerprintTests {
 
         var snapshot = Assert.Single(snapshots);
         Assert.Equal(2, snapshot.CallCount);
-        Assert.Equal(900d, snapshot.P99Milliseconds, 3);
-        Assert.Equal(800d, snapshot.AverageElapsedMilliseconds, 3);
+        Assert.Equal(900m, snapshot.P99Milliseconds);
+        Assert.Equal(800m, snapshot.AverageElapsedMilliseconds);
     }
 
     /// <summary>

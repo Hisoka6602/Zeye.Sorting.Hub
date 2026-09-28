@@ -9,7 +9,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects {
         /// <summary>
         /// 小车编号（唯一标识小车）
         /// </summary>
-        public required int SorterCarrierId { get; init; }
+        public required long SorterCarrierId { get; init; }
 
         /// <summary>
         /// 包裹上车时间

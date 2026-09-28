@@ -22,6 +22,10 @@ namespace Zeye.Sorting.Hub.Host.Routing;
 /// </summary>
 public static class ParcelAdminApiRouteExtensions {
     /// <summary>
+    /// 单次缓冲写入允许的最大 Parcel 数量。
+    /// </summary>
+    private const int MaxBufferedParcelBatchSize = 1000;
+    /// <summary>
     /// 管理端新增包裹幂等来源系统。
     /// </summary>
     private const string ParcelCreateIdempotencySourceSystem = "Host.ParcelAdminApi";
@@ -200,6 +204,13 @@ public static class ParcelAdminApiRouteExtensions {
 
         if (request.Parcels.Length == 0) {
             return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", "parcels 至少提供一条记录。");
+        }
+
+
+        if (request.Parcels.Length > MaxBufferedParcelBatchSize) {
+            return LocalDateTimeParsing.CreateBadRequestProblem(
+                "请求参数无效",
+                $"parcels 单次最多允许 {MaxBufferedParcelBatchSize} 条记录，请拆分后重试。");
         }
 
         try {

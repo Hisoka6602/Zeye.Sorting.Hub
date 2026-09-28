@@ -59,6 +59,16 @@ public sealed class SlowQueryProfileStore : ISlowQueryProfileReader {
     private readonly int _maxSampleCountPerFingerprint;
 
     /// <summary>
+    /// 两次全局过期维护之间的记录数量。
+    /// </summary>
+    private const int MaintenanceRecordInterval = 128;
+
+    /// <summary>
+    /// 上次维护后的累计记录数量。
+    /// </summary>
+    private int _recordsSinceMaintenance;
+
+    /// <summary>
     /// 初始化慢查询画像存储。
     /// </summary>
     /// <param name="configuration">配置根。</param>
@@ -115,7 +125,8 @@ public sealed class SlowQueryProfileStore : ISlowQueryProfileReader {
         }
 
         var isError = exception is not null;
-        if (!isError && elapsed.TotalMilliseconds < _slowQueryThresholdMilliseconds) {
+        var elapsedMilliseconds = elapsed.Ticks / (decimal)TimeSpan.TicksPerMillisecond;
+        if (!isError && elapsedMilliseconds < _slowQueryThresholdMilliseconds) {
             return;
         }
 
@@ -124,7 +135,7 @@ public sealed class SlowQueryProfileStore : ISlowQueryProfileReader {
         var sample = new SlowQuerySample(
             commandText: commandText,
             sqlFingerprint: fingerprint.Fingerprint,
-            elapsedMilliseconds: elapsed.TotalMilliseconds,
+            elapsedMilliseconds: elapsedMilliseconds,
             affectedRows: Math.Max(affectedRows, 0),
             isError: isError,
             isTimeout: IsTimeoutException(exception),
@@ -154,22 +165,49 @@ public sealed class SlowQueryProfileStore : ISlowQueryProfileReader {
     }
 
     /// <summary>
+    /// 使用已生成的指纹记录样本，避免重复标准化与哈希。
+    /// </summary>
+    /// <param name="fingerprint">已生成的慢查询指纹。</param>
+    /// <param name="sample">慢查询样本。</param>
+    public void Record(SlowQueryFingerprint fingerprint, SlowQuerySample sample) {
+        ArgumentNullException.ThrowIfNull(fingerprint);
+        ArgumentNullException.ThrowIfNull(sample);
+        if (!_isEnabled) {
+            return;
+        }
+
+        RecordCore(fingerprint, sample);
+    }
+
+    /// <summary>
     /// 获取 TopN 画像快照。
     /// </summary>
     /// <returns>画像快照列表与总量。</returns>
     public (IReadOnlyList<SlowQueryProfileReadModel> Items, int TotalFingerprintCount) GetTopProfiles() {
+        List<(SlowQueryFingerprint Fingerprint, SlowQuerySample[] Samples)> snapshotInputs;
+        int totalFingerprintCount;
         lock (_sync) {
             TrimExpiredEntries(DateTime.Now);
-            var snapshots = BuildSnapshotsCore()
-                .OrderByDescending(static snapshot => snapshot.P99Milliseconds)
-                .ThenByDescending(static snapshot => snapshot.P95Milliseconds)
-                .ThenByDescending(static snapshot => snapshot.CallCount)
-                .ThenBy(static snapshot => snapshot.Fingerprint, StringComparer.Ordinal)
-                .Take(_topN)
-                .Select(MapToReadModel)
-                .ToArray();
-            return (snapshots, _samplesByFingerprint.Count);
+            snapshotInputs = new List<(SlowQueryFingerprint, SlowQuerySample[])>(_samplesByFingerprint.Count);
+            foreach (var pair in _samplesByFingerprint) {
+                if (pair.Value.Count > 0 && _fingerprints.TryGetValue(pair.Key, out var fingerprint)) {
+                    snapshotInputs.Add((fingerprint, pair.Value.ToArray()));
+                }
+            }
+
+            totalFingerprintCount = _samplesByFingerprint.Count;
         }
+
+        var snapshots = snapshotInputs
+            .Select(static input => SlowQueryFingerprintAggregator.BuildSnapshot(input.Fingerprint, input.Samples))
+            .OrderByDescending(static snapshot => snapshot.P99Milliseconds)
+            .ThenByDescending(static snapshot => snapshot.P95Milliseconds)
+            .ThenByDescending(static snapshot => snapshot.CallCount)
+            .ThenBy(static snapshot => snapshot.Fingerprint, StringComparer.Ordinal)
+            .Take(_topN)
+            .Select(MapToReadModel)
+            .ToArray();
+        return (snapshots, totalFingerprintCount);
     }
 
     /// <summary>
@@ -181,18 +219,22 @@ public sealed class SlowQueryProfileStore : ISlowQueryProfileReader {
     public bool TryGetProfile(string fingerprint, out SlowQueryProfileReadModel? profile) {
         ArgumentException.ThrowIfNullOrWhiteSpace(fingerprint);
 
+        SlowQueryFingerprint slowQueryFingerprint;
+        SlowQuerySample[] samples;
         lock (_sync) {
             TrimExpiredEntries(DateTime.Now);
             if (!_samplesByFingerprint.TryGetValue(fingerprint, out var queue)
                 || queue.Count == 0
-                || !_fingerprints.TryGetValue(fingerprint, out var slowQueryFingerprint)) {
+                || !_fingerprints.TryGetValue(fingerprint, out slowQueryFingerprint)) {
                 profile = null;
                 return false;
             }
 
-            profile = MapToReadModel(SlowQueryFingerprintAggregator.BuildSnapshot(slowQueryFingerprint, queue.ToArray()));
-            return true;
+            samples = queue.ToArray();
         }
+
+        profile = MapToReadModel(SlowQueryFingerprintAggregator.BuildSnapshot(slowQueryFingerprint, samples));
+        return true;
     }
 
     /// <summary>
@@ -276,8 +318,15 @@ public sealed class SlowQueryProfileStore : ISlowQueryProfileReader {
             }
 
             _lastSeenAtLocalByFingerprint[fingerprint.Fingerprint] = sample.OccurredTime;
-            TrimExpiredEntries(DateTime.Now);
-            TrimOverflowFingerprints();
+            _recordsSinceMaintenance++;
+            if (_recordsSinceMaintenance >= MaintenanceRecordInterval) {
+                _recordsSinceMaintenance = 0;
+                TrimExpiredEntries(DateTime.Now);
+            }
+
+            if (_samplesByFingerprint.Count > _maxFingerprintCount) {
+                TrimOverflowFingerprints();
+            }
         }
     }
 
@@ -322,23 +371,6 @@ public sealed class SlowQueryProfileStore : ISlowQueryProfileReader {
             _fingerprints.Remove(fingerprint);
             _lastSeenAtLocalByFingerprint.Remove(fingerprint);
         }
-    }
-
-    /// <summary>
-    /// 构建全部有效快照。
-    /// </summary>
-    /// <returns>快照序列。</returns>
-    private IReadOnlyList<SlowQueryProfileSnapshot> BuildSnapshotsCore() {
-        var snapshots = new List<SlowQueryProfileSnapshot>(_samplesByFingerprint.Count);
-        foreach (var pair in _samplesByFingerprint) {
-            if (pair.Value.Count == 0 || !_fingerprints.TryGetValue(pair.Key, out var fingerprint)) {
-                continue;
-            }
-
-            snapshots.Add(SlowQueryFingerprintAggregator.BuildSnapshot(fingerprint, pair.Value.ToArray()));
-        }
-
-        return snapshots;
     }
 
     /// <summary>
