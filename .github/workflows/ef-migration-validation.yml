@@ -45,11 +45,8 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
-      - name: Install dotnet-ef
-        run: dotnet tool install --global dotnet-ef --version 9.0.14
-
-      - name: Add dotnet tools to PATH
-        run: echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+      - name: Restore dotnet-ef from repository manifest
+        run: dotnet tool restore
 
       - name: Validate EF migrations (list / update / script)
         env:
@@ -106,11 +103,8 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
-      - name: Install dotnet-ef
-        run: dotnet tool install --global dotnet-ef --version 9.0.14
-
-      - name: Add dotnet tools to PATH
-        run: echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+      - name: Restore dotnet-ef from repository manifest
+        run: dotnet tool restore
 
       - name: Validate SQL Server snapshot, migration, and guarded rollback
         env:
