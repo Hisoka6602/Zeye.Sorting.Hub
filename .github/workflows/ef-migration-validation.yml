@@ -141,7 +141,7 @@ jobs:
             --no-build \
             --output /tmp/sqlserver-migration-up.sql \
             -- --provider SqlServer
-          dotnet ef migrations script 20260928143409_InitialSqlServerSchema 0 \
+          dotnet ef migrations script 20260928160257_AddImageObjectStorageMetadataSqlServer 0 \
             --project Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations \
             --startup-project Zeye.Sorting.Hub.Host \
             --context SortingHubDbContext \

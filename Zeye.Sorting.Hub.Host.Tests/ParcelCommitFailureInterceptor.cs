@@ -13,7 +13,7 @@ public sealed class ParcelCommitFailureInterceptor : SaveChangesInterceptor {
 
     /// <summary>SQL执行完成后抛出故障，由仓储事务执行回滚。</summary>
     public override ValueTask<int> SavedChangesAsync(SaveChangesCompletedEventData eventData, int result, CancellationToken cancellationToken = default) {
-        if (FailNextProcessingCommit && eventData.Context?.ChangeTracker.Entries<ParcelProcessingRecord>().Any() == true) {
+        if (FailNextProcessingCommit && eventData.Context is { } context && context.ChangeTracker.Entries<ParcelProcessingRecord>().Any()) {
             FailNextProcessingCommit = false;
             var exception = new InvalidOperationException("测试注入：业务SQL已执行，提交前失败。");
             Logger.Warn(exception, "测试事务回滚边界");

@@ -179,6 +179,17 @@ check_sensitive_config() {
     local line_content
     line_content="$(echo "${entry}" | cut -d: -f3-)"
 
+    # 只排除无赋值的说明和属性声明；任何字面量或连接字符串仍由下方规则拦截。
+    if echo "${line_content}" | grep -qE '^[[:space:]]*//+[^=:]*$'; then
+      continue
+    fi
+    if echo "${line_content}" | grep -qE '^[[:space:]]*public required string (AccessKey|SecretKey) \{ get; init; \}[[:space:]]*$'; then
+      continue
+    fi
+    if echo "${line_content}" | grep -qE '^[[:space:]]*(AccessKey = accessKey|SecretKey = secretKey),[[:space:]]*$'; then
+      continue
+    fi
+
     if has_allowed_placeholder "${line_content}"; then
       continue
     fi

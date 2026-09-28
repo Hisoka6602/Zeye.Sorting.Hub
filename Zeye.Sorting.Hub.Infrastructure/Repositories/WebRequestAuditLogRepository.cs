@@ -78,7 +78,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
                 await db.SaveChangesAsync(cancellationToken);
                 return RepositoryResult.Success();
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested) {
+                NLogLogger.Debug(exception, "批量写入 Web 请求审计日志已取消，Count={Count}", auditLogs.Count);
                 return RepositoryResult.Fail("操作已取消");
             }
             catch (Exception exception) {

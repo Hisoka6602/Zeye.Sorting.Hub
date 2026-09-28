@@ -121,6 +121,7 @@ public sealed class WebRequestAuditLogMiddleware {
         }
         catch (Exception ex) {
             capturedException = ex;
+            NLogLogger.Error(ex, "后续请求处理失败，Path={Path}, TraceId={TraceId}", context.Request.Path, traceId);
             exceptionDispatchInfo = ExceptionDispatchInfo.Capture(ex);
             routeTemplate = ResolveRouteTemplate(context, routeTemplate);
         }

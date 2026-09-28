@@ -135,7 +135,8 @@ public sealed class OutboxDispatchHostedService : BackgroundService {
 
             return handledCount;
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+        catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested) {
+            NLogLogger.Debug(exception, "Outbox 派发因停止请求取消。");
             throw;
         }
         catch (Exception exception) {

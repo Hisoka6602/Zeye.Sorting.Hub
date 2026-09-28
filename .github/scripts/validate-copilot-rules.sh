@@ -73,8 +73,8 @@ ensure_pr_diff_ready() {
     fi
   fi
 
-  PR_DIFF_NAME_ONLY="$(git --no-pager diff --name-only "origin/${GITHUB_BASE_REF}...HEAD")"
-  PR_DIFF_NAME_STATUS="$(git --no-pager diff --name-status "origin/${GITHUB_BASE_REF}...HEAD")"
+  PR_DIFF_NAME_ONLY="$(git -c core.quotePath=false --no-pager diff --name-only "origin/${GITHUB_BASE_REF}...HEAD")"
+  PR_DIFF_NAME_STATUS="$(git -c core.quotePath=false --no-pager diff --name-status "origin/${GITHUB_BASE_REF}...HEAD")"
   PR_DIFF_READY=1
 }
 
@@ -528,7 +528,8 @@ check_nlog_only() {
   while IFS= read -r file_path; do
     [[ -z "$file_path" ]] && continue
     [[ -f "$file_path" ]] || continue
-    if grep -q -E 'using[[:space:]]+Microsoft\.Extensions\.Logging|ILogger[[:space:]]*<' "$file_path"; then
+    # 命名空间导入可用于清除默认 Provider 或接入 NLog；检测实际的非 NLog 记录器与 Provider。
+    if grep -q -E 'ILogger[[:space:]]*<|ILoggerFactory|Microsoft\.Extensions\.Logging\.ILogger([^A-Za-z0-9_]|$)|LoggerFactory\.Create[[:space:]]*\(|\.Add(Console|Debug|EventLog|EventSourceLogger|JsonConsole|SimpleConsole)[[:space:]]*\(|\.Log(Trace|Debug|Information|Warning|Error|Critical)[[:space:]]*\(' "$file_path"; then
       record_failure "检测到非 NLog 日志用法，违反规则 15：$file_path"
     fi
   done <<< "$changed_cs_files"
@@ -770,7 +771,7 @@ check_naming_conventions() {
     [[ -z "$file_path" ]] && continue
     local file_name
     file_name="$(basename "$file_path" .cs)"
-    if [[ "$file_path" == */Persistence/Migrations/* ]] && echo "$file_name" | grep -q -E '^[0-9]{14}_[A-Z][A-Za-z0-9_]*(\.Designer)?$'; then
+    if [[ "$file_path" == */Migrations/* ]] && echo "$file_name" | grep -q -E '^[0-9]{14}_[A-Z][A-Za-z0-9_]*(\.Designer)?$'; then
       continue
     fi
     if ! echo "$file_name" | grep -q -E '^[A-Z][A-Za-z0-9_]*$'; then
