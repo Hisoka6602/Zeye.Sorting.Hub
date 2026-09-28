@@ -29,8 +29,9 @@ jobs:
           MYSQL_DATABASE: "zeye_sorting_hub_ci"
         ports:
           - 3306:3306
+        # services.options 不支持 env 上下文；ping 仅检查数据库服务是否已启动。
         options: >-
-          --health-cmd "mysqladmin ping -h 127.0.0.1 -p${{ env.MYSQL_ROOT_PASSWORD }} --silent"
+          --health-cmd "mysqladmin ping -h 127.0.0.1 --silent"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 30
