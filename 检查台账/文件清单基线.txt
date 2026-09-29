@@ -555,7 +555,6 @@ Zeye.Sorting.Hub.SharedKernel/Utilities/SafeExecutor.cs
 Zeye.Sorting.Hub.SharedKernel/Zeye.Sorting.Hub.SharedKernel.csproj
 Zeye.Sorting.Hub.Web/.gitignore
 Zeye.Sorting.Hub.Web/README.md
-Zeye.Sorting.Hub.Web/design-qa.md
 Zeye.Sorting.Hub.Web/index.html
 Zeye.Sorting.Hub.Web/package-lock.json
 Zeye.Sorting.Hub.Web/package.json
@@ -715,6 +714,7 @@ Zeye.Sorting.Hub.Web/tsconfig.app.json
 Zeye.Sorting.Hub.Web/tsconfig.json
 Zeye.Sorting.Hub.Web/tsconfig.node.json
 Zeye.Sorting.Hub.Web/vite.config.ts
+Zeye.Sorting.Hub.Web/设计验收.md
 Zeye.Sorting.Hub.sln
 design/ant-design-blue-white/P01-workbench.png
 design/ant-design-blue-white/P02-parcel-list.png
