@@ -89,9 +89,9 @@ Host 启动
 
 ```bash
 dotnet ef migrations add <迁移名称> \
-  --project Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations \
-  --startup-project Zeye.Sorting.Hub.Host \
-  --output-dir Migrations \
+  --project Zeye.Sorting.Hub.Infrastructure \
+  --startup-project Zeye.Sorting.Hub.Infrastructure \
+  --output-dir Persistence/Migrations \
   --context SortingHubDbContext \
   -- --provider MySql
 ```
@@ -100,9 +100,9 @@ dotnet ef migrations add <迁移名称> \
 
 ```bash
 dotnet ef migrations add <迁移名称> \
-  --project Zeye.Sorting.Hub.Infrastructure \
-  --startup-project Zeye.Sorting.Hub.Infrastructure \
-  --output-dir Persistence/Migrations \
+  --project Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations \
+  --startup-project Zeye.Sorting.Hub.Host \
+  --output-dir Migrations \
   --context SortingHubDbContext \
   -- --provider SqlServer
 ```
@@ -118,8 +118,11 @@ dotnet ef migrations add <迁移名称> \
 dotnet ef migrations remove \
   --project Zeye.Sorting.Hub.Infrastructure \
   --startup-project Zeye.Sorting.Hub.Infrastructure \
-  --context SortingHubDbContext
+  --context SortingHubDbContext \
+  -- --provider MySql
 ```
+
+SQL Server删除最新未应用迁移时，将`--project`改为`Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations`，`--startup-project`改为`Zeye.Sorting.Hub.Host`，并使用`-- --provider SqlServer`。
 
 ### 4.3 查看迁移列表
 
@@ -127,8 +130,8 @@ dotnet ef migrations remove \
 
 ```bash
 dotnet ef migrations list \
-  --project Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations \
-  --startup-project Zeye.Sorting.Hub.Host \
+  --project Zeye.Sorting.Hub.Infrastructure \
+  --startup-project Zeye.Sorting.Hub.Infrastructure \
   --context SortingHubDbContext \
   -- --provider MySql
 ```
@@ -137,8 +140,8 @@ dotnet ef migrations list \
 
 ```bash
 dotnet ef migrations list \
-  --project Zeye.Sorting.Hub.Infrastructure \
-  --startup-project Zeye.Sorting.Hub.Infrastructure \
+  --project Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations \
+  --startup-project Zeye.Sorting.Hub.Host \
   --context SortingHubDbContext \
   -- --provider SqlServer
 ```
@@ -149,8 +152,8 @@ dotnet ef migrations list \
 
 ```bash
 dotnet ef database update \
-  --project Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations \
-  --startup-project Zeye.Sorting.Hub.Host \
+  --project Zeye.Sorting.Hub.Infrastructure \
+  --startup-project Zeye.Sorting.Hub.Infrastructure \
   --context SortingHubDbContext \
   --connection "server=<HOST>;port=3306;database=zeye_sorting_hub;uid=<USER>;Password=<PWD>;SslMode=None;" \
   -- --provider MySql
@@ -160,14 +163,14 @@ dotnet ef database update \
 
 ```bash
 dotnet ef database update \
-  --project Zeye.Sorting.Hub.Infrastructure \
-  --startup-project Zeye.Sorting.Hub.Infrastructure \
+  --project Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations \
+  --startup-project Zeye.Sorting.Hub.Host \
   --context SortingHubDbContext \
   --connection "Server=<HOST>,1433;Database=zeye_sorting_hub;User Id=<USER>;Password=<PWD>;TrustServerCertificate=True;Encrypt=False;" \
   -- --provider SqlServer
 ```
 
-> ⚠️ `MySqlContextFactory` 中的连接字符串为设计时占位值，执行 `database update` 时务必通过 `--connection` 参数传入真实连接字符串。
+> 执行数据库更新前必须核对目标库。优先用进程环境变量`ConnectionStrings__MySql`或`ConnectionStrings__SqlServer`传入连接字符串，避免将密码写入命令行或提交到仓库；上述`--connection`只展示参数格式。
 
 ### 4.5 生成 DDL SQL 脚本（离线审计/DBA 审查）
 
@@ -175,8 +178,8 @@ dotnet ef database update \
 
 ```bash
 dotnet ef migrations script \
-  --project Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations \
-  --startup-project Zeye.Sorting.Hub.Host \
+  --project Zeye.Sorting.Hub.Infrastructure \
+  --startup-project Zeye.Sorting.Hub.Infrastructure \
   --context SortingHubDbContext \
   --output migration.sql \
   -- --provider MySql
@@ -186,8 +189,8 @@ dotnet ef migrations script \
 
 ```bash
 dotnet ef migrations script \
-  --project Zeye.Sorting.Hub.Infrastructure \
-  --startup-project Zeye.Sorting.Hub.Infrastructure \
+  --project Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations \
+  --startup-project Zeye.Sorting.Hub.Host \
   --context SortingHubDbContext \
   --output migration.sql \
   -- --provider SqlServer
@@ -357,17 +360,17 @@ dotnet ef migrations script \
 统一设计时工厂支持通过 `-- --provider SqlServer` 切换到 SQL Server 配置路径（连接字符串读取 `ConnectionStrings:SqlServer`）。使用以下命令生成 SQL Server 迁移：
 
 ```bash
-# 1. 在 appsettings.json 中确认 ConnectionStrings:SqlServer 配置了真实连接字符串
+# 1. 通过进程环境变量 ConnectionStrings__SqlServer 指定目标库连接字符串
 # 2. 在解决方案根目录运行（工厂会自动找到 Zeye.Sorting.Hub.Host/appsettings.json）
 dotnet ef migrations add <迁移名称> \
-  --project Zeye.Sorting.Hub.Infrastructure \
-  --startup-project Zeye.Sorting.Hub.Infrastructure \
-  --output-dir Persistence/Migrations \
+  --project Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations \
+  --startup-project Zeye.Sorting.Hub.Host \
+  --output-dir Migrations \
   --context SortingHubDbContext \
   -- --provider SqlServer
 ```
 
-运行时 SQL Server 路径通过 `Persistence:Provider = SqlServer` 配置启用；当前迁移文件统一维护在 `Persistence/Migrations/`，通过 provider 参数区分执行路径。
+运行时 SQL Server 路径通过`Persistence:Provider = SqlServer`配置启用；MySQL迁移位于Infrastructure的`Persistence/Migrations/`，SQL Server迁移位于独立项目的`Migrations/`。
 
 ### Q：如何接入第三种数据库（如 SQLite、PostgreSQL）？
 

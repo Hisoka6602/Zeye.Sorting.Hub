@@ -15,6 +15,9 @@
 }
 .shared-shell .header-wordmark { display: block; flex: none; }
 .shared-shell .app-sider.ant-layout-sider-collapsed .brand { padding: 0; justify-content: center; }
+@media (min-width: 1550px) {
+  .shared-shell .app-sider.ant-layout-sider-collapsed .hub-brand-mark { width: 26px; height: 29px; }
+}
 .shared-shell .side-menu {
   flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; scrollbar-color: transparent transparent;
   padding: 10px 0; border-inline-end: 0 !important; background: transparent !important;
@@ -91,6 +94,7 @@ body:has(.access-drawer.ant-drawer-open) .shared-shell .body-layout { --panel-wi
   .shared-shell .app-header { width: 100%; padding: 0 14px; }
   .shared-shell .app-content { padding: 18px 14px 28px; }
   .shared-shell .mobile-menu-button { display: inline-flex; }
+  .shared-shell .collapse-button { display: none; }
   .shared-shell .mobile-scrim { display: block; position: fixed; inset: 0; z-index: 19; background: #10213f66; }
 }
 @media (max-width: 520px) {
