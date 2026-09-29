@@ -1115,9 +1115,6 @@ html:has(.help-grid)::-webkit-scrollbar{display:none}
 @media (max-width:820px){.slow-detail-metrics .query-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.slow-detail-metrics .query-metrics>div{padding-inline:10px}.slow-detail-metrics .query-metrics>div:nth-child(2n){border-right:0}.slow-detail-window{height:auto}.slow-detail-window .two-cols{grid-template-columns:1fr;gap:12px}.slow-detail-window .two-cols>div:last-child{border-left:0;margin-left:0;padding-left:0}}
 
 /* These reference pages use 47px child-row rhythm and larger group gaps. */
-@media (min-width:1550px){
-  .app-layout:has(.parcel-detail-page) .hub-brand-mark{width:26px;height:29px}
-}
 
 /* Source text sizes keep the existing card anchors while matching glyph widths. */
 .app-content:has(.parcel-list-table,.create-card,.cleanup-page,.audit-list-table,.audit-detail-page,.slow-query-detail-page) .page-intro h1{font-size:32px;line-height:40.5px}
@@ -1165,7 +1162,6 @@ html:has(.help-grid)::-webkit-scrollbar{display:none}
 .slow-query-table .ant-pagination .ant-select-selection-item{font-size:16px}
 .slow-query-table .ant-pagination-item,.slow-query-table .ant-pagination-next{margin-left:8px!important}
 @media (min-width:1550px){
-  .app-layout:has(.slow-query-table) .hub-brand-mark{width:26px;height:29px}
   .slow-query-filter .filter-grid{grid-template-columns:217px 23px 201px 26px 201px 27px 233px 20px minmax(0,1fr);gap:0}
   .slow-query-filter .filter-grid>.filter-field:nth-child(1){grid-column:1}
   .slow-query-filter .filter-grid>.filter-field:nth-child(2){grid-column:3}
@@ -1289,9 +1285,6 @@ html:has(.help-grid)::-webkit-scrollbar{display:none}
 .health-card:not(:first-child) .health-divider{margin-bottom:20px!important}
 .health-card:first-child .ant-descriptions-item-label{width:116px}
 .health-card .ant-descriptions-row>td{padding-bottom:18px!important}
-@media (min-width:1550px){
-  .app-layout:has(.health-page) .hub-brand-mark{width:26px;height:29px}
-}
 
 /* P14: the guide uses readable captions, highlighted fields and numbered steps. */
 .help-grid .page-intro h1{font-size:32px;line-height:40.5px}
@@ -1546,9 +1539,6 @@ html:has(.help-grid)::-webkit-scrollbar{display:none}
 .backup-combined .ant-pagination-options{margin-right:0!important}
 .backup-combined .ant-pagination-item,.backup-combined .ant-pagination-prev,.backup-combined .ant-pagination-next{margin-inline-end:0!important}
 .backup-combined .ant-pagination-options .ant-select-selector{font-size:16px}
-@media(min-width:1550px){
-  .app-layout:has(.backup-combined,.partition-top) .hub-brand-mark{width:26px;height:29px}
-}
 @media(max-width:820px){
   .app-content:has(.backup-combined) .page-intro h1{font-size:25px;line-height:34px}
   .backup-filter{margin-inline:0;gap:14px}
@@ -2047,7 +2037,7 @@ html:has(.help-grid)::-webkit-scrollbar{display:none}
 /* Workbench table text and inset measurements against the original viewport. */
 @media (min-width:821px){
   .overview-recent{--table-header-bg:#f5f6f7}
-  .overview-bottom{--table-header-bg:#f4f6f7}
+  .overview-bottom{--table-header-bg:#f2f5f7}
   .overview-recent .ant-card-body{padding-top:8px;padding-bottom:14px}
   .overview-bottom .ant-card-body{padding-top:8px;padding-bottom:16px}
   .overview-recent .ant-table-thead>tr>th{font-size:15.25px;line-height:24.5333px;padding-left:14px!important}
@@ -2261,18 +2251,42 @@ html:has(.help-grid)::-webkit-scrollbar{display:none}
   .rules-table .data-table.ant-table-wrapper .ant-table-tbody>tr.ant-table-row:last-child>td{padding-top:calc(var(--table-row-padding) + 1px)!important;padding-bottom:calc(var(--table-row-padding) - 1px)!important}
   .archive-table{--table-header-bg:#f3f5f8}
   .outbox-table{--table-header-bg:#f4f6f8}
-  .rules-table{--table-header-bg:#f4f5f5}
+  .rules-table{--table-header-bg:#f4f5f9}
   .archive-table .ant-table-tbody>tr>td{border-color:#e5edf8}
   .outbox-table .ant-table-tbody>tr>td{border-color:#edf2fa}
   .rules-table .ant-table-tbody>tr>td{border-right-color:#edf2fa}
+  .rules-table .ant-table-tbody{position:relative;top:-1px}
+  .app-content:has(.rules-table) .page-intro .planned-tag{transform:translate(3px,-4px);background:#d6e7ff}
+  .app-content:has(.rules-table) .page-intro p{transform:translate(-1px,-3px)}
+  .app-content:has(.rules-table) .page-intro .ant-btn{transform:translate(1px,-3px)}
+}
+
+/* P17 reference surfaces, scoped to the rules page and its detail drawer. */
+@media (min-width:821px){
+  .shared-shell .app-content:has(.rules-table){background:#f1f4f5}
+  .app-content:has(.rules-table) .surface-card,.rules-table .ant-table,.rules-drawer .ant-drawer-content{background:#fefefe}
+  .rules-drawer .rule-meta-panel{background:#f5f7fa}
+}
+
+/* P07 reference surfaces, without changing the shared navigation shell. */
+@media (min-width:821px){
+  .shared-shell .app-content:has(.audit-list-table){background:#f1f4f5}
+  .audit-list-filter{background:#fdfdfe}
+  .audit-list-table{background:#fefefe;--table-header-bg:#f2f5f6}
+  .audit-list-filter+.page-alert{--alert-bg:#e8f0fd}
+  .audit-list-filter .ant-picker-range>.ant-picker-input:first-child>input{transform:translateX(-6px)}
+  .audit-list-filter .ant-picker-range>.ant-picker-input:nth-child(3)>input{transform:translateX(-4px)}
+  .audit-list-filter .ant-picker-range>.ant-picker-range-separator{transform:translateX(-4px)}
+  .audit-list-filter .ant-picker-range>.ant-picker-suffix{transform:translateX(-2px)}
 }
 
 /* P20 native panel typography and measured table baselines. */
 @media(min-width:821px){
+  .app-content:has(.partition-top) .surface-card,.partition-plan-table .ant-table,.partition-history-card .ant-table{background:#fefefe}
   .partition-top .surface-card:first-child .ant-card-head-title{transform:translate(2px,-2px)}
   .partition-top .surface-card:nth-child(2) .ant-card-head-title{transform:translate(1px,-2px)}
   .partition-history-card .ant-card-head-title{font-size:19.25px;letter-spacing:.125px;transform:translate(1px,-4px)}
-  .partition-plan-banner{background:linear-gradient(90deg,#f2f7fd,#f2f8fe)}
+  .partition-plan-banner{background:linear-gradient(90deg,#f2f6fc,#f2f7fd)}
   .partition-plan-banner>div{transform:translateX(1px)}
   .partition-plan-banner b{font-size:16.5px}
   .partition-plan-banner .text-muted{font-size:14.75px;letter-spacing:-.1px;color:#556b96}
@@ -2280,7 +2294,7 @@ html:has(.help-grid)::-webkit-scrollbar{display:none}
   .partition-top .drawer-meta .ant-descriptions-item-label{font-size:15px;letter-spacing:-.25px;transform:translateX(-2px)}
   .partition-top .drawer-meta .ant-descriptions-item-content{font-family:'Segoe UI','Microsoft YaHei UI',sans-serif;font-size:14.5px;transform:translateX(1.5px)}
   .partition-top .drawer-meta .ant-descriptions-row>td{padding-bottom:13.5px}
-  .partition-plan-table,.partition-history-card{--table-header-bg:#f4f5f8}
+  .partition-plan-table,.partition-history-card{--table-header-bg:#f4f5f6}
   .partition-plan-table.data-table.ant-table-wrapper .ant-table-thead>tr>th,
   .partition-history-card .data-table.ant-table-wrapper .ant-table-thead>tr>th{font-size:13.25px;line-height:21px}
   .partition-plan-table.data-table.ant-table-wrapper .ant-table-thead>tr>th{padding-top:8.214286px!important;padding-bottom:7.214286px!important}
@@ -2311,6 +2325,8 @@ html:has(.help-grid)::-webkit-scrollbar{display:none}
 
 /* P16: original metric typography, detail tags and processing-record baselines. */
 @media (min-width:821px){
+  .shared-shell .app-content:has(.live-table){background:#f1f4f5}
+  .app-content:has(.live-table) .surface-card,.live-metrics .metric-card,.live-table .ant-table{background:#fefefe}
   .app-content:has(.live-table) .page-intro>.ant-space{gap:15px!important}
   .app-content:has(.live-table) .page-intro>.ant-space .ant-space{gap:12px!important}
   .app-content:has(.live-table) .page-intro>.ant-space .ant-typography{font-size:13.75px;line-height:19.9333px;letter-spacing:.13px;color:#5e70a0;position:relative;top:-2px}
@@ -2337,6 +2353,7 @@ html:has(.help-grid)::-webkit-scrollbar{display:none}
   .live-metric .metric-side-icon.warning{color:#f08000;background:#fff0dd}
   .live-metric .metric-side-icon.purple{font-size:26px!important;padding:14px;color:#914be7;background:#f3eaff}
   .live-metric .metric-side-icon.warning svg{stroke:currentColor;stroke-width:.5px}
+  .live-drawer .ant-drawer-content{background:#fefefe}
   .live-drawer .ant-drawer-title{transform:translateY(1px)}
   .live-drawer .ant-drawer-body>.ant-space{gap:16px!important;transform:translateX(1px)}
   .live-drawer .ant-drawer-body>.ant-space .status-tag{font-size:14.25px;line-height:22px;padding-inline:15.5px;border-radius:8px}
@@ -2348,7 +2365,7 @@ html:has(.help-grid)::-webkit-scrollbar{display:none}
   .live-drawer .drawer-meta .status-tag{line-height:24px;padding:2px 12px;border-radius:8px;position:relative;top:-3px}
   .live-section-divider{margin-bottom:29px!important}
   .live-drawer h3:first-of-type{font-size:16.5px;line-height:20.1825px;margin-bottom:13px;transform:translate(2px,-1px)}
-  .live-event-description{font-size:14.35px;line-height:23px;padding:7px 12px 16px!important;background:#f6f8fc!important;border-color:#e1e7f0!important}
+  .live-event-description{font-size:14.35px;line-height:23px;padding:7px 12px 16px!important;background:#f7f8fa!important;border-color:#e1e7f0!important}
   .live-drawer h3:last-of-type{transform:translate(2px,-1px)}
   .live-drawer .ant-timeline-item-content{margin-inline-start:42px}
   .live-record-time{margin-bottom:2px}
@@ -2368,12 +2385,14 @@ html:has(.help-grid)::-webkit-scrollbar{display:none}
   .analytics-page .page-alert{margin-top:-6.35px}
   .analytics-page .page-alert .ant-alert-message{transform:translate(1px,1px);letter-spacing:-.1px}
   .analytics-page .filter-label{transform:translate(1px,1px);font-weight:500;-webkit-text-stroke:.15px currentColor}
+  .analytics-page .surface-card,.analytics-page .ant-table-tbody>tr>td{background:#fefefe}
+  .analytics-metrics .metric-card{background:#fefefe}
   .analytics-metrics .metric-title{color:#0b163b}
   .analytics-metrics .metric-title .anticon{font-size:15.5px;margin-left:1.5px;color:#65779f}
   .analytics-metrics .metric-card:not(:first-child) .metric-title .anticon{font-size:15px;margin-left:0}
   .analytics-metrics .metric-number{font-family:Arial,sans-serif;font-size:29px;line-height:33.6px;height:33.6px;color:#0b173a}
   .analytics-metrics .metric-number small{font-family:'Microsoft YaHei UI','Microsoft YaHei',sans-serif;font-size:16px;position:relative;top:-2.5px;left:1px}
-  .analytics-metrics .metric-caption{font-family:Arial,'Microsoft YaHei UI',sans-serif;font-size:13.1px;line-height:19.9333px;letter-spacing:-.025px;color:#6b7ca5}
+  .analytics-metrics .metric-caption{font-family:Arial,'Microsoft YaHei UI',sans-serif;font-size:13.1px;line-height:19.9333px;letter-spacing:.05px;color:#768cc8}
   .analytics-metrics .metric-card:first-child .metric-title{transform:translateX(1px)}
   .analytics-metrics .metric-card:first-child .metric-number{transform:translateY(1px)}
   .analytics-metrics .metric-card:first-child .metric-caption{transform:translateX(1px)}
@@ -2403,9 +2422,14 @@ html:has(.help-grid)::-webkit-scrollbar{display:none}
 
 /* P14: preserve the full contents column while aligning the four desktop tiles. */
 @media (min-width:821px){
+  .help-grid{--alert-bg:#e9f1fe}
+  .help-tile,.help-collapse .ant-collapse-item{background:#fefefe}
   .help-grid .page-intro h1,.help-grid .page-intro p{transform:translateY(-6px)}
   .help-grid .page-alert{margin-bottom:11.8571px}
-  .help-toc{transform:translateY(-48px)}
+  .help-grid .page-alert .ant-alert-message{color:#52659a}
+  .help-toc{transform:translateY(-51px)}
+  .help-toc .ant-anchor-link-title:not(.ant-anchor-link-title-active){color:#576993!important}
+  .help-grid .help-step-box{transform:translateY(-1px)}
 }
 @media (min-width:1101px){
   .help-tile:nth-child(n+5):nth-child(-n+8){height:85px}
@@ -2518,15 +2542,31 @@ html:has(.help-grid)::-webkit-scrollbar{display:none}
 }
 
 @media (min-width:821px){
+  .shared-shell .app-content:has(.overview-page){background:#f3f5f6}
+  .overview-page .surface-card,.overview-page .metric-card{background:#fefefe}
+  .overview-page .ant-table-tbody>tr>td{background:#fefefe}
   .overview-metrics .metric-card:nth-child(2){padding-left:22px}
   .overview-metrics .metric-card:nth-child(3){padding-left:23px}
-  .overview-metric-description{font-size:15px}
-  .overview-metrics .metric-footer{font-size:15px;padding-top:15px}
+  .overview-metrics .metric-title{color:#223b5c}
+  .overview-metric-description{font-size:15px;color:#7488be;letter-spacing:.3px;position:relative;left:1px}
+  .overview-metrics .metric-footer{font-size:15px;padding-top:15px;color:#7488be;position:relative;left:1px;top:1px}
+  .overview-metrics .metric-footer strong{color:#5c70a9}
   .overview-metrics .overview-state-dot{background:#00a350}
   .overview-metrics .overview-state-dot.blue{background:#1e6af5}
+  .overview-bottom>.surface-card:first-child .ant-card-head-title{transform:translate(1px,1px)}
+  .overview-bottom>.surface-card:last-child .ant-card-head-title{transform:translateY(2px);letter-spacing:.2px}
+  .overview-bottom .data-table .ant-table-tbody>tr>td{color:#3a4a89}
+  .overview-bottom .data-table .ant-table-thead>tr>th{color:#2b386c}
+  .overview-bottom>.surface-card:first-child .data-table .ant-table-thead>tr>th:first-child{padding-left:11px!important}
+  .overview-bottom>.surface-card:last-child .data-table .ant-table-thead>tr>th:first-child,.overview-bottom>.surface-card:last-child .data-table .ant-table-tbody>tr>td:first-child{padding-left:13px!important}
+  .overview-bottom>.surface-card:last-child .ant-table-tbody>tr>td:first-child{letter-spacing:-.1px}
   .audit-list-filter .ant-card-body{padding-left:23px}
-  .audit-filter-row-top .filter-field:first-child .ant-picker{transform:translateY(2px)}
+  .audit-filter-row-top .filter-field:first-child .ant-picker{transform:translate(-1px,3px)}
   .audit-list-filter+.page-alert{margin-bottom:21px}
+  .audit-list-table .data-table.ant-table-wrapper .ant-table-thead>tr>th{padding-top:calc(var(--table-head-padding) + 2.214286px)!important;padding-bottom:calc(var(--table-head-padding) - 2.785714px)!important}
+  .audit-list-table .ant-table-thead>tr>th:first-child{padding-left:12px!important}
+  .audit-list-table .data-table.ant-table-wrapper .ant-table-tbody>tr.ant-table-row>td:first-child{padding-left:11px!important;padding-top:calc(var(--table-row-padding) + .714286px)!important;padding-bottom:calc(var(--table-row-padding) - 1.285714px)!important}
+  .audit-list-table .ant-pagination{--pagination-y:1px}
   .app-content:has(.slow-query-table) .page-alert .ant-alert-content{transform:translate(9px,1px)}
   .slow-query-table .ant-table-tbody{position:relative;top:-1px}
   .slow-query-table .ant-pagination{--pagination-y:2px}
@@ -2536,4 +2576,39 @@ html:has(.help-grid)::-webkit-scrollbar{display:none}
   .app-content:has(.partition-top) .page-alert .ant-alert-icon{transform:translate(3px,3px)}
   .app-content:has(.partition-top) .page-alert .ant-alert-message{transform:translate(3px,4px)}
   .app-content:has(.partition-top) .page-alert .ant-alert-description{transform:translate(3px,-3px)}
+}
+
+/* P02: align ledger surfaces and record-table typography to the reference. */
+@media (min-width:821px){
+  .parcel-list-filter,.parcel-list-table{background:#fdfdff}
+  .parcel-list-filter{transform:translateY(-1px)}
+  .parcel-list-table .ant-table,.parcel-list-table .ant-table-tbody>tr:not(:hover)>td{background:#fefefe}
+  .parcel-list-table .parcel-records-table .ant-table-thead>tr>th{color:#2b386c}
+  .parcel-list-table .parcel-records-table .ant-table-tbody>tr>td{color:#3a4a89}
+  .parcel-list-table:has(.parcel-records-table) .ant-card-body{padding-top:14px;padding-bottom:19px}
+  .parcel-list-table .parcel-records-table .ant-pagination{--pagination-y:1.25px}
+  .parcel-list-table .parcel-records-table.ant-table-wrapper .ant-table-thead>tr>th:nth-child(2),.parcel-list-table .parcel-records-table.ant-table-wrapper .ant-table-thead>tr>th:nth-child(3){padding-left:13px!important}
+  .parcel-list-table .parcel-records-table.ant-table-wrapper .ant-table-tbody>tr>td:first-child{padding-left:11px!important}
+  .parcel-list-table .parcel-records-table.ant-table-wrapper .ant-table-tbody>tr>td:nth-child(2){padding-left:13px!important}
+  .parcel-list-table .parcel-records-table.ant-table-wrapper .ant-table-tbody>tr>td:nth-child(3){padding-left:14px!important}
+  .parcel-list-table .parcel-records-table.ant-table-wrapper .ant-table-tbody>tr>td:nth-child(5){padding-left:15px!important}
+  .parcel-list-table .parcel-records-table.ant-table-wrapper .ant-table-tbody>tr>td:nth-child(7){padding-left:14px!important}
+  .parcel-list-table .parcel-records-table.ant-table-wrapper .ant-table-thead>tr>th:nth-child(2){padding-top:calc(var(--table-head-padding) + 2.214286px)!important;padding-bottom:calc(var(--table-head-padding) - 2.785714px)!important}
+}
+
+/* P13: health surfaces use the reference's quiet blue and green tints. */
+@media (min-width:821px){
+  .health-card,.health-check-table .ant-table,.health-check-table .ant-table-tbody>tr:not(:hover)>td{background:#fefefe}
+  .health-summary{background:#eefaf4}
+}
+
+/* P20: align the notice with the reference content grid. */
+@media (min-width:821px){
+  .app-content:has(.partition-top) .page-alert{transform:translateY(-1px)}
+}
+
+/* P01: calibrate the recent-record heading against the native reference. */
+@media (min-width:821px){
+  .overview-recent .ant-card-head-title{color:#162550;font-size:19.5px;transform:translate(1px,1px)}
+  .overview-recent{--table-heading-color:#283162}
 }

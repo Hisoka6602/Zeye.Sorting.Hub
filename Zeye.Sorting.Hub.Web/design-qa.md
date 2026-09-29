@@ -1,8 +1,153 @@
 # 页面设计验收
 
-> 本文引用的截图和测量文件位于本地 qa/ 目录；该目录不随 Git 提交，需在本地重新生成后查看。
+22页参考图100%逐细节还原尚未通过；目标继续保持 active。最近完成P17规则管理的标题区和表体位置校正；共享母版、固定侧栏和面包屑回退保持一致。
 
-22页参考图100%逐细节还原尚未通过；目标继续保持 active。最近完成P20分区管理页的导航与提示框对齐，同时保留固定母版。
+验收状态：未通过。22页仍有可见的字形、色彩、图标和数据状态差异，尚不能按100%参考图还原交付。
+
+## 本轮 p17-ink-second-01
+
+- 在1487×1058桌面视口将“规划稿”标识右移3px、上移4px并校正浅蓝底色；说明文字左移1px、上移3px，主按钮右移1px、上移3px。仅将规则表体上移1px，表头和卡片保留原位。整体移动卡片及替换标题字体的试验增加局部误差，已撤回。
+- 原尺寸截图只经固定显示器ICC转换到sRGB，最多裁去右侧1px，未缩放或配准。整图RGB MAE从6.7955降到6.4222，内容区从6.2810降到5.7759；标题区从10.4469降到6.2891，表格区从7.1679降到6.5369，表体从8.0413降到7.1970。
+- 页面无文档横向溢出，侧栏仍固定在x=0、宽246px。浏览器点击第二条“查看”切换规则详情，点击“工作台”面包屑返回首页。原图显示第2页按钮却同时写“共10条 / 10条/页”；当前Ant Design分页按实际10条只显示第1页，此处与原图仍不同。
+
+证据：[原尺寸分区测量](qa/candidates/p17-ink-second/measurement.json)、[修改前并排图](qa/candidates/p17-ink-second/P17-before-compare.png)、[修改后并排图](qa/candidates/p17-ink-second/P17-after-compare.png)、[全站内容区排名](qa/candidates/content-triage/ranking.json)。
+
+## 本轮 p07-table-ink-01
+
+- 在1487×1058桌面视口校正请求审计表头、首列文字和分页的纵向位置，日期控件左移1px、下移1px。调整只作用于该页；统一菜单、顶部栏和数据未改。
+- 原尺寸截图仅经固定显示器ICC转为sRGB，最多裁去右侧1px，未缩放或配准。整图RGB MAE从6.7956降到6.5636，内容区从6.3168降到6.0029；表头从9.8074降到6.5868，首列表头从34.2774降到15.5521，日期控件从16.5187降到11.3290，分页从6.8711降到4.6400。表体整体误差从9.9129略增至9.9298，首行和首列文字则有所改善。
+- 浏览器点击“查看 → 请求审计”面包屑，实际返回列表；详情页祖先项均为路由链接。返回后的侧栏仍固定在x=0、y=0、宽246px。参考图逐页不同的侧栏状态与统一母版要求冲突，且内容字形和配色仍有差异，因此未达到100%。
+
+证据：[原尺寸分区测量](qa/candidates/p07-table-ink/measurement.json)、[修改前并排图](qa/candidates/p07-table-ink/P07-before-compare.png)、[修改后并排图](qa/candidates/p07-table-ink/P07-after-compare.png)、[全站内容区排名](qa/candidates/content-triage/ranking.json)。
+
+## 本轮 p01-recent-alignment-04
+
+- 在桌面视口将“最近包裹记录”标题调整为19.5px、右移1px并下移1px，按参考图校正标题与表头字色。指标说明和表体字色试验增加误差，已撤回；公共菜单、面包屑和数据内容没有改动。
+- 1487×1058原尺寸截图仅经固定显示器ICC到sRGB转换，未缩放或配准。整图RGB MAE从6.8662降到6.7894，内容区从6.4442降到6.3403；最近记录卡片从7.3402降到7.0124，标题区从21.0390降到11.3809，表头从7.7250降到7.2270。
+- 1487px视口无文档横向溢出；固定侧栏仍位于x=0、y=0，宽246px，当前菜单项为“工作台”。表体字形、底部表格和参考图特有侧栏状态仍有可见差异。
+
+证据：[原尺寸分区测量](qa/candidates/p01-recent-alignment/measurement.json)、[修改前并排图](qa/candidates/p01-recent-alignment/P01-before-compare.png)、[修改后并排图](qa/candidates/p01-recent-alignment/P01-after-compare.png)、[全站内容区排名](qa/candidates/content-triage/ranking.json)。
+
+## 本轮 p14-detail-alignment-03
+
+- 在1586×992桌面视口将P14“本页目录”上移3px、操作步骤框上移1px，并校正提示框底色、提示文字和目录正文链接字色。Ant Design 组件结构、公共侧栏、顶部栏、面包屑与锚点行为保持可用。
+- 原尺寸截图只经固定显示器ICC到sRGB转换，未缩放或配准。整图RGB MAE从6.8557降到6.6816，内容区从6.4279降到6.1936；提示框从10.6464降到8.7028，目录从10.2178降到8.6958，步骤区从7.2420降到6.6474。
+- 页面在1586px视口无文档横向溢出；公共侧栏位于x=0、y=0，宽246px。浏览器点击“常见问题”和“功能概览”目录链接均完成滚动，滚动时侧栏仍固定在y=0。参考图的逐页侧栏状态及部分字形仍与统一母版不同，尚不能宣称100%一致。
+
+证据：[原尺寸分区测量](qa/candidates/p14-detail-alignment/measurement.json)、[修改前并排图](qa/candidates/p14-detail-alignment/P14-before-compare.png)、[修改后并排图](qa/candidates/p14-detail-alignment/P14-after-compare.png)、[全站内容区排名](qa/candidates/content-triage/ranking.json)。
+
+## 本轮 p20-geometry-03
+
+- 仅将P20桌面提示框上移1px；上方卡片上移、文字描边和浅蓝底色试验均增加局部误差，已撤回。公共菜单、顶部栏和业务数据没有变化。
+- 1586×992原尺寸截图仅经固定显示器ICC转换到sRGB，未缩放或配准。整图RGB MAE从6.9203降到6.8737，内容区从6.4290降到6.3662，提示框从8.7169降到7.9132。
+- 浏览器实测“分区管理 → 包裹中心 → 工作台”两次面包屑点击均成功，菜单文字及顺序不变，当前选中项随路由更新。P20仍有文字、图标和参考图特有侧栏状态差异，未达到逐像素一致。
+
+证据：[原尺寸测量](qa/candidates/p20-geometry/measurement.json)、[修改前并排图](qa/candidates/p20-geometry/P20-before-compare.png)、[修改后并排图](qa/candidates/p20-geometry/P20-after-compare.png)、[全站内容区排名](qa/candidates/content-triage/ranking.json)。
+
+## 本轮 p02-table-ink-03
+
+- 桌面视口将P02筛选卡上移1px，并在包裹记录表格内调整表头和表体字色、表格内容高度、分页位置及部分列的文字留白。表体纵向偏移与筛选卡上移1.5px的试验增加误差，已撤回。列位置样式限定在 `parcel-records-table`，避免套用到“未关联 DWS”表格；共享菜单、面包屑与真实API请求未改。
+- 1487×1058原尺寸截图仅经固定显示器ICC转换到sRGB，最多裁去右侧1px。只读设计预览整图RGB MAE从7.2134降到6.2504，内容区从6.8571降到5.5543，筛选区从6.3141降到5.7080，表格区从9.0870降到6.9704。普通模式继续显示真实502错误，内容区从8.1530降到8.0636；没有把设计样本显示为真实记录。
+- 390、820、1440、1487、1600px视口无文档横向溢出，窄屏表格在卡片内横向滚动。`npm test` 10项与 `npm run build` 均通过。普通模式的502状态、字体细节和参考图逐页不同的侧栏状态仍使P02无法达到100%一致。
+
+证据：[预览和普通模式的原尺寸分区测量](qa/candidates/p02-table-ink/measurement.json)、[预览修改前并排图](qa/candidates/p02-table-ink/P02-before-compare.png)、[预览修改后并排图](qa/candidates/p02-table-ink/P02-after-compare.png)、[普通模式修改后并排图](qa/candidates/p02-table-ink/P02-normal-after-compare.png)、[全站内容区排名](qa/candidates/content-triage/ranking.json)。
+
+## 本轮 p01-bottom-ink-01
+
+- 仅在桌面视口校正P01底部两张Ant Design表格的标题位置、表头及表体字色、首列表头留白和右侧日期列字距。上下调整表头以及左侧表体首列位置会增加误差，已撤回；公共侧栏、面包屑和业务数据未改。
+- 1487×1058原尺寸截图经固定显示器ICC转换到sRGB，最多裁去右侧1px，不缩放、不配准。整图RGB MAE从7.1767降到6.8662，内容区从6.8642降到6.4442，底部卡片区域从10.5030降到8.9603，底部标题及表头区域从13.7143降到10.0098。
+- 390、820、1440、1487、1600px视口无文档横向溢出；窄屏表格仍在卡片内横向滚动。`npm test` 10项通过，`npm run build` 通过。P01的字形、公共侧栏与参考图逐页菜单状态仍有可见差异。
+
+证据：[原尺寸分区测量和源码散列](qa/candidates/p01-bottom-ink/measurement.json)、[调整前并排图](qa/candidates/p01-bottom-ink/P01-before-compare.png)、[调整后并排图](qa/candidates/p01-bottom-ink/P01-geometry2-compare.png)。
+
+## 本轮 p13-health-alignment-01
+
+- P13面包屑按参考图显示为“可观测性 / 健康检查”，前一级仍是可点击的 `/audit/requests` 链接；浏览器实际点击进入请求审计，再返回健康检查成功。所有后台页继续共用固定侧栏和顶部栏。
+- 在P13内容区校正三张卡片、依赖表格及存活摘要的近白与浅绿底色。提示框和表头试色使局部误差上升，已撤回。1586×992原尺寸整图RGB MAE从6.9595降到6.6595，统一口径内容区从6.3671降到6.0059；面包屑从22.5736降到17.6916，三张卡片区域从6.7902降到6.1878，存活摘要从13.6839降到10.9549。截图只做固定显示器ICC到sRGB转换，未缩放或配准。
+- 390、1440、1586、1600px视口无文档横向溢出；手机端三张卡片改为单列。`npm test` 10项与 `npm run build` 通过。P13仍有文字、提示框及参考图侧栏状态差异，尚未逐像素一致。
+
+证据：[原尺寸测量与源码散列](qa/candidates/p13-health-alignment/measurement.json)、[调整前并排图](qa/candidates/p13-health-alignment/P13-before-compare.png)、[调整后并排图](qa/candidates/p13-health-alignment/P13-after-compare.png)、[全站内容区排名](qa/candidates/content-triage/ranking.json)。
+
+## 本轮 p02-surface-alignment-02
+
+- 只在P02桌面内容区校正筛选卡、表格卡及非悬停表格行的近白底色；表头试色使局部误差增加，已撤回。公共侧栏、顶部栏、面包屑、API请求和参考样本数据未改。
+- 1487×1058参考视口下只读预览整图RGB MAE从7.3321降到7.2134、内容区从7.0175降到6.8571；普通模式真实502错误状态整图从8.3833降到8.1762、内容区从8.4331降到8.1530。筛选卡区域在预览中从6.6938降到6.3479，表格区域从9.6787降到9.4750。原截图宽1486px，比参考图少1px，仅裁去参考图右侧1px；未缩放或配准。
+- 390、1440、1487、1600px视口均无文档横向溢出，窄屏表格在卡片内部横向滚动，侧栏仍固定；表格悬停后可恢复原底色。`npm test` 10项、`npm run build` 通过。普通模式继续明确显示后端502错误，不以设计样本伪装真实记录；固定公共菜单与参考图该页不同，P02仍未逐像素一致。
+
+证据：[两种状态的原尺寸测量与源码散列](qa/candidates/p02-surface-alignment/measurement.json)、[预览修改前并排图](qa/candidates/p02-surface-alignment/P02-preview-before-compare.png)、[预览修改后并排图](qa/candidates/p02-surface-alignment/P02-preview-after-compare.png)、[普通模式修改前并排图](qa/candidates/p02-surface-alignment/P02-normal-before-compare.png)、[普通模式修改后并排图](qa/candidates/p02-surface-alignment/P02-normal-after-compare.png)、[全站内容区排名](qa/candidates/content-triage/ranking.json)。
+
+## 本轮 p14-surface-alignment-02
+
+- 只在P14桌面内容区将九个功能卡片与折叠说明卡改成更接近参考图的近白底色，公共侧栏、顶部栏、路由和面包屑均未修改。页面背景、提示框与步骤框的试色未形成稳定改善，已撤回。
+- 1586×992原尺寸整图RGB MAE从6.9276降到6.8557，统一口径内容区从6.5246降到6.4279；功能卡区域从5.5860降到5.4826，详细说明区域从8.9272降到8.7558。截图只做固定显示器ICC到sRGB转换，未缩放或配准。
+- 浏览器点击“使用帮助 → 工作台”和“新建包裹 → 包裹中心”面包屑均成功。页面滚动490px后侧栏仍固定在x=0、y=0、宽246px；手机菜单可完整展开。390、1440、1586、1600px视口没有文档横向溢出；`npm test` 10项与 `npm run build` 均通过。P14与参考图仍有可见差异，尤其是用户要求保持统一的侧栏菜单与参考图逐页不同的菜单状态。
+
+证据：[P14原尺寸测量与源码散列](qa/candidates/p14-surface-alignment/measurement.json)、[调整前并排图](qa/candidates/p14-surface-alignment/P14-before-compare.png)、[调整后并排图](qa/candidates/p14-surface-alignment/P14-after-compare.png)、[22路由母版复核](qa/candidates/shared-shell-audit/recheck-2026-09-29.json)、[全站内容区排名](qa/candidates/content-triage/ranking.json)。
+
+## 本轮 p20-content-alignment-02 / p01-background-alignment-03
+
+- P20仅校正内容区三张卡片、两张表格与表头的近白、浅灰蓝底色，规划条的浅蓝渐变更贴近参考图。提示条底色试验使局部误差上升，已撤回。P01仅在桌面视口校正工作台内容区底色；底部表头绿色通道试验使误差上升，已撤回。共用菜单、顶部栏、面包屑和业务数据没有改动。
+- P20在1586×992原尺寸整图RGB MAE从7.0255降到6.9246，统一口径内容区从6.5648降到6.4290；规划卡从6.8416降到6.7433，规则卡从8.6776降到8.4456，历史表格区域从6.6936降到6.4826。P01在1487×1058原尺寸整图从7.1826降到7.1818，内容区从6.8719降到6.8642。截图仅做固定显示器ICC至sRGB转换，P01最多裁去右侧1px；未缩放或配准。
+- P20在390、1440、1586、1600px视口没有页面横向溢出，窄屏表格在卡片内部滚动。`npm test` 10项和 `npm run build` 均通过。两页的文字、图标及固定公共侧栏与参考图仍有可见差异，尚未逐像素一致。
+
+证据：[P20分区误差与源码散列](qa/candidates/p20-content-alignment/measurement.json)、[P20修改前并排图](qa/candidates/p20-content-alignment/P20-before-compare.png)、[P20修改后并排图](qa/candidates/p20-content-alignment/P20-after-compare.png)、[P20四种视口记录](qa/candidates/p20-content-alignment/responsive.json)、[P01分区误差与源码散列](qa/candidates/p01-background-alignment/measurement.json)、[P01修改前并排图](qa/candidates/p01-background-alignment/P01-before-compare.png)、[P01修改后并排图](qa/candidates/p01-background-alignment/P01-after-compare.png)、[全站内容区排名](qa/candidates/content-triage/ranking.json)。
+
+## 本轮 p07-content-alignment-02
+
+- 在P07桌面内容区校正页面、筛选卡、表格卡与提示条底色，并把日期范围里的两段文本、分隔符和日历图标对齐参考图；只影响请求审计页，不改变共用母版、数据和筛选逻辑。第二轮更深底色使整页误差上升，已撤回。
+- 1487×1058原尺寸截图仅经固定显示器ICC到sRGB转换，最多裁去右侧1px，没有缩放或配准。整页RGB MAE从7.0315降到6.7956；统一口径的内容区从6.5895降到6.3168；筛选卡从5.8217降到5.2781，日期控件从19.4324降到16.5187。表格表头局部从9.7805升到9.8074，仍需继续校对。
+- 390、1440、1487、1600px视口没有页面横向溢出；浏览器实测日期输入仍能打开选择面板。`npm test` 10项和 `npm run build` 均通过。日期字形、表格文字和统一侧栏与参考图仍有可见差异。
+
+证据：[分区误差与源码散列](qa/candidates/p07-content-alignment/measurement.json)、[修改前并排图](qa/candidates/p07-content-alignment/P07-before-compare.png)、[修改后并排图](qa/candidates/p07-content-alignment/P07-after-compare.png)、[日期局部对照](qa/candidates/p07-content-alignment/P07-after-date-compare.png)、[四种视口记录](qa/candidates/p07-content-alignment/responsive.json)、[全站内容区排名](qa/candidates/content-triage/ranking.json)。
+
+## 本轮 p17-content-alignment-01
+
+- 仅在P17桌面内容区调整页面、筛选卡、规则表格、表头和详情抽屉的底色，信息面板由偏蓝改为参考图更接近的灰蓝。曾试用纯白抽屉正文，整页误差上升，已撤回。规则数据、筛选和共用母版没有改动。
+- 1487×1058原尺寸截图只经固定显示器ICC到sRGB转换，最多裁去右侧1px，没有缩放或配准。整页RGB MAE从7.0032降到6.7955，统一口径的内容区从6.5266降到6.2810；表头从7.7489降到7.1176，详情信息面板从8.3351降到7.4550。
+- 390、1440、1487、1600px视口没有页面横向溢出；浏览器实际点击“规则列表 → 工作台”面包屑成功。`npm test` 10项和 `npm run build` 均通过。参考图写“共10条、10条/页”却同时显示第2页按钮；当前可用的Ant Design分页按10条只显示第1页，此差异仍未解决。
+
+证据：[分区误差与源码散列](qa/candidates/p17-content-alignment/measurement.json)、[修改前并排图](qa/candidates/p17-content-alignment/P17-before-compare.png)、[修改后并排图](qa/candidates/p17-content-alignment/P17-after-compare.png)、[四种视口记录](qa/candidates/p17-content-alignment/responsive.json)、[全站内容区排名](qa/candidates/content-triage/ranking.json)。
+
+## 本轮 p16-content-alignment-01
+
+- 仅在P16桌面内容区按参考图校正页面背景、筛选卡、三张指标卡、事件表格与详情抽屉的近白底色；事件说明框改为参考图更接近的中性浅灰。选中事件行仍保持蓝色背景，普通行保留Ant Design悬停反馈，公共母版和路由不变。
+- 1487×1058原尺寸截图只经固定显示器ICC到sRGB转换，最多裁去右侧1px，没有缩放或配准。整页RGB MAE从7.3443降到7.1103；页面内容区局部从6.9066降到6.7004；指标卡从6.6193降到6.3109，事件表格从7.9833降到7.8244，详情抽屉从5.7952降到5.3486。全站统一口径的P16内容区排名值从6.5552降到6.2763。
+- 内容整体上移1px及进一步加深背景都会增加误差，已撤回。390、1440、1487、1600px视口均无页面横向溢出，手机抽屉占满视口；`npm test` 10项与 `npm run build` 通过。表格正文和文字仍未逐像素一致。
+
+证据：[分区误差与源码散列](qa/candidates/p16-content-alignment/measurement.json)、[调整前并排图](qa/candidates/p16-content-alignment/P16-before-compare.png)、[调整后并排图](qa/candidates/p16-content-alignment/P16-after-compare.png)、[四种视口记录](qa/candidates/p16-content-alignment/responsive.json)、[全站内容区排名](qa/candidates/content-triage/ranking.json)。
+
+## 本轮 p18-content-alignment-01
+
+- 将三张指标卡的示意图标替换为仓库中已有的50×50参考资源，并仅在P18内容区校正指标说明文字的蓝灰色、字距以及卡片和表格行的近白底色。筛选、表格与真实API逻辑保持可用。
+- 1487×1058设计预览截图只经固定显示器ICC到sRGB转换，最多裁去右侧1px，没有缩放或配准。整页RGB MAE从6.4499降到6.3147，内容区从5.8754降到5.6926；指标区域从7.2153降到6.5998，指标说明从9.6025降到8.6601。
+- 普通模式仍明确显示报表读取失败（502）和空指标；其最新整页误差为6.9505、内容区为6.5599，不能把预览样本当成真实运营数据。390、1440、1487、1600px视口在侧栏过渡完成后均无页面横向溢出，手机端菜单收起时内容宽约390px。
+- `npm test` 10项通过，`npm run build` 通过。P18与参考图仍有明显差异，尤其是固定公共菜单与参考图该页特有侧栏状态不同；继续以用户要求的统一母版为准。
+
+证据：[分区误差、截图和源码散列](qa/candidates/p18-content-alignment/measurement.json)、[预览最终并排图](qa/candidates/p18-content-alignment/P18-preview-final-compare.png)、[真实错误状态并排图](qa/candidates/p18-content-alignment/P18-normal-final-compare.png)、[四种视口记录](qa/candidates/p18-content-alignment/responsive.json)、[全站内容区排名](qa/candidates/content-triage/ranking.json)。
+
+## 本轮 p01-content-alignment-02
+
+- 在统一母版内只调整P01工作台内容区：状态卡标题、说明、检查时间的蓝灰色与位置，说明字距，卡片和表格行的近白底色，以及底部两张表格的表头底色。近期包裹表头的试验增加误差，已撤回。
+- 1487×1058原尺寸截图只经固定显示器ICC到sRGB转换，最多裁去右侧1px，没有缩放或配准。整页RGB MAE从7.3739降到7.1877，内容区从7.1307降到6.8719；状态卡从7.5580降到6.3790，说明文字从11.4276降到9.4737，检查时间从10.7183降到8.6602。
+- 最近包裹区从7.4317降到7.3399，底部两张表格从10.5997降到10.5031。390、1440、1487、1600px视口无页面横向溢出，三张状态卡内容未溢出；`npm test` 10项与 `npm run build` 通过。P01仍未与参考图逐像素一致。
+
+证据：[分区误差与源码散列](qa/candidates/p01-content-alignment/measurement.json)、[调整前整页并排图](qa/candidates/p01-content-alignment/P01-before-compare.png)、[调整后整页并排图](qa/candidates/p01-content-alignment/P01-final-compare.png)、[状态卡局部对比](qa/candidates/p01-content-alignment/P01-final-metrics-compare.png)、[全站内容区排名](qa/candidates/content-triage/ranking.json)。
+
+## 本轮 shared-shell-consistency-02
+
+- 删除页面选择器对侧栏品牌图标尺寸的覆盖；宽屏折叠图标尺寸现在只由共用 `shell.css` 的视口断点决定。手机端打开侧栏时即使桌面端曾折叠菜单，也会显示完整的品牌和菜单；手机端隐藏折叠按钮。
+- 浏览器重新遍历22个后台路由：菜单22项文字与顺序一致，侧栏始终固定在x=0且宽246px，顶部栏始终从y=0开始且高56px；每个非工作台路由均有可点击的面包屑回退链接，每页当前项均标记 `aria-current="page"`。实际点击“新建包裹 → 包裹中心 → 工作台”两级跳转成功，菜单保持一致。
+- P01底部标题字号与字重试验未改善整图误差，全部撤回。`npm test` 10项与 `npm run build` 通过；设计图仍未达到100%逐像素一致。
+
+证据：[22路由复核](qa/candidates/shared-shell-audit/recheck-2026-09-29.json)、[P01候选试验](qa/candidates/p01-content-alignment/trial-results.json)、[P01当前原尺寸对比](qa/candidates/p01-content-alignment/measurement.json)。
+
+## 本轮 p14-content-alignment-01
+
+- 将九个功能卡片中的示意图标替换为仓库中已有的56×56参考资源，仍保留Ant Design布局与可点击卡片。逐个图标局部误差均下降；“批量入队”卡片点击后对应说明确实展开。
+- 按参考图采样将“操作步骤”底色改为 `#ecf4fe`。1586×992同尺寸截图只做显示器ICC到sRGB转换，没有缩放或配准；整页RGB MAE从7.0810降到6.9276，内容区从6.7309降到6.5246，步骤区从8.6269降到7.2420。
+- 图标对比度增强会增加误差，已撤回。390px手机视口没有页面横向溢出。统一侧栏和面包屑实现保持原样；参考图中逐页不同的侧栏状态仍不作为目标。
+
+证据：[原尺寸误差与源码散列](qa/candidates/p14-content-alignment/measurement.json)、[调整前并排图](qa/candidates/p14-content-alignment/P14-before-compare.png)、[调整后并排图](qa/candidates/p14-content-alignment/P14-final-compare.png)、[图标局部对比](qa/candidates/p14-content-alignment/P14-final-tiles-compare.png)、[步骤区局部对比](qa/candidates/p14-content-alignment/P14-final-steps-compare.png)。
 
 ## 本轮 p20-panel-alignment-01
 

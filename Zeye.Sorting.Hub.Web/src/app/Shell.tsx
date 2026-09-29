@@ -22,9 +22,18 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [openKeys, setOpenKeys] = useState<string[]>(defaultOpenKeys);
+  const siderCollapsed = collapsed && !mobileOpen;
   useEffect(() => {
     setMobileOpen(false);
   }, [location.pathname]);
+  useEffect(() => {
+    const desktop = window.matchMedia('(min-width: 821px)');
+    const closeMobileMenu = () => {
+      if (desktop.matches) setMobileOpen(false);
+    };
+    desktop.addEventListener('change', closeMobileMenu);
+    return () => desktop.removeEventListener('change', closeMobileMenu);
+  }, []);
   const crumbs = crumbsForPath(location.pathname);
   const accountItems: MenuProps['items'] = [
     { key: 'profile', label: '张三 · 演示账号', disabled: true },
@@ -41,16 +50,16 @@ export function AppShell({ children }: { children: ReactNode }) {
   ];
   return <Layout className="app-layout shared-shell">
     {mobileOpen && <div className="mobile-scrim" onClick={() => setMobileOpen(false)} />}
-    <Sider width={246} collapsedWidth={72} collapsed={collapsed} className={`app-sider ${mobileOpen ? 'mobile-open' : ''}`} trigger={null} theme="light">
+    <Sider width={246} collapsedWidth={72} collapsed={siderCollapsed} className={`app-sider ${mobileOpen ? 'mobile-open' : ''}`} trigger={null} theme="light">
       <div className="brand" role="button" aria-label="Zeye Sorting Hub" tabIndex={0} onClick={() => navigate('/overview')} onKeyDown={event => event.key === 'Enter' && navigate('/overview')}>
-        {collapsed ? <BrandMark /> : <HeaderBrand />}
+        {siderCollapsed ? <BrandMark /> : <HeaderBrand />}
       </div>
-      <Menu mode="inline" theme="light" items={navigationItems} selectedKeys={[getSelected(location.pathname)]} openKeys={collapsed ? [] : openKeys} onOpenChange={keys => setOpenKeys(keys)} onClick={({ key }) => key.startsWith('/') && navigate(key)} className="side-menu" inlineIndent={20} />
+      <Menu mode="inline" theme="light" items={navigationItems} selectedKeys={[getSelected(location.pathname)]} openKeys={siderCollapsed ? [] : openKeys} onOpenChange={keys => setOpenKeys(keys)} onClick={({ key }) => key.startsWith('/') && navigate(key)} className="side-menu" inlineIndent={20} />
       <Tooltip title={collapsed ? '展开导航' : '收起导航'}><Button className="collapse-button" aria-label={collapsed ? '展开导航' : '收起导航'} type="text" icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} onClick={() => setCollapsed(!collapsed)} /></Tooltip>
     </Sider>
     <Layout className="body-layout">
       <Header className="app-header">
-        <Button className="mobile-menu-button" aria-label="打开导航" type="text" icon={<MenuUnfoldOutlined />} onClick={() => setMobileOpen(true)} />
+        <Button className="mobile-menu-button" aria-label="打开导航" type="text" icon={<MenuUnfoldOutlined />} onClick={() => { setOpenKeys(keys => keys.length ? keys : defaultOpenKeys()); setMobileOpen(true); }} />
         <div className="header-spacer" />
         <Tooltip title="本地演示：暂无通知"><Button className="header-icon" aria-label="通知" type="text" icon={<BellOutlined />} /></Tooltip>
         <Dropdown menu={{ items: accountItems }} trigger={['click']}><Button type="text" aria-label="张三，账号菜单" className="account-button"><Avatar shape="circle" size={32} style={{ fontSize: 23, color: '#fff', backgroundColor: '#609bf5' }} icon={<Icon component={AccountGlyph} />} /><span>张三</span><DownOutlined className="account-chevron" /></Button></Dropdown>
