@@ -153,12 +153,13 @@ dotnet-counters monitor --name Zeye.Sorting.Hub.Host --counters Zeye.Sorting.Hub
 
 ## 十、Fusion来源事实与跨分表报表基准
 
-`ParcelAnalyticsBenchmark`直接调用生产使用的`ParcelProcessingRepository`和`ParcelAnalyticsReadService`，建立跨周期、失败尝试、未绑定DWS及迟到事实的确定性样本。它测量稳态写入和1/7/31天报表的P50/P95/P99，逐次核对报表口径，并对实际参数化SQL运行MySQL `EXPLAIN ANALYZE`。建表耗时单独记录，不计入稳态写入。样本规模可调，未提供设备峰值和保留时长时，不将样本结果称为目标规模达标。
+`ParcelAnalyticsBenchmark`直接调用生产使用的`ParcelProcessingRepository`、`ParcelAnalyticsReadService`和`ParcelRepository`，建立跨周期、失败尝试、未绑定DWS及迟到事实的确定性样本。它测量稳态写入、1/7/31天报表、包裹列表/游标/详情、并发游标读取及可选的混合读写P50/P95/P99，逐次核对报表与查询结果，并采集实际参数化报表SQL的MySQL `EXPLAIN ANALYZE`或SQL Server `STATISTICS XML`执行计划。建表耗时单独记录，不计入稳态写入。样本规模可调，未提供设备峰值和保留时长时，不将样本结果称为目标规模达标。
 
-工具强制`ZEYE_BENCH_ISOLATED=1`、本机MySQL、非3306端口及`zeye_bench_`库名前缀，拒绝未迁移或已有事实的数据库。建表调用现有分表DDL隔离器。先创建专用隔离库；用同一连接串生成并审核迁移脚本，再执行迁移与基准：
+工具强制`ZEYE_BENCH_ISOLATED=1`和`zeye_bench_`库名前缀。MySQL只允许本机非3306端口；SQL Server只允许`(localdb)\ZeyeQueryBench...`专用实例与集成认证。工具拒绝未迁移或已有事实的数据库，建表调用现有分表DDL隔离器。先创建专用隔离库；用同一连接串生成并审核迁移脚本，再执行迁移与基准。MySQL示例：
 
 ```powershell
 $env:ZEYE_BENCH_ISOLATED = '1'
+$env:ZEYE_BENCH_PROVIDER = 'MySql'
 $env:ZEYE_BENCH_MYSQL = 'Server=127.0.0.1;Port=34068;Database=zeye_bench_example;User=root;SslMode=None;'
 $env:ZEYE_BENCH_START_DATE = '2026-08-15'
 $env:ZEYE_BENCH_DAYS = '31'
@@ -166,6 +167,11 @@ $env:ZEYE_BENCH_PARCELS_PER_DAY = '200'
 $env:ZEYE_BENCH_CONCURRENCY = '8'
 $env:ZEYE_BENCH_ITERATIONS = '15'
 $env:ZEYE_BENCH_GRANULARITY = 'PerWeek'
+$env:ZEYE_BENCH_READ_CONCURRENCY = '8'
+$env:ZEYE_BENCH_READ_REQUESTS = '80'
+$env:ZEYE_BENCH_READ_FANOUT = 'true'
+$env:ZEYE_BENCH_READ_FANOUT_CONCURRENCY = '4'
+$env:ZEYE_BENCH_READ_FANOUT_MAX_PARTITIONS = '12'
 $env:ConnectionStrings__MySql = $env:ZEYE_BENCH_MYSQL
 New-Item -ItemType Directory -Force .codex-artifacts/benchmark-results | Out-Null
 dotnet ef migrations script --idempotent --project Zeye.Sorting.Hub.Infrastructure --startup-project Zeye.Sorting.Hub.Host --output .codex-artifacts/benchmark-results/isolated-migration-preview.sql -- --provider MySql
@@ -174,7 +180,41 @@ dotnet ef database update --project Zeye.Sorting.Hub.Infrastructure --startup-pr
 dotnet run -c Release --project performance/ParcelAnalyticsBenchmark/ParcelAnalyticsBenchmark.csproj
 ```
 
-`ZEYE_BENCH_DAYS`范围31～366，`ZEYE_BENCH_PARCELS_PER_DAY`范围1～10000，`ZEYE_BENCH_CONCURRENCY`范围1～32，`ZEYE_BENCH_ITERATIONS`范围2～100；粒度允许`PerDay`、`PerWeek`、`PerMonth`。默认输出到`.codex-artifacts/benchmark-results/parcel-analytics-sample.json`，可由`ZEYE_BENCH_OUTPUT`覆盖。生成的JSON包含环境和样本参数、写入吞吐、各窗口延迟、SQL及执行计划，不纳入仓库。复测同一库时设置`ZEYE_BENCH_QUERY_ONLY=1`并保持样本参数不变；需要核对同一批事实重放时可设置`ZEYE_BENCH_ALLOW_REPLAY=1`，重复写入耗时不得与首次写入基线混用。
+SQL Server LocalDB示例；实例和库名均为专用隔离名称，`dotnet ef`始终显式传入同一连接串：
+
+```powershell
+sqllocaldb create ZeyeQueryBenchExample
+sqllocaldb start ZeyeQueryBenchExample
+sqlcmd -S '(localdb)\ZeyeQueryBenchExample' -E -C -Q 'CREATE DATABASE [zeye_bench_example]'
+$env:ZEYE_BENCH_ISOLATED = '1'
+$env:ZEYE_BENCH_PROVIDER = 'SqlServer'
+$env:ZEYE_BENCH_SQLSERVER = 'Server=(localdb)\ZeyeQueryBenchExample;Database=zeye_bench_example;Integrated Security=True;TrustServerCertificate=True;Encrypt=False;'
+$env:ZEYE_BENCH_DAYS = '31'
+$env:ZEYE_BENCH_PARCELS_PER_DAY = '200'
+$env:ZEYE_BENCH_CONCURRENCY = '8'
+$env:ZEYE_BENCH_ITERATIONS = '21'
+$env:ZEYE_BENCH_GRANULARITY = 'PerWeek'
+dotnet ef database update --project Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations --startup-project Zeye.Sorting.Hub.Host --context SortingHubDbContext --connection $env:ZEYE_BENCH_SQLSERVER -- --provider SqlServer
+dotnet run -c Release --project performance/ParcelAnalyticsBenchmark/ParcelAnalyticsBenchmark.csproj
+
+# 同一批样本只读复测，false/true分别保存输出并核对Signature：
+$env:ZEYE_BENCH_QUERY_ONLY = '1'
+$env:ZEYE_BENCH_READ_FANOUT = 'false'
+$env:ZEYE_BENCH_OUTPUT = '.codex-artifacts/benchmark-results/sqlserver-single-query.json'
+dotnet run -c Release --project performance/ParcelAnalyticsBenchmark/ParcelAnalyticsBenchmark.csproj
+$env:ZEYE_BENCH_READ_FANOUT = 'true'
+$env:ZEYE_BENCH_OUTPUT = '.codex-artifacts/benchmark-results/sqlserver-fanout-query.json'
+dotnet run -c Release --project performance/ParcelAnalyticsBenchmark/ParcelAnalyticsBenchmark.csproj
+
+# 可选：向下一时间段写入新样本时并发查询固定历史窗口；只在造数完成后使用。
+$env:ZEYE_BENCH_MIXED_WRITES = '500'
+$env:ZEYE_BENCH_OUTPUT = '.codex-artifacts/benchmark-results/sqlserver-mixed.json'
+dotnet run -c Release --project performance/ParcelAnalyticsBenchmark/ParcelAnalyticsBenchmark.csproj
+```
+
+`ZEYE_BENCH_DAYS`范围31～366，`ZEYE_BENCH_PARCELS_PER_DAY`范围1～10000，`ZEYE_BENCH_CONCURRENCY`和`ZEYE_BENCH_READ_CONCURRENCY`范围1～32，`ZEYE_BENCH_READ_REQUESTS`范围2～1000，`ZEYE_BENCH_ITERATIONS`范围2～100，`ZEYE_BENCH_MIXED_WRITES`范围0～10000；粒度允许`PerDay`、`PerWeek`、`PerMonth`。`ZEYE_BENCH_READ_FANOUT`可切换新旧读取路径，分表并行度范围1～8，最大分表数范围1～32。默认输出到`.codex-artifacts/benchmark-results/parcel-analytics-sample.json`，可由`ZEYE_BENCH_OUTPUT`覆盖。生成的JSON包含环境和样本参数、写入吞吐、各窗口延迟、包裹查询结果签名、并发读吞吐、可选混合读写结果、SQL及执行计划，不纳入仓库。复测同一库时设置`ZEYE_BENCH_QUERY_ONLY=1`并保持样本参数不变；需要核对同一批事实重放时可设置`ZEYE_BENCH_ALLOW_REPLAY=1`，重复写入耗时不得与首次写入基线混用。排障时设置`ZEYE_BENCH_VERBOSE_ERRORS=1`，错误堆栈写到标准错误。
+
+包裹列表/游标读取的生产配置为`Persistence:Sharding:ReadFanout:Enabled`、`MaxConcurrency`和`MaxPartitions`。默认对超过2天且无条码子串条件的浅页查询启用有界分表读取；分表数超过12（含历史基础表）、单分表需读取超过2000条候选行的深页、短窗口或条码子串查询继续使用单SQL路径。压测应同时比较两种模式的P95、吞吐和结果签名，按目标环境的连接池与分表数量调优，不直接套用本机示例值。
 
 MySQL迁移`20260928110851_AddParcelProcessingOccurredAtIndex`为基础事实表建索引；SQL Server空库基线`20260928143409_InitialSqlServerSchema`直接包含该索引。新周期物理表由当前EF模型自动带上索引。已有事实物理表先预览补建计划与回滚清单，确认维护窗口后再显式双开关执行：
 

@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- 中文说明：隔离MySQL来源事实与跨分表报表可参数化验收工具。 -->
+  <!-- 中文说明：隔离数据库来源事实与跨分表报表可参数化验收工具。 -->
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
@@ -8,5 +8,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../Zeye.Sorting.Hub.Infrastructure/Zeye.Sorting.Hub.Infrastructure.csproj" />
+    <ProjectReference Include="../../Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations.csproj" />
   </ItemGroup>
 </Project>

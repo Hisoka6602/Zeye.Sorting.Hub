@@ -27,6 +27,12 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
 public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContext>, IParcelRepository {
     /// <summary>实际分表路由，独立单元测试可省略以使用基础表模型。</summary>
     private readonly ParcelPartitionStore? _partitions;
+    /// <summary>是否对长窗口启用有界分表并行读取。</summary>
+    private readonly bool _readFanoutEnabled;
+    /// <summary>分表并行读取的连接数上限。</summary>
+    private readonly int _readFanoutConcurrency;
+    /// <summary>超过该分表数时改用单条数据库合并查询。</summary>
+    private readonly int _readFanoutMaxPartitions;
     /// <summary>
     /// NLog 日志器（静态，无需 DI 注入；日志来源类名为 ParcelRepository）。
     /// </summary>
@@ -110,6 +116,12 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
         : base(contextFactory, NLogLogger) {
         _partitions = partitions;
         var effectiveConfiguration = configuration ?? EmptyConfiguration;
+        _readFanoutEnabled = AutoTuningConfigurationReader.GetBoolOrDefault(effectiveConfiguration,
+            "Persistence:Sharding:ReadFanout:Enabled", true);
+        _readFanoutConcurrency = Math.Clamp(AutoTuningConfigurationReader.GetPositiveIntOrDefault(effectiveConfiguration,
+            "Persistence:Sharding:ReadFanout:MaxConcurrency", 4), 1, 8);
+        _readFanoutMaxPartitions = Math.Clamp(AutoTuningConfigurationReader.GetPositiveIntOrDefault(effectiveConfiguration,
+            "Persistence:Sharding:ReadFanout:MaxPartitions", 12), 1, 32);
         // 步骤 1：守卫开关默认开启（保守默认值，避免危险动作默认放开）。
         _removeExpiredEnableGuard = AutoTuningConfigurationReader.GetBoolOrDefault(
             effectiveConfiguration,
@@ -235,7 +247,10 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
 
         try {
             ValidateQueryFilter(filter);
-            return ExecutePagedQueryAsync((db, query) => ApplyFilter(query, filter, db.Database.ProviderName), pageRequest, cancellationToken);
+            var upperBound = (long)pageRequest.NormalizePageNumber() * pageRequest.NormalizePageSize();
+            return _partitions is not null && _readFanoutEnabled && PreferReadFanout(filter) && upperBound <= MaxPartitionTopRows
+                ? ExecuteAdaptivePageQueryAsync(filter, pageRequest, (int)upperBound, cancellationToken)
+                : ExecutePagedQueryAsync((db, query) => ApplyFilter(query, filter, db.Database.ProviderName), pageRequest, cancellationToken);
         }
         catch (ValidationException ex) {
             Logger.Warn(
@@ -260,11 +275,11 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
 
         try {
             ValidateQueryFilter(filter);
-            return ExecuteCursorQueryAsync(
-                (db, query) => ApplyFilter(query, filter, db.Database.ProviderName)
-                    .ApplyCursorCondition(pageRequest),
-                pageRequest,
-                cancellationToken);
+            return _partitions is null || !_readFanoutEnabled || !PreferReadFanout(filter)
+                ? ExecuteCursorQueryAsync(
+                    (db, query) => ApplyFilter(query, filter, db.Database.ProviderName)
+                        .ApplyCursorCondition(pageRequest), pageRequest, cancellationToken)
+                : ExecuteAdaptiveCursorQueryAsync(filter, pageRequest, cancellationToken);
         }
         catch (ValidationException ex) {
             Logger.Warn(
@@ -597,13 +612,16 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     private async Task<PageResult<ParcelSummaryReadModel>> ExecutePagedQueryAsync(
         Func<SortingHubDbContext, IQueryable<Parcel>, IQueryable<Parcel>> queryBuilder,
         PageRequest pageRequest,
-        CancellationToken cancellationToken) {
+        CancellationToken cancellationToken,
+        IReadOnlyList<string>? suffixes = null) {
         var pageNumber = pageRequest.NormalizePageNumber();
         var pageSize = pageRequest.NormalizePageSize();
 
         try {
             await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
-            var query = queryBuilder(db, await BuildPartitionQueryAsync(db, cancellationToken));
+            var source = suffixes is null ? await BuildPartitionQueryAsync(db, cancellationToken)
+                : ParcelPartitionQueryBuilder.BuildFromSuffixes<Parcel>(db, suffixes);
+            var query = queryBuilder(db, source);
 
             var totalCount = pageRequest.IncludeTotalCount
                 ? await query.LongCountAsync(cancellationToken)
@@ -629,6 +647,110 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
         }
     }
 
+    /// <summary>依据目录中实际分表数选择查询路径，避免按日分表过多时产生大量网络往返。</summary>
+    private async Task<PageResult<ParcelSummaryReadModel>> ExecuteAdaptivePageQueryAsync(
+        ParcelQueryFilter filter, PageRequest request, int topRows, CancellationToken cancellationToken) {
+        var suffixes = await _partitions!.GetReadSuffixesAsync(cancellationToken);
+        if (suffixes.Count > _readFanoutMaxPartitions)
+            return await ExecutePagedQueryAsync((db, query) => ApplyFilter(query, filter, db.Database.ProviderName),
+                request, cancellationToken, suffixes);
+        try {
+            return await ExecutePartitionPageQueryAsync(filter, request, topRows, suffixes, cancellationToken);
+        }
+        catch (Exception ex) {
+            Logger.Error(ex, "有界分表分页查询失败，PageNumber={PageNumber}, PageSize={PageSize}, PartitionCount={PartitionCount}",
+                request.PageNumber, request.PageSize, suffixes.Count);
+            throw;
+        }
+    }
+
+    /// <summary>每个物理周期只读取全局分页所需的前 K 行，再稳定合并；深页沿用数据库合并查询。</summary>
+    private async Task<PageResult<ParcelSummaryReadModel>> ExecutePartitionPageQueryAsync(
+        ParcelQueryFilter filter, PageRequest request, int topRows, IReadOnlyList<string> suffixes,
+        CancellationToken cancellationToken) {
+        var pageNumber = request.NormalizePageNumber();
+        var pageSize = request.NormalizePageSize();
+        var results = await ReadPartitionTopRowsAsync(filter, null, topRows, request.IncludeTotalCount, suffixes, cancellationToken);
+        return new PageResult<ParcelSummaryReadModel> {
+            Items = MergeTopRows(results, (pageNumber - 1) * pageSize, pageSize),
+            PageNumber = pageNumber,
+            PageSize = pageSize,
+            TotalCount = request.IncludeTotalCount ? results.Sum(result => result.Count) : 0L
+        };
+    }
+
+    /// <summary>依据目录中实际分表数选择游标查询路径。</summary>
+    private async Task<CursorPageResult<ParcelSummaryReadModel>> ExecuteAdaptiveCursorQueryAsync(
+        ParcelQueryFilter filter, CursorPageRequest request, CancellationToken cancellationToken) {
+        var suffixes = await _partitions!.GetReadSuffixesAsync(cancellationToken);
+        if (suffixes.Count > _readFanoutMaxPartitions)
+            return await ExecuteCursorQueryAsync((db, query) => ApplyFilter(query, filter, db.Database.ProviderName)
+                .ApplyCursorCondition(request), request, cancellationToken, suffixes);
+        try {
+            return await ExecutePartitionCursorQueryAsync(filter, request, suffixes, cancellationToken);
+        }
+        catch (Exception ex) {
+            Logger.Error(ex, "有界分表游标查询失败，PageSize={PageSize}, PartitionCount={PartitionCount}",
+                request.PageSize, suffixes.Count);
+            throw;
+        }
+    }
+
+    /// <summary>游标只从各周期读取 pageSize+1 行，避免数据库先物化所有历史周期再全局排序。</summary>
+    private async Task<CursorPageResult<ParcelSummaryReadModel>> ExecutePartitionCursorQueryAsync(
+        ParcelQueryFilter filter, CursorPageRequest request, IReadOnlyList<string> suffixes,
+        CancellationToken cancellationToken) {
+        var pageSize = request.NormalizePageSize();
+        var results = await ReadPartitionTopRowsAsync(filter, request, pageSize + 1, false, suffixes, cancellationToken);
+        var merged = MergeTopRows(results, 0, pageSize + 1);
+        var hasMore = merged.Length > pageSize;
+        var items = hasMore ? merged[..pageSize] : merged;
+        var last = hasMore ? items[^1] : null;
+        return new CursorPageResult<ParcelSummaryReadModel> {
+            Items = items,
+            PageSize = pageSize,
+            HasMore = hasMore,
+            NextScannedTimeLocal = last?.ScannedTime,
+            NextId = last?.Id
+        };
+    }
+
+    /// <summary>并行数固定受限，防止按日分表过多时耗尽数据库连接池。</summary>
+    private async Task<(IReadOnlyList<ParcelSummaryReadModel> Items, long Count)[]> ReadPartitionTopRowsAsync(
+        ParcelQueryFilter filter, CursorPageRequest? cursor, int topRows, bool includeCount,
+        IReadOnlyList<string> suffixes, CancellationToken cancellationToken) {
+        var results = new (IReadOnlyList<ParcelSummaryReadModel> Items, long Count)[suffixes.Count];
+        await Parallel.ForEachAsync(Enumerable.Range(0, suffixes.Count),
+            new ParallelOptions { MaxDegreeOfParallelism = _readFanoutConcurrency, CancellationToken = cancellationToken },
+            async (index, token) => {
+                await using var db = await ContextFactory.CreateDbContextAsync(token);
+                var query = ApplyFilter(ParcelPartitionQueryBuilder.BuildSingle<Parcel>(db, suffixes[index]),
+                    filter, db.Database.ProviderName);
+                if (cursor is not null) query = query.ApplyCursorCondition(cursor);
+                var count = includeCount ? await query.LongCountAsync(token) : 0L;
+                var items = await query.OrderByDescending(x => x.ScannedTime).ThenByDescending(x => x.Id)
+                    .Take(topRows).Select(SelectSummaryExpression).ToListAsync(token);
+                results[index] = (items, count);
+            });
+        return results;
+    }
+
+    /// <summary>按扫码时间和主键稳定合并各分表的有界候选行。</summary>
+    private static ParcelSummaryReadModel[] MergeTopRows(
+        (IReadOnlyList<ParcelSummaryReadModel> Items, long Count)[] results, int skip, int take) =>
+        results.SelectMany(result => result.Items)
+            .OrderByDescending(item => item.ScannedTime).ThenByDescending(item => item.Id)
+            .Skip(skip).Take(take).ToArray();
+
+    /// <summary>短扫码窗口的单条数据库查询更快；缺少边界或长窗口才走有界分表读取。</summary>
+    private static bool PreferReadFanout(ParcelQueryFilter filter) =>
+        string.IsNullOrWhiteSpace(filter.BarCodeKeyword)
+        && (!filter.ScannedTimeStart.HasValue || !filter.ScannedTimeEnd.HasValue
+            || filter.ScannedTimeEnd.Value - filter.ScannedTimeStart.Value > TimeSpan.FromDays(2));
+
+    /// <summary>单个分表允许提取的最大候选行数，深页改用原有数据库查询。</summary>
+    private const int MaxPartitionTopRows = 2000;
+
     /// <summary>
     /// 执行游标分页查询。
     /// </summary>
@@ -639,12 +761,15 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     private async Task<CursorPageResult<ParcelSummaryReadModel>> ExecuteCursorQueryAsync(
         Func<SortingHubDbContext, IQueryable<Parcel>, IQueryable<Parcel>> queryBuilder,
         CursorPageRequest pageRequest,
-        CancellationToken cancellationToken) {
+        CancellationToken cancellationToken,
+        IReadOnlyList<string>? suffixes = null) {
         var pageSize = pageRequest.NormalizePageSize();
 
         try {
             await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
-            var query = queryBuilder(db, await BuildPartitionQueryAsync(db, cancellationToken));
+            var source = suffixes is null ? await BuildPartitionQueryAsync(db, cancellationToken)
+                : ParcelPartitionQueryBuilder.BuildFromSuffixes<Parcel>(db, suffixes);
+            var query = queryBuilder(db, source);
             var items = await query
                 .OrderByDescending(x => x.ScannedTime)
                 .ThenByDescending(x => x.Id)
