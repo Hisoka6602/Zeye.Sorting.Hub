@@ -704,6 +704,7 @@ Zeye.Sorting.Hub.Web/src/
   features/parcels/ParcelFacts.tsx
   features/operations/AnalyticsPage.tsx
 Zeye.Sorting.Hub.Web/tests/client.test.mjs
+Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证与未通过项记录）
 ```
 
 - `Fusion数据持久化实施与验收.md`：完整实施范围、配置说明、来源身份与量测单位约定、验收证据与后续事项。
