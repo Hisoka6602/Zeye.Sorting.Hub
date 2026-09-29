@@ -5,18 +5,22 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using MySqlConnector;
 using NLog;
+using NLog.Config;
+using NLog.Targets;
 using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.Processing;
 using Zeye.Sorting.Hub.Domain.Enums.Parcels;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.Filters;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.Paging;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.ReadModels;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 using Zeye.Sorting.Hub.Infrastructure.Queries;
@@ -24,7 +28,7 @@ using Zeye.Sorting.Hub.Infrastructure.Repositories;
 
 namespace Zeye.Sorting.Hub.Performance.ParcelAnalyticsBenchmark;
 
-/// <summary>在强制隔离的MySQL库中生成确定性来源事实并测量真实仓储与报表查询。</summary>
+/// <summary>在强制隔离的本机数据库中生成确定性来源事实并测量真实仓储与报表查询。</summary>
 internal static class Program {
     /// <summary>工具异常日志。</summary>
     private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
@@ -34,14 +38,43 @@ internal static class Program {
     /// <summary>执行隔离校验、预建、写入、查询和实际SQL执行计划采集。</summary>
     private static async Task<int> Main() {
         try {
+            if (Environment.GetEnvironmentVariable("ZEYE_BENCH_VERBOSE_ERRORS") == "1") {
+                var logging = new LoggingConfiguration();
+                logging.AddRule(LogLevel.Error, LogLevel.Fatal, new ConsoleTarget("benchmark-errors") {
+                    Error = true, Layout = "${level}: ${message} ${exception:format=tostring}"
+                });
+                LogManager.Configuration = logging;
+            }
             if (Environment.GetEnvironmentVariable("ZEYE_BENCH_ISOLATED") != "1")
-                throw new InvalidOperationException("必须显式设置ZEYE_BENCH_ISOLATED=1，且仅使用隔离MySQL实例。");
-            var connection = Environment.GetEnvironmentVariable("ZEYE_BENCH_MYSQL")
-                ?? throw new InvalidOperationException("缺少ZEYE_BENCH_MYSQL连接字符串。");
-            var address = new MySqlConnectionStringBuilder(connection);
-            if (address.Server is not ("127.0.0.1" or "localhost") || address.Port is <= 1024 or 3306
-                || !address.Database.StartsWith("zeye_bench_", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("压测仅允许非3306端口的本机zeye_bench_前缀隔离库。");
+                throw new InvalidOperationException("必须显式设置ZEYE_BENCH_ISOLATED=1，且仅使用隔离数据库。");
+            var provider = Read("ZEYE_BENCH_PROVIDER", "MySql");
+            var connection = provider switch {
+                "MySql" => Environment.GetEnvironmentVariable("ZEYE_BENCH_MYSQL"),
+                "SqlServer" => Environment.GetEnvironmentVariable("ZEYE_BENCH_SQLSERVER"),
+                _ => throw new ArgumentException("ZEYE_BENCH_PROVIDER只能为MySql或SqlServer。")
+            } ?? throw new InvalidOperationException($"缺少ZEYE_BENCH_{provider.ToUpperInvariant()}连接字符串。");
+            string server;
+            string database;
+            int? port;
+            if (provider == "MySql") {
+                var address = new MySqlConnectionStringBuilder(connection);
+                if (address.Server is not ("127.0.0.1" or "localhost") || address.Port is <= 1024 or 3306
+                    || !address.Database.StartsWith("zeye_bench_", StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("压测仅允许非3306端口的本机zeye_bench_前缀隔离库。");
+                server = address.Server;
+                database = address.Database;
+                port = (int)address.Port;
+            }
+            else {
+                var address = new SqlConnectionStringBuilder(connection);
+                var isolatedLocalDb = address.DataSource.StartsWith(@"(localdb)\ZeyeQueryBench", StringComparison.OrdinalIgnoreCase);
+                if (!isolatedLocalDb || !address.InitialCatalog.StartsWith("zeye_bench_", StringComparison.OrdinalIgnoreCase)
+                    || !address.IntegratedSecurity || address.AttachDBFilename.Length > 0)
+                    throw new InvalidOperationException("SQL Server压测仅允许专用ZeyeQueryBench LocalDB实例中的zeye_bench_前缀数据库和集成认证。");
+                server = address.DataSource;
+                database = address.InitialCatalog;
+                port = null;
+            }
 
             var start = DateTime.ParseExact(Read("ZEYE_BENCH_START_DATE", "2026-08-15"), "yyyy-MM-dd", CultureInfo.InvariantCulture);
             var days = ReadInt("ZEYE_BENCH_DAYS", 31, 31, 366);
@@ -50,19 +83,25 @@ internal static class Program {
             var iterations = ReadInt("ZEYE_BENCH_ITERATIONS", 7, 2, 100);
             var readConcurrency = ReadInt("ZEYE_BENCH_READ_CONCURRENCY", 4, 1, 32);
             var readRequests = ReadInt("ZEYE_BENCH_READ_REQUESTS", 40, 2, 1000);
+            var mixedWrites = ReadInt("ZEYE_BENCH_MIXED_WRITES", 0, 0, 10000);
             var fanoutConcurrency = ReadInt("ZEYE_BENCH_READ_FANOUT_CONCURRENCY", 4, 1, 8);
             var fanoutMaxPartitions = ReadInt("ZEYE_BENCH_READ_FANOUT_MAX_PARTITIONS", 12, 1, 32);
             var granularity = Read("ZEYE_BENCH_GRANULARITY", "PerWeek");
             var queryOnly = Environment.GetEnvironmentVariable("ZEYE_BENCH_QUERY_ONLY") == "1";
+            if (mixedWrites > 0 && !queryOnly)
+                throw new InvalidOperationException("混合读写压测必须对已完成造数的隔离库设置ZEYE_BENCH_QUERY_ONLY=1。");
             if (granularity is not ("PerDay" or "PerWeek" or "PerMonth"))
                 throw new ArgumentException("ZEYE_BENCH_GRANULARITY只能为PerDay、PerWeek或PerMonth。");
             var runId = $"bench-{start:yyyyMMdd}-{days}-{parcelsPerDay}";
             var output = Path.GetFullPath(Read("ZEYE_BENCH_OUTPUT", ".codex-artifacts/benchmark-results/parcel-analytics-sample.json"));
             var interceptor = new AnalyticsSqlCaptureInterceptor();
-            var options = new DbContextOptionsBuilder<SortingHubDbContext>()
-                .UseMySql(connection, new MySqlServerVersion(new Version(8, 0, 46)), mysql =>
-                    mysql.EnableRetryOnFailure(5, TimeSpan.FromSeconds(1), null))
-                .AddInterceptors(interceptor).Options;
+            var optionsBuilder = new DbContextOptionsBuilder<SortingHubDbContext>();
+            if (provider == "MySql") optionsBuilder.UseMySql(connection, new MySqlServerVersion(new Version(8, 0, 46)), mysql =>
+                mysql.EnableRetryOnFailure(5, TimeSpan.FromSeconds(1), null));
+            else optionsBuilder.UseSqlServer(connection, sqlServer => sqlServer
+                .MigrationsAssembly(SqlServerMigrationAssembly.Name)
+                .EnableRetryOnFailure(5, TimeSpan.FromSeconds(1), null));
+            var options = optionsBuilder.AddInterceptors(interceptor).Options;
             IDbContextFactory<SortingHubDbContext> factory = new PooledDbContextFactory<SortingHubDbContext>(options);
             await using (var db = await factory.CreateDbContextAsync()) {
                 var pending = await db.Database.GetPendingMigrationsAsync();
@@ -236,12 +275,17 @@ internal static class Program {
                 LatencyMs = Stats(parallelLatencies.ToArray())
             };
 
+            var mixedReadWrite = mixedWrites > 0
+                ? await MeasureMixedReadWriteAsync(writer, parcelReader, partitions, fullRange, expectedCursorIds,
+                    start.AddDays(days), mixedWrites, concurrency, readConcurrency, readRequests)
+                : null;
+
             var resultDocument = new {
                 GeneratedAtLocal = DateTime.Now,
-                Environment = new { address.Server, address.Port, address.Database, Provider = "MySQL 8.0.46", Granularity = granularity,
+                Environment = new { Server = server, Port = port, Database = database, Provider = provider, Granularity = granularity,
                     RuntimeVersion = System.Environment.Version.ToString(), ProcessorCount = System.Environment.ProcessorCount,
                     ServerGc = System.Runtime.GCSettings.IsServerGC },
-                Input = new { StartDate = start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), Days = days, ParcelsPerDay = parcelsPerDay, Concurrency = concurrency, Iterations = iterations, ReadConcurrency = readConcurrency, ReadRequests = readRequests, FanoutConcurrency = fanoutConcurrency, FanoutMaxPartitions = fanoutMaxPartitions, QueryOnly = queryOnly },
+                Input = new { StartDate = start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), Days = days, ParcelsPerDay = parcelsPerDay, Concurrency = concurrency, Iterations = iterations, ReadConcurrency = readConcurrency, ReadRequests = readRequests, MixedWrites = mixedWrites, FanoutConcurrency = fanoutConcurrency, FanoutMaxPartitions = fanoutMaxPartitions, QueryOnly = queryOnly },
                 Sample = new { ParcelCount = days * parcelsPerDay, FactCount = records.Count, PhysicalPeriods = periods.Length, DuplicateCount = duplicateCount },
                 PrebuildMilliseconds = ElapsedMilliseconds(prebuildClock),
                 Writes = new { Count = writeSamples.Count, ElapsedSeconds = ElapsedMilliseconds(writeClock) / 1000m,
@@ -250,11 +294,12 @@ internal static class Program {
                 Reports = queryResults,
                 ParcelQueries = parcelQueries,
                 ParallelCursorReads = parallelReads,
+                MixedReadWrite = mixedReadWrite,
                 ExplainAnalyze = plans
             };
             Directory.CreateDirectory(Path.GetDirectoryName(output)!);
             await File.WriteAllTextAsync(output, JsonSerializer.Serialize(resultDocument, new JsonSerializerOptions { WriteIndented = true }));
-            Console.WriteLine($"BENCH_OK database={address.Database} parcels={days * parcelsPerDay} facts={records.Count} periods={periods.Length} writes={writeSamples.Count} result={output}");
+            Console.WriteLine($"BENCH_OK database={database} parcels={days * parcelsPerDay} facts={records.Count} periods={periods.Length} writes={writeSamples.Count} result={output}");
             return 0;
         }
         catch (Exception exception) {
@@ -342,14 +387,68 @@ internal static class Program {
         return new { Name = name, SamplesMs = samples, LatencyMs = Stats(samples), Signature = signature };
     }
 
+    /// <summary>在稳定历史窗口上并发读取，同时向新的时间周期追加真实来源事实。</summary>
+    private static async Task<object> MeasureMixedReadWriteAsync(ParcelProcessingRepository writer,
+        ParcelRepository parcelReader, ParcelPartitionStore partitions, ParcelQueryFilter filter,
+        IReadOnlyList<long> expectedCursorIds, DateTime nextDay, int mixedWrites, int writeConcurrency,
+        int readConcurrency, int readRequests) {
+        await partitions.EnsureCreatedAsync(partitions.Resolve(nextDay), default);
+        var runId = "bench-mixed-" + Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture);
+        var records = BuildRecords(nextDay, 1, mixedWrites, runId);
+        var writeLatencies = new ConcurrentBag<decimal>();
+        var readLatencies = new ConcurrentBag<decimal>();
+        var startGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var timer = Stopwatch.StartNew();
+        var writeTask = Task.Run(async () => {
+            await startGate.Task;
+            foreach (var group in records.GroupBy(record => record.Stage == ParcelProcessingStage.Detected ? 0 : 1).OrderBy(group => group.Key))
+                await Parallel.ForEachAsync(group, new ParallelOptions { MaxDegreeOfParallelism = writeConcurrency }, async (record, token) => {
+                    var sample = Stopwatch.StartNew();
+                    var result = await writer.AppendAsync(record, token);
+                    sample.Stop();
+                    if (!result.IsSuccess || result.Value!.IsDuplicate)
+                        throw new InvalidOperationException($"混合负载来源事实写入失败或重复：{record.RecordId} {result.ErrorCode}。");
+                    writeLatencies.Add(ElapsedMilliseconds(sample));
+                });
+        });
+        var readTask = Task.Run(async () => {
+            await startGate.Task;
+            await Parallel.ForEachAsync(Enumerable.Range(0, readRequests),
+                new ParallelOptions { MaxDegreeOfParallelism = readConcurrency }, async (_, token) => {
+                    var sample = Stopwatch.StartNew();
+                    var page = await parcelReader.GetCursorPagedAsync(filter, new CursorPageRequest { PageSize = 50 }, token);
+                    sample.Stop();
+                    if (!page.Items.Select(item => item.Id).SequenceEqual(expectedCursorIds))
+                        throw new InvalidOperationException("混合读写期间历史窗口游标结果发生变化。");
+                    readLatencies.Add(ElapsedMilliseconds(sample));
+                });
+        });
+        startGate.SetResult();
+        await Task.WhenAll(writeTask, readTask);
+        timer.Stop();
+        return new { RunId = runId, Writes = writeLatencies.Count, Reads = readLatencies.Count,
+            ElapsedSeconds = ElapsedMilliseconds(timer) / 1000m,
+            WriteLatencyMs = Stats(writeLatencies.ToArray()), ReadLatencyMs = Stats(readLatencies.ToArray()) };
+    }
+
     /// <summary>使用Stopwatch计数器换算定点毫秒值。</summary>
     private static decimal ElapsedMilliseconds(Stopwatch stopwatch) => stopwatch.ElapsedTicks * 1000m / Stopwatch.Frequency;
 
-    /// <summary>对已执行的参数化报表SQL采集MySQL实际执行计划。</summary>
+    /// <summary>对已执行的参数化报表SQL采集数据库实际执行计划。</summary>
     private static async Task<string> ExplainAsync(SortingHubDbContext db, string sql,
         (string Name, object? Value, DbType Type)[] parameters) {
         var connection = db.Database.GetDbConnection();
         if (connection.State != ConnectionState.Open) await connection.OpenAsync();
+        if (db.Database.IsSqlServer()) {
+            await using var toggle = connection.CreateCommand();
+            toggle.CommandText = "SET STATISTICS XML ON";
+            await toggle.ExecuteNonQueryAsync();
+            try { return await ExecuteSqlServerPlanAsync(connection, sql, parameters); }
+            finally {
+                toggle.CommandText = "SET STATISTICS XML OFF";
+                await toggle.ExecuteNonQueryAsync();
+            }
+        }
         await using var command = connection.CreateCommand();
         command.CommandText = "EXPLAIN ANALYZE " + sql;
         command.CommandTimeout = 120;
@@ -364,5 +463,29 @@ internal static class Program {
         var lines = new List<string>();
         while (await result.ReadAsync()) lines.Add(result.GetString(0));
         return string.Join(Environment.NewLine, lines);
+    }
+
+    /// <summary>SQL Server在执行查询后返回独立的Showplan XML结果集。</summary>
+    private static async Task<string> ExecuteSqlServerPlanAsync(System.Data.Common.DbConnection connection, string sql,
+        (string Name, object? Value, DbType Type)[] parameters) {
+        await using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        command.CommandTimeout = 120;
+        foreach (var item in parameters) {
+            var parameter = command.CreateParameter();
+            parameter.ParameterName = item.Name;
+            parameter.Value = item.Value ?? DBNull.Value;
+            parameter.DbType = item.Type;
+            command.Parameters.Add(parameter);
+        }
+        await using var reader = await command.ExecuteReaderAsync();
+        string? plan = null;
+        do {
+            if (reader.FieldCount == 1 && reader.GetName(0).Contains("Showplan", StringComparison.OrdinalIgnoreCase)) {
+                if (await reader.ReadAsync()) plan = reader.GetValue(0).ToString();
+            }
+            else while (await reader.ReadAsync()) { }
+        } while (await reader.NextResultAsync());
+        return plan ?? throw new InvalidOperationException("SQL Server未返回实际执行计划。");
     }
 }

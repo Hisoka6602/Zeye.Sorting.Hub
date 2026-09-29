@@ -367,3 +367,5 @@ FodyWeavers.xsd
 logs/
 # 整改验证依赖缓存、构建产物与测试结果由本地运行生成。
 .codex-artifacts/
+# 隔离数据库压测的原始结果与错误日志，可能包含执行计划和样本详情。
+performance/results/

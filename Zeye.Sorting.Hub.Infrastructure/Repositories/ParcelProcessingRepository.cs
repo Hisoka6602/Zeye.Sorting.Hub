@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Data;
 using System.Security.Cryptography;
 using System.Text.Json;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -42,7 +43,9 @@ public sealed class ParcelProcessingRepository : IParcelProcessingRepository {
             record.Validate();
             await using var template = await _factory.CreateDbContextAsync(cancellationToken);
             var strategy = template.Database.CreateExecutionStrategy();
-            return await strategy.ExecuteAsync(async () => {
+            var isSqlServer = template.Database.IsSqlServer();
+            /// <summary>执行一次完整的凭据检查与原子写入，供事务策略和唯一键竞争重试。</summary>
+            async Task<RepositoryResult<ParcelProcessingWriteResult>> AppendOnceAsync() {
                 // 步骤1：全局凭据优先检查，重试跨周期仍命中首次写入的物理表。
                 await using var lookup = await _factory.CreateDbContextAsync(cancellationToken);
                 var existingReceipt = await lookup.Set<ParcelProcessingReceipt>().AsNoTracking().SingleOrDefaultAsync(x => x.Key == recordKey, cancellationToken);
@@ -54,7 +57,10 @@ public sealed class ParcelProcessingRepository : IParcelProcessingRepository {
                 var suffix = location?.Suffix ?? period.Suffix;
                 if (location is null) await _partitions.EnsureCreatedAsync(period, cancellationToken);
                 await using var db = await _partitions.CreateContextAsync(suffix, cancellationToken);
-                await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+                // SQL Server 的 SERIALIZABLE 缺失键范围锁会使不同包裹的并发插入互相死锁；
+                // 主键与 SourceKey 唯一索引负责跨实例冲突检测，冲突后重试整个事务。
+                await using var transaction = await db.Database.BeginTransactionAsync(
+                    isSqlServer ? IsolationLevel.ReadCommitted : IsolationLevel.Serializable, cancellationToken);
                 // 步骤2：事务内复核身份；并发冲突交由整个事务重试，不吞掉已变更的消息。
                 existingReceipt = await db.Set<ParcelProcessingReceipt>().AsNoTracking().SingleOrDefaultAsync(x => x.Key == recordKey, cancellationToken);
                 if (existingReceipt is not null) return CheckReceipt(existingReceipt, record.PayloadHash);
@@ -96,7 +102,14 @@ public sealed class ParcelProcessingRepository : IParcelProcessingRepository {
                 await db.SaveChangesAsync(cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
                 return RepositoryResult<ParcelProcessingWriteResult>.Success(new() { ParcelId = parcel?.Id, PartitionSuffix = suffix });
-            });
+            }
+            for (var conflictAttempt = 0; ; conflictAttempt++) {
+                try { return await strategy.ExecuteAsync(AppendOnceAsync); }
+                catch (DbUpdateException ex) when (isSqlServer && IsSqlServerUniqueConflict(ex) && conflictAttempt < 4) {
+                    Logger.Warn(ex, "处理记录唯一键竞争，重试完整事务，RecordId={RecordId}, Attempt={Attempt}", record.RecordId, conflictAttempt + 1);
+                    await Task.Delay(5 * (conflictAttempt + 1), cancellationToken);
+                }
+            }
         }
         catch (OperationCanceledException ex) { Logger.Warn(ex, "处理记录写入已取消，RecordId={RecordId}", record.RecordId); throw; }
         catch (Exception ex) {
@@ -118,6 +131,13 @@ public sealed class ParcelProcessingRepository : IParcelProcessingRepository {
     private static RepositoryResult<ParcelProcessingWriteResult> CheckReceipt(ParcelProcessingReceipt receipt, string hash) => receipt.PayloadHash == hash
         ? RepositoryResult<ParcelProcessingWriteResult>.Success(new() { ParcelId = receipt.ParcelId, PartitionSuffix = receipt.Suffix, IsDuplicate = true })
         : RepositoryResult<ParcelProcessingWriteResult>.Fail("相同RecordId已保存不同内容，禁止覆盖历史记录。", "ParcelProcessingConflict");
+
+    /// <summary>SQL Server 在已提交的并发事务插入相同凭据或来源键时返回唯一约束冲突。</summary>
+    private static bool IsSqlServerUniqueConflict(Exception exception) => exception switch {
+        SqlException sql => sql.Number is 2601 or 2627,
+        { InnerException: { } inner } => IsSqlServerUniqueConflict(inner),
+        _ => false
+    };
 
     /// <summary>使用无歧义的JSON数组计算身份哈希，条码不参与包裹身份。</summary>
     private static string HashIdentity(params string[] parts) => Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(parts)));
