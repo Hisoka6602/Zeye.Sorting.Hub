@@ -14,6 +14,8 @@ using NLog;
 using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.Processing;
 using Zeye.Sorting.Hub.Domain.Enums.Parcels;
+using Zeye.Sorting.Hub.Domain.Repositories.Models.Filters;
+using Zeye.Sorting.Hub.Domain.Repositories.Models.Paging;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.ReadModels;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
@@ -46,6 +48,10 @@ internal static class Program {
             var parcelsPerDay = ReadInt("ZEYE_BENCH_PARCELS_PER_DAY", 20, 1, 10000);
             var concurrency = ReadInt("ZEYE_BENCH_CONCURRENCY", 4, 1, 32);
             var iterations = ReadInt("ZEYE_BENCH_ITERATIONS", 7, 2, 100);
+            var readConcurrency = ReadInt("ZEYE_BENCH_READ_CONCURRENCY", 4, 1, 32);
+            var readRequests = ReadInt("ZEYE_BENCH_READ_REQUESTS", 40, 2, 1000);
+            var fanoutConcurrency = ReadInt("ZEYE_BENCH_READ_FANOUT_CONCURRENCY", 4, 1, 8);
+            var fanoutMaxPartitions = ReadInt("ZEYE_BENCH_READ_FANOUT_MAX_PARTITIONS", 12, 1, 32);
             var granularity = Read("ZEYE_BENCH_GRANULARITY", "PerWeek");
             var queryOnly = Environment.GetEnvironmentVariable("ZEYE_BENCH_QUERY_ONLY") == "1";
             if (granularity is not ("PerDay" or "PerWeek" or "PerMonth"))
@@ -69,12 +75,16 @@ internal static class Program {
             var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Sharding:Strategy:Time:Granularity"] = granularity,
                 ["Persistence:Sharding:WriteRouting:AllowTableCreation"] = "true",
-                ["Persistence:Sharding:WriteRouting:DryRun"] = "false"
+                ["Persistence:Sharding:WriteRouting:DryRun"] = "false",
+                ["Persistence:Sharding:ReadFanout:Enabled"] = Read("ZEYE_BENCH_READ_FANOUT", "true"),
+                ["Persistence:Sharding:ReadFanout:MaxConcurrency"] = fanoutConcurrency.ToString(CultureInfo.InvariantCulture),
+                ["Persistence:Sharding:ReadFanout:MaxPartitions"] = fanoutMaxPartitions.ToString(CultureInfo.InvariantCulture)
             }).Build();
             var partitions = new ParcelPartitionStore(factory, config);
             var writer = new ParcelProcessingRepository(factory, partitions);
             var reader = new ParcelAnalyticsReadService(factory, partitions,
                 new ReportingQueryBudgetPlanner(Options.Create(new ReadOnlyDatabaseOptions())));
+            var parcelReader = new ParcelRepository(factory, config, partitions);
             var records = BuildRecords(start, days, parcelsPerDay, runId);
 
             // 步骤1：受现有分表DDL隔离器保护地预建周期，避免把建表耗时混入稳态写入。
@@ -133,18 +143,113 @@ internal static class Program {
                 }
             }
 
+            // 使用同一批隔离样本测量生产仓储的列表、游标与精确详情读取。
+            var parcelQueries = new List<object>();
+            foreach (var window in windows) {
+                var from = start.AddDays(days - window);
+                var filter = new ParcelQueryFilter {
+                    ScannedTimeStart = from,
+                    ScannedTimeEnd = start.AddDays(days).AddTicks(-1)
+                };
+                var expectedCount = (long)window * parcelsPerDay;
+                parcelQueries.Add(await MeasureQueryAsync($"{window}d-offset-count", iterations, async () => {
+                    var page = await parcelReader.GetPagedAsync(filter,
+                        new PageRequest { PageSize = 50, IncludeTotalCount = true }, default);
+                    if (page.TotalCount != expectedCount || page.Items.Count != Math.Min(50, expectedCount))
+                        throw new InvalidOperationException($"{window}天包裹分页口径不符。");
+                    return $"count={page.TotalCount};ids={string.Join(',', page.Items.Select(x => x.Id))}";
+                }));
+                parcelQueries.Add(await MeasureQueryAsync($"{window}d-offset-no-count", iterations, async () => {
+                    var page = await parcelReader.GetPagedAsync(filter,
+                        new PageRequest { PageSize = 50, IncludeTotalCount = false }, default);
+                    return $"ids={string.Join(',', page.Items.Select(x => x.Id))}";
+                }));
+                parcelQueries.Add(await MeasureQueryAsync($"{window}d-cursor-first", iterations, async () => {
+                    var page = await parcelReader.GetCursorPagedAsync(filter,
+                        new CursorPageRequest { PageSize = 50 }, default);
+                    if (page.Items.Count != Math.Min(50, expectedCount) || page.HasMore != (expectedCount > 50))
+                        throw new InvalidOperationException($"{window}天包裹游标口径不符。");
+                    return $"more={page.HasMore};ids={string.Join(',', page.Items.Select(x => x.Id))}";
+                }));
+            }
+            var fullRange = new ParcelQueryFilter {
+                ScannedTimeStart = start.AddDays(days - 31),
+                ScannedTimeEnd = start.AddDays(days).AddTicks(-1)
+            };
+            var firstCursorPage = await parcelReader.GetCursorPagedAsync(fullRange,
+                new CursorPageRequest { PageSize = 50 }, default);
+            if (firstCursorPage.HasMore)
+                parcelQueries.Add(await MeasureQueryAsync("31d-cursor-second", iterations, async () => {
+                    var page = await parcelReader.GetCursorPagedAsync(fullRange,
+                        new CursorPageRequest { PageSize = 50, LastScannedTimeLocal = firstCursorPage.NextScannedTimeLocal,
+                            LastId = firstCursorPage.NextId }, default);
+                    if (page.Items.Count != Math.Min(50, (long)31 * parcelsPerDay - firstCursorPage.Items.Count)
+                        || page.Items.Any(x => firstCursorPage.Items.Any(y => x.Id == y.Id)))
+                        throw new InvalidOperationException("包裹游标续页口径不符。");
+                    return $"more={page.HasMore};ids={string.Join(',', page.Items.Select(x => x.Id))}";
+                }));
+            if ((long)31 * parcelsPerDay >= 5500)
+                parcelQueries.Add(await MeasureQueryAsync("31d-offset-deep", iterations, async () => {
+                    var page = await parcelReader.GetPagedAsync(fullRange,
+                        new PageRequest { PageNumber = 110, PageSize = 50, IncludeTotalCount = true }, default);
+                    if (page.TotalCount != (long)31 * parcelsPerDay || page.Items.Count != 50)
+                        throw new InvalidOperationException("包裹深页口径不符。");
+                    return $"count={page.TotalCount};ids={string.Join(',', page.Items.Select(x => x.Id))}";
+                }));
+            var lastSourceId = (long)days * parcelsPerDay;
+            var allFilter = fullRange with {
+                BarCodeKeyword = "BENCH-" + (lastSourceId % 13 == 0 ? lastSourceId - 1 : lastSourceId)
+            };
+            parcelQueries.Add(await MeasureQueryAsync("31d-barcode-substring", iterations, async () => {
+                var page = await parcelReader.GetCursorPagedAsync(allFilter,
+                    new CursorPageRequest { PageSize = 50 }, default);
+                if (page.Items.Count == 0) throw new InvalidOperationException("条码子串查询没有命中样本。");
+                return $"more={page.HasMore};ids={string.Join(',', page.Items.Select(x => x.Id))}";
+            }));
+            var detailPage = await parcelReader.GetCursorPagedAsync(allFilter,
+                new CursorPageRequest { PageSize = 1 }, default);
+            var detailId = detailPage.Items[0].Id;
+            parcelQueries.Add(await MeasureQueryAsync("detail-by-id", iterations, async () => {
+                var parcel = await parcelReader.GetByIdAsync(detailId, default);
+                if (parcel?.Id != detailId) throw new InvalidOperationException("包裹详情精确查询口径不符。");
+                return $"id={parcel.Id};records={parcel.ProcessingRecords.Count}";
+            }));
+
+            var expectedCursorIds = firstCursorPage.Items.Select(item => item.Id).ToArray();
+            var parallelLatencies = new ConcurrentBag<decimal>();
+            var parallelClock = Stopwatch.StartNew();
+            await Parallel.ForEachAsync(Enumerable.Range(0, readRequests),
+                new ParallelOptions { MaxDegreeOfParallelism = readConcurrency }, async (_, token) => {
+                    var timer = Stopwatch.StartNew();
+                    var page = await parcelReader.GetCursorPagedAsync(fullRange,
+                        new CursorPageRequest { PageSize = 50 }, token);
+                    timer.Stop();
+                    if (!page.Items.Select(item => item.Id).SequenceEqual(expectedCursorIds))
+                        throw new InvalidOperationException("并发游标查询的结果与串行预热结果不一致。");
+                    parallelLatencies.Add(ElapsedMilliseconds(timer));
+                });
+            parallelClock.Stop();
+            var parallelReads = new {
+                Concurrency = readConcurrency, Requests = readRequests,
+                ElapsedSeconds = ElapsedMilliseconds(parallelClock) / 1000m,
+                RequestsPerSecond = readRequests * 1000m / ElapsedMilliseconds(parallelClock),
+                LatencyMs = Stats(parallelLatencies.ToArray())
+            };
+
             var resultDocument = new {
                 GeneratedAtLocal = DateTime.Now,
                 Environment = new { address.Server, address.Port, address.Database, Provider = "MySQL 8.0.46", Granularity = granularity,
                     RuntimeVersion = System.Environment.Version.ToString(), ProcessorCount = System.Environment.ProcessorCount,
                     ServerGc = System.Runtime.GCSettings.IsServerGC },
-                Input = new { StartDate = start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), Days = days, ParcelsPerDay = parcelsPerDay, Concurrency = concurrency, Iterations = iterations, QueryOnly = queryOnly },
+                Input = new { StartDate = start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), Days = days, ParcelsPerDay = parcelsPerDay, Concurrency = concurrency, Iterations = iterations, ReadConcurrency = readConcurrency, ReadRequests = readRequests, FanoutConcurrency = fanoutConcurrency, FanoutMaxPartitions = fanoutMaxPartitions, QueryOnly = queryOnly },
                 Sample = new { ParcelCount = days * parcelsPerDay, FactCount = records.Count, PhysicalPeriods = periods.Length, DuplicateCount = duplicateCount },
                 PrebuildMilliseconds = ElapsedMilliseconds(prebuildClock),
                 Writes = new { Count = writeSamples.Count, ElapsedSeconds = ElapsedMilliseconds(writeClock) / 1000m,
                     WritesPerSecond = writeSamples.Count == 0 ? 0m : writeSamples.Count * 1000m / ElapsedMilliseconds(writeClock),
                     LatencyMs = writeSamples.Count == 0 ? (BenchmarkLatency?)null : Stats(writeSamples.ToArray()) },
                 Reports = queryResults,
+                ParcelQueries = parcelQueries,
+                ParallelCursorReads = parallelReads,
                 ExplainAnalyze = plans
             };
             Directory.CreateDirectory(Path.GetDirectoryName(output)!);
@@ -221,6 +326,20 @@ internal static class Program {
         return new BenchmarkLatency(samples[(samples.Length * 50 + 99) / 100 - 1],
             samples[(samples.Length * 95 + 99) / 100 - 1],
             samples[(samples.Length * 99 + 99) / 100 - 1]);
+    }
+
+    /// <summary>预热后测量只读场景，并保存稳定结果签名以核对改动前后数据一致性。</summary>
+    private static async Task<object> MeasureQueryAsync(string name, int iterations, Func<Task<string>> query) {
+        var signature = await query();
+        var samples = new decimal[iterations];
+        for (var index = 0; index < samples.Length; index++) {
+            var timer = Stopwatch.StartNew();
+            var current = await query();
+            timer.Stop();
+            if (current != signature) throw new InvalidOperationException($"查询{name}在稳定样本上的结果发生变化。");
+            samples[index] = ElapsedMilliseconds(timer);
+        }
+        return new { Name = name, SamplesMs = samples, LatencyMs = Stats(samples), Signature = signature };
     }
 
     /// <summary>使用Stopwatch计数器换算定点毫秒值。</summary>
