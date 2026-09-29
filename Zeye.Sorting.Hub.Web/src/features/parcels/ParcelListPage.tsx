@@ -60,7 +60,7 @@ export function ParcelListPage() {
       {!designPreview && <Tabs activeKey={tab} onChange={setTab} items={[{ key: 'parcels', label: '包裹记录' }, { key: 'unbound', label: '未关联 DWS' }]} />}
       {tab === 'parcels' ? <>
         {parcels.error && <Alert showIcon type="error" message="包裹台账加载失败" description={parcels.error.message} action={<Button onClick={parcels.refresh}>重试</Button>} />}
-        <DataTable<ParcelSummary> dataSource={parcels.data?.items ?? []} loading={parcels.loading} rowKey="id" tableLayout="fixed" scroll={{ x: undefined }} columns={[
+        <DataTable<ParcelSummary> className="parcel-records-table" dataSource={parcels.data?.items ?? []} loading={parcels.loading} rowKey="id" tableLayout="fixed" scroll={{ x: undefined }} columns={[
           { title: '扫码时间', dataIndex: 'scannedTime', render: value => parcelFactValue('scannedTime', value), width: 180 },
           { title: '包裹 ID', dataIndex: 'id', width: 135 },
           { title: '主条码', dataIndex: 'barCodes', render: value => parcelFactValue('barCodes', value), width: 186 },

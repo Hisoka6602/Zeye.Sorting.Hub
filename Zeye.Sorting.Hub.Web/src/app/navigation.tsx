@@ -59,6 +59,7 @@ const crumbMap: Record<string, [string, string, string]> = {
 export function crumbsForPath(pathname: string): NavigationCrumb[] {
   if (pathname === '/overview') return [{ title: '工作台' }];
   const home: NavigationCrumb = { title: '工作台', href: '/overview' };
+  if (pathname === '/diagnostics/health') return [{ title: '可观测性', href: '/audit/requests' }, { title: '健康检查' }];
   if (pathname === '/governance/sharding') return [{ title: '包裹中心', href: '/parcels' }, { title: '分区管理' }];
   if (pathname === '/parcels/detection/new') return [home, { title: '包裹中心', href: '/parcels' }, { title: '来源检测登记' }];
   if (pathname.startsWith('/parcels/') && !['/parcels/new', '/parcels/batch'].includes(pathname)) {

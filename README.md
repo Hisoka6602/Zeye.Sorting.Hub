@@ -704,9 +704,11 @@ Zeye.Sorting.Hub.Web/src/
   features/parcels/ParcelFacts.tsx
   features/operations/AnalyticsPage.tsx
 Zeye.Sorting.Hub.Web/tests/client.test.mjs
+Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证与未通过项记录）
 ```
 
 - `Fusion数据持久化实施与验收.md`：完整实施范围、配置说明、来源身份与量测单位约定、验收证据与后续事项。
+- `设计验收.md`：前端页面视觉对照、交互验证与未通过项记录，位于 `Zeye.Sorting.Hub.Web/`。
 - `ParcelProcessingStage.cs`：检测、DWS、路由、分拣、落格、异常与图片阶段枚举。
 - `ParcelProcessingRecord.cs`：不可变来源处理事实，校验规范身份并保留失败、重试、绑定依据与原始数据。
 - `IParcelProcessingRepository.cs`：处理事实与快照的原子持久化领域契约。
