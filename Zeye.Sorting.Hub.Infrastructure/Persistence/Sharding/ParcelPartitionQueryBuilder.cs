@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Storage;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 
@@ -15,6 +16,10 @@ public static class ParcelPartitionQueryBuilder {
         var suffixes = await partitions.GetReadSuffixesAsync(cancellationToken);
         return BuildFromSuffixes<TEntity>(db, suffixes);
     }
+
+    /// <summary>按目录中的单个物理周期构建查询，供有界分表读取使用。</summary>
+    public static IQueryable<TEntity> BuildSingle<TEntity>(SortingHubDbContext db, string suffix) where TEntity : class =>
+        BuildFromSuffixes<TEntity>(db, [suffix]);
 
     /// <summary>包裹的首次入库时间等于分表锚点，仅合并与半开日期窗口重叠的物理周期及历史基础表。</summary>
     public static async Task<IQueryable<Parcel>> BuildParcelsByCreatedTimeAsync(
@@ -32,15 +37,26 @@ public static class ParcelPartitionQueryBuilder {
     }
 
     /// <summary>由模型表名与校验过的后缀构建可组合的跨表只读查询。</summary>
-    private static IQueryable<TEntity> BuildFromSuffixes<TEntity>(SortingHubDbContext db, IReadOnlyList<string> suffixes) where TEntity : class {
+    public static IQueryable<TEntity> BuildFromSuffixes<TEntity>(SortingHubDbContext db, IReadOnlyList<string> suffixes) where TEntity : class {
+        if (suffixes.Count == 0) throw new ArgumentException("至少提供一个包裹物理表。", nameof(suffixes));
         var entity = db.Model.FindEntityType(typeof(TEntity))
             ?? throw new InvalidOperationException($"未配置 {typeof(TEntity).Name} 的持久化实体。");
         var tableName = entity.GetTableName()
             ?? throw new InvalidOperationException($"未配置 {typeof(TEntity).Name} 的物理表名。");
         var helper = db.GetService<ISqlGenerationHelper>();
+        // 基础表的迁移与新分表的模型建表可能产生不同的物理列顺序；UNION ALL 必须按列名对齐。
+        var storeObject = StoreObjectIdentifier.Table(tableName, entity.GetSchema());
+        var columns = entity.GetProperties()
+            .Select(property => property.GetColumnName(storeObject))
+            .Where(column => column is not null)
+            .Distinct(StringComparer.Ordinal)
+            .Select(column => helper.DelimitIdentifier(column!))
+            .ToArray();
+        if (columns.Length == 0) throw new InvalidOperationException($"{typeof(TEntity).Name} 没有可查询的物理列。");
+        var projection = string.Join(", ", columns);
         var branches = suffixes.Select(suffix => {
             ParcelPartitionStore.ValidateSuffix(suffix);
-            return "SELECT * FROM " + helper.DelimitIdentifier(tableName + (suffix.Length == 0 ? "" : "_" + suffix), entity.GetSchema());
+            return "SELECT " + projection + " FROM " + helper.DelimitIdentifier(tableName + (suffix.Length == 0 ? "" : "_" + suffix), entity.GetSchema());
         });
         return db.Set<TEntity>().FromSqlRaw(string.Join(" UNION ALL ", branches)).AsNoTracking();
     }

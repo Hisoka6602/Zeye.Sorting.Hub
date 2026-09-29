@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Zeye.Sorting.Hub.Application.Services.Parcels;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.Processing;
+using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.Processing;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.ValueObjects;
 using Zeye.Sorting.Hub.Domain.Enums;
@@ -155,6 +156,65 @@ public sealed class FusionPersistenceTests {
         Assert.Equal(2, page.Items[0].SourceParcelId);
         var next = await database.Parcels.GetCursorPagedAsync(new ParcelQueryFilter(), new CursorPageRequest { PageSize = 1, LastScannedTimeLocal = page.Items[0].ScannedTime, LastId = page.Items[0].Id }, default);
         Assert.Equal(1, next.Items[0].SourceParcelId);
+    }
+
+    /// <summary>长窗口并行读取跨周期稳定排序，保留扫码日晚于入库日的包裹与精确总数。</summary>
+    [Fact]
+    public async Task LongWindowQuery_MergesTopRowsWithoutPruningLateScans() {
+        await using var database = new RelationalParcelTestDatabase("PerDay");
+        await database.InitializeAsync();
+        var first = Fact("fanout-first", 11) with { Barcode = "FANOUT-11" };
+        var second = Fact("fanout-second", 12) with {
+            Barcode = "FANOUT-12", OccurredAt = first.OccurredAt.AddDays(1),
+            RecordedAt = first.RecordedAt.AddDays(1), PartitionTime = first.PartitionTime.AddDays(1)
+        };
+        var lateScan = Fact("fanout-late", 13) with {
+            Barcode = "FANOUT-13", OccurredAt = second.OccurredAt.AddMinutes(1)
+        };
+        foreach (var fact in new[] { first, second, lateScan })
+            Assert.True((await database.Processing.AppendAsync(fact, default)).IsSuccess);
+
+        await using (var db = await database.Factory.CreateDbContextAsync()) {
+            var sql = (await ParcelPartitionQueryBuilder.BuildAsync<Parcel>(db, database.Partitions, default))
+                .ToQueryString();
+            Assert.DoesNotContain("SELECT * FROM", sql, StringComparison.OrdinalIgnoreCase);
+        }
+
+        var filter = new ParcelQueryFilter {
+            ScannedTimeStart = first.OccurredAt.AddHours(-1),
+            ScannedTimeEnd = first.OccurredAt.AddDays(3)
+        };
+        var whole = await database.Parcels.GetPagedAsync(filter,
+            new PageRequest { PageSize = 3, IncludeTotalCount = true }, default);
+        Assert.Equal(3, whole.TotalCount);
+        Assert.Equal([13L, 12L, 11L], whole.Items.Select(x => x.SourceParcelId));
+
+        var page2 = await database.Parcels.GetPagedAsync(filter,
+            new PageRequest { PageNumber = 2, PageSize = 1, IncludeTotalCount = false }, default);
+        Assert.Equal(0, page2.TotalCount);
+        Assert.Equal(12L, Assert.Single(page2.Items).SourceParcelId);
+
+        var cursor1 = await database.Parcels.GetCursorPagedAsync(filter,
+            new CursorPageRequest { PageSize = 2 }, default);
+        Assert.Equal([13L, 12L], cursor1.Items.Select(x => x.SourceParcelId));
+        Assert.True(cursor1.HasMore);
+        var cursor2 = await database.Parcels.GetCursorPagedAsync(filter,
+            new CursorPageRequest { PageSize = 2, LastScannedTimeLocal = cursor1.NextScannedTimeLocal,
+                LastId = cursor1.NextId }, default);
+        Assert.Equal(11L, Assert.Single(cursor2.Items).SourceParcelId);
+        Assert.False(cursor2.HasMore);
+
+        var deepPage = await database.Parcels.GetPagedAsync(filter,
+            new PageRequest { PageNumber = 101, PageSize = 21, IncludeTotalCount = true }, default);
+        Assert.Equal(3, deepPage.TotalCount);
+        Assert.Empty(deepPage.Items);
+
+        var scanDayFilter = filter with { ScannedTimeStart = second.OccurredAt.Date,
+            ScannedTimeEnd = second.OccurredAt.Date.AddDays(1).AddTicks(-1) };
+        var scanDay = await database.Parcels.GetPagedAsync(scanDayFilter,
+            new PageRequest { IncludeTotalCount = true }, default);
+        Assert.Equal(2, scanDay.TotalCount);
+        Assert.Equal([13L, 12L], scanDay.Items.Select(x => x.SourceParcelId));
     }
 
     /// <summary>JSON合同拒绝时区后缀，验证缺失值与非法测量值。</summary>
