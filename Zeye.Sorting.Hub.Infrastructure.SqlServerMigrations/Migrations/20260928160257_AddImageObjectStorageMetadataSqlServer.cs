@@ -11,6 +11,15 @@ namespace Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            // 旧图片物理分表需先受控补建新字段和索引。
+            migrationBuilder.Sql("""
+                IF EXISTS (
+                    SELECT 1 FROM sys.tables AS t
+                    JOIN sys.schemas AS s ON s.schema_id = t.schema_id
+                    WHERE s.name = N'dbo' AND t.name LIKE N'Parcel[_]ImageInfos[_]%'
+                ) THROW 51004, N'检测到图片物理分表，需先制定对象存储元数据补建方案。', 1;
+                """);
+
             migrationBuilder.AddColumn<string>(
                 name: "BucketName",
                 schema: "dbo",
@@ -103,6 +112,22 @@ namespace Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
+            // 回退前检查物理分表及对象定位数据，避免静默丢失。
+            migrationBuilder.Sql("""
+                IF EXISTS (
+                    SELECT 1 FROM sys.tables AS t
+                    JOIN sys.schemas AS s ON s.schema_id = t.schema_id
+                    WHERE s.name = N'dbo' AND t.name LIKE N'Parcel[_]ImageInfos[_]%'
+                ) THROW 51005, N'检测到图片物理分表，禁止回退对象存储元数据迁移。', 1;
+                IF EXISTS (
+                    SELECT 1 FROM dbo.Parcel_ImageInfos
+                    WHERE BucketName IS NOT NULL OR ContentType IS NOT NULL OR ETag IS NOT NULL
+                       OR ObjectKey IS NOT NULL OR ObjectSizeBytes IS NOT NULL
+                       OR OriginalFileName IS NOT NULL OR Sha256 IS NOT NULL
+                       OR StorageProvider IS NOT NULL OR UploadedAtLocal IS NOT NULL
+                ) THROW 51006, N'检测到图片对象存储元数据，禁止删除对应字段。', 1;
+                """);
+
             migrationBuilder.DropIndex(
                 name: "IX_Parcel_ImageInfos_BucketName",
                 schema: "dbo",

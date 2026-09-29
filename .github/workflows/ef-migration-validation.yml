@@ -29,8 +29,9 @@ jobs:
           MYSQL_DATABASE: "zeye_sorting_hub_ci"
         ports:
           - 3306:3306
+        # services.options 不支持 env 上下文；ping 仅检查数据库服务是否已启动。
         options: >-
-          --health-cmd "mysqladmin ping -h 127.0.0.1 -p${{ env.MYSQL_ROOT_PASSWORD }} --silent"
+          --health-cmd "mysqladmin ping -h 127.0.0.1 --silent"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 30
@@ -44,16 +45,13 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
-      - name: Install dotnet-ef
-        run: dotnet tool install --global dotnet-ef --version 9.0.14
-
-      - name: Add dotnet tools to PATH
-        run: echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+      - name: Restore dotnet-ef from repository manifest
+        run: dotnet tool restore
 
       - name: Validate EF migrations (list / update / script)
         env:
-          MYSQL_CONNECTION: "server=127.0.0.1;port=3306;database=zeye_sorting_hub_ci;uid=root;pwd=${{ env.MYSQL_ROOT_PASSWORD }};SslMode=None;"
-          ConnectionStrings__MySql: "server=127.0.0.1;port=3306;database=zeye_sorting_hub_ci;uid=root;pwd=${{ env.MYSQL_ROOT_PASSWORD }};SslMode=None;"
+          MYSQL_CONNECTION: "server=127.0.0.1;port=3306;database=zeye_sorting_hub_ci;uid=root;pwd=${{ env.MYSQL_ROOT_PASSWORD }};SslMode=Required;"
+          ConnectionStrings__MySql: "server=127.0.0.1;port=3306;database=zeye_sorting_hub_ci;uid=root;pwd=${{ env.MYSQL_ROOT_PASSWORD }};SslMode=Required;"
         run: |
           dotnet ef migrations list \
             --project Zeye.Sorting.Hub.Infrastructure \
@@ -105,11 +103,8 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
-      - name: Install dotnet-ef
-        run: dotnet tool install --global dotnet-ef --version 9.0.14
-
-      - name: Add dotnet tools to PATH
-        run: echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+      - name: Restore dotnet-ef from repository manifest
+        run: dotnet tool restore
 
       - name: Validate SQL Server snapshot, migration, and guarded rollback
         env:
@@ -141,7 +136,7 @@ jobs:
             --no-build \
             --output /tmp/sqlserver-migration-up.sql \
             -- --provider SqlServer
-          dotnet ef migrations script 20260928143409_InitialSqlServerSchema 0 \
+          dotnet ef migrations script 20260928160257_AddImageObjectStorageMetadataSqlServer 0 \
             --project Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations \
             --startup-project Zeye.Sorting.Hub.Host \
             --context SortingHubDbContext \

@@ -634,6 +634,7 @@
 ├── Zeye.Sorting.Hub.sln（.NET 解决方案入口）
 ├── 性能基线报告.md（压测基线报告模板：记录 PR-S 强制指标、场景摘要、环境快照与结果结论）
 ├── EFCore数据库迁移指南.md（EF Core CodeFirst 迁移使用说明文档）
+├── 数据库发布演练记录-20260929.md（双 Provider 隔离数据库迁移与回退演练记录）
 ├── 新数据库提供程序接入指南.md（接入新数据库提供器（如 SQLite / PostgreSQL）的逐步操作指南）
 ├── 数据库读写压力测试计划.md（MySQL + EFCore.Sharding 分表架构的读写压测方案与验收模板）
 ├── Parcel属性新增操作指南.md（Parcel 聚合新增属性时的文件修改操作指南）
@@ -779,6 +780,7 @@ Zeye.Sorting.Hub.Web/tests/client.test.mjs
 - `Zeye.Sorting.Hub.sln`：.NET 解决方案入口，聚合全部项目。
 - `Parcel属性新增操作指南.md`：当 Parcel 聚合需要新增属性时，需要修改哪些文件、如何修改的操作指南（含三种情形：主表标量属性、现有值对象属性、新增值对象）。
 - `EFCore数据库迁移指南.md`：EF Core CodeFirst 迁移使用说明（迁移架构总览、运行时自动迁移、CLI 命令、设计时工厂、分表与迁移关系、常见问题）。
+- `数据库发布演练记录-20260929.md`：记录 MySQL 8.0 与 SQL Server 2022 隔离库的迁移、回退守卫、重升及既有库只读盘点结果；不代表生产环境放行。
 - `新数据库提供程序接入指南.md`：新数据库提供器接入指南（MySQL / SQL Server 切换、设计时工厂、方言扩展点）。
 - `数据库读写压力测试计划.md`：针对 MySQL + EFCore.Sharding 分表架构的数据库读写压力测试计划，覆盖纯写入、纯读取、混合读写、长时稳定性 4 大场景，含梯度加压方案、通过/失败验收矩阵、监控采集命令与结果记录模板。
 - `长期运行优化与热更新支持清单.md`：面向一年无人值守运行的长期治理清单，覆盖稳定运行底座、热更新、热替换、阶段化落地与年度验收门禁。
@@ -1215,7 +1217,7 @@ Zeye.Sorting.Hub.Web/tests/client.test.mjs
 - `Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations.csproj`：引用实体模型所在的Infrastructure和EF设计时工具，供SQL Server独立迁移与快照编译。
 - `20260928143409_InitialSqlServerSchema.cs`：从空SQL Server库建立当前模型；已有表拒绝初始化，回退时有数据或物理分表则拒绝删表。
 - `20260928143409_InitialSqlServerSchema.Designer.cs`：SQL Server迁移元数据，由EF工具生成。
-- `20260928160257_AddImageObjectStorageMetadataSqlServer.cs`：为 SQL Server 图片表增加对象存储元数据及查询索引。
+- `20260928160257_AddImageObjectStorageMetadataSqlServer.cs`：为 SQL Server 图片表增加对象存储元数据及查询索引，升级前阻断旧图片物理分表，回退前保护物理分表和对象定位数据。
 - `20260928160257_AddImageObjectStorageMetadataSqlServer.Designer.cs`：SQL Server 对象存储迁移元数据，由 EF 工具生成。
 - `SortingHubDbContextModelSnapshot.cs`：SQL Server当前模型快照，由EF工具生成并供模型漂移门禁比对。
 
@@ -1482,6 +1484,8 @@ Zeye.Sorting.Hub.Web/tests/client.test.mjs
 
 ## 本次更新内容
 
+- 将 SQL Server 对象存储迁移的旧图片物理分表与含对象定位数据的回退限制写入迁移，并在独立库验证升级、阻断、完整回退和重升；CI 回退脚本覆盖两条 SQL Server 迁移。
+- 修正代码与门禁中对 NLog、迁移文件和凭据形态的误判，归档双 Provider 隔离演练及既有库只读盘点结果。
 - 为SQL Server建立独立EF迁移程序集与空库基线，按Provider选择迁移链；增加历史事实分表索引回填预演和双Provider迁移门禁，并在隔离LocalDB验证迁移、守卫及真实分表索引。
 - 按《Zeye.Sorting.Hub-长期数据库底座多PR实施方案与Copilot严格门禁.md》执行前置核对，确认长期数据库底座 PR-A～PR-T 主体能力已完成，当前补齐点集中在 `PR-A-检查台账.md` 延后的 Copilot 严格门禁覆盖。
 - 补强 `.github/scripts/validate-copilot-rules.sh`：README 历史记录门禁改为识别常见 Markdown 标题变体，并扩展 `.Count() == 0`、`.Where(...).FirstOrDefault()`、`string.Format()` 等性能反模式检测。

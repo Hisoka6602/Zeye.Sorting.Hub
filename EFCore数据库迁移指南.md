@@ -1,5 +1,7 @@
 # EF Core 迁移说明（CodeFirst + 自动迁移）
 
+来源：仓库内 SortingHubDbContext、设计时工厂、迁移源码和 CI 工作流；本文为项目原生操作指南，未从 doc/pdf 解析。
+
 ## 1. 项目迁移架构总览
 
 本项目采用 **EF Core CodeFirst** 模式：实体类与值对象定义在代码中，数据库结构由 EF Core 根据模型自动生成，通过迁移文件管理演进历史。
@@ -23,7 +25,7 @@
 | MySQL迁移链与SQL Server独立基线 | ✅ 已生成；两种Provider分别维护模型快照 |
 | 运行时自动应用 (`Database.MigrateAsync`) | ✅ 已配置 |
 
-MySQL初始迁移为`20260324094539_RebuildBaseline20260324`；SQL Server初始迁移为`20260928143409_InitialSqlServerSchema`。
+MySQL初始迁移为`20260324094539_RebuildBaseline20260324`；SQL Server初始迁移为`20260928143409_InitialSqlServerSchema`，其后为`20260928160257_AddImageObjectStorageMetadataSqlServer`。
 
 ### 2.1 SQL Server 迁移策略（明确）
 
@@ -31,6 +33,7 @@ MySQL初始迁移为`20260324094539_RebuildBaseline20260324`；SQL Server初始�
 - **提供器约定**：SQL Server 相关 `dotnet ef` 命令统一追加 `-- --provider SqlServer`，MySQL 相关命令统一使用 `-- --provider MySql`（或默认值）。
 - **发布门禁**：MySQL与SQL Server分别检查模型漂移；SQL Server还在隔离库执行升级、空库回退和再次升级。
 - **历史库边界**：SQL Server初始迁移只允许空库。有旧共享迁移历史或现存业务表时，必须另定保留数据的过渡方案；基线会主动拒绝直接覆盖。
+- **图片分表边界**：增量迁移检测到已有`Parcel_ImageInfos_*`物理表时主动拒绝；必须先制定字段和索引受控补建方案。含图片对象定位数据或图片物理分表时，回退拒绝删除字段。
 
 ---
 

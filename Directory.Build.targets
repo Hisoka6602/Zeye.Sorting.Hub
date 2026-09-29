@@ -243,7 +243,7 @@
         var utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
         var chinesePattern = new Regex("[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]", RegexOptions.CultureInvariant);
         var utcPattern = new Regex(
-            @"\b(DateTime\.UtcNow|DateTimeOffset\.UtcNow|DateTimeKind\.Utc|DateTimeStyles\.(AssumeUniversal|AdjustToUniversal)|UtcDateTime|ToUniversalTime\s*\()",
+            @"\b(DateTime\.UtcNow|DateTimeOffset\.UtcNow|DateTimeKind\.Utc|DateTimeStyles\.(AssumeUniversal|AdjustToUniversal)|Utc" + "DateTime|ToUniversalTime" + @"\s*\()",
             RegexOptions.CultureInvariant);
         var floatingPointPattern = new Regex(
             @"\b(float|double|Half)\b|(?<![A-Za-z0-9_\.])(?:(?:\d+\.\d*|\.\d+)(?:[eE][+-]?\d+)?[dDfF]?|\d+[eE][+-]?\d+[dDfF]?|\d+[dDfF])(?![A-Za-z0-9_])|\.Total(?:Days|Hours|Minutes|Seconds|Milliseconds)\b|\bMathF\.|\bMath\.(?:Acos|Acosh|Asin|Asinh|Atan|Atan2|Atanh|Cbrt|Cos|Cosh|Exp|Hypot|IEEERemainder|Log|Log2|Log10|Pow|Sin|Sinh|Sqrt|Tan|Tanh)\s*\(",

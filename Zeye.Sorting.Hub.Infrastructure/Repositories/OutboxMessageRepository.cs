@@ -230,8 +230,9 @@ public sealed class OutboxMessageRepository : RepositoryBase<OutboxMessage, Sort
                 await dbContext.SaveChangesAsync(cancellationToken);
                 return dispatchableMessages;
             }
-            catch (DbUpdateConcurrencyException) {
+            catch (DbUpdateConcurrencyException exception) {
                 dbContext.ChangeTracker.Clear();
+                Logger.Debug(exception, "批量领取 Outbox 消息遇到并发冲突，Attempt={Attempt}, BatchSize={BatchSize}", attempt + 1, batchSize);
                 if (attempt + 1 < MaxAcquireAttempts) {
                     await Task.Delay(Random.Shared.Next(5, 25), cancellationToken);
                 }

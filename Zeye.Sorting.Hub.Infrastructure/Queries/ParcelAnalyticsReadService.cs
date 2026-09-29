@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
+using NLog;
 using Zeye.Sorting.Hub.Application.Abstractions.Queries;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.Analytics;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
@@ -15,6 +16,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Queries;
 
 /// <summary>在数据库内按本地日期聚合真实包裹快照与独立处理事实。</summary>
 public sealed class ParcelAnalyticsReadService : IParcelAnalyticsReadService {
+    /// <summary>报表范围验证日志。</summary>
+    private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
     /// <summary>基础模型上下文工厂。</summary>
     private readonly IDbContextFactory<SortingHubDbContext> _factory;
     /// <summary>跨历史粒度的物理表目录。</summary>
@@ -41,6 +44,7 @@ public sealed class ParcelAnalyticsReadService : IParcelAnalyticsReadService {
             budget = _budgetPlanner.BuildBudget(fromLocalDate, endExclusive, null, false);
         }
         catch (InvalidOperationException exception) {
+            Logger.Warn(exception, "包裹报表查询范围超出预算，FromDate={FromDate}, ToDate={ToDate}", fromLocalDate, toLocalDate);
             throw new ArgumentException(exception.Message, nameof(toLocalDate), exception);
         }
         await using var db = await _factory.CreateDbContextAsync(cancellationToken);
