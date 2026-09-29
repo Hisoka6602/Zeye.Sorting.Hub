@@ -78,14 +78,20 @@ ensure_pr_diff_ready() {
   PR_DIFF_READY=1
 }
 
-# 获取 PR 变更文件（按后缀过滤）。
+# 获取 PR 中仍存在的变更文件（按后缀过滤）；重命名或删除的旧路径不参与内容与命名校验。
 get_pr_changed_files_by_suffix() {
   local suffix="$1"
   ensure_pr_diff_ready
   if ! is_pull_request_context || [[ -z "$PR_DIFF_NAME_ONLY" ]]; then
     return
   fi
-  echo "$PR_DIFF_NAME_ONLY" | grep -E "\.${suffix}$" || true
+
+  local file_path=""
+  while IFS= read -r file_path; do
+    if [[ "$file_path" == *".${suffix}" && -f "$file_path" ]]; then
+      printf '%s\n' "$file_path"
+    fi
+  done <<< "$PR_DIFF_NAME_ONLY"
 }
 
 # 获取 PR 新增文件（按后缀过滤）。
