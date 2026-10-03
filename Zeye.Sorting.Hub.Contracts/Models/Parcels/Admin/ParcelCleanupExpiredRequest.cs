@@ -10,4 +10,6 @@ public sealed record ParcelCleanupExpiredRequest {
     /// 格式支持：yyyy-MM-dd / yyyy-MM-dd HH:mm:ss / yyyy-MM-ddTHH:mm:ss 等，不允许 UTC 或 offset 表达。
     /// </summary>
     public required string CreatedBefore { get; init; }
+    /// <summary>当前登录用户的密码，仅用于本次校验，禁止保存至任何日志或操作记录。</summary>
+    public string? Password { get; init; }
 }

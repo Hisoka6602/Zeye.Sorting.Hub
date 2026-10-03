@@ -15,6 +15,11 @@ using Zeye.Sorting.Hub.Host.Routing;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Idempotency;
 using Zeye.Sorting.Hub.Infrastructure.Repositories;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Configuration;
+using Zeye.Sorting.Hub.Host.Authentication;
+using Zeye.Sorting.Hub.Host.Queries;
 
 namespace Zeye.Sorting.Hub.Host.Tests;
 
@@ -340,10 +345,10 @@ public sealed class ParcelAdminApiTests {
             CleanupExecutedCount = 10
         };
         await using var app = await BuildTestAppAsync(fakeRepo);
-        using var client = app.GetTestClient();
+        using var client = await CleanupClientAsync(app);
 
         var body = new StringContent(
-            """{"createdBefore":"2026-01-01 00:00:00"}""",
+            """{"createdBefore":"2026-01-01 00:00:00","password":"test-admin-password"}""",
             Encoding.UTF8,
             "application/json");
 
@@ -369,10 +374,10 @@ public sealed class ParcelAdminApiTests {
             CleanupPlannedCount = 8
         };
         await using var app = await BuildTestAppAsync(fakeRepo);
-        using var client = app.GetTestClient();
+        using var client = await CleanupClientAsync(app);
 
         var body = new StringContent(
-            """{"createdBefore":"2026-01-01 00:00:00"}""",
+            """{"createdBefore":"2026-01-01 00:00:00","password":"test-admin-password"}""",
             Encoding.UTF8,
             "application/json");
 
@@ -399,10 +404,10 @@ public sealed class ParcelAdminApiTests {
             CleanupExecutedCount = 6
         };
         await using var app = await BuildTestAppAsync(fakeRepo);
-        using var client = app.GetTestClient();
+        using var client = await CleanupClientAsync(app);
 
         var body = new StringContent(
-            """{"createdBefore":"2026-01-01 00:00:00"}""",
+            """{"createdBefore":"2026-01-01 00:00:00","password":"test-admin-password"}""",
             Encoding.UTF8,
             "application/json");
 
@@ -425,7 +430,7 @@ public sealed class ParcelAdminApiTests {
     [Fact]
     public async Task CleanupExpired_WithUtcCreatedBefore_ShouldReturn400() {
         await using var app = await BuildTestAppAsync();
-        using var client = app.GetTestClient();
+        using var client = await CleanupClientAsync(app);
 
         var body = new StringContent(
             """{"createdBefore":"2026-01-01T00:00:00Z"}""",
@@ -445,7 +450,7 @@ public sealed class ParcelAdminApiTests {
     [Fact]
     public async Task CleanupExpired_WithInvalidCreatedBefore_ShouldReturn400() {
         await using var app = await BuildTestAppAsync();
-        using var client = app.GetTestClient();
+        using var client = await CleanupClientAsync(app);
 
         var body = new StringContent(
             """{"createdBefore":"not-a-date"}""",
@@ -478,6 +483,11 @@ public sealed class ParcelAdminApiTests {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
         builder.Services.AddProblemDetails();
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["Access:BootstrapKey"] = "test-bootstrap-key" });
+        builder.Services.AddSortingHubAccess(Path.Combine(Path.GetTempPath(), "zeye-cleanup-legacy-tests"));
+        builder.Services.AddDataProtection().UseEphemeralDataProtectionProvider();
+        builder.Services.AddScoped<ManagedDocumentService>(); builder.Services.AddScoped<ParcelCleanupHistoryService>();
+        builder.Services.AddRateLimiter(o => o.AddFixedWindowLimiter("account-login", x => { x.PermitLimit = 100; x.Window = TimeSpan.FromMinutes(1); }));
         var databaseOptions = new DbContextOptionsBuilder<SortingHubDbContext>()
             .UseInMemoryDatabase($"parcel-admin-idempotency-{Guid.NewGuid():N}")
             .Options;
@@ -493,9 +503,20 @@ public sealed class ParcelAdminApiTests {
         builder.Services.AddScoped<CleanupExpiredParcelsCommandService>();
 
         var app = builder.Build();
+        app.UseRouting(); app.UseRateLimiter(); app.UseAuthentication();
+        app.MapAccessApis();
         app.MapParcelAdminApis();
         await app.StartAsync();
         return app;
+    }
+
+    /// <summary>清理治理测试通过真实密码初始化隔离管理员后再提交。</summary>
+    private static async Task<HttpClient> CleanupClientAsync(WebApplication app) {
+        var client = app.GetTestClient(); client.DefaultRequestHeaders.Add("X-Zeye-Client", "web");
+        var response = await client.PostAsJsonAsync("/api/access/bootstrap", new { username = "admin", name = "测试管理员", password = "test-admin-password", bootstrapKey = "test-bootstrap-key" });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        client.DefaultRequestHeaders.Add("Cookie", response.Headers.GetValues("Set-Cookie").Single().Split(';')[0]);
+        return client;
     }
 
     /// <summary>

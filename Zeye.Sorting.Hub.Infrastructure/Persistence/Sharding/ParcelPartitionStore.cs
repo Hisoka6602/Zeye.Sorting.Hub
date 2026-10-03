@@ -73,13 +73,13 @@ public sealed class ParcelPartitionStore {
     }
 
     /// <summary>预建指定周期的所有聚合表，成功后登记目录；默认只审计并阻止执行。</summary>
-    public async Task EnsureCreatedAsync(ParcelPartitionPeriod period, CancellationToken cancellationToken) {
+    public async Task EnsureCreatedAsync(ParcelPartitionPeriod period, CancellationToken cancellationToken, bool verifyExisting = false) {
         ValidateSuffix(period.Suffix);
         var gate = CreationGates[(int)((uint)StringComparer.Ordinal.GetHashCode(period.Suffix) % (uint)CreationGates.Length)];
         await gate.WaitAsync(cancellationToken);
         try {
             await using var db = await CreateContextAsync(period.Suffix, cancellationToken);
-            if (await db.Set<ParcelPartitionCatalogEntry>().AnyAsync(x => x.Suffix == period.Suffix, cancellationToken)) {
+            if (!verifyExisting && await db.Set<ParcelPartitionCatalogEntry>().AnyAsync(x => x.Suffix == period.Suffix, cancellationToken)) {
                 return;
             }
             // 步骤1：使用提供器自身的模型差异与DDL生成器，不复制MySQL和SQLServer实现。
@@ -94,7 +94,8 @@ public sealed class ParcelPartitionStore {
             Logger.Info("包裹分表建表审计：Suffix={Suffix}, AllowTableCreation={Allowed}, DryRun={DryRun}, CommandCount={Count}, DDL={DDL}", period.Suffix, _allowCreation, _dryRun, commands.Count, string.Join(Environment.NewLine, commands.Select(x => x.CommandText)));
             if (!_allowCreation || _dryRun) throw new InvalidOperationException("目标分表尚未预建。请核查DDL审计，显式启用Persistence:Sharding:WriteRouting:AllowTableCreation并关闭DryRun，或提前执行预建。");
             await using var coordinator = await ParcelPartitionDdlCoordinator.AcquireAsync(db, period.Suffix, cancellationToken);
-            if (await db.Set<ParcelPartitionCatalogEntry>().AnyAsync(x => x.Suffix == period.Suffix, cancellationToken)) return;
+            var hasCatalog = await db.Set<ParcelPartitionCatalogEntry>().AnyAsync(x => x.Suffix == period.Suffix, cancellationToken);
+            if (hasCatalog && !verifyExisting) return;
             // 步骤2：锁内复核实际表，容许同一模型的部分DDL重试；旧结构必须先迁移。
             var pending = new List<MigrationOperation>();
             foreach (var operation in operations) {
@@ -108,8 +109,10 @@ public sealed class ParcelPartitionStore {
             commands = db.GetService<IMigrationsSqlGenerator>().Generate(pending, model);
             // 步骤2：DDL只创建新周期；MySQL的DDL独立提交，业务数据事务在建表之后开始。
             foreach (var command in commands) await db.Database.ExecuteSqlRawAsync(command.CommandText, cancellationToken);
-            db.Add(new ParcelPartitionCatalogEntry { Suffix = period.Suffix, Start = period.Start, End = period.End, CreatedTime = DateTime.Now });
-            await db.SaveChangesAsync(cancellationToken);
+            if (!hasCatalog) {
+                db.Add(new ParcelPartitionCatalogEntry { Suffix = period.Suffix, Start = period.Start, End = period.End, CreatedTime = DateTime.Now });
+                await db.SaveChangesAsync(cancellationToken);
+            }
         }
         catch (Exception ex) {
             Logger.Error(ex, "包裹物理分表预建失败，Suffix={Suffix}", period.Suffix);

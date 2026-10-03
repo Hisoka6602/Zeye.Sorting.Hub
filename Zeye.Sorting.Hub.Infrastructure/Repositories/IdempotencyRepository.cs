@@ -136,6 +136,7 @@ public sealed class IdempotencyRepository : IIdempotencyRepository {
         try {
             await using var dbContext = await _contextFactory.CreateDbContextAsync(cancellationToken);
             var persistedRecord = await dbContext.Set<IdempotencyRecord>()
+                .AsTracking()
                 .FirstOrDefaultAsync(x => x.Id == idempotencyRecord.Id, cancellationToken);
             if (persistedRecord is null) {
                 return RepositoryResult.Fail("幂等记录不存在。");

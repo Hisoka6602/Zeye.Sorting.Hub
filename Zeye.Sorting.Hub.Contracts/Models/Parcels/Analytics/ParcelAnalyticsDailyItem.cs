@@ -16,6 +16,6 @@ public sealed record ParcelAnalyticsDailyItem {
     public long ChuteMismatchCount { get; init; }
     /// <summary>有有效生命周期的已完成包裹平均耗时，单位秒。</summary>
     public decimal? AverageLifecycleSeconds { get; init; }
-    /// <summary>用于平均时效的有效包裹件数。</summary>
+    /// <summary>用于平均完成耗时的有效包裹件数。</summary>
     public long LifecycleSampleCount { get; init; }
 }

@@ -43,7 +43,11 @@ public sealed class BufferedWriteQueueHealthCheck : IHealthCheck {
             return Task.FromResult(HealthCheckResult.Unhealthy("批量缓冲写入队列已触达容量上限。", data: data));
         }
 
-        if (snapshot.DeadLetterCount > 0 || snapshot.IsBackpressureTriggered || snapshot.DroppedCount > 0 || snapshot.LastFailedFlushAtLocal.HasValue) {
+        if (snapshot.HasWorkerStarted && !snapshot.IsWorkerRunning) {
+            return Task.FromResult(HealthCheckResult.Unhealthy("批量缓冲写入消费循环已停止。", data: data));
+        }
+
+        if (snapshot.DeadLetterCount > 0 || snapshot.DeadLetterDroppedCount > 0 || snapshot.IsBackpressureTriggered || snapshot.LastFailureMessage is not null) {
             return Task.FromResult(HealthCheckResult.Degraded("批量缓冲写入队列存在背压、丢弃或死信。", data: data));
         }
 
@@ -61,6 +65,9 @@ public sealed class BufferedWriteQueueHealthCheck : IHealthCheck {
             ["queueDepth"] = snapshot.QueueDepth,
             ["deadLetterCount"] = snapshot.DeadLetterCount,
             ["droppedCount"] = snapshot.DroppedCount,
+            ["deadLetterDroppedCount"] = snapshot.DeadLetterDroppedCount,
+            ["hasWorkerStarted"] = snapshot.HasWorkerStarted,
+            ["isWorkerRunning"] = snapshot.IsWorkerRunning,
             ["successfulFlushCount"] = snapshot.SuccessfulFlushCount,
             ["failedFlushCount"] = snapshot.FailedFlushCount,
             ["totalFlushedCount"] = snapshot.TotalFlushedCount,

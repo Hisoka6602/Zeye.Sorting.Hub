@@ -43,7 +43,7 @@ public sealed class DataArchiveExecutor {
         ArgumentNullException.ThrowIfNull(archiveTask);
         try {
             var plan = await _dataArchivePlanner.BuildPlanAsync(archiveTask, cancellationToken);
-            await _checkpointStore.MarkCompletedAsync(archiveTask.Id, plan.PlannedItemCount, plan.PlanSummary, plan.CheckpointPayload, cancellationToken);
+            await _checkpointStore.MarkCompletedAsync(archiveTask, plan.PlannedItemCount, plan.PlanSummary, plan.CheckpointPayload, cancellationToken);
             Logger.Info("归档 dry-run 任务执行完成，TaskId={TaskId}, PlannedItemCount={PlannedItemCount}", archiveTask.Id, plan.PlannedItemCount);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
@@ -52,7 +52,7 @@ public sealed class DataArchiveExecutor {
         }
         catch (Exception ex) {
             Logger.Error(ex, "归档 dry-run 任务执行失败，TaskId={TaskId}", archiveTask.Id);
-            await _checkpointStore.MarkFailedAsync(archiveTask.Id, ex.Message, cancellationToken);
+            await _checkpointStore.MarkFailedAsync(archiveTask, ex.Message, cancellationToken);
         }
     }
 }

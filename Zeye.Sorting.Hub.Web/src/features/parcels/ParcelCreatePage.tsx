@@ -61,7 +61,7 @@ export function ParcelCreatePage() {
     finally { setSaving(false); }
   };
   return <>
-    <PageIntro title="新建包裹" description="填写包裹信息并创建新包裹。" />
+    <PageIntro title="新建包裹" description="仅供管理员测试使用。业务包裹由工作台或融合服务自动传入。" />
     <SectionCard className="create-card">
       {error && <Alert showIcon type="error" message="创建失败" description={error} style={{ marginBottom: 20 }} />}
       <Form<ParcelFormValues> layout="vertical" onFinish={create} disabled={saving} requiredMark>

@@ -1,10 +1,9 @@
 import type { CSSProperties } from 'react';
+import brandSymbolUrl from '../assets/brand-symbol.svg?no-inline';
 
+/** 中文说明：页面品牌和标签页共用 SVG 图形，保留各场景配色。 */
 function BrandSymbol({ color = '#1677ff' }: { color?: string }) {
-  return <>
-    <path d="M12 1 23 7.2v13.6L12 27 1 20.8V7.2Z" fill={color} />
-    <path d="m6.4 8.3 5.6-3.2 5.6 3.2-5.6 3.2Zm-1 2.9 4.7 2.7v6.5l-4.7-2.7Zm8.5 2.7 4.7-2.7v6.5l-4.7 2.7Z" fill="#fff" />
-  </>;
+  return <use href={`${brandSymbolUrl}#brand-symbol`} color={color} />;
 }
 
 export function BrandMark({ className = '', variant = 'sidebar' }: { className?: string; variant?: 'sidebar' | 'login' }) {
@@ -36,7 +35,7 @@ export function BrandWordmark({ className = '', style, inkBounds, variant = 'hea
     role="img" aria-label="Zeye Sorting Hub" focusable="false" style={style}>
     <BrandSymbol />
     <text x={textX} y={textY} fontFamily="Segoe UI, Arial, sans-serif" fontSize={fontSize} fontWeight="700"
-      textLength={textLength} lengthAdjust="spacingAndGlyphs" fill="#101729">
+      textLength={textLength} lengthAdjust="spacingAndGlyphs" fill="#1d254b">
       <tspan fill="#1677ff">Zeye</tspan><tspan> Sorting Hub</tspan>
     </text>
   </svg>;

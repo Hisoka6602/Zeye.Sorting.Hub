@@ -1,3 +1,4 @@
+import { formatNumber } from '../../data/formatNumber';
 import { Alert, Button, DatePicker, Drawer, Form, Input, Select, Space, Tabs } from 'antd';
 import { DownOutlined } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
@@ -12,6 +13,7 @@ import { StatusTag } from '../../components/StatusTag';
 import { useApiResource } from '../../data/api/useApiResource';
 import { processingStages, type ParcelList, type ParcelProcessingRecord, type ParcelSummary } from '../../data/api/parcelTypes';
 import { ParcelFacts, parcelFactValue } from './ParcelFacts';
+import { ParcelImagesDrawer } from './ParcelImagesDrawer';
 
 /** 包裹台账使用后端分页；展开行显示完整摘要，未关联DWS单独检索。 */
 export function ParcelListPage() {
@@ -27,6 +29,7 @@ export function ParcelListPage() {
   const [applied, setApplied] = useState<Record<string, string>>({ scannedTimeStart: defaultDay.startOf('day').format('YYYY-MM-DDTHH:mm:ss'), scannedTimeEnd: defaultDay.endOf('day').format('YYYY-MM-DDTHH:mm:ss') });
   const [page, setPage] = useState({ number: 1, size: 10 });
   const [tab, setTab] = useState('parcels');
+  const [imageParcel, setImageParcel] = useState<ParcelSummary>();
   const query = new URLSearchParams({ ...applied, pageNumber: String(page.number), pageSize: String(page.size), includeTotalCount: 'true' });
   const parcels = useApiResource<ParcelList>(`/api/parcels?${query}`);
   const unbound = useApiResource<ParcelProcessingRecord[]>(tab === 'unbound' ? '/api/parcels/processing-records/unbound?limit=200' : null);
@@ -47,7 +50,7 @@ export function ParcelListPage() {
     setPage(current => ({ ...current, number: 1 })); parcels.refresh();
   };
   return <>
-    <PageIntro title="包裹台账" description="按条码、时间和状态定位包裹。" action={<Button type="primary" onClick={() => navigate('/parcels/new')}>新建包裹</Button>} />
+    <PageIntro title="包裹台账" description="按条码、时间和状态定位包裹，业务数据由工作台或融合服务自动传入。" />
     <SectionCard className="filter-card parcel-list-filter">
       <div className="filter-grid">
         <Field label="条码"><Input value={barcode} onChange={event => setBarcode(event.target.value)} onPressEnter={search} placeholder="请输入条码" /></Field>
@@ -60,15 +63,16 @@ export function ParcelListPage() {
       {!designPreview && <Tabs activeKey={tab} onChange={setTab} items={[{ key: 'parcels', label: '包裹记录' }, { key: 'unbound', label: '未关联 DWS' }]} />}
       {tab === 'parcels' ? <>
         {parcels.error && <Alert showIcon type="error" message="包裹台账加载失败" description={parcels.error.message} action={<Button onClick={parcels.refresh}>重试</Button>} />}
-        <DataTable<ParcelSummary> className="parcel-records-table" dataSource={parcels.data?.items ?? []} loading={parcels.loading} rowKey="id" tableLayout="fixed" scroll={{ x: undefined }} columns={[
-          { title: '扫码时间', dataIndex: 'scannedTime', render: value => parcelFactValue('scannedTime', value), width: 180 },
-          { title: '包裹 ID', dataIndex: 'id', width: 135 },
+        <DataTable<ParcelSummary> className="parcel-records-table" dataSource={parcels.data?.items ?? []} loading={parcels.loading} rowKey="id" tableLayout="fixed" scroll={{ x: 1320 }} columns={[
+          { title: '扫码时间', dataIndex: 'scannedTime', render: value => parcelFactValue('scannedTime', value), width: 180, ellipsis: true },
+          { title: '包裹 ID', dataIndex: 'id', width: 195 },
           { title: '主条码', dataIndex: 'barCodes', render: value => parcelFactValue('barCodes', value), width: 186 },
+          { title: '图片', dataIndex: 'hasImages', width: 116, render: (value, record) => value ? <Button className="table-link" type="link" aria-label={`查看包裹 ${record.id} 的图片`} onClick={event => { event.stopPropagation(); setImageParcel(record); }} onDoubleClick={event => event.stopPropagation()}>查看图片</Button> : <span className="parcel-image-empty">暂无图片</span> },
           { title: '状态', dataIndex: 'status', render: value => <StatusTag value={parcelFactValue('status', value)} />, width: 117 },
           { title: '目标 / 实际格口', render: (_, record) => `${record.targetChuteCode ?? record.targetChuteId ?? (designPreview ? '-' : '未提供')} / ${record.actualChuteCode ?? record.actualChuteId ?? (designPreview ? '-' : '未提供')}`, width: 185 },
           { title: '工作台', dataIndex: 'workstationName', width: 126 },
-          { title: '重量', dataIndex: 'weight', render: value => value == null ? '未提供' : `${Number(value).toFixed(2)} kg`, width: 118 },
-          { title: '操作', render: (_, record) => <Button className="table-link" type="link" onClick={() => navigate(`/parcels/${record.id}`)}>查看</Button> },
+          { title: '重量', dataIndex: 'weight', render: value => value == null ? '未提供' : `${formatNumber(Number(value))} kg`, width: 118 },
+          { title: '操作', width: 96, render: (_, record) => <Button className="table-link" type="link" onClick={() => navigate(`/parcels/${record.id}`)}>查看</Button> },
         ]} pagination={{ current: page.number, pageSize: page.size, total: parcels.data?.totalCount ?? 0, onChange: (number, size) => setPage({ number, size }), pageSizeOptions: [10, 20, 50, 100, 200] }} onRow={record => ({ onDoubleClick: () => navigate(`/parcels/${record.id}`) })} locale={{ emptyText: parcels.error ? '数据未加载，请重试' : '当前筛选下没有包裹' }} />
       </> : <>
         {unbound.error && <Alert type="error" showIcon message="未关联 DWS 加载失败" description={unbound.error.message} />}
@@ -84,5 +88,6 @@ export function ParcelListPage() {
     <Drawer title="更多筛选" open={moreOpen} onClose={() => setMoreOpen(false)} width={380} footer={<Space><Button onClick={() => { setBag(''); setWorkstation(''); }}>清空</Button><Button type="primary" onClick={() => { search(); setMoreOpen(false); }}>应用筛选</Button></Space>}>
       <Form layout="vertical"><Form.Item label="集包号"><Input value={bag} onChange={event => setBag(event.target.value)} placeholder="请输入集包号" /></Form.Item><Form.Item label="工作台"><Input value={workstation} onChange={event => setWorkstation(event.target.value)} placeholder="请输入工作台名称" /></Form.Item></Form>
     </Drawer>
+    {imageParcel && <ParcelImagesDrawer key={imageParcel.id} parcel={imageParcel} onClose={() => setImageParcel(undefined)} />}
   </>;
 }

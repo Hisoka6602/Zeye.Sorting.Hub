@@ -18,8 +18,20 @@ public sealed record ParcelAnalyticsResponse {
     public long ChuteMismatchCount { get; init; }
     /// <summary>有有效生命周期的已完成包裹平均耗时，单位秒；无样本时为空。</summary>
     public decimal? AverageLifecycleSeconds { get; init; }
+    /// <summary>窗口内成功入库的来源包裹，相邻首次创建时间的正间隔中位数，单位毫秒；无有效间隔时为空。</summary>
+    public decimal? MedianCreationIntervalMilliseconds { get; init; }
+    /// <summary>窗口内成功入库的来源包裹，最短的正相邻创建间隔，单位毫秒；无有效间隔时为空。</summary>
+    public decimal? MinimumCreationIntervalMilliseconds { get; init; }
+    /// <summary>实际每小时分拣票数：3600000 / 创建间隔中位数；无有效间隔时为空。</summary>
+    public decimal? ActualSortingThroughputPerHour { get; init; }
+    /// <summary>理论每小时分拣票数：3600000 / 最短正创建间隔；无有效间隔时为空。</summary>
+    public decimal? TheoreticalSortingThroughputPerHour { get; init; }
+    /// <summary>用于计算实际与理论时效的有效相邻间隔数，重试和非正间隔不计入。</summary>
+    public long CreationIntervalSampleCount { get; init; }
     /// <summary>按首次入库本地日期分组的快照汇总。</summary>
     public required IReadOnlyList<ParcelAnalyticsDailyItem> Daily { get; init; }
+    /// <summary>按实际完成分拣本地日期分组的包裹件数。</summary>
+    public required IReadOnlyList<ParcelAnalyticsDailySortingItem> DailySorting { get; init; }
     /// <summary>当前分拣异常类型分布。</summary>
     public required IReadOnlyList<ParcelAnalyticsDistributionItem> ExceptionTypes { get; init; }
     /// <summary>来源工作台分布。</summary>

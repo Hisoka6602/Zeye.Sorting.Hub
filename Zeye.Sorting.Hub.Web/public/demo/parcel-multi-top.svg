@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="480" viewBox="0 0 720 480" role="img" aria-labelledby="title">
+  <title id="title">模拟包裹顶部视图，非现场照片</title>
+  <rect width="720" height="480" fill="#e8edf3"/>
+  <path d="M0 118h720M0 178h720M0 238h720M0 298h720M0 358h720" stroke="#d1d9e3" stroke-width="12"/>
+  <rect x="196" y="110" width="340" height="278" rx="10" fill="#aeb9c8" opacity=".22"/>
+  <rect x="184" y="98" width="340" height="278" rx="6" fill="#d3b586" stroke="#b69767" stroke-width="4"/>
+  <rect x="334" y="98" width="42" height="278" fill="#ede0c4"/>
+  <path d="M355 98v278" stroke="#d9c79f" stroke-width="2"/>
+  <rect x="212" y="145" width="176" height="132" rx="5" fill="#fffdf8"/>
+  <text x="226" y="169" font-family="sans-serif" font-size="13" fill="#657289">DEMO / TOP CAMERA</text>
+  <path d="M229 182v58m7-58v58m9-58v58m5-58v58m9-58v58m11-58v58m6-58v58m11-58v58m7-58v58m9-58v58m5-58v58m9-58v58m11-58v58m7-58v58" stroke="#26344a" stroke-width="4"/>
+  <text x="226" y="259" font-family="sans-serif" font-size="12" fill="#26344a">SIM-MULTI-IMAGE-20261003</text>
+  <rect x="24" y="22" width="448" height="48" rx="10" fill="#fff"/>
+  <text x="42" y="53" font-family="sans-serif" font-size="21" fill="#475569">模拟图片 · 顶部相机 · 非现场照片</text>
+  <text x="28" y="451" font-family="sans-serif" font-size="17" fill="#64748b">ZEYE / MULTI-IMAGE DEMO / TOP VIEW</text>
+</svg>

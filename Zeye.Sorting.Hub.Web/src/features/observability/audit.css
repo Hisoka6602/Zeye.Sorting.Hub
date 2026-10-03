@@ -1,0 +1,24 @@
+.audit-request-description {
+  display: block;
+  width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+.audit-request-path {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 820px) {
+  .audit-list-table .data-table .ant-table-cell-fix-right {
+    position: static !important;
+  }
+
+  .audit-list-table .data-table .ant-table-cell-fix-right-first::after {
+    display: none;
+  }
+}

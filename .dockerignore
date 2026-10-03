@@ -1,0 +1,16 @@
+.git
+.vs
+.agents
+.codex-artifacts
+artifacts
+.config
+**/bin
+**/obj
+**/node_modules
+**/dist
+**/qa
+design
+performance/results
+deploy/.env
+*.user
+*.log

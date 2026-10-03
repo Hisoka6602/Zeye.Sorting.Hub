@@ -1,0 +1,100 @@
+# 本机 Docker 部署：独立的数据库、Host 与前端容器。
+name: zeye-sorting-hub
+
+# 容器标准输出同样需要轮转，避免 NLog 已受限但 Docker 日志持续填满宿主磁盘。
+x-bounded-logging: &bounded-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    logging: *bounded-logging
+    environment:
+      TZ: ${ZEYE_TIME_ZONE:-Asia/Shanghai}
+      MYSQL_DATABASE: zeye_sorting_hub
+      MYSQL_USER: sorting_hub
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in deploy/.env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in deploy/.env}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root --password=\"$${MYSQL_ROOT_PASSWORD}\" --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 40s
+
+  host:
+    image: zeye-sorting-hub-host:local
+    build:
+      context: ..
+      dockerfile: Zeye.Sorting.Hub.Host/Dockerfile
+    restart: unless-stopped
+    logging: *bounded-logging
+    # 宿主给应用 30 秒退出预算，容器宽限必须更长，避免尚在排空时收到 SIGKILL。
+    stop_grace_period: 45s
+    mem_limit: ${ZEYE_HOST_MEMORY_LIMIT:-2g}
+    pids_limit: 512
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      TZ: ${ZEYE_TIME_ZONE:-Asia/Shanghai}
+      ASPNETCORE_ENVIRONMENT: LocalDocker
+      Hosting__Urls: http://0.0.0.0:5078
+      Access__EnforceAuthorization: ${ZEYE_AUTH_ENABLED:-true}
+      Access__BootstrapKey: ${ZEYE_BOOTSTRAP_KEY:-}
+      Access__MachineApiKey: ${ZEYE_MACHINE_API_KEY:-}
+      ConnectionStrings__MySql: server=mysql;port=3306;database=zeye_sorting_hub;uid=sorting_hub;pwd=${MYSQL_PASSWORD};SslMode=None;AllowPublicKeyRetrieval=True;MinimumPoolSize=1;MaximumPoolSize=32;ConnectionTimeout=10;DefaultCommandTimeout=30;
+      Persistence__Migration__FailureStrategy__NonProduction: FailFast
+      Persistence__MigrationGovernance__DryRun: "false"
+      # This isolated local database needs to create the current parcel partition on first write.
+      Persistence__Sharding__WriteRouting__AllowTableCreation: "true"
+      Persistence__Sharding__WriteRouting__DryRun: "false"
+      Persistence__Sharding__Prebuild__DryRun: "false"
+      Persistence__Backup__DryRun: "false"
+      # 页面清理必须再次验证当前用户密码，并在数据库永久保存清理历史。
+      Persistence__RepositoryDangerousActions__ParcelRemoveExpired__Isolator__EnableGuard: "true"
+      Persistence__RepositoryDangerousActions__ParcelRemoveExpired__Isolator__AllowDangerousActionExecution: "true"
+      Persistence__RepositoryDangerousActions__ParcelRemoveExpired__Isolator__DryRun: "false"
+      Persistence__Backup__RestoreRunbookDirectory: governance-artifacts/backup-runbooks
+      Persistence__Backup__DrillRecordDirectory: governance-artifacts/drill-records
+      Persistence__MigrationGovernance__ArchiveDirectory: governance-artifacts/migration-scripts
+      Persistence__AutoTuning__MonthlyReportArchivePath: governance-artifacts/monthly-reports
+      Persistence__AutoTuning__AnnualDashboardArchivePath: governance-artifacts/annual-reports
+      ObjectStorage__Minio__IsEnabled: "false"
+    ports:
+      - "127.0.0.1:${ZEYE_API_PORT:-5087}:5078"
+    volumes:
+      - host_logs:/app/logs
+      - host_backups:/app/backup-artifacts
+      - host_governance:/app/governance-artifacts
+
+  web:
+    image: zeye-sorting-hub-web:local
+    build:
+      context: ../Zeye.Sorting.Hub.Web
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    logging: *bounded-logging
+    depends_on:
+      - host
+    environment:
+      TZ: ${ZEYE_TIME_ZONE:-Asia/Shanghai}
+    ports:
+      - "127.0.0.1:${ZEYE_WEB_PORT:-4187}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/data-overview"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+volumes:
+  mysql_data:
+  host_logs:
+  host_backups:
+  host_governance:

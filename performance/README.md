@@ -141,7 +141,6 @@ PR-S 引入的 `.github/workflows/performance-smoke-test.yml` 在普通 PR 中�
 - `sorting.audit.enqueued`、`sorting.audit.dropped`、`sorting.audit.queue.depth`
 - `sorting.buffered_write.enqueued`、`sorting.buffered_write.dropped`、`sorting.buffered_write.queue.depth`
 - `sorting.slow_query.collected`、`sorting.slow_query.dropped`
-- `sorting.outbox.processed`、`sorting.outbox.succeeded`、`sorting.outbox.failed`、`sorting.outbox.batch.duration`
 
 本地采集示例：
 

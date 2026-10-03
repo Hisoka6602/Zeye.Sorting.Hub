@@ -4,6 +4,8 @@ namespace Zeye.Sorting.Hub.Contracts.Models.Parcels.Admin;
 /// 过期包裹清理治理接口响应合同（与 Domain.DangerousBatchActionResult 对应的外部合同）。
 /// </summary>
 public sealed record ParcelCleanupExpiredResponse {
+    /// <summary>用于永久历史查询的操作记录编号。</summary>
+    public string? CleanupRecordId { get; init; }
     /// <summary>
     /// 动作名称（用于审计检索）。
     /// </summary>

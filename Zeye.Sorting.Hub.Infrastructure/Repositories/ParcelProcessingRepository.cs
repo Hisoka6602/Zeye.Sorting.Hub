@@ -97,7 +97,12 @@ public sealed class ParcelProcessingRepository : IParcelProcessingRepository {
                 if (parcel is not null) {
                     var history = await db.Set<ParcelProcessingRecord>().AsNoTracking().Where(x => x.ParcelId == parcel.Id).ToListAsync(cancellationToken);
                     history.Add(storedRecord);
-                    parcel.ApplyProcessingRecords(history);
+                    var documents = await db.Set<Persistence.Management.ManagedDocument>().AsNoTracking().Where(x => x.Key == "rules-exception" || x.Key == "rules-parcel").ToListAsync(cancellationToken);
+                    var ruleJson = documents.SingleOrDefault(x => x.Key == "rules-exception")?.Json;
+                    var exceptionRules = ruleJson is null ? ClassificationRuleDefaults.Create() : JsonSerializer.Deserialize<ClassificationRule[]>(ruleJson, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+                    var parcelJson = documents.SingleOrDefault(x => x.Key == "rules-parcel")?.Json;
+                    var rules = parcelJson is null ? exceptionRules : exceptionRules.Concat(JsonSerializer.Deserialize<ClassificationRule[]>(parcelJson, new JsonSerializerOptions(JsonSerializerDefaults.Web))!).ToArray();
+                    parcel.ApplyProcessingRecords(history, rules);
                 }
                 await db.SaveChangesAsync(cancellationToken);
                 await transaction.CommitAsync(cancellationToken);

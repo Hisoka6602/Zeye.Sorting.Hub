@@ -1,5 +1,7 @@
 # Zeye.Sorting.Hub
 
+本项目负责接收、持久化和分析包裹相关内容，不向 WMS 等外部业务系统投递消息。
+
 ## 仓库文件结构（当前）
 
 > 说明：以下基础结构与“Fusion处理事实与实际物理分表”中的新增文件结构共同组成当前清单（不含 `.git`、`bin/`、`obj/` 等构建产物）。
@@ -25,10 +27,18 @@
 │       └── stability-gates.yml（长期运行稳定性门禁：构建+测试、配置合法性、隔离器边界、回滚资产、健康探针端点、契约兼容性、蓝绿部署验证、演练记录（强制阻断）、分表预建校验、迁移归档验证共 10 项门禁）
 ├── .gitattributes（Git 属性配置）
 ├── .gitignore（Git 忽略规则）
+├── .dockerignore（Host 镜像构建上下文排除规则）
 ├── Directory.Build.targets（全仓库编译守卫与 .NET 10 性能构建配置）
 ├── 待完善事项.md（待完善事项列表，仅记录代码中尚未实现的可完善点）
 ├── 更新记录.md（更新记录，按时间倒序记录每次 PR 更新内容）
 ├── README.md（仓库总览、结构清单与维护规范）
+├── deploy/（Windows 一体化发布与 Docker Compose 部署目录）
+│   ├── .env.example（数据库密码与本机端口的配置模板）
+│   ├── start.ps1（部署、就绪验证、默认浏览器打开与收藏提醒）
+│   ├── publish-windows.ps1（一次发布 Windows 自包含 Host 与内置前端）
+│   ├── start.sh（Linux 部署与前端、API 就绪验证）
+│   ├── compose.yaml（独立 MySQL、Host、Web 服务及数据卷）
+│   └── README.md（启动、验证与停止说明）
 ├── MinIO对象存储接入多PR实施方案与Copilot严格门禁.md（MinIO 接入实施方案：多 PR 拆分、断点续跑、断点续传与严格门禁说明）
 ├── 模块能力地图.md（当前系统能力总览：模块状态、对外能力、长期运行能力与边界说明）
 ├── 业务模块接入规范.md（业务模块接入规范：统一模块目录结构、治理接线要求与分层边界）
@@ -78,7 +88,6 @@
 │   ├── PR-长期数据库底座I-检查台账.md（长期数据库底座 PR-I 台账：记录慢查询指纹聚合、查询画像 API 与下一 PR 入口）
 │   ├── PR-长期数据库底座J-检查台账.md（长期数据库底座 PR-J 台账：记录查询模板登记、索引建议闭环与下一 PR 入口）
 │   ├── PR-长期数据库底座K-检查台账.md（长期数据库底座 PR-K 台账：记录写入幂等、重复键治理与下一 PR 入口）
-│   ├── PR-长期数据库底座L-检查台账.md（长期数据库底座 PR-L 台账：记录 Outbox 事件持久化、状态推进、死信与下一 PR 入口）
 │   ├── PR-长期数据库底座M-检查台账.md（长期数据库底座 PR-M 台账：记录 Inbox 幂等消费、状态治理、重试与下一 PR 入口）
 │   ├── PR-长期数据库底座N-检查台账.md（长期数据库底座 PR-N 台账：记录数据保留策略、自动清理治理、健康检查与下一 PR 入口）
 │   ├── PR-长期数据库底座O-检查台账.md（长期数据库底座 PR-O 台账：记录备份、恢复、校验、演练资产与下一 PR 入口）
@@ -120,11 +129,7 @@
 │   │   ├── Diagnostics（诊断应用服务目录）
 │   │   │   └── GetSlowQueryProfileQueryService.cs（慢查询画像查询应用服务：读取内存快照并映射外部合同）
 │   │   ├── Events（事件应用服务目录）
-│   │   │   ├── AppendOutboxMessageCommandService.cs（Outbox 消息独立写入应用服务）
-│   │   │   ├── DispatchOutboxMessageCommandService.cs（Outbox 消息状态推进与日志派发模拟应用服务）
-│   │   │   ├── GetOutboxMessagePagedQueryService.cs（Outbox 消息分页查询与健康快照读取应用服务）
 │   │   │   ├── InboxMessageGuardService.cs（Inbox 消息幂等消费守卫应用服务）
-│   │   │   └── OutboxMessageContractMapper.cs（Outbox 聚合到外部合同映射器）
 │   │   ├── Idempotency（幂等应用服务目录）
 │   │   │   ├── IdempotencyGuardException.cs（幂等守卫异常：提供稳定错误码，避免调用方依赖消息文本判定）
 │   │   │   └── IdempotencyGuardService.cs（幂等守卫应用服务：统一协调重复请求回放、取消重试与处理中拒绝）
@@ -176,10 +181,6 @@
 │   │   │   ├── SlowQueryProfileListResponse.cs（慢查询画像列表响应合同）
 │   │   │   └── SlowQueryProfileResponse.cs（慢查询画像详情响应合同）
 │   │   ├── Events（事件合同目录）
-│   │   │   ├── OutboxMessageCreateRequest.cs（Outbox 消息创建请求合同）
-│   │   │   ├── OutboxMessageListRequest.cs（Outbox 消息分页查询请求合同）
-│   │   │   ├── OutboxMessageListResponse.cs（Outbox 消息分页响应合同）
-│   │   │   └── OutboxMessageResponse.cs（Outbox 消息详情响应合同）
 │   │   └── Parcels（Parcel 合同目录）
 │   │       ├── Admin（管理端写接口合同目录）
 │   │       │   ├── ParcelBatchBufferedCreateRequest.cs（Parcel 批量缓冲写入请求合同）
@@ -227,7 +228,6 @@
 │   │   │   └── ArchiveTask.cs（归档任务聚合根：记录 dry-run 状态、计划摘要、检查点与重试次数）
 │   │   ├── Events（事件聚合目录）
 │   │   │   ├── InboxMessage.cs（Inbox 消息聚合根：记录来源系统、消息标识、消费状态与过期治理边界）
-│   │   │   └── OutboxMessage.cs（Outbox 消息聚合根：记录事件类型、载荷、状态推进与死信隔离信息）
 │   │   ├── Idempotency（幂等聚合目录）
 │   │   │   └── IdempotencyRecord.cs（幂等记录聚合根：记录来源系统、操作名、业务键、载荷哈希与执行状态）
 │   │   └── Parcels（包裹聚合目录）
@@ -277,7 +277,6 @@
 │   │   │   └── IdempotencyRecordStatus.cs（幂等记录状态枚举）
 │   │   ├── Events（事件枚举目录）
 │   │   │   ├── InboxMessageStatus.cs（Inbox 消息状态枚举：Pending/Processing/Succeeded/Failed）
-│   │   │   └── OutboxMessageStatus.cs（Outbox 消息状态枚举：Pending/Processing/Succeeded/Failed/DeadLettered）
 │   │   └── AuditLogs（审计日志枚举目录）
 │   │       ├── AuditResourceType.cs（审计资源类型枚举）
 │   │       ├── FileOperationType.cs（文件操作类型枚举）
@@ -289,7 +288,6 @@
 │   │   ├── IArchiveTaskRepository.cs（归档任务仓储契约：支持创建、分页查询、获取待执行任务与更新状态）
 │   │   ├── IIdempotencyRepository.cs（幂等记录仓储契约：支持按幂等键读取、新增与状态更新）
 │   │   ├── IInboxMessageRepository.cs（Inbox 消息仓储契约：支持按消息键读取、更新与过期治理候选查询）
-│   │   ├── IOutboxMessageRepository.cs（Outbox 消息仓储契约：支持追加、分页、健康快照与原子领取派发）
 │   │   ├── IParcelRepository.cs（包裹仓储接口，含过期清理危险动作治理结果契约）
 │   │   ├── IWebRequestAuditLogQueryRepository.cs（Web 请求审计日志只读查询仓储契约）
 │   │   ├── IWebRequestAuditLogRepository.cs（Web 请求审计日志仓储写入契约）
@@ -303,7 +301,6 @@
 │   │       │   ├── PageRequest.cs（通用分页请求模型）
 │   │       │   └── PageResult.cs（通用分页结果模型）
 │   │       ├── ReadModels（查询读模型目录）
-│   │       │   ├── OutboxMessageHealthSnapshotReadModel.cs（Outbox 健康快照读模型：聚合待处理/处理中/失败/死信数量与最早积压时间）
 │   │       │   ├── ParcelSummaryReadModel.cs（Parcel 列表摘要读模型）
 │   │       │   ├── WebRequestAuditLogDetailReadModel.cs（Web 请求审计日志详情读模型，含 WebRequestAuditLogId 外键镜像字段）
 │   │       │   └── WebRequestAuditLogSummaryReadModel.cs（Web 请求审计日志列表摘要读模型）
@@ -318,6 +315,10 @@
 │   │   └── SiteIdentity.cs（站点标识值对象：承载站点编码边界）
 │   └── Zeye.Sorting.Hub.Domain.csproj（Domain 项目定义）
 ├── Zeye.Sorting.Hub.Host（宿主层）
+│   ├── Dockerfile（Node 前端与 .NET Host 一体化镜像构建）
+│   ├── Start-Hub.cmd（从发布目录启动 Windows 前后端程序）
+│   ├── Extensions
+│   │   └── BundledWebApplicationExtensions.cs（同源静态前端与受限单页路由回退）
 │   ├── Enums（宿主层枚举目录）
 │   │   └── MigrationFailureMode.cs（数据库迁移失败策略枚举：FailFast/Degraded，含 Description）
 │   ├── HostedServices（托管服务目录）
@@ -329,7 +330,6 @@
 │   │   ├── BackupHostedService.cs（备份治理托管服务：周期生成备份计划、校验最新备份并输出恢复资产）
 │   │   ├── BaselineDataValidationHostedService.cs（基线数据校验托管服务：启动期执行配置一致性校验并按开关触发可选种子入口）
 │   │   ├── MigrationGovernanceHostedService.cs（迁移治理托管服务：启动期预演迁移计划、归档脚本并写入治理状态）
-│   │   ├── OutboxDispatchHostedService.cs（Outbox 派发托管服务：周期推进消息状态并执行日志派发模拟）
 │   │   ├── DataRetentionHostedService.cs（数据保留治理托管服务：周期执行计划、dry-run/真实清理与审计写入）
 │   │   ├── QueryGovernanceReportHostedService.cs（查询治理报告托管服务：周期输出模板登记、慢查询匹配与索引建议只读报告）
 │   │   ├── ParcelBatchWriteFlushHostedService.cs（Parcel 批量缓冲写入后台 Flush 托管服务）
@@ -348,7 +348,7 @@
 │   │   ├── ParcelReadOnlyApiRouteExtensions.cs（Parcel 只读 API 路由扩展：含偏移分页、游标分页、详情与邻近查询）
 │   │   ├── ParcelAdminApiRouteExtensions.cs（Parcel 管理端 API 路由扩展：含同步写接口、cleanup-expired 与 batch-buffer 缓冲写入接口）
 │   │   ├── AuditReadOnlyApiRouteExtensions.cs（Web 请求审计日志只读 API 路由扩展）
-│   │   ├── DataGovernanceApiRouteExtensions.cs（数据治理 API 路由扩展：含归档任务创建/分页/重试与 Outbox 消息写入/查询入口）
+│   │   ├── DataGovernanceApiRouteExtensions.cs（数据治理 API 路由扩展：含归档任务创建/分页/重试）
 │   │   └── DiagnosticsApiRouteExtensions.cs（诊断 API 路由扩展：暴露慢查询画像列表与详情只读端点）
 │   ├── QueryParameters（路由参数绑定模型目录）
 │   │   ├── ParcelListQueryParameters.cs（Parcel 列表查询参数）
@@ -372,7 +372,6 @@
 │   │   ├── DatabaseReadinessHealthCheck.cs（数据库基础就绪探针：保留兼容实现）
 │   │   ├── BaselineDataHealthCheck.cs（基线数据健康检查：输出校验结果、失败模式、错误数与种子执行状态）
 │   │   ├── MigrationGovernanceHealthCheck.cs（迁移治理健康检查：输出待执行迁移、危险 SQL、归档脚本与执行状态）
-│   │   ├── OutboxHealthCheck.cs（Outbox 健康检查：输出待处理/处理中/失败/死信数量与最早积压时间）
 │   │   ├── BackupHealthCheck.cs（备份治理健康检查：输出最新备份文件校验结果、Runbook 与演练记录路径）
 │   │   ├── ReadOnlyDatabaseHealthCheck.cs（只读数据库健康检查：输出只读副本可用性、主库回退状态与报表查询路由目标）
 │   │   ├── DataRetentionHealthCheck.cs（数据保留治理健康检查：输出最近一次治理审计状态、计划量与执行量）
@@ -392,13 +391,16 @@
 │   ├── Swagger（Swagger 扩展目录）
 │   │   └── EnumDescriptionSchemaFilter.cs（枚举 Schema 中文增强）
 │   ├── Properties（运行调试属性目录）
-│   │   └── launchSettings.json（本地调试启动配置）
+│   │   ├── launchSettings.json（本地调试启动配置）
+│   │   └── PublishProfiles
+│   │       └── Windows-x64.pubxml（Windows x64 自包含前后端发布配置）
 │   ├── Program.cs（应用入口与 Host 构建流程）
 │   ├── Zeye.Sorting.Hub.Host.csproj（Host 项目定义）
 │   ├── nlog.config（NLog 日志配置）
 │   ├── appsettings.Development.json（开发环境配置）
 │   └── appsettings.json（默认运行配置，含 WebRequestAuditLog Body 采集开关、AuditReadOnlyApi:Enabled、Persistence:Backup、Persistence:ReadOnlyDatabase 与 Persistence:Retention）
 ├── Zeye.Sorting.Hub.Host.Tests（自动调优行为测试工程）
+│   ├── BundledWebUiTests.cs（页面刷新、服务路由、静态资源及配置隔离回归）
 │   ├── AutoTuningProductionControlTests.cs（自动调优生产可控能力测试：dry-run/隔离器/告警恢复/普通与严重回归/探针双路径/闭环链路；含分表策略评估与 PerDay 预建守卫联动测试；新增 WebRequestAuditLog 治理解耦/保留治理三态/逻辑表索引分发/配置错误键指向回归；配置键拼装参数化覆盖（Theory））
 │   ├── AlwaysExistsShardingPhysicalTableProbe.cs（物理表探测测试桩：始终存在场景，支撑分表守卫探测调用断言）
 │   ├── DataArchiveTaskTests.cs（归档任务 dry-run 测试：覆盖创建、分页、后台执行、完成态重试与非法类型校验）
@@ -417,7 +419,6 @@
 │   ├── IdempotencyTests.cs（幂等能力测试：覆盖 SHA256 哈希、重复请求回放与处理中拒绝）
 │   ├── InboxMessageTests.cs（Inbox 幂等消费测试：覆盖首次消费、重复回放、处理中拒绝、失败重试与过期治理候选）
 │   ├── DataRetentionTests.cs（数据保留治理测试：覆盖 dry-run、真实清理与健康检查状态）
-│   ├── OutboxMessageTests.cs（Outbox 事件底座测试：覆盖写入、分页、状态推进、死信与健康检查）
 │   ├── BatchSelectiveMissingShardingPhysicalTableProbe.cs（批量物理表探测测试桩：选择性缺失与 schema 透传断言）
 │   ├── CountingPlanProbe.cs（执行计划探针测试桩：记录调用次数）
 │   ├── DomainEventArgsTests.cs（领域事件载荷单元测试：验证 ParcelScannedEventArgs/ParcelChuteAssignedEventArgs 业务字段赋值与值语义）
@@ -444,6 +445,7 @@
 │   ├── ParcelRepositoryTests.cs（Parcel 仓储第一阶段能力测试：分页过滤、详情与邻近查询、写操作与过期清理；含阻断/dry-run/显式放开的危险动作治理回归）
 │   ├── SelectiveMissingShardingPhysicalTableProbe.cs（物理表探测测试桩：选择性缺失场景）
 │   ├── SortingHubTestDbContextFactory.cs（Host.Tests 通用 InMemory DbContextFactory，供查询服务/仓储测试复用）
+│   ├── SqliteRuntimeTests.cs（Windows、Linux 实际 SQLite 原生库安全版本回归）
 │   ├── WebRequestAuditLogRepositoryTests.cs（Web 请求审计日志仓储写入测试：DI 解析、冷热一对一落库与应用服务写入入口）
 │   ├── TestDialect.cs（通用数据库方言测试桩）
 │   ├── TestHostEnvironment.cs（IHostEnvironment 测试桩）
@@ -468,7 +470,6 @@
 │   │   ├── BagInfoEntityTypeConfiguration.cs（BagInfo 映射配置）
 │   │   ├── IdempotencyRecordEntityTypeConfiguration.cs（幂等记录映射配置：唯一幂等键索引与状态索引）
 │   │   ├── InboxMessageEntityTypeConfiguration.cs（Inbox 消息映射配置：唯一消息键索引与过期治理索引）
-│   │   ├── OutboxMessageEntityTypeConfiguration.cs（Outbox 消息映射配置：状态并发令牌与状态/事件类型索引）
 │   │   ├── ParcelEntityTypeConfiguration.cs（Parcel 映射配置）
 │   │   ├── WebRequestAuditLogEntityTypeConfiguration.cs（Web 请求审计热表映射配置）
 │   │   └── WebRequestAuditLogDetailEntityTypeConfiguration.cs（Web 请求审计冷表映射配置）
@@ -518,7 +519,7 @@
 │   │   ├── Retention（数据保留治理目录）
 │   │   │   ├── DataRetentionOptions.cs（数据保留治理配置模型：开关、守卫、dry-run、批次与策略清单）
 │   │   │   ├── DataRetentionPolicy.cs（数据保留策略模型：声明治理对象名称与默认保留天数）
-│   │   │   ├── DataRetentionPlanner.cs（数据保留计划器：统计审计、Outbox、Inbox、幂等、归档、死信与慢查询候选）
+│   │   │   ├── DataRetentionPlanner.cs（数据保留计划器：统计审计、Inbox、幂等、归档、死信与慢查询候选）
 │   │   │   ├── DataRetentionExecutor.cs（数据保留执行器：负责危险动作决策、逐策略清理与审计记录维护）
 │   │   │   └── DataRetentionAuditRecord.cs（数据保留治理审计记录模型：记录状态、决策、计划量、执行量与分策略摘要）
 │   │   ├── ReadModels（报表查询隔离目录）
@@ -577,8 +578,6 @@
 │   │   │   ├── AddArchiveTaskDryRunSupportDesigner.cs（归档任务迁移元数据，自动生成）
 │   │   │   ├── 20260506075656_AddIdempotencyRecordSupport.cs（幂等记录基线迁移）
 │   │   │   ├── 20260506075656_AddIdempotencyRecordSupport.Designer.cs（幂等记录迁移元数据，自动生成）
-│   │   │   ├── 20260506175929_AddOutboxMessageSupport.cs（Outbox 消息基线迁移）
-│   │   │   ├── 20260506175929_AddOutboxMessageSupport.Designer.cs（Outbox 消息迁移元数据，自动生成）
 │   │   │   ├── 20260507021744_AddInboxMessageSupport.cs（Inbox 消息基线迁移）
 │   │   │   ├── 20260507021744_AddInboxMessageSupport.Designer.cs（Inbox 消息迁移元数据，自动生成）
 │   │   │   ├── 20260615042538_AddImageObjectStorageMetadata.cs（图片对象存储元数据骨架迁移）
@@ -606,7 +605,6 @@
 │   │   ├── IdempotencyRepository.cs（幂等记录仓储实现：按幂等键查询并处理唯一键冲突）
 │   │   ├── InboxMessageRepository.cs（Inbox 消息仓储实现：按消息键查询、更新状态与枚举过期治理候选）
 │   │   ├── MemoryCacheRepositoryBase.cs（带内存缓存失效的仓储基类，使用 NLog 日志）
-│   │   ├── OutboxMessageRepository.cs（Outbox 消息仓储实现：支持分页、健康快照、原子领取与状态更新）
 │   │   ├── ParcelCursorQueryExtensions.cs（Parcel 游标分页查询扩展：统一稳定排序下的游标条件拼接）
 │   │   ├── ParcelRepository.cs（Parcel 仓储第一阶段实现，使用静态 NLog logger，无需 MEL ILogger 构造注入；BarCodeKeyword 检索按 Provider 分支：MySQL 走 FULLTEXT Boolean，其他 Provider 回退 Contains）
 │   │   ├── RepositoryBase.cs（通用仓储基类，接受 NLog.ILogger 构造参数，由派生类传入确保日志来源类名正确）
@@ -632,6 +630,11 @@
 │   │   └── LineBreakNormalizer.cs（换行标准化工具：将 CR/LF 归一化为空格，仅在存在换行时分配新字符串）
 │   └── Zeye.Sorting.Hub.SharedKernel.csproj（SharedKernel 项目定义）
 ├── Zeye.Sorting.Hub.sln（.NET 解决方案入口）
+├── Zeye.Sorting.Hub.Web（Ant Design 前端项目）
+│   ├── .dockerignore（Web 镜像构建上下文排除规则）
+│   ├── Dockerfile（Node 构建与 Nginx 运行镜像）
+│   ├── nginx.conf（单页路由与同源 API 反向代理）
+│   └── README.md（前端页面、运行方式及设计验收记录）
 ├── 性能基线报告.md（压测基线报告模板：记录 PR-S 强制指标、场景摘要、环境快照与结果结论）
 ├── EFCore数据库迁移指南.md（EF Core CodeFirst 迁移使用说明文档）
 ├── 数据库发布演练记录-20260929.md（双 Provider 隔离数据库迁移与回退演练记录）
@@ -724,7 +727,8 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 - `ParcelProcessingApplicationService.cs`：验证、服务端入库时间、原子写入与未绑定检索用例。
 - `ParcelProcessingContractMapper.cs`：合同与领域集中映射及内容哈希。
 - `ParcelProcessingRecordEntityTypeConfiguration.cs`：处理事实关系映射、发生时间及其他查询索引与量测精度。
-- `ParcelAnalyticsReadService.cs`：先按入库日期裁剪包裹快照物理表，再在数据库中完成条件计数、分组和平均时效计算；事实发生日仍跨历史表统计。
+- `ParcelAnalyticsReadService.cs`：先按入库日期裁剪包裹快照物理表，再在数据库中完成条件计数、分组和平均完成耗时计算；事实发生日仍跨历史表统计。
+- 数据概览的“分拣时效”在同一张卡片展示实际与理论小时产能，单位均为票/小时：实际时效 = `3,600,000 / 相邻成功创建包裹的间隔中位数（ms）`，理论时效 = `3,600,000 / 最短的正相邻创建间隔（ms）`。对所选范围内已成功入库、具有来源身份和检测事实的包裹，按首次创建时间 `CreatedTime` 统一排序；跨日与跨物理分表的相邻间隔一起计算，重复消息不重复计数，忽略零间隔。偶数个间隔的中位数取中间两项的平均，最短间隔取全部有效间隔的最小值，零样本或单票返回空值。后端返回 `medianCreationIntervalMilliseconds`、`minimumCreationIntervalMilliseconds`、`actualSortingThroughputPerHour`、`theoreticalSortingThroughputPerHour`、`creationIntervalSampleCount`；原 `averageLifecycleSeconds` 继续表示首次检测至完成的平均耗时。
 - `ParcelProcessingRepository.cs`：去重凭据、定位、处理事实与快照的统一事务实现，并拒绝同一来源三元组的第二次检测误合并。
 - `ParcelPartitionPeriod.cs`：天、ISO周、月的唯一周期计算，默认月。
 - `ParcelPartitionCatalogEntry.cs`：历史分表目录，粒度配置变更后保留可检索性。
@@ -763,7 +767,12 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 - `.github/`：Copilot 仓库级指令目录。
 - `.gitattributes`：Git 属性配置（如行尾规范）。
 - `.gitignore`：Git 忽略规则（如 `bin/`、`obj/`、IDE 临时文件）。
+- `.dockerignore`：排除编译产物、前端依赖和验收截图，缩小 Host 镜像构建上下文。
 - `README.md`：仓库总览、结构清单与维护规范文档。
+- `deploy/.env.example`：本机部署所需的独立数据库密码和端口模板；实际 `deploy/.env` 不提交。
+- `deploy/start.ps1`：部署并等待 Web/API 就绪，打开系统默认浏览器；根据用户确认显示或跳过收藏提醒。
+- `deploy/compose.yaml`：构建并启动独立的 MySQL、Host、Web 容器与持久化数据卷。
+- `deploy/README.md`：本机 Docker 部署、健康检查与停止命令。
 - `业务模块接入规范.md`：业务模块接入规范，约束新增模块的目录结构、分层边界、查询/写入治理与统一错误处理。
 - `Copilot-业务模块新增模板.md`：Copilot 业务模块新增模板，沉淀新增业务模块时应直接复用的任务模板与检查清单。
 - `更新记录.md`：更新记录，按时间倒序记录每次 PR 更新内容（从 README 独立拆分）。
@@ -807,7 +816,6 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
   - `PR-长期数据库底座I-检查台账.md`：长期数据库底座 PR-I 实施台账；记录慢查询指纹聚合、查询画像只读 API、验证结果与下一 PR 入口。
   - `PR-长期数据库底座J-检查台账.md`：长期数据库底座 PR-J 实施台账；记录查询模板登记、查询治理报告、只读索引建议闭环与下一 PR 入口。
   - `PR-长期数据库底座K-检查台账.md`：长期数据库底座 PR-K 实施台账；记录写入幂等、SHA256 载荷哈希、重复请求回放与下一 PR 入口。
-  - `PR-长期数据库底座L-检查台账.md`：长期数据库底座 PR-L 实施台账；记录 Outbox 事件持久化、状态推进、死信隔离、健康检查与下一 PR 入口。
   - `PR-长期数据库底座M-检查台账.md`：长期数据库底座 PR-M 实施台账；记录 Inbox 幂等消费、失败重试、过期治理候选与下一 PR 入口。
   - `PR-长期数据库底座N-检查台账.md`：长期数据库底座 PR-N 实施台账；记录数据保留策略、自动清理治理、健康检查与下一 PR 入口。
   - `PR-长期数据库底座O-检查台账.md`：长期数据库底座 PR-O 实施台账；记录备份、恢复、校验、演练资产与下一 PR 入口。
@@ -819,6 +827,12 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 
 ### 根目录构建资产
 - `Directory.Build.targets`：全仓库编译守卫入口；强制 `net10.0`/C# 14，启用 Release 速度优化、分层编译与 PGO，并阻断 UTC API、浮点数、非 `long` 数值 Id、缺失中文注释、混合类型文件、热路径数据库/文件访问、配置文件缺少中文注释及数据库底座能力回退。
+
+### `Zeye.Sorting.Hub.Web/`：前端与容器运行配置
+- `.dockerignore`：排除前端依赖、构建产物和本机验收截图。
+- `Dockerfile`：使用 Node 构建 React 应用，再将静态产物复制到 Nginx 镜像。
+- `nginx.conf`：提供单页应用路由回退，并将 `/api/` 请求代理到同一 Compose 项目的 Host 服务。
+- `README.md`：前端页面、运行方式、设计验收与真实 API 接入说明。
 
 ### `.github/`：Copilot 仓库级指令目录
 - `DDD分层接口与实现放置规范.md`：DDD 分层接口定义与实现放置规范文档；明确依赖方向（Host→Infrastructure→Application→Domain）、接口定义归属规则（领域能力/应用编排/基础设施内部三类）、实现类放置约束、目录结构建议与禁止事项清单，供 Copilot 与开发人员统一执行。
@@ -903,11 +917,7 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 - `GetSlowQueryProfileQueryService.cs`：慢查询画像查询应用服务，消费 `ISlowQueryProfileReader` 返回的只读快照，并映射为 Diagnostics 合同响应。
 
 #### `Zeye.Sorting.Hub.Application/Services/Events/`：事件应用服务目录
-- `AppendOutboxMessageCommandService.cs`：Outbox 消息独立写入应用服务，负责请求校验、JSON 规范化与消息持久化。
-- `DispatchOutboxMessageCommandService.cs`：Outbox 消息派发应用服务，负责领取可派发消息、做最小日志派发模拟并推进成功/失败/死信状态。
-- `GetOutboxMessagePagedQueryService.cs`：Outbox 消息分页查询应用服务，提供状态过滤分页与健康快照读取能力。
 - `InboxMessageGuardService.cs`：Inbox 消息幂等消费守卫应用服务，统一协调消息键去重、处理中拒绝、失败重试与成功回放。
-- `OutboxMessageContractMapper.cs`：Outbox 聚合到外部合同映射器，统一响应模型转换。
 
 #### `Zeye.Sorting.Hub.Application/Services/Idempotency/`：幂等应用服务目录
 - `IdempotencyGuardException.cs`：幂等守卫异常，提供稳定错误码（如处理中、状态落库失败），避免调用方依赖异常消息文本判定。
@@ -969,10 +979,6 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 - `SlowQueryProfileListResponse.cs`：慢查询画像列表响应合同，返回当前生成时间、追踪指纹总量与 TopN 画像条目。
 
 #### `Zeye.Sorting.Hub.Contracts/Models/Events/`：事件合同目录
-- `OutboxMessageCreateRequest.cs`：Outbox 消息创建请求合同。
-- `OutboxMessageListRequest.cs`：Outbox 消息分页查询请求合同。
-- `OutboxMessageListResponse.cs`：Outbox 消息分页响应合同。
-- `OutboxMessageResponse.cs`：Outbox 消息详情响应合同。
 
 #### `Zeye.Sorting.Hub.Contracts/Models/Parcels/ValueObjects/`：Parcel 值对象响应合同目录
 - `ApiRequestInfoResponse.cs`：外部接口请求记录响应合同。
@@ -1018,7 +1024,6 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 
 ##### `Zeye.Sorting.Hub.Domain/Aggregates/Events/`：事件聚合目录
 - `InboxMessage.cs`：Inbox 消息聚合根，统一承载来源系统、消息标识、事件类型、消费状态、重试次数与过期治理时间。
-- `OutboxMessage.cs`：Outbox 消息聚合根，统一承载事件类型、JSON 载荷、派发状态、重试次数与死信隔离信息。
 
 ##### `Zeye.Sorting.Hub.Domain/Aggregates/Idempotency/`：幂等聚合目录
 - `IdempotencyRecord.cs`：幂等记录聚合根，统一承载来源系统、操作名称、业务键、SHA256 载荷哈希、执行状态与失败消息。
@@ -1080,7 +1085,6 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 
 #### `Zeye.Sorting.Hub.Domain/Enums/Events/`：事件枚举子目录
 - `InboxMessageStatus.cs`：Inbox 消息状态枚举（Pending/Processing/Succeeded/Failed）。
-- `OutboxMessageStatus.cs`：Outbox 消息状态枚举（Pending/Processing/Succeeded/Failed/DeadLettered）。
 
 #### `Zeye.Sorting.Hub.Domain/Enums/Sharding/`：分表治理枚举子目录
 - `ParcelShardingStrategyMode.cs`：分表策略模式枚举。
@@ -1103,7 +1107,6 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 - `IArchiveTaskRepository.cs`：归档任务仓储契约（支持创建、分页查询、获取待执行任务与状态更新）。
 - `IIdempotencyRepository.cs`：幂等记录仓储契约（支持按幂等键读取、新增与更新状态）。
 - `IInboxMessageRepository.cs`：Inbox 消息仓储契约（支持按来源系统+消息标识读取、更新状态与过期治理候选查询）。
-- `IOutboxMessageRepository.cs`：Outbox 消息仓储契约（支持追加、分页、健康快照、原子领取派发与状态更新）。
 - `IParcelRepository.cs`：包裹仓储接口（第一阶段可落地契约：基础读写、偏移分页、游标分页、按 Id 邻近查询、过期清理危险动作治理结果返回；同时定义 `MaxAdjacentCountPerSide = 200` 常量，为 Application 层与 Infrastructure 层提供唯一权威数字来源，禁止各自硬编码）。
 - `IWebRequestAuditLogQueryRepository.cs`：Web 请求审计日志只读查询仓储契约（分页列表与按 Id 详情）。
 - `IWebRequestAuditLogRepository.cs`：Web 请求审计日志仓储最小写入契约（`AddAsync`）。
@@ -1121,7 +1124,6 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 - `PageResult.cs`：通用分页结果模型（Items、页码、页大小、总数）。
 
 ###### `Zeye.Sorting.Hub.Domain/Repositories/Models/ReadModels/`：查询读模型目录
-- `OutboxMessageHealthSnapshotReadModel.cs`：Outbox 健康快照读模型，聚合待处理/处理中/失败/死信数量与最早积压时间。
 - `ParcelSummaryReadModel.cs`：Parcel 列表摘要读模型（包含 Parcel 全部扁平化字段，用于分页列表）。
 - `WebRequestAuditLogSummaryReadModel.cs`：Web 请求审计日志列表摘要读模型（高频查询字段）。
 - `WebRequestAuditLogDetailReadModel.cs`：Web 请求审计日志详情读模型（热表字段 + 冷表详情字段，含 `WebRequestAuditLogId` 外键镜像字段）。
@@ -1142,12 +1144,13 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 - `OperationalScope.cs`：运营边界值对象，组合站点、产线、设备与工作站四个维度，作为后续业务模块统一接入边界。
 
 ### `Zeye.Sorting.Hub.Host/`：宿主层（程序入口、后台服务、启动配置）
-- `Program.cs`：应用入口与 Host 构建流程（按 `AuditReadOnlyApi:Enabled` 显式开关控制审计只读路由映射，并注册 Parcel 游标分页查询服务、批量缓冲写入后台 Flush 服务、分表巡检/预建托管服务、归档 dry-run API、备份治理后台服务、Inbox 幂等消费守卫、Outbox API、Outbox 派发后台服务、数据保留治理后台服务与健康检查）。
+- `Dockerfile`：使用 Node 构建前端及 .NET 10 SDK 发布 Host，将静态资源放入同一 ASP.NET 10 运行时镜像。
+- `Program.cs`：应用入口与 Host 构建流程（按 `AuditReadOnlyApi:Enabled` 显式开关控制审计只读路由映射，并注册 Parcel 游标分页查询服务、批量缓冲写入后台 Flush 服务、分表巡检/预建托管服务、归档 dry-run API、备份治理后台服务、Inbox 幂等消费守卫、数据保留治理后台服务与健康检查）。
 - `Routing/EndpointRouteBuilderConventionExtensions.cs`：业务模块路由约定扩展，统一业务模块路由组标签、端点说明声明与应用层失败结果到 ProblemDetails 的映射。
 - `Routing/ParcelReadOnlyApiRouteExtensions.cs`：Parcel 只读路由注册与处理逻辑；新增 `/api/parcels/cursor` 游标分页接口，并为普通分页补充默认最近 24 小时与页码保护说明。
 - `Routing/ParcelAdminApiRouteExtensions.cs`：Parcel 管理端路由扩展（普通写接口 + cleanup-expired 治理接口 + `/api/admin/parcels/batch-buffer` 批量缓冲写入接口）。
 - `Routing/AuditReadOnlyApiRouteExtensions.cs`：Web 请求审计日志只读路由扩展（`GET /api/audit/web-requests`、`GET /api/audit/web-requests/{id}`）。
-- `Routing/DataGovernanceApiRouteExtensions.cs`：数据治理路由扩展（`POST/GET /api/data-governance/archive-tasks*` 与 `POST/GET /api/data-governance/outbox-messages`）。
+- `Routing/DataGovernanceApiRouteExtensions.cs`：数据治理路由扩展（`POST/GET /api/data-governance/archive-tasks*`）。
 - `Routing/DiagnosticsApiRouteExtensions.cs`：诊断路由扩展（`GET /api/diagnostics/slow-queries`、`GET /api/diagnostics/slow-queries/{fingerprint}`），只读取进程内画像快照，不触发数据库重查。
 - `QueryParameters/ParcelListQueryParameters.cs`：Parcel 列表查询参数模型（AsParameters 绑定）。
 - `QueryParameters/ParcelCursorListQueryParameters.cs`：Parcel 游标分页查询参数模型（AsParameters 绑定）。
@@ -1168,7 +1171,6 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 - `HealthChecks/DatabaseReadinessHealthCheck.cs`：数据库基础就绪健康检查探针，保留原始直接连通性探测实现。
 - `BaselineDataHealthCheck.cs`：基线数据健康检查；位于 `Zeye.Sorting.Hub.Host/HealthChecks/`，输出校验结果、失败模式、错误/告警数量与种子执行状态，挂载于 `/health/ready`。
 - `MigrationGovernanceHealthCheck.cs`：迁移治理健康检查；位于 `Zeye.Sorting.Hub.Host/HealthChecks/`，输出待执行迁移数、危险 SQL 命中、归档路径与当前执行状态，挂载于 `/health/ready`。
-- `OutboxHealthCheck.cs`：Outbox 健康检查；位于 `Zeye.Sorting.Hub.Host/HealthChecks/`，输出待处理/处理中/失败/死信数量与最早积压时间，挂载于 `/health/ready`。
 - `BackupHealthCheck.cs`：备份治理健康检查；位于 `Zeye.Sorting.Hub.Host/HealthChecks/`，输出最新备份文件、Runbook、演练记录与备份时效校验状态，挂载于 `/health/ready`。
 - `ReadOnlyDatabaseHealthCheck.cs`：只读数据库健康检查；位于 `Zeye.Sorting.Hub.Host/HealthChecks/`，输出只读副本可用性、主库回退状态与当前报表查询路由目标，挂载于 `/health/ready`。
 - `DataRetentionHealthCheck.cs`：数据保留治理健康检查；位于 `Zeye.Sorting.Hub.Host/HealthChecks/`，输出最近一次治理审计状态、计划量、执行量、失败策略数与当前决策，挂载于 `/health/ready`。
@@ -1191,7 +1193,6 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 - `EnumDescriptionSchemaFilter.cs`：枚举 Schema 中文增强过滤器。
 
 #### `Zeye.Sorting.Hub.Host/HostedServices/`：启动/常驻托管服务目录
-- `OutboxDispatchHostedService.cs`：Outbox 派发托管服务，周期创建作用域调用派发应用服务，执行日志派发模拟与状态推进。
 - `BackupHostedService.cs`：备份治理托管服务，按固定轮询周期生成备份计划、校验最新备份文件，并输出恢复 Runbook 与演练记录。
 - `DataRetentionHostedService.cs`：数据保留治理托管服务，按固定轮询周期执行策略计划、危险动作决策、dry-run/真实清理与审计记录写入。
 - `AutoTuningLoggerObservability.cs`：自动调优观测默认日志实现（已移除 `ConvertLogLevel` 转换方法，直接接收 `NLog.LogLevel`）。
@@ -1237,7 +1238,6 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 - `BagInfoEntityTypeConfiguration.cs`：BagInfo 映射配置。
 - `IdempotencyRecordEntityTypeConfiguration.cs`：幂等记录实体映射配置，定义唯一幂等键组合索引与状态/创建时间索引。
 - `InboxMessageEntityTypeConfiguration.cs`：Inbox 消息实体映射配置，定义来源系统+消息标识唯一索引、状态索引与过期治理索引。
-- `OutboxMessageEntityTypeConfiguration.cs`：Outbox 消息实体映射配置，定义状态并发令牌与状态/事件类型索引。
 - `ParcelEntityTypeConfiguration.cs`：Parcel 聚合映射配置（Parcel 主键 Id 改为 `ValueGeneratedNever`，由应用层显式赋值；owned/value-object 子表影子主键继续保持自动生成）。
 - `WebRequestAuditLogEntityTypeConfiguration.cs`：Web 请求审计热数据主表映射配置（写优化索引与一对一关系）。
 - `WebRequestAuditLogDetailEntityTypeConfiguration.cs`：Web 请求审计冷数据详情表映射配置（大字段落冷表）。
@@ -1304,7 +1304,7 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/Retention/`：数据保留治理目录
 - `DataRetentionOptions.cs`：数据保留治理配置模型，定义开关、守卫、dry-run、批次大小、轮询间隔与策略清单。
 - `DataRetentionPolicy.cs`：数据保留策略模型，集中声明支持的治理对象名称与默认保留天数。
-- `DataRetentionPlanner.cs`：数据保留计划器，统一统计 Web 请求审计、Outbox、Inbox、幂等记录、归档任务、死信与慢查询画像候选。
+- `DataRetentionPlanner.cs`：数据保留计划器，统一统计 Web 请求审计、Inbox、幂等记录、归档任务、死信与慢查询画像候选。
 - `DataRetentionExecutor.cs`：数据保留执行器，负责危险动作决策、逐策略清理执行、失败隔离与最近一次审计记录维护。
 - `DataRetentionAuditRecord.cs`：数据保留治理审计记录模型，记录最近一次执行状态、决策、计划量、执行量、失败策略数与分策略摘要。
 
@@ -1381,8 +1381,6 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 - `AddArchiveTaskDryRunSupportDesigner.cs`：归档任务迁移元数据文件（自动生成，勿手动修改）。
 - `20260506075656_AddIdempotencyRecordSupport.cs`：幂等记录基线迁移，新增 `IdempotencyRecords` 表与唯一幂等键索引。
 - `20260506075656_AddIdempotencyRecordSupport.Designer.cs`：幂等记录迁移元数据文件（自动生成，勿手动修改）。
-- `20260506175929_AddOutboxMessageSupport.cs`：Outbox 消息基线迁移，新增 `OutboxMessages` 表及状态/事件类型索引。
-- `20260506175929_AddOutboxMessageSupport.Designer.cs`：Outbox 消息迁移元数据文件（自动生成，勿手动修改）。
 - `20260507021744_AddInboxMessageSupport.cs`：Inbox 消息基线迁移，新增 `InboxMessages` 表、唯一消息键索引与过期治理索引。
 - `20260507021744_AddInboxMessageSupport.Designer.cs`：Inbox 消息迁移元数据文件（自动生成，勿手动修改）。
 - `20260615042538_AddImageObjectStorageMetadata.cs`：图片对象存储元数据骨架迁移，向 `Parcel_ImageInfos` 增加对象存储字段与查询索引。
@@ -1399,7 +1397,6 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 - `ArchiveTaskRepository.cs`：归档任务仓储实现，负责创建、分页、待执行任务拉取与状态更新。
 - `IdempotencyRepository.cs`：幂等记录仓储实现，支持按幂等键读取、新增记录与状态更新，并复用共享重复键检测工具。
 - `InboxMessageRepository.cs`：Inbox 消息仓储实现，支持按消息键读取、唯一键冲突处理、状态更新与过期治理候选查询。
-- `OutboxMessageRepository.cs`：Outbox 消息仓储实现，支持分页、健康快照、原子领取可派发消息与状态更新。
 - `ParcelCursorQueryExtensions.cs`：Parcel 游标分页查询扩展，集中封装 `ScannedTime DESC, Id DESC` 稳定排序下的游标条件，避免仓储内重复拼接。
 - `ParcelRepository.cs`：Parcel 仓储第一阶段实现（复用 `RepositoryBase`、`IDbContextFactory`，使用静态 `NLog.ILogger`，已移除 MEL `ILogger<ParcelRepository>` 构造依赖；提供基础读写、偏移分页、游标分页、按 Id 邻近查询与过期清理；条码检索按 Provider 分支（MySQL FULLTEXT Boolean、其他 Provider Contains）；过期清理纳入隔离器开关 + dry-run + 审计 + 补偿边界声明）。
 - `WebRequestAuditLogRepository.cs`：Web 请求审计日志仓储实现，负责热表与冷表详情同事务写入，以及分页列表/按 Id 详情只读查询。
@@ -1426,7 +1423,6 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 - `QueryGovernanceTests.cs`：查询治理测试，覆盖强制模板登记、慢查询画像匹配模板、索引建议输出与未登记慢查询指纹缺口暴露。
 - `IdempotencyTests.cs`：幂等能力测试，覆盖 SHA256 载荷哈希稳定性、重复请求回放、取消后重试与 Pending 记录自恢复回放。
 - `InboxMessageTests.cs`：Inbox 幂等消费测试，覆盖首次消费、成功回放、处理中拒绝、失败重试与过期治理候选查询。
-- `OutboxMessageTests.cs`：Outbox 事件底座测试，覆盖写入、分页、后台状态推进、死信隔离与健康检查。
 - `BackupGovernanceTests.cs`：备份治理测试，覆盖 MySQL/SQL Server Provider 命令生成安全性、禁用场景无连接串、最新备份文件校验、Runbook/演练记录输出与健康检查状态。
 - `OperationalScopeTests.cs`：运营边界测试，覆盖站点/产线/设备/工作站维度标准化、必填校验、可选维度归一化与响应合同映射。
 - `BusinessModuleTemplateRulesTests.cs`：业务模块模板规则测试，覆盖 `ApplicationResult` 稳定错误码、业务模块路由约定与模板文档关键规则。
@@ -1537,14 +1533,15 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 
 | 接口 | 路径 | 开放条件 |
 |------|------|---------|
-| 过期清理 | `POST /api/admin/parcels/cleanup-expired` | 必须结合配置开关 + dry-run + 审计 + 权限 |
+| 过期清理 | `POST /api/admin/parcels/cleanup-expired` | 当前登录用户 + 数据治理权限 + 再次验证密码 |
+| 清理历史 | `GET /api/admin/parcels/cleanup-history` | 数据治理或审计读取权限，支持分页 |
+| 已删除清单 | `GET /api/admin/parcels/cleanup-history/{id}` | 同上，支持分页及编号、条码、工作台检索 |
 
-- **当前状态**：隔离器默认配置为守卫阻断 + dry-run 模式，真实执行需显式调整 `appsettings.json`。
-- **上线前必须满足**：
-  1. `Persistence:RepositoryDangerousActions:ParcelRemoveExpired:Isolator` 配置已审核并锁定。
-  2. 接口追加 `.RequireAuthorization("DangerousActionPolicy")` 严格限制调用方。
-  3. 审计日志（BarCodes、PlannedCount、ExecutedCount、Decision）已落盘且可查询。
-  4. 有明确的回滚/补偿预案（当前为"此操作不可逆，回滚需从备份恢复"）。
+- **当前状态**：默认真实执行，保留隔离守卫；部署可显式设置禁止执行或演练。即使通用鉴权关闭，清理入口仍强制验证会话、治理权限、来源标识及当前用户密码，并限制密码尝试频率。
+- 请求包含 `createdBefore`（本地时间）和 `password`，密码不记录于请求审计、重放命令或永久记录。响应的 `cleanupRecordId` 可用于查询历史。
+- 单次最多删除 10,000 条，每批最多 1,000 条。`ManagedDocuments` 中 `parcel-cleanup:` 操作记录及 `parcel-cleanup-batch:` 包裹快照永久保留，不参与日志轮转或数据保留策略；无需新增数据库迁移。
+- 每批删除、对应包裹清单和进度计数一起提交关系事务；审计写入失败即回滚该批。操作中途失败或取消时保留已提交数量，清单含包裹编号、条码、工作台、来源身份及创建/扫码时间。服务中断时未结束的记录保持执行中，不能据此推断全部成功。
+- 物理删除不支持撤销，恢复包裹需要使用备份；來源身份和处理事实仍保留用于追溯。
 
 ### 四、后续应补充的上线保障
 
@@ -1552,3 +1549,315 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 2. **限流策略**：为写接口和危险接口配置速率限制（Rate Limiting），防止误操作大量触发。
 3. **审计看板**：建立清理接口调用记录可视化看板，显示 blocked / dry-run / execute 次数趋势。
 4. **回滚/补偿资产**：为危险删除操作建立可执行的数据归档方案，将当前文本边界升级为可执行治理资产。
+
+## 各层级与各文件作用说明（逐项）：运营接口与部署补充
+
+| 目录 | 文件 | 职责 |
+| --- | --- | --- |
+| Zeye.Sorting.Hub.Contracts/Models/Parcels/Analytics | `ParcelAnalyticsDailySortingItem.cs` | 分拣异常及跨平台运行接入文件 |
+| Zeye.Sorting.Hub.Domain/Aggregates/Parcels/Processing | `ClassificationCondition.cs` | 异常分类条件的字段、运算符、阈值、多文本及单位合同 |
+| Zeye.Sorting.Hub.Domain/Aggregates/Parcels/Processing | `ClassificationRule.cs` | 服务器分类规则、范围、状态与动作模型 |
+| Zeye.Sorting.Hub.Domain/Aggregates/Parcels/Processing | `ClassificationRuleDefaults.cs` | 真实分拣协议默认规则及不可改写的未知异常兜底 |
+| Zeye.Sorting.Hub.Domain/Aggregates/Parcels/Processing | `ExceptionRuleMatcher.cs` | 发布规则的数值换算、文本匹配、范围和缺失事实校验 |
+| Zeye.Sorting.Hub.Domain/Aggregates/Parcels/Processing | `SorterExceptionClassifier.cs` | 分拣异常及跨平台运行接入文件 |
+| Zeye.Sorting.Hub.Host.Tests | `AccessApiTests.cs` | 初始化与真实认证、会话撤销、角色权限及设备入口回归 |
+| Zeye.Sorting.Hub.Host.Tests | `ManagedRuleApiTests.cs` | 真实规则保存、并发冲突、系统兜底及实际事实分类回归 |
+| Zeye.Sorting.Hub.Host.Tests | `SorterExceptionClassificationTests.cs` | 分拣异常及跨平台运行接入文件 |
+| Zeye.Sorting.Hub.Host.Tests | `SqliteRuntimeTests.cs` | 分拣异常及跨平台运行接入文件 |
+| Zeye.Sorting.Hub.Host/Authentication | `SortingHubAccessExtensions.cs` | 内置 Cookie 认证、实时权限保护、来源校验及设备密钥认证 |
+| Zeye.Sorting.Hub.Host/Queries | `AccessDirectory.cs` | 数据库账号与角色目录 |
+| Zeye.Sorting.Hub.Host/Queries | `AccessDirectoryService.cs` | 密码散列、权限白名单、会话主体与安全目录投影 |
+| Zeye.Sorting.Hub.Host/Queries | `AccessRole.cs` | 内置和自定义角色的服务器权限模型 |
+| Zeye.Sorting.Hub.Host/Queries | `AccessUser.cs` | 账号、停用状态、密码散列及会话撤销标记 |
+| Zeye.Sorting.Hub.Host/Queries | `ManagedDocumentService.cs` | 管理文档读取与数据库版本条件提交 |
+| Zeye.Sorting.Hub.Host/Queries | `OperationalPartitionReadService.cs` | 服务器物理分表目录及预建计划查询 |
+| Zeye.Sorting.Hub.Host/Queries | `RuleWriteRequest.cs` | 包含预期版本的规则提交合同 |
+| Zeye.Sorting.Hub.Host/Routing | `AccessApiRouteExtensions.cs` | 管理员初始化、登录、退出和账号角色维护接口 |
+| Zeye.Sorting.Hub.Host/Routing | `OperationalReadApiRouteExtensions.cs` | 实际部署配置、备份检查和物理分表只读 API |
+| Zeye.Sorting.Hub.Host/Routing | `RuleManagementApiRouteExtensions.cs` | 分类规则数据库保存、并发保护、系统规则及发布动作校验 |
+| Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations | `20261002050647_AddManagedDocumentsSqlServer.Designer.cs` | EF 管理文档迁移的目标模型元数据 |
+| Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations | `20261002050647_AddManagedDocumentsSqlServer.cs` | 新增管理文档表、版本字段及迁移回滚 |
+| Zeye.Sorting.Hub.Infrastructure/Persistence/Management | `ManagedDocument.cs` | 数据库管理文档及乐观并发版本实体 |
+| Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations | `20261002050545_AddManagedDocuments.Designer.cs` | EF 管理文档迁移的目标模型元数据 |
+| Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations | `20261002050545_AddManagedDocuments.cs` | 新增管理文档表、版本字段及迁移回滚 |
+| Zeye.Sorting.Hub.Web/src/components | `ApiFeedback.tsx` | 统一 API 错误和重试入口 |
+| Zeye.Sorting.Hub.Web/src/data/api | `accessTypes.ts` | 账号、角色与会话的 API 合同 |
+| Zeye.Sorting.Hub.Web/src/data/api | `operationalTypes.ts` | 运维、审计、归档和健康报告合同 |
+| Zeye.Sorting.Hub.Web/src/data/api | `useAccessSession.ts` | 服务器会话读取和登录状态变更订阅 |
+| Zeye.Sorting.Hub.Web/src/data/api | `useServerRules.ts` | 服务器规则加载、版本条件提交及失败时保留编辑内容 |
+| Zeye.Sorting.Hub.Web/src/data | `exceptionConditions.ts` | 前端异常条件和协议规则的合同及匹配工具 |
+| Zeye.Sorting.Hub.Web/src/data | `exceptionRules.ts` | 前端异常条件和协议规则的合同及匹配工具 |
+| Zeye.Sorting.Hub.Web/src/features/operations | `ExceptionConditionEditor.tsx` | 真实业务页面及其复用组件或样式 |
+| Zeye.Sorting.Hub.Web/src/features/operations | `ExceptionVerification.tsx` | 真实业务页面及其复用组件或样式 |
+| Zeye.Sorting.Hub.Web/src/features/operations | `LiveOperationsRealPage.tsx` | 真实业务页面及其复用组件或样式 |
+| Zeye.Sorting.Hub.Web/src/features/operations | `rules.css` | 真实业务页面及其复用组件或样式 |
+| Zeye.Sorting.Hub.Web/src/features/parcels | `DataOverviewPage.tsx` | 真实业务页面及其复用组件或样式 |
+| Zeye.Sorting.Hub.Web/src/features/parcels | `ParcelExceptionPanel.tsx` | 真实业务页面及其复用组件或样式 |
+| Zeye.Sorting.Hub.Web/src/features/parcels | `WorkbenchDataOverview.tsx` | 真实业务页面及其复用组件或样式 |
+| Zeye.Sorting.Hub.Web/src/features/parcels | `WorkbenchDistributionCharts.tsx` | 真实业务页面及其复用组件或样式 |
+| Zeye.Sorting.Hub.Web/src/features/parcels | `parcelException.css` | 真实业务页面及其复用组件或样式 |
+| Zeye.Sorting.Hub.Web/src/features/parcels | `parcelExceptionDetails.ts` | 真实业务页面及其复用组件或样式 |
+| Zeye.Sorting.Hub.Web/src/features/parcels | `trendChartFormat.ts` | 真实业务页面及其复用组件或样式 |
+| Zeye.Sorting.Hub.Web/tests | `exceptionConditions.test.mjs` | 前端异常匹配、精度或图表行为回归测试 |
+| Zeye.Sorting.Hub.Web/tests | `exceptionRules.test.mjs` | 前端异常匹配、精度或图表行为回归测试 |
+| Zeye.Sorting.Hub.Web/tests | `operationalApi.test.mjs` | 真实请求来源头、失败语义、健康报告及长整数回归 |
+| Zeye.Sorting.Hub.Web/tests | `parcelExceptionDetails.test.mjs` | 前端异常匹配、精度或图表行为回归测试 |
+| Zeye.Sorting.Hub.Web/tests | `trendChartFormat.test.mjs` | 前端异常匹配、精度或图表行为回归测试 |
+| deploy | `.env.example` | 部署与样本数据写入的配置或脚本 |
+| deploy | `compose.yaml` | 部署与样本数据写入的配置或脚本 |
+| deploy | `seed-test-parcels.ps1` | 部署与样本数据写入的配置或脚本 |
+| deploy | `seed-workbench-data.ps1` | 部署与样本数据写入的配置或脚本 |
+| deploy | `start.ps1` | 部署与样本数据写入的配置或脚本 |
+| deploy | `start.sh` | 部署与样本数据写入的配置或脚本 |
+| "/345/210/206/346/213/243/346/234/272/345/274/202/345/270/270/345/210/206/347/261/273/350/247/204/345/210 | `231.md"` | 分拣异常及跨平台运行接入文件 |
+| Zeye.Sorting.Hub.Host.Tests | `RepositoryTrackingTests.cs` | 无跟踪配置下归档领取、幂等完成的真实落库回归 |
+| Zeye.Sorting.Hub.Host.Tests | `BlockingHealthRepository.cs` | 阻塞数据库健康查询的取消信号测试替身，验证超时后仍返回诊断报告 |
+| Zeye.Sorting.Hub.Contracts/Models/Operations | `DatabaseBackupArtifact.cs` | 数据库备份文件、摘要、逐表行数及隔离恢复结果清单 |
+| Zeye.Sorting.Hub.Infrastructure/Persistence/Backup | `DatabaseBackupArtifactService.cs` | 有执行预算的 MySQL 事务快照、完整性核验、隔离恢复及安全备份轮转 |
+| Zeye.Sorting.Hub.Host/Queries | `OperationalPolicy.cs` | 可在线维护的自动备份和包裹预建窗口合同 |
+| Zeye.Sorting.Hub.Host/Queries | `OperationalPolicyService.cs` | 运维策略共享持久化、版本冲突保护及后台唤醒 |
+| Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding | `PartitionMaintenanceService.cs` | 有界窗口内的真实包裹分表预建及幂等目录登记 |
+| Zeye.Sorting.Hub.Host.Tests | `OperationalPolicyTests.cs` | 运维策略持久化及真实分表重复预建回归 |
+| Zeye.Sorting.Hub.Host.Tests | `BackupArtifactTests.cs` | 并发锁释放、损坏清单隔离、摘要校验与最低安全备份保护回归 |
+| deploy | `initialize-restore.sql` | 应用账号在隔离恢复数据库前缀上的受限授权 |
+
+## 无人值守补强文件树与职责
+
+```text
+Zeye.Sorting.Hub.Application/Abstractions/Storage/
+  IDatabaseBackupArtifactService.cs
+Zeye.Sorting.Hub.Contracts/Models/Operations/
+  DatabaseBackupArtifact.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Backup/
+  DatabaseBackupArtifactService.cs
+Zeye.Sorting.Hub.Host/HealthChecks/
+  HealthSnapshotFreshness.cs
+  RuntimeResourceHealthCheck.cs
+Zeye.Sorting.Hub.Host/HostedServices/
+  RuntimeResourceMonitorHostedService.cs
+Zeye.Sorting.Hub.Host.Tests/
+  UnattendedResilienceTests.cs
+超长时间无人值守补强审查报告.md
+```
+
+- `IDatabaseBackupArtifactService.cs`：应用层备份列表、创建、受保护下载、隔离恢复和目录维护契约。
+- `HealthSnapshotFreshness.cs`：判定本地治理快照是否过期或明显超前，阻止旧成功状态长期假健康。
+- `RuntimeResourceHealthCheck.cs`：真实采样进程工作集、托管堆、句柄及持久化目录磁盘剩余空间。
+- `RuntimeResourceMonitorHostedService.cs`：无页面访问时仍周期采样资源，记录压力、恢复和有界提醒。
+- `UnattendedResilienceTests.cs`：后台异常恢复、容量预测独立上限和真实资源阈值回归。
+- `超长时间无人值守补强审查报告.md`：全项目关键链路审查、已修复风险、配置边界、验证证据与长期容量要求。
+
+正式 Fusion 接收事务提交后才返回成功。管理员测试缓冲正常停机限时排空，强杀/断电后仍不具备磁盘恢复保证。备份轮转保护最低完整副本并遵循预演开关；分表、备份和保留治理会对过期结果降级。Docker 日志和治理卷的部署边界见 [部署说明](deploy/README.md)。
+
+## 内置超级用户与首次初始化
+
+首次运行仍必须使用部署初始化密钥创建首个管理员；完成后程序启用固定的 `hisoka` 超级用户。其口令以固定的随机盐 PBKDF2 散列定义于 `Zeye.Sorting.Hub.Host/Queries/BuiltInSuperUser.cs`，服务端和前端均不公开口令散列。内置用户自动拥有完整权限，不能在账号管理中重命名、停用、改密或更换角色。
+
+`hisoka` 是保留账号名，不区分大小写，首次初始化、创建普通账号和重命名均拒绝此名称。启动及读取账号目录时自动移除既有同名账号，并使用独立的内置身份替换，使冲突账号旧会话失效；其他账号保留。历史初始化标记独立保存；当前普通成员为空（包括仅剩内置超级用户）时，登录页重新提供使用部署初始化密钥创建管理员的流程。创建普通成员后入口关闭。成员列表和角色成员人数均不包含内置超级用户，内置身份及权限仍保持有效。
+
+
+## Windows 前后端一体化发布
+
+执行 `./deploy/publish-windows.ps1` 即可在 `artifacts/windows-x64` 得到自包含前后端程序，完整目录复制到目标机并配置数据库、初始化密钥后运行 `Start-Hub.cmd`。页面与 API 共用默认 `5078` 端口，首次仍创建管理员，内置用户在初始化后启用。详细操作见 [部署说明](deploy/README.md)。
+
+## 各层级与各文件作用说明（逐项）：一体化发布
+
+| 目录 | 文件 | 职责 |
+| --- | --- | --- |
+| deploy | `publish-windows.ps1` | 单次构建前端与 Windows 自包含 Host，并校验完整发布包 |
+| Zeye.Sorting.Hub.Host | `Start-Hub.cmd` | 从部署目录启动 Windows 前后端同源程序 |
+| Zeye.Sorting.Hub.Host/Properties/PublishProfiles | `Windows-x64.pubxml` | Visual Studio / CLI 共用的 Windows x64 自包含文件夹发布配置 |
+| Zeye.Sorting.Hub.Host/Extensions | `BundledWebApplicationExtensions.cs` | 静态资源和前端深层路由回退，服务及配置文件路径保留真实响应 |
+| Zeye.Sorting.Hub.Host.Tests | `BundledWebUiTests.cs` | 页面、资源、服务端点优先级和配置文件隔离回归 |
+
+## 各层级与各文件作用说明（逐项）：品牌图标
+
+```text
+Zeye.Sorting.Hub.Web/src/assets/
+  brand-symbol.svg
+```
+
+| 目录 | 文件 | 职责 |
+| --- | --- | --- |
+| Zeye.Sorting.Hub.Web/src/assets | `brand-symbol.svg` | 页面品牌和浏览器标签页共用的立方体矢量标识，构建时生成带内容哈希的资源地址 |
+| Zeye.Sorting.Hub.Web | `index.html` | 前端入口、网页标题及浏览器标签页图标配置 |
+| Zeye.Sorting.Hub.Web/src/components | `BrandMark.tsx` | 复用品牌矢量图形，按页面场景呈现标识和文字 |
+
+## 各层级与各文件作用说明（逐项）：账号、包裹图片与运营补充
+
+```text
+./
+  分拣机异常分类规则.md
+deploy/
+  seed-business-data.ps1
+  seed-business-data.sh
+tools/BusinessDataSimulator/
+  BagBinding.cs
+  BusinessDataSimulator.csproj
+  SimulationOptions.cs
+  SimulationParcel.cs
+  SimulationScenario.cs
+tools/BusinessDataSimulator.Tests/
+  BusinessDataSimulator.Tests.csproj
+  SimulationScenarioTests.cs
+Zeye.Sorting.Hub.Contracts/Models/Parcels/
+  ParcelImageResponse.cs
+  ParcelImagesResponse.cs
+Zeye.Sorting.Hub.Domain/Repositories/Models/Results/
+  ParcelCleanupOperator.cs
+Zeye.Sorting.Hub.Host.Tests/
+  AuditPartitionMaintenanceTests.cs
+  BuiltInSuperUserTests.cs
+  MessageStorageRemovalTests.cs
+  ParcelCleanupAuditTests.cs
+  ParcelCleanupSecurityTests.cs
+  ParcelImageApiTests.cs
+Zeye.Sorting.Hub.Host/HostedServices/
+  BuiltInAccountHostedService.cs
+Zeye.Sorting.Hub.Host/Queries/
+  BuiltInSuperUser.cs
+  ParcelCleanupHistoryService.cs
+  ParcelImageCatalog.cs
+  PersonalProfile.cs
+Zeye.Sorting.Hub.Host/Routing/
+  ParcelImageApiRouteExtensions.cs
+  ProfileApiRouteExtensions.cs
+Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations/
+  20261002180129_RemoveRetiredMessageStorageSqlServer.cs
+  20261002180129_RemoveRetiredMessageStorageSqlServer.Designer.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Management/
+  ParcelCleanupAudit.cs
+  ParcelCleanupDeletedItem.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/
+  20261002180106_RemoveRetiredMessageStorage.cs
+  20261002180106_RemoveRetiredMessageStorage.Designer.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding/
+  AuditPartitionMaintenanceService.cs
+Zeye.Sorting.Hub.Infrastructure/Queries/
+  CreationIntervalStatistics.cs
+  ParcelCreationIntervalQuery.cs
+Zeye.Sorting.Hub.Web/public/demo/
+  parcel-multi-label.svg
+  parcel-multi-side.svg
+  parcel-multi-top.svg
+  parcel-sample.svg
+Zeye.Sorting.Hub.Web/src/app/
+  typography.css
+  typography.ts
+Zeye.Sorting.Hub.Web/src/components/
+  AccountAvatar.tsx
+  controlAlignment.css
+Zeye.Sorting.Hub.Web/src/data/
+  formatNumber.ts
+Zeye.Sorting.Hub.Web/src/data/api/
+  parcelCleanupTypes.ts
+  reservedAccountValidation.ts
+Zeye.Sorting.Hub.Web/src/features/access/
+  avatarUpload.ts
+  profile.css
+  ProfilePage.tsx
+  settings.css
+Zeye.Sorting.Hub.Web/src/features/observability/
+  audit.css
+  requestDescriptions.ts
+Zeye.Sorting.Hub.Web/src/features/operations/
+  analytics.css
+  AnalyticsCharts.tsx
+  analyticsModel.ts
+Zeye.Sorting.Hub.Web/src/features/parcels/
+  parcelCleanup.css
+  ParcelCleanupHistory.tsx
+  ParcelImageGallery.tsx
+  parcelImages.css
+  ParcelImagesDrawer.tsx
+  sortingThroughputMetric.ts
+  testAccess.ts
+  workbench.css
+  workbenchMetricDays.ts
+  WorkbenchMetricTrend.tsx
+  workbenchModel.ts
+Zeye.Sorting.Hub.Web/tests/
+  analyticsModel.test.mjs
+  formatNumber.test.mjs
+  parcelTestAccess.test.mjs
+  requestDescriptions.test.mjs
+  sortingThroughputMetric.test.mjs
+  workbenchMetricDays.test.mjs
+  workbenchModel.test.mjs
+```
+
+| 目录 | 文件 | 职责 |
+| --- | --- | --- |
+| . | `分拣机异常分类规则.md` | 分拣机协议异常、分类条件及未知异常兜底说明 |
+| deploy | `seed-business-data.ps1` | Windows 本地业务模拟数据工具入口 |
+| deploy | `seed-business-data.sh` | Linux 本地业务模拟数据工具入口 |
+| tools/BusinessDataSimulator | `BagBinding.cs` | 模拟包裹与包袋的关联模型 |
+| tools/BusinessDataSimulator | `BusinessDataSimulator.csproj` | 业务模拟数据控制台项目及依赖 |
+| tools/BusinessDataSimulator | `SimulationOptions.cs` | 模拟数据数量、时间窗口和目标站点参数 |
+| tools/BusinessDataSimulator | `SimulationParcel.cs` | 模拟包裹、处理事实及关联业务记录集合 |
+| tools/BusinessDataSimulator | `SimulationScenario.cs` | 生成合理分布且业务关联一致的模拟包裹场景 |
+| tools/BusinessDataSimulator.Tests | `BusinessDataSimulator.Tests.csproj` | 模拟数据场景测试项目及依赖 |
+| tools/BusinessDataSimulator.Tests | `SimulationScenarioTests.cs` | 模拟数据时间、幂等身份、测量单位及业务关联回归 |
+| Zeye.Sorting.Hub.Contracts/Models/Parcels | `ParcelImageResponse.cs` | 单张包裹图片的相机、地址和状态响应 |
+| Zeye.Sorting.Hub.Contracts/Models/Parcels | `ParcelImagesResponse.cs` | 包裹图片集合与展示信息响应 |
+| Zeye.Sorting.Hub.Domain/Repositories/Models/Results | `ParcelCleanupOperator.cs` | 包裹清理操作人的身份与请求追溯信息 |
+| Zeye.Sorting.Hub.Host.Tests | `AuditPartitionMaintenanceTests.cs` | 审计分表自动创建、维护及故障恢复回归 |
+| Zeye.Sorting.Hub.Host.Tests | `BuiltInSuperUserTests.cs` | 内置用户权限、保留账号及管理员创建入口回归 |
+| Zeye.Sorting.Hub.Host.Tests | `MessageStorageRemovalTests.cs` | 退役消息存储及迁移清理一致性回归 |
+| Zeye.Sorting.Hub.Host.Tests | `ParcelCleanupAuditTests.cs` | 清理历史、删除明细和事务一致性回归 |
+| Zeye.Sorting.Hub.Host.Tests | `ParcelCleanupSecurityTests.cs` | 清理登录密码确认与操作权限回归 |
+| Zeye.Sorting.Hub.Host.Tests | `ParcelImageApiTests.cs` | 图片集合查询、去重及受控访问回归 |
+| Zeye.Sorting.Hub.Host/HostedServices | `BuiltInAccountHostedService.cs` | 启动时恢复固定内置身份并处理保留账号冲突 |
+| Zeye.Sorting.Hub.Host/Queries | `BuiltInSuperUser.cs` | 内置身份、固定口令散列与保留账号定义 |
+| Zeye.Sorting.Hub.Host/Queries | `ParcelCleanupHistoryService.cs` | 读取永久保留的清理历史和删除明细 |
+| Zeye.Sorting.Hub.Host/Queries | `ParcelImageCatalog.cs` | 汇总包裹图片来源、规范化地址并去重 |
+| Zeye.Sorting.Hub.Host/Queries | `PersonalProfile.cs` | 用户个人资料和头像文档模型 |
+| Zeye.Sorting.Hub.Host/Routing | `ParcelImageApiRouteExtensions.cs` | 同源图片集合与受控图片访问接口 |
+| Zeye.Sorting.Hub.Host/Routing | `ProfileApiRouteExtensions.cs` | 个人资料、头像和密码维护接口 |
+| Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations | `20261002180129_RemoveRetiredMessageStorageSqlServer.cs` | SQL Server 退役消息存储结构清理迁移 |
+| Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations | `20261002180129_RemoveRetiredMessageStorageSqlServer.Designer.cs` | SQL Server 退役消息存储迁移模型元数据 |
+| Zeye.Sorting.Hub.Infrastructure/Persistence/Management | `ParcelCleanupAudit.cs` | 永久保存的包裹清理操作记录 |
+| Zeye.Sorting.Hub.Infrastructure/Persistence/Management | `ParcelCleanupDeletedItem.cs` | 关联清理记录的被删除包裹追溯明细 |
+| Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations | `20261002180106_RemoveRetiredMessageStorage.cs` | MySQL 退役消息存储结构清理迁移 |
+| Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations | `20261002180106_RemoveRetiredMessageStorage.Designer.cs` | MySQL 退役消息存储迁移模型元数据 |
+| Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding | `AuditPartitionMaintenanceService.cs` | 请求审计分表自动建表、索引与窗口维护 |
+| Zeye.Sorting.Hub.Infrastructure/Queries | `CreationIntervalStatistics.cs` | 创建间隔中位数、最短间隔及小时产能统计 |
+| Zeye.Sorting.Hub.Infrastructure/Queries | `ParcelCreationIntervalQuery.cs` | 跨包裹分表读取成功创建时间并计算间隔 |
+| Zeye.Sorting.Hub.Web/public/demo | `parcel-multi-label.svg` | 多图案例的模拟面单图片 |
+| Zeye.Sorting.Hub.Web/public/demo | `parcel-multi-side.svg` | 多图案例的模拟侧面图片 |
+| Zeye.Sorting.Hub.Web/public/demo | `parcel-multi-top.svg` | 多图案例的模拟顶面图片 |
+| Zeye.Sorting.Hub.Web/public/demo | `parcel-sample.svg` | 通用模拟包裹示意图片 |
+| Zeye.Sorting.Hub.Web/src/app | `typography.css` | 统一页面标题、说明和列表的字体层级 |
+| Zeye.Sorting.Hub.Web/src/app | `typography.ts` | 页面字体大小、颜色与字重共用配置 |
+| Zeye.Sorting.Hub.Web/src/components | `AccountAvatar.tsx` | 当前用户及账号菜单共用头像组件 |
+| Zeye.Sorting.Hub.Web/src/components | `controlAlignment.css` | 表格、分页及表单控件对齐样式 |
+| Zeye.Sorting.Hub.Web/src/data | `formatNumber.ts` | 件数、比例及产能数字统一格式化 |
+| Zeye.Sorting.Hub.Web/src/data/api | `parcelCleanupTypes.ts` | 清理提交、结果与永久历史的前端合同 |
+| Zeye.Sorting.Hub.Web/src/data/api | `reservedAccountValidation.ts` | 禁止普通用户使用保留账号的表单校验 |
+| Zeye.Sorting.Hub.Web/src/features/access | `avatarUpload.ts` | 头像文件格式、容量校验及上传处理 |
+| Zeye.Sorting.Hub.Web/src/features/access | `profile.css` | 个人资料页面布局与组件样式 |
+| Zeye.Sorting.Hub.Web/src/features/access | `ProfilePage.tsx` | 个人资料、头像和密码维护页面 |
+| Zeye.Sorting.Hub.Web/src/features/access | `settings.css` | 系统配置分类导航、策略表单与信息卡片样式 |
+| Zeye.Sorting.Hub.Web/src/features/observability | `audit.css` | 审计列表、详情及请求说明样式 |
+| Zeye.Sorting.Hub.Web/src/features/observability | `requestDescriptions.ts` | 业务请求路径与操作的可读说明映射 |
+| Zeye.Sorting.Hub.Web/src/features/operations | `analytics.css` | 分析报表卡片、图表及统计说明样式 |
+| Zeye.Sorting.Hub.Web/src/features/operations | `AnalyticsCharts.tsx` | 运营报表趋势与分布图表 |
+| Zeye.Sorting.Hub.Web/src/features/operations | `analyticsModel.ts` | 真实报表数据到展示指标的映射 |
+| Zeye.Sorting.Hub.Web/src/features/parcels | `parcelCleanup.css` | 清理表单、结果及历史列表样式 |
+| Zeye.Sorting.Hub.Web/src/features/parcels | `ParcelCleanupHistory.tsx` | 永久清理记录列表及删除明细展示 |
+| Zeye.Sorting.Hub.Web/src/features/parcels | `ParcelImageGallery.tsx` | 包裹多图主图、缩略图切换与放大预览 |
+| Zeye.Sorting.Hub.Web/src/features/parcels | `parcelImages.css` | 多图画廊、缩略图与图片状态样式 |
+| Zeye.Sorting.Hub.Web/src/features/parcels | `ParcelImagesDrawer.tsx` | 包裹台账图片抽屉及加载状态 |
+| Zeye.Sorting.Hub.Web/src/features/parcels | `sortingThroughputMetric.ts` | 实际和理论小时产能的展示值与说明 |
+| Zeye.Sorting.Hub.Web/src/features/parcels | `testAccess.ts` | 包裹测试页面的机器凭据与权限辅助逻辑 |
+| Zeye.Sorting.Hub.Web/src/features/parcels | `workbench.css` | 平台健康及多工作台信息展示样式 |
+| Zeye.Sorting.Hub.Web/src/features/parcels | `workbenchMetricDays.ts` | 时间范围内每日工作台指标补齐与汇总 |
+| Zeye.Sorting.Hub.Web/src/features/parcels | `WorkbenchMetricTrend.tsx` | 工作台指标卡片的轻量趋势与占比图表 |
+| Zeye.Sorting.Hub.Web/src/features/parcels | `workbenchModel.ts` | 来源工作台分组、筛选及处理情况汇总 |
+| Zeye.Sorting.Hub.Web/tests | `analyticsModel.test.mjs` | 报表模型映射与空数据场景回归 |
+| Zeye.Sorting.Hub.Web/tests | `formatNumber.test.mjs` | 数字、精度及单位展示回归 |
+| Zeye.Sorting.Hub.Web/tests | `parcelTestAccess.test.mjs` | 包裹测试接口的权限与凭据处理回归 |
+| Zeye.Sorting.Hub.Web/tests | `requestDescriptions.test.mjs` | 审计请求说明映射回归 |
+| Zeye.Sorting.Hub.Web/tests | `sortingThroughputMetric.test.mjs` | 实际和理论产能展示语义回归 |
+| Zeye.Sorting.Hub.Web/tests | `workbenchMetricDays.test.mjs` | 每日指标补齐与统计范围回归 |
+| Zeye.Sorting.Hub.Web/tests | `workbenchModel.test.mjs` | 多个工作台的分组、筛选和汇总回归 |

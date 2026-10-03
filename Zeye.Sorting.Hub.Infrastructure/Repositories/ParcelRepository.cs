@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Linq.Expressions;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -17,6 +18,7 @@ using Zeye.Sorting.Hub.Domain.Repositories.Models.Results;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Management;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.Processing;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
@@ -52,7 +54,9 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     /// <summary>
     /// 物理删除补偿边界说明。
     /// </summary>
-    private const string RemoveExpiredCompensationBoundary = "当前为物理删除，仓库未内建自动回滚脚本；采用默认阻断 + dry-run + 审计 + 显式开关的保守治理边界。";
+    private const string RemoveExpiredCompensationBoundary = "物理删除不支持自动回滚；操作记录及已删除包裹清单永久保留，恢复包裹需要使用备份。";
+    /// <summary>不包含凭据的永久治理记录序列化选项。</summary>
+    private static readonly JsonSerializerOptions CleanupJsonOptions = new(JsonSerializerDefaults.Web);
 
     /// <summary>
     /// 过期清理隔离器开关配置键。
@@ -127,16 +131,16 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
             effectiveConfiguration,
             RemoveExpiredEnableGuardConfigKey,
             true);
-        // 步骤 2：危险动作执行默认关闭（仅显式放开时才允许真实删除）。
+        // 页面清理默认执行；HTTP 入口必须再次验证当前用户的权限和密码。
         _removeExpiredAllowDangerousActionExecution = AutoTuningConfigurationReader.GetBoolOrDefault(
             effectiveConfiguration,
             RemoveExpiredAllowExecutionConfigKey,
-            false);
-        // 步骤 3：dry-run 默认开启，确保未显式放开前只审计不落地。
+            true);
+        // 部署仍可明确启用演练或阻断模式。
         _removeExpiredDryRun = AutoTuningConfigurationReader.GetBoolOrDefault(
             effectiveConfiguration,
             RemoveExpiredDryRunConfigKey,
-            true);
+            false);
     }
 
     /// <summary>
@@ -418,10 +422,12 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     /// <summary>
     /// 按创建时间清理过期包裹（危险动作：受隔离器开关、dry-run 与审计约束）。
     /// </summary>
-    public async Task<RepositoryResult<DangerousBatchActionResult>> RemoveExpiredAsync(DateTime createdBefore, CancellationToken cancellationToken) {
+    public async Task<RepositoryResult<DangerousBatchActionResult>> RemoveExpiredAsync(DateTime createdBefore, CancellationToken cancellationToken, ParcelCleanupOperator? auditOperator = null) {
+        ParcelCleanupAudit? audit = null;
+        var auditSaved = false;
         try {
             await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
-            // 步骤 1：先受控评估本次动作决策（守卫优先于 dry-run，默认将先阻断危险动作，避免误删）。
+            // 隔离器仍可被部署明确设置为阻断或演练。
             var isolationDecision = ActionIsolationPolicy.Evaluate(
                 _removeExpiredEnableGuard,
                 _removeExpiredAllowDangerousActionExecution,
@@ -431,6 +437,17 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
 
             // 步骤 2：先统计计划处理量（遵循单次上限），用于阻断/dry-run/执行三种分支统一审计。
             var plannedCount = await CountPlannedExpiredAsync(db, createdBefore, cancellationToken);
+            audit = new ParcelCleanupAudit {
+                Id = Guid.NewGuid().ToString("N"),
+                Operator = auditOperator ?? new("system", "system", "系统内部操作", "", ""),
+                CreatedBefore = createdBefore, PlannedCount = plannedCount,
+                Decision = isolationDecision switch { ActionIsolationDecision.BlockedByGuard => "blocked", ActionIsolationDecision.DryRunOnly => "dry-run", _ => "execute" },
+                CompensationBoundary = RemoveExpiredCompensationBoundary
+            };
+            db.Add(new ManagedDocument { Key = ParcelCleanupAudit.Prefix + audit.Id, Json = JsonSerializer.Serialize(audit, CleanupJsonOptions), Revision = 1, ModifiedAt = DateTime.Now });
+            // 永久记录无法保存时立即终止，不能发生没有记录的删除。
+            await db.SaveChangesAsync(cancellationToken);
+            auditSaved = true;
 
             if (isolationDecision == ActionIsolationDecision.BlockedByGuard) {
                 EmitRemoveExpiredAuditLog(
@@ -440,10 +457,11 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
                     dryRun: false,
                     blockedByGuard: true,
                     reason: "blocked-by-guard");
+                await CompleteCleanupAuditAsync(audit with { Status = "completed", CompletedAtLocal = DateTime.Now }, cancellationToken);
                 return RepositoryResult<DangerousBatchActionResult>.Success(BuildDangerousBatchActionResult(
                     isolationDecision,
                     plannedCount,
-                    executedCount: 0));
+                    executedCount: 0) with { CleanupRecordId = audit.Id });
             }
 
             if (isolationDecision == ActionIsolationDecision.DryRunOnly) {
@@ -454,54 +472,32 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
                     dryRun: true,
                     blockedByGuard: false,
                     reason: "dry-run");
+                await CompleteCleanupAuditAsync(audit with { Status = "completed", CompletedAtLocal = DateTime.Now }, cancellationToken);
                 return RepositoryResult<DangerousBatchActionResult>.Success(BuildDangerousBatchActionResult(
                     isolationDecision,
                     plannedCount,
-                    executedCount: 0));
+                    executedCount: 0) with { CleanupRecordId = audit.Id });
             }
 
-            var totalDeleted = 0;
-
-            // 步骤 3：按批次真实删除，保留单次上限保护，避免长事务与大批量误删风险。
+            // 每批包裹、删除清单及准确的进度计数共用数据库事务。
             var suffixes = _partitions is null ? new[] { string.Empty } : (await _partitions.GetReadSuffixesAsync(cancellationToken)).Reverse().ToArray();
             foreach (var suffix in suffixes) {
               await using var physical = _partitions is null ? await ContextFactory.CreateDbContextAsync(cancellationToken) : await _partitions.CreateContextAsync(suffix, cancellationToken);
-              while (totalDeleted < MaxExpiredDeleteCountPerCall) {
-                var remainingDeleteBudget = MaxExpiredDeleteCountPerCall - totalDeleted;
+              while (audit.ExecutedCount < MaxExpiredDeleteCountPerCall) {
+                var remainingDeleteBudget = MaxExpiredDeleteCountPerCall - audit.ExecutedCount;
                 var currentBatchSize = Math.Min(remainingDeleteBudget, ExpiredDeleteBatchSize);
-
-                var expiredBatchQuery = physical.Set<Parcel>()
-                    .Where(x => x.CreatedTime < createdBefore)
-                    .OrderBy(x => x.CreatedTime)
-                    .ThenBy(x => x.Id)
-                    .Take(currentBatchSize);
-
-                int currentDeleted;
-                if (physical.Database.IsRelational()) {
-                    currentDeleted = await expiredBatchQuery.ExecuteDeleteAsync(cancellationToken);
-                }
-                else {
-                    // InMemory 测试提供程序不支持 ExecuteDelete，保留测试兼容回退。
-                    var expiredBatch = await expiredBatchQuery.ToListAsync(cancellationToken);
-                    physical.Set<Parcel>().RemoveRange(expiredBatch);
-                    await physical.SaveChangesAsync(cancellationToken);
-                    currentDeleted = expiredBatch.Count;
-                }
-
-                if (currentDeleted == 0) {
-                    break;
-                }
-
-                totalDeleted += currentDeleted;
+                var originalCount = audit.ExecutedCount;
+                audit = await DeleteAuditedExpiredBatchAsync(physical, audit, createdBefore, currentBatchSize, cancellationToken);
+                if (audit.ExecutedCount == originalCount) break;
               }
-              if (totalDeleted >= MaxExpiredDeleteCountPerCall) break;
+              if (audit.ExecutedCount >= MaxExpiredDeleteCountPerCall) break;
             }
 
             // 步骤 5：如果触达上限则记录告警，防止误调用造成大范围清理。
-            if (totalDeleted >= MaxExpiredDeleteCountPerCall) {
+            if (audit.ExecutedCount >= MaxExpiredDeleteCountPerCall) {
                 Logger.Warn(
                     "删除过期包裹触达单次上限，TotalDeleted={TotalDeleted}, CreatedBefore={CreatedBefore}, Limit={DeleteLimit}",
-                    totalDeleted,
+                    audit.ExecutedCount,
                     createdBefore,
                     MaxExpiredDeleteCountPerCall);
             }
@@ -509,16 +505,18 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
             EmitRemoveExpiredAuditLog(
                 createdBefore,
                 plannedCount,
-                executedCount: totalDeleted,
+                executedCount: audit.ExecutedCount,
                 dryRun: false,
                 blockedByGuard: false,
                 reason: "executed");
+            await CompleteCleanupAuditAsync(audit with { Status = "completed", CompletedAtLocal = DateTime.Now }, cancellationToken);
             return RepositoryResult<DangerousBatchActionResult>.Success(BuildDangerousBatchActionResult(
                 isolationDecision,
                 plannedCount,
-                executedCount: totalDeleted));
+                executedCount: audit.ExecutedCount) with { CleanupRecordId = audit.Id });
         }
         catch (OperationCanceledException ex) {
+            if (auditSaved) await TryFailCleanupAuditAsync(audit!, "cancelled");
             Logger.Warn(ex, "删除过期包裹操作被取消，CreatedBefore={CreatedBefore}", createdBefore);
             EmitRemoveExpiredAuditLog(
                 createdBefore,
@@ -530,6 +528,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
             return RepositoryResult<DangerousBatchActionResult>.Fail("操作已取消");
         }
         catch (Exception ex) {
+            if (auditSaved) await TryFailCleanupAuditAsync(audit!, "failed");
             Logger.Error(ex, "删除过期包裹失败，CreatedBefore={CreatedBefore}", createdBefore);
             EmitRemoveExpiredAuditLog(
                 createdBefore,
@@ -540,6 +539,55 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
                 reason: $"failed:{ex.Message}");
             return RepositoryResult<DangerousBatchActionResult>.Fail("删除过期包裹失败");
         }
+    }
+
+    /// <summary>受执行策略保护的原子批次，重试前检查固定批次凭据，避免提交响应丢失后重复删除。</summary>
+    private static async Task<ParcelCleanupAudit> DeleteAuditedExpiredBatchAsync(SortingHubDbContext physical, ParcelCleanupAudit audit, DateTime createdBefore, int batchSize, CancellationToken ct) {
+        var batchKey = ParcelCleanupAudit.BatchPrefix(audit.Id) + (audit.BatchCount + 1).ToString("D4", System.Globalization.CultureInfo.InvariantCulture);
+        return await physical.Database.CreateExecutionStrategy().ExecuteAsync(async () => {
+            physical.ChangeTracker.Clear();
+            await using var transaction = physical.Database.IsRelational() ? await physical.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, ct) : null;
+            var header = await physical.Set<ManagedDocument>().AsTracking().SingleAsync(x => x.Key == ParcelCleanupAudit.Prefix + audit.Id, ct);
+            if (await physical.Set<ManagedDocument>().AnyAsync(x => x.Key == batchKey, ct))
+                return JsonSerializer.Deserialize<ParcelCleanupAudit>(header.Json, CleanupJsonOptions)!;
+            var items = await physical.Set<Parcel>().Where(x => x.CreatedTime < createdBefore).OrderBy(x => x.CreatedTime).ThenBy(x => x.Id).Take(batchSize)
+                .Select(x => new ParcelCleanupDeletedItem { Id = x.Id, BarCodes = x.BarCodes, WorkstationName = x.WorkstationName, SourceInstanceId = x.SourceInstanceId,
+                    SourceRunId = x.SourceRunId, SourceParcelId = x.SourceParcelId, CreatedTime = x.CreatedTime, ScannedTime = x.ScannedTime, Status = (int)x.Status }).ToListAsync(ct);
+            if (items.Count == 0) return audit;
+            var ids = items.Select(x => x.Id).ToArray();
+            int deleted;
+            if (physical.Database.IsRelational()) deleted = await physical.Set<Parcel>().Where(x => ids.Contains(x.Id)).ExecuteDeleteAsync(ct);
+            else {
+                var parcels = await physical.Set<Parcel>().Where(x => ids.Contains(x.Id)).ToListAsync(ct);
+                physical.RemoveRange(parcels); deleted = parcels.Count;
+            }
+            if (deleted != items.Count) throw new InvalidOperationException("删除数量与审计清单不一致，本批次已回滚。");
+            var updated = audit with { ExecutedCount = audit.ExecutedCount + deleted, BatchCount = audit.BatchCount + 1 };
+            physical.Add(new ManagedDocument { Key = batchKey, Json = JsonSerializer.Serialize(items, CleanupJsonOptions), Revision = 1, ModifiedAt = DateTime.Now });
+            header.Json = JsonSerializer.Serialize(updated, CleanupJsonOptions); header.Revision++; header.ModifiedAt = DateTime.Now;
+            await physical.SaveChangesAsync(ct);
+            if (transaction is not null) await transaction.CommitAsync(ct);
+            return updated;
+        });
+    }
+
+    /// <summary>完成操作记录，保留已提交批次的精确计数。</summary>
+    private async Task CompleteCleanupAuditAsync(ParcelCleanupAudit audit, CancellationToken ct) {
+        await using var db = await ContextFactory.CreateDbContextAsync(ct);
+        var header = await db.Set<ManagedDocument>().AsTracking().SingleAsync(x => x.Key == ParcelCleanupAudit.Prefix + audit.Id, ct);
+        var committed = JsonSerializer.Deserialize<ParcelCleanupAudit>(header.Json, CleanupJsonOptions)!;
+        header.Json = JsonSerializer.Serialize(committed with { Status = audit.Status, CompletedAtLocal = audit.CompletedAtLocal, ErrorMessage = audit.ErrorMessage }, CleanupJsonOptions);
+        header.Revision++; header.ModifiedAt = DateTime.Now;
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>取消或异常后用独立有界令牌标记结果；绝不把已提交删除数量覆盖为零。</summary>
+    private async Task TryFailCleanupAuditAsync(ParcelCleanupAudit audit, string status) {
+        try {
+            using var finalization = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            await CompleteCleanupAuditAsync(audit with { Status = status, CompletedAtLocal = DateTime.Now,
+                ErrorMessage = status == "cancelled" ? "操作已取消，请以已执行数量和清单为准。" : "清理执行失败，已提交的批次保留在清单中，未提交批次已回滚。" }, finalization.Token);
+        } catch (Exception ex) { Logger.Error(ex, "永久清理记录状态更新失败，CleanupRecordId={CleanupRecordId}", audit.Id); }
     }
 
     /// <summary>

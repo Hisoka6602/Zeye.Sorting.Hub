@@ -23,6 +23,9 @@ public sealed class BoundedWriteChannel<TItem> {
     /// </summary>
     private long _droppedCount;
 
+    /// <summary>是否仍接受生产者写入，停止后只允许消费者排空。</summary>
+    private int _isAccepting = 1;
+
     /// <summary>
     /// 初始化有界写入通道。
     /// </summary>
@@ -52,12 +55,25 @@ public sealed class BoundedWriteChannel<TItem> {
     /// </summary>
     public long DroppedCount => Interlocked.Read(ref _droppedCount);
 
+    /// <summary>是否仍接受新的缓冲记录。</summary>
+    public bool IsAccepting => Volatile.Read(ref _isAccepting) != 0;
+
+    /// <summary>关闭写入端并唤醒空队列消费者，已有记录仍可读取。</summary>
+    public void Complete() {
+        Interlocked.Exchange(ref _isAccepting, 0);
+        _channel.Writer.TryComplete();
+    }
+
     /// <summary>
     /// 尝试写入通道。
     /// </summary>
     /// <param name="item">通道项。</param>
     /// <returns>写入成功返回 true。</returns>
     public bool TryEnqueue(TItem item) {
+        if (!IsAccepting) {
+            return false;
+        }
+
         var reservedDepth = Interlocked.Increment(ref _depth);
         if (reservedDepth > Capacity) {
             Interlocked.Decrement(ref _depth);

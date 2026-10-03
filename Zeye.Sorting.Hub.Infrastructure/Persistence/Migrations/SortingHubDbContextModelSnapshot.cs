@@ -480,58 +480,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                     b.ToTable("InboxMessages", (string)null);
                 });
 
-            modelBuilder.Entity("Zeye.Sorting.Hub.Domain.Aggregates.Events.OutboxMessage", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<DateTime?>("CompletedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("EventType")
-                        .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("varchar(256)");
-
-                    b.Property<string>("FailureMessage")
-                        .IsRequired()
-                        .HasMaxLength(1024)
-                        .HasColumnType("varchar(1024)");
-
-                    b.Property<DateTime?>("LastAttemptedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<string>("PayloadJson")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<int>("RetryCount")
-                        .HasColumnType("int");
-
-                    b.Property<int>("Status")
-                        .IsConcurrencyToken()
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime(6)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("EventType", "CreatedAt", "Id");
-
-                    b.HasIndex("Status", "CreatedAt", "Id");
-
-                    b.HasIndex("Status", "LastAttemptedAt", "UpdatedAt", "Id");
-
-                    b.ToTable("OutboxMessages", (string)null);
-                });
-
             modelBuilder.Entity("Zeye.Sorting.Hub.Domain.Aggregates.Idempotency.IdempotencyRecord", b =>
                 {
                     b.Property<long>("Id")
@@ -1039,6 +987,28 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("Bags", (string)null);
+                });
+
+            modelBuilder.Entity("Zeye.Sorting.Hub.Infrastructure.Persistence.Management.ManagedDocument", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<string>("Json")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTime>("ModifiedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("int");
+
+                    b.HasKey("Key");
+
+                    b.ToTable("ManagedDocuments", (string)null);
                 });
 
             modelBuilder.Entity("Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding.ParcelLocation", b =>

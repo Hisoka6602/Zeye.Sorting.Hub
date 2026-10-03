@@ -56,7 +56,7 @@ public sealed class ShardingInspectionTests {
         using var dbContext = CreateDbContext();
         var probe = new ConfigurableShardingPhysicalTableProbe(
             missingIndexesByTable: new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal) {
-                ["Parcels_202605"] = [ParcelIndexNames.BagCodeScannedTime]
+                ["Parcels_202605"] = [ParcelIndexNames.BagCodeScannedTime, "IX_Parcels_202605_BagCode_ScannedTime_Id"]
             });
         var service = new ShardingIndexInspectionService(probe, new MySqlDialect());
 
@@ -64,6 +64,30 @@ public sealed class ShardingInspectionTests {
 
         var description = Assert.Single(missingIndexes);
         Assert.Contains(ParcelIndexNames.BagCodeScannedTime, description, StringComparison.Ordinal);
+    }
+
+    /// <summary>当前物理模型的稳定排序索引存在时，不因缺少旧索引名误报。</summary>
+    [Fact]
+    public async Task ShardingIndexInspectionService_CurrentModelIndexesSatisfyRequiredAccessPaths() {
+        using var dbContext = CreateDbContext();
+        var probe = new ConfigurableShardingPhysicalTableProbe(
+            missingIndexesByTable: new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal) {
+                ["Parcels_202605"] = [ParcelIndexNames.BagCodeScannedTime, ParcelIndexNames.ActualChuteIdScannedTime, ParcelIndexNames.TargetChuteIdScannedTime]
+            });
+        var service = new ShardingIndexInspectionService(probe, new MySqlDialect());
+        Assert.Empty(await service.FindMissingIndexesAsync(dbContext, null, ["Parcels_202605"], CancellationToken.None));
+    }
+
+    /// <summary>审计日表采用日期后缀索引时满足访问路径，继续兼容旧索引名。</summary>
+    [Fact]
+    public async Task ShardingIndexInspectionService_DailyAuditIndexesSatisfyRequiredAccessPaths() {
+        using var dbContext = CreateDbContext();
+        var probe = new ConfigurableShardingPhysicalTableProbe(missingIndexesByTable: new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal) {
+            ["WebRequestAuditLogs_20261003"] = ["IX_WebRequestAuditLogs_StartedAt", "IX_WebRequestAuditLogs_StatusCode_StartedAt", "IX_WebRequestAuditLogs_IsSuccess_StartedAt"],
+            ["WebRequestAuditLogDetails_20261003"] = ["IX_WebRequestAuditLogDetails_StartedAt"]
+        });
+        var service = new ShardingIndexInspectionService(probe, new MySqlDialect());
+        Assert.Empty(await service.FindMissingIndexesAsync(dbContext, null, ["WebRequestAuditLogs_20261003", "WebRequestAuditLogDetails_20261003"], default));
     }
 
     /// <summary>

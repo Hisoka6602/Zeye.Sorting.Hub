@@ -46,6 +46,9 @@ public interface IArchiveTaskRepository {
     /// <returns>成功领取的任务；不存在时返回 null。</returns>
     Task<ArchiveTask?> TryAcquireNextPendingAsync(CancellationToken cancellationToken);
 
+    /// <summary>有界恢复执行预算已过期的 dry-run 任务；达到重试上限的任务保持失败终态。</summary>
+    Task<int> RecoverAbandonedAsync(DateTime attemptedBefore, int maxRetryCount, int batchSize, CancellationToken cancellationToken);
+
     /// <summary>
     /// 更新归档任务。
     /// </summary>

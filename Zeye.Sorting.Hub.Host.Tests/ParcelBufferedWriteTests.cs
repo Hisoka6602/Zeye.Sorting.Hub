@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
+using OptionValues = Microsoft.Extensions.Options.Options;
 using Zeye.Sorting.Hub.Application.Services.Idempotency;
 using Zeye.Sorting.Hub.Application.Services.Parcels;
 using Zeye.Sorting.Hub.Application.Services.WriteBuffers;
@@ -28,6 +29,114 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 /// Parcel 批量缓冲写入回归测试。
 /// </summary>
 public sealed class ParcelBufferedWriteTests {
+    /// <summary>合批等待和失败退避的取消均不能丢弃已经取出的记录。</summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CancellationDuringBatchWaitOrRetryPreservesDequeuedRecords(bool duringRetry) {
+        var options = CreateBufferedWriteOptions(batchSize: duringRetry ? 1 : 2, flushIntervalMilliseconds: 60000);
+        options.RetryBaseDelayMilliseconds = 60000;
+        options.MaxRetryDelayMilliseconds = 60000;
+        options.RetryJitterMilliseconds = 0;
+        var channel = new BoundedWriteChannel<BufferedParcelWriteItem>(options.ChannelCapacity);
+        var letters = new DeadLetterWriteStore(options.DeadLetterCapacity);
+        var repository = new FakeParcelRepository { ShouldFailOnAddRange = duringRetry };
+        using var provider = BuildRepositoryServiceProvider(repository);
+        var flush = new ParcelBatchWriteFlushService(channel, letters, provider.GetRequiredService<IServiceScopeFactory>(), OptionValues.Create(options));
+        EnqueueTestRecord(channel, 1701);
+        using var cancellation = new CancellationTokenSource();
+        var pending = flush.FlushOnceAsync(cancellation.Token);
+        Assert.Equal(0, channel.Depth);
+        Assert.False(pending.IsCompleted);
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
+        Assert.Equal(1701, Assert.Single(letters.GetSnapshot()).Parcel.Id);
+        Assert.Equal(duringRetry ? 1 : 0, repository.AddRangeCallCount);
+    }
+
+    /// <summary>仓储抛出意外异常也保留整个批次，达到重试上限后进入有界隔离。</summary>
+    [Fact]
+    public async Task UnexpectedRepositoryExceptionPreservesTheEntireBatch() {
+        var options = CreateBufferedWriteOptions(batchSize: 2, maxRetryCount: 0);
+        var channel = new BoundedWriteChannel<BufferedParcelWriteItem>(options.ChannelCapacity);
+        var letters = new DeadLetterWriteStore(options.DeadLetterCapacity);
+        var repository = new FakeParcelRepository { BeforeAddRangeResult = () => throw new IOException("测试连接故障") };
+        using var provider = BuildRepositoryServiceProvider(repository);
+        var flush = new ParcelBatchWriteFlushService(channel, letters, provider.GetRequiredService<IServiceScopeFactory>(), OptionValues.Create(options));
+        EnqueueTestRecord(channel, 1711); EnqueueTestRecord(channel, 1712);
+        await flush.FlushOnceAsync(default);
+        Assert.Equal(2, letters.Count);
+        Assert.Equal(0, channel.Depth);
+        Assert.All(letters.GetSnapshot(), item => Assert.Contains("测试连接故障", item.ErrorMessage, StringComparison.Ordinal));
+    }
+
+    /// <summary>数据库恢复并成功提交后，历史失败计数不再让健康状态永久降级。</summary>
+    [Fact]
+    public async Task SuccessfulRetryClearsActiveFailureHealthState() {
+        var options = CreateBufferedWriteOptions(batchSize: 1);
+        options.RetryBaseDelayMilliseconds = 1;
+        options.RetryJitterMilliseconds = 0;
+        var channel = new BoundedWriteChannel<BufferedParcelWriteItem>(options.ChannelCapacity);
+        var letters = new DeadLetterWriteStore(options.DeadLetterCapacity);
+        var repository = new FakeParcelRepository { ShouldFailOnAddRange = true };
+        using var provider = BuildRepositoryServiceProvider(repository);
+        var flush = new ParcelBatchWriteFlushService(channel, letters, provider.GetRequiredService<IServiceScopeFactory>(), OptionValues.Create(options));
+        var health = new BufferedWriteQueueHealthCheck(flush, OptionValues.Create(options));
+        EnqueueTestRecord(channel, 1721);
+        await flush.FlushOnceAsync(default);
+        Assert.Equal(HealthStatus.Degraded, (await health.CheckHealthAsync(new HealthCheckContext())).Status);
+        repository.ShouldFailOnAddRange = false;
+        await flush.FlushOnceAsync(default);
+        Assert.Equal(1, repository.GetStoredParcelCount());
+        Assert.NotNull(flush.GetMetricsSnapshot().LastFailedFlushAtLocal);
+        Assert.Null(flush.GetMetricsSnapshot().LastFailureMessage);
+        Assert.Equal(HealthStatus.Healthy, (await health.CheckHealthAsync(new HealthCheckContext())).Status);
+    }
+
+    /// <summary>曾经拒绝未接收请求不会在队列成功排空后继续报告当前数据丢失。</summary>
+    [Fact]
+    public async Task HistoricalQueueRejectionDoesNotPreventHealthyRecovery() {
+        var options = CreateBufferedWriteOptions(channelCapacity: 1, batchSize: 1, backpressureRejectThreshold: 1);
+        var channel = new BoundedWriteChannel<BufferedParcelWriteItem>(1);
+        using var provider = BuildRepositoryServiceProvider(new FakeParcelRepository());
+        var flush = new ParcelBatchWriteFlushService(channel, new DeadLetterWriteStore(10), provider.GetRequiredService<IServiceScopeFactory>(), OptionValues.Create(options));
+        EnqueueTestRecord(channel, 1731);
+        Assert.False(channel.TryEnqueue(new BufferedParcelWriteItem(CreateParcel(1732, DateTime.Now), DateTime.Now, 0, null, null)));
+        await flush.FlushOnceAsync(default);
+        Assert.Equal(1, channel.DroppedCount);
+        var health = new BufferedWriteQueueHealthCheck(flush, OptionValues.Create(options));
+        Assert.Equal(HealthStatus.Healthy, (await health.CheckHealthAsync(new HealthCheckContext())).Status);
+    }
+
+    /// <summary>正常停止先关闭入口，再排空已接收记录，消费任务能自行退出。</summary>
+    [Fact]
+    public async Task GracefulShutdownDrainsAcceptedRecordsAndClosesIngress() {
+        var options = CreateBufferedWriteOptions(batchSize: 2);
+        var channel = new BoundedWriteChannel<BufferedParcelWriteItem>(options.ChannelCapacity);
+        var repository = new FakeParcelRepository();
+        using var provider = BuildRepositoryServiceProvider(repository);
+        var flush = new ParcelBatchWriteFlushService(channel, new DeadLetterWriteStore(10), provider.GetRequiredService<IServiceScopeFactory>(), OptionValues.Create(options));
+        for (var index = 0; index < 5; index++) EnqueueTestRecord(channel, 1740 + index);
+        using var stop = new CancellationTokenSource();
+        var worker = flush.ProcessAsync(stop.Token);
+        stop.Cancel();
+        await worker.WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.Equal(5, repository.GetStoredParcelCount());
+        Assert.Equal(0, channel.Depth);
+        Assert.False(channel.IsAccepting);
+        Assert.True(flush.GetMetricsSnapshot().HasWorkerStarted);
+        Assert.False(flush.GetMetricsSnapshot().IsWorkerRunning);
+        var writer = new ParcelBufferedWriteService(channel, OptionValues.Create(options));
+        var result = await writer.EnqueueAsync([CreateParcel(1749, DateTime.Now)], default);
+        Assert.Equal(0, result.AcceptedCount);
+        Assert.Equal(1, result.RejectedCount);
+    }
+
+    /// <summary>加入具有唯一编号的测试记录。</summary>
+    private static void EnqueueTestRecord(BoundedWriteChannel<BufferedParcelWriteItem> channel, long id) {
+        Assert.True(channel.TryEnqueue(new BufferedParcelWriteItem(CreateParcel(id, DateTime.Now), DateTime.Now, 0, null, null)));
+    }
+
     /// <summary>
     /// 验证场景：批量缓冲写入服务在低水位时成功入队。
     /// </summary>

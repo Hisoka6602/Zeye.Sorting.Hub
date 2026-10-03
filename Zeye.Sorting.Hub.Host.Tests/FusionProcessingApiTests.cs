@@ -13,6 +13,26 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 
 /// <summary>生产HTTP路由与真实关系数据库的完整处理合同验收。</summary>
 public sealed class FusionProcessingApiTests {
+    /// <summary>生产 JSON 配置保留缺省尝试序号 1，同时拒绝调用方显式提供的 0。</summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ProductionJsonPreservesDefaultAttemptAndRejectsExplicitZero(bool explicitZero) {
+        await using var database = new RelationalParcelTestDatabase();
+        await database.InitializeAsync();
+        await using var app = await FusionApiTestHost.CreateAsync(database);
+        using var client = app.GetTestClient();
+        var body = "{\"recordId\":\"default-attempt\",\"sourceInstanceId\":\"default-sorter\",\"sourceRunId\":\"default-session\",\"sourceParcelId\":\"42\",\"stage\":0,\"occurredAt\":\"2026-10-02T10:00:00\""
+            + (explicitZero ? ",\"attemptNumber\":0}" : "}");
+        var response = await client.PostAsync("/api/admin/parcels/processing-records", new StringContent(body, Encoding.UTF8, "application/json"));
+        Assert.Equal(explicitZero ? HttpStatusCode.BadRequest : HttpStatusCode.Created, response.StatusCode);
+        if (explicitZero) return;
+        var result = await response.Content.ReadFromJsonAsync<ParcelProcessingWriteResponse>();
+        var parcel = await database.Parcels.GetByIdAsync(long.Parse(result!.ParcelId!, System.Globalization.CultureInfo.InvariantCulture), default);
+        Assert.NotNull(parcel);
+        Assert.Equal(1, Assert.Single(parcel.ProcessingRecords).AttemptNumber);
+    }
+
     /// <summary>真实 HTTP 报表使用已保存数据，并拒绝不完整或超出预算的日期范围。</summary>
     [Fact]
     public async Task AnalyticsHttpReturnsStoredCohortAndValidatesDates() {
@@ -183,11 +203,7 @@ public sealed class FusionProcessingApiTests {
         using var client = app.GetTestClient();
         await client.PostAsJsonAsync("/api/admin/parcels/processing-records", Request(0));
         var response = await client.PostAsJsonAsync("/api/admin/parcels/cleanup-expired", new { createdBefore = DateTime.Now.Date.AddDays(1).ToString("yyyy-MM-ddTHH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) });
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var result = await response.Content.ReadFromJsonAsync<ParcelCleanupExpiredResponse>();
-        Assert.True(result!.IsBlockedByGuard);
-        Assert.Equal(1, result.PlannedCount);
-        Assert.Equal(0, result.ExecutedCount);
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     /// <summary>建立使用本地时间与明确设备会话的处理合同。</summary>

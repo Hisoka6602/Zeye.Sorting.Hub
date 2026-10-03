@@ -55,6 +55,7 @@ public static class ParcelReadOnlyApiRouteExtensions {
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status400BadRequest);
 
+        routeBuilder.MapParcelImageApis();
         return routeBuilder;
     }
 

@@ -11,7 +11,7 @@
     "width": 33,
     "height": 34,
     "gap": 9,
-    "offsetY": 0.0
+    "offsetY": 0
   },
   "P02": {
     "file": "header-account-P02.png",
@@ -25,7 +25,7 @@
     "width": 33,
     "height": 34,
     "gap": 9,
-    "offsetY": 0.0
+    "offsetY": 0
   },
   "P03": {
     "file": "header-account-P03.png",
@@ -39,7 +39,7 @@
     "width": 36,
     "height": 36,
     "gap": 11,
-    "offsetY": 1.0
+    "offsetY": 1
   },
   "P04": {
     "file": "header-account-P04.png",
@@ -53,7 +53,7 @@
     "width": 33,
     "height": 34,
     "gap": 8.5,
-    "offsetY": 0.0
+    "offsetY": 0
   },
   "P05": {
     "file": "header-account-P05.png",
@@ -67,7 +67,7 @@
     "width": 33,
     "height": 34,
     "gap": 9,
-    "offsetY": 0.0
+    "offsetY": 0
   },
   "P06": {
     "file": "header-account-P06.png",
@@ -81,7 +81,7 @@
     "width": 33,
     "height": 34,
     "gap": 9,
-    "offsetY": 0.0
+    "offsetY": 0
   },
   "P07": {
     "file": "header-account-P07.png",
@@ -95,7 +95,7 @@
     "width": 33,
     "height": 34,
     "gap": 9,
-    "offsetY": 0.0
+    "offsetY": 0
   },
   "P08": {
     "file": "header-account-P08.png",
@@ -109,7 +109,7 @@
     "width": 33,
     "height": 34,
     "gap": 9,
-    "offsetY": 0.0
+    "offsetY": 0
   },
   "P09": {
     "file": "header-account-P09.png",
@@ -137,7 +137,7 @@
     "width": 33,
     "height": 34,
     "gap": 8,
-    "offsetY": 0.0
+    "offsetY": 0
   },
   "P11": {
     "file": "header-account-P11.png",
@@ -151,21 +151,7 @@
     "width": 33,
     "height": 34,
     "gap": 7,
-    "offsetY": 0.0
-  },
-  "P12": {
-    "file": "header-account-P12.png",
-    "source": "P12-outbox-messages.png",
-    "crop": [
-      1362,
-      11,
-      1395,
-      45
-    ],
-    "width": 33,
-    "height": 34,
-    "gap": 9,
-    "offsetY": 0.0
+    "offsetY": 0
   },
   "P13": {
     "file": "header-account-P13.png",
@@ -193,7 +179,7 @@
     "width": 35,
     "height": 34,
     "gap": 14,
-    "offsetY": 1.0
+    "offsetY": 1
   },
   "P15b": {
     "file": "header-account-P15b.png",
@@ -207,7 +193,7 @@
     "width": 33,
     "height": 34,
     "gap": 9,
-    "offsetY": 0.0
+    "offsetY": 0
   },
   "P16": {
     "file": "header-account-P16.png",
@@ -221,7 +207,7 @@
     "width": 33,
     "height": 34,
     "gap": 9,
-    "offsetY": 0.0
+    "offsetY": 0
   },
   "P17": {
     "file": "header-account-P17.png",
@@ -235,7 +221,7 @@
     "width": 33,
     "height": 34,
     "gap": 9,
-    "offsetY": 0.0
+    "offsetY": 0
   },
   "P18": {
     "file": "header-account-P18.png",
@@ -263,7 +249,7 @@
     "width": 36,
     "height": 37,
     "gap": 8.5,
-    "offsetY": 0.0
+    "offsetY": 0
   },
   "P20": {
     "file": "header-account-P20.png",

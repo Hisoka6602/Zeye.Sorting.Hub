@@ -37,13 +37,12 @@ public sealed class DataRetentionTests {
         var healthResult = await healthCheck.CheckHealthAsync(new HealthCheckContext(), CancellationToken.None);
 
         Assert.Equal(ActionIsolationDecision.DryRunOnly, record.Decision);
-        Assert.Equal(6, record.PlannedCount);
+        Assert.Equal(5, record.PlannedCount);
         Assert.Equal(0, record.ExecutedCount);
         Assert.Equal(HealthStatus.Degraded, healthResult.Status);
 
         await using var dbContext = await serviceProvider.GetRequiredService<IDbContextFactory<SortingHubDbContext>>().CreateDbContextAsync();
         Assert.Equal(1, await dbContext.Set<WebRequestAuditLog>().CountAsync());
-        Assert.Equal(1, await dbContext.Set<OutboxMessage>().CountAsync());
         Assert.Equal(1, await dbContext.Set<InboxMessage>().CountAsync());
         Assert.Equal(1, await dbContext.Set<IdempotencyRecord>().CountAsync());
         Assert.Equal(1, await dbContext.Set<ArchiveTask>().CountAsync());
@@ -66,14 +65,13 @@ public sealed class DataRetentionTests {
         var healthResult = await healthCheck.CheckHealthAsync(new HealthCheckContext(), CancellationToken.None);
 
         Assert.Equal(ActionIsolationDecision.Execute, record.Decision);
-        Assert.Equal(6, record.ExecutedCount);
+        Assert.Equal(5, record.ExecutedCount);
         Assert.Equal(0, record.FailedPolicyCount);
         Assert.Equal(HealthStatus.Healthy, healthResult.Status);
 
         await using var dbContext = await serviceProvider.GetRequiredService<IDbContextFactory<SortingHubDbContext>>().CreateDbContextAsync();
         Assert.Equal(1, await dbContext.Set<WebRequestAuditLog>().CountAsync());
         Assert.Equal("trace-fresh", (await dbContext.Set<WebRequestAuditLog>().SingleAsync()).TraceId);
-        Assert.Equal(1, await dbContext.Set<OutboxMessage>().CountAsync());
         Assert.Equal(1, await dbContext.Set<InboxMessage>().CountAsync());
         Assert.Equal(1, await dbContext.Set<IdempotencyRecord>().CountAsync());
         Assert.Equal(1, await dbContext.Set<ArchiveTask>().CountAsync());
@@ -121,18 +119,16 @@ public sealed class DataRetentionTests {
                 ["Persistence:Retention:PollIntervalMinutes"] = "60",
                 ["Persistence:Retention:Policies:0:Name"] = DataRetentionPolicy.WebRequestAuditLogName,
                 ["Persistence:Retention:Policies:0:RetentionDays"] = "30",
-                ["Persistence:Retention:Policies:1:Name"] = DataRetentionPolicy.OutboxMessageName,
+                ["Persistence:Retention:Policies:1:Name"] = DataRetentionPolicy.InboxMessageName,
                 ["Persistence:Retention:Policies:1:RetentionDays"] = "30",
-                ["Persistence:Retention:Policies:2:Name"] = DataRetentionPolicy.InboxMessageName,
+                ["Persistence:Retention:Policies:2:Name"] = DataRetentionPolicy.IdempotencyRecordName,
                 ["Persistence:Retention:Policies:2:RetentionDays"] = "30",
-                ["Persistence:Retention:Policies:3:Name"] = DataRetentionPolicy.IdempotencyRecordName,
+                ["Persistence:Retention:Policies:3:Name"] = DataRetentionPolicy.ArchiveTaskName,
                 ["Persistence:Retention:Policies:3:RetentionDays"] = "30",
-                ["Persistence:Retention:Policies:4:Name"] = DataRetentionPolicy.ArchiveTaskName,
+                ["Persistence:Retention:Policies:4:Name"] = DataRetentionPolicy.DeadLetterWriteEntryName,
                 ["Persistence:Retention:Policies:4:RetentionDays"] = "30",
-                ["Persistence:Retention:Policies:5:Name"] = DataRetentionPolicy.DeadLetterWriteEntryName,
+                ["Persistence:Retention:Policies:5:Name"] = DataRetentionPolicy.SlowQueryProfileName,
                 ["Persistence:Retention:Policies:5:RetentionDays"] = "30",
-                ["Persistence:Retention:Policies:6:Name"] = DataRetentionPolicy.SlowQueryProfileName,
-                ["Persistence:Retention:Policies:6:RetentionDays"] = "30",
                 ["Persistence:AutoTuning:SlowQueryProfile:IsEnabled"] = "true",
                 ["Persistence:AutoTuning:SlowQueryThresholdMilliseconds"] = "1",
                 ["Persistence:AutoTuning:SlowQueryProfile:WindowMinutes"] = "1000000",
@@ -152,7 +148,7 @@ public sealed class DataRetentionTests {
                 options.DryRun = configuration.GetValue<bool>("Persistence:Retention:DryRun");
                 options.BatchSize = configuration.GetValue<int>("Persistence:Retention:BatchSize");
                 options.PollIntervalMinutes = configuration.GetValue<int>("Persistence:Retention:PollIntervalMinutes");
-                options.Policies = Enumerable.Range(0, 7)
+                options.Policies = Enumerable.Range(0, 6)
                     .Select(index => new DataRetentionPolicy {
                         Name = configuration[$"Persistence:Retention:Policies:{index}:Name"]!,
                         RetentionDays = configuration.GetValue<int>($"Persistence:Retention:Policies:{index}:RetentionDays")
@@ -180,35 +176,29 @@ public sealed class DataRetentionTests {
         await using var dbContext = await serviceProvider.GetRequiredService<IDbContextFactory<SortingHubDbContext>>().CreateDbContextAsync();
 
         var expiredAuditLog = CreateAuditLog(1, expiredAt, "trace-expired");
-        var expiredOutboxMessage = CreateOutboxMessage();
         var expiredInboxMessage = CreateInboxMessage();
         var expiredIdempotencyRecord = CreateIdempotencyRecord();
         var expiredArchiveTask = CreateArchiveTask();
         dbContext.Set<WebRequestAuditLog>().Add(expiredAuditLog);
-        dbContext.Set<OutboxMessage>().Add(expiredOutboxMessage);
         dbContext.Set<InboxMessage>().Add(expiredInboxMessage);
         dbContext.Set<IdempotencyRecord>().Add(expiredIdempotencyRecord);
         dbContext.Set<ArchiveTask>().Add(expiredArchiveTask);
         if (includeFreshRecords) {
             dbContext.Set<WebRequestAuditLog>().Add(CreateAuditLog(2, freshAt, "trace-fresh"));
-            dbContext.Set<OutboxMessage>().Add(CreateOutboxMessage());
             dbContext.Set<InboxMessage>().Add(CreateInboxMessage());
             dbContext.Set<IdempotencyRecord>().Add(CreateIdempotencyRecord());
             dbContext.Set<ArchiveTask>().Add(CreateArchiveTask());
         }
 
         await dbContext.SaveChangesAsync();
-        AdjustOutboxMessageTimes(dbContext, expiredOutboxMessage, expiredAt);
         AdjustInboxMessageTimes(dbContext, expiredInboxMessage, expiredAt);
         AdjustIdempotencyRecordTimes(dbContext, expiredIdempotencyRecord, expiredAt);
         AdjustArchiveTaskTimes(dbContext, expiredArchiveTask, expiredAt);
         if (includeFreshRecords) {
             var freshInboxMessage = await dbContext.Set<InboxMessage>().OrderByDescending(x => x.Id).FirstAsync();
-            var freshOutboxMessage = await dbContext.Set<OutboxMessage>().OrderByDescending(x => x.Id).FirstAsync();
             var freshIdempotencyRecord = await dbContext.Set<IdempotencyRecord>().OrderByDescending(x => x.Id).FirstAsync();
             var freshArchiveTask = await dbContext.Set<ArchiveTask>().OrderByDescending(x => x.Id).FirstAsync();
             AdjustInboxMessageTimes(dbContext, freshInboxMessage, freshAt);
-            AdjustOutboxMessageTimes(dbContext, freshOutboxMessage, freshAt);
             AdjustIdempotencyRecordTimes(dbContext, freshIdempotencyRecord, freshAt);
             AdjustArchiveTaskTimes(dbContext, freshArchiveTask, freshAt);
         }
@@ -284,17 +274,6 @@ public sealed class DataRetentionTests {
     }
 
     /// <summary>
-    /// 创建测试 Outbox 消息。
-    /// </summary>
-    /// <returns>Outbox 消息。</returns>
-    private static OutboxMessage CreateOutboxMessage() {
-        var message = OutboxMessage.CreatePending("Retention.Test", "{}");
-        message.MarkProcessing();
-        message.MarkDispatchSucceeded();
-        return message;
-    }
-
-    /// <summary>
     /// 创建测试 Inbox 消息。
     /// </summary>
     /// <returns>Inbox 消息。</returns>
@@ -324,19 +303,6 @@ public sealed class DataRetentionTests {
         task.MarkRunning();
         task.MarkCompleted(1, "done", "{}");
         return task;
-    }
-
-    /// <summary>
-    /// 调整 Outbox 消息时间字段。
-    /// </summary>
-    /// <param name="dbContext">数据库上下文。</param>
-    /// <param name="message">Outbox 消息。</param>
-    /// <param name="time">目标时间。</param>
-    private static void AdjustOutboxMessageTimes(SortingHubDbContext dbContext, OutboxMessage message, DateTime time) {
-        dbContext.Entry(message).Property(x => x.CreatedAt).CurrentValue = time;
-        dbContext.Entry(message).Property(x => x.UpdatedAt).CurrentValue = time;
-        dbContext.Entry(message).Property(x => x.CompletedAt).CurrentValue = time;
-        dbContext.Entry(message).Property(x => x.LastAttemptedAt).CurrentValue = time;
     }
 
     /// <summary>

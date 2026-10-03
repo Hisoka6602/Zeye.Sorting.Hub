@@ -170,7 +170,7 @@ public sealed class BusinessModuleTemplateRulesTests {
 
         Assert.Contains("高频列表必须优先游标分页", moduleConvention, StringComparison.Ordinal);
         Assert.Contains("写入必须考虑幂等", moduleConvention, StringComparison.Ordinal);
-        Assert.Contains("需要业务事件持久化时必须优先使用 Outbox", moduleConvention, StringComparison.Ordinal);
+        Assert.Contains("本项目仅接收、持久化和分析包裹相关数据", moduleConvention, StringComparison.Ordinal);
         Assert.Contains("OperationalScopeNormalizer", moduleConvention, StringComparison.Ordinal);
         Assert.Contains("ApplicationResult", copilotTemplate, StringComparison.Ordinal);
         Assert.Contains("EndpointRouteBuilderConventionExtensions", copilotTemplate, StringComparison.Ordinal);

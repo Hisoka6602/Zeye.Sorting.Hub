@@ -122,6 +122,7 @@ public sealed class InboxMessageRepository : IInboxMessageRepository {
             await using var dbContext = await _contextFactory.CreateDbContextAsync(cancellationToken);
             for (var attempt = 0; attempt < MaxAcquireAttempts; attempt++) {
                 var inboxMessage = await dbContext.Set<InboxMessage>()
+                    .AsTracking()
                     .Where(x => x.SourceSystem == sourceSystem
                                 && x.MessageId == messageId
                                 && (x.Status == InboxMessageStatus.Pending

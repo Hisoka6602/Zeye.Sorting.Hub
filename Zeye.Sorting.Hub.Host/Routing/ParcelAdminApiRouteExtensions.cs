@@ -9,6 +9,9 @@ using Zeye.Sorting.Hub.Contracts.Models.Parcels.Admin;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Host.Utilities;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Idempotency;
+using System.Security.Claims;
+using Zeye.Sorting.Hub.Host.Queries;
+using Zeye.Sorting.Hub.Domain.Repositories.Models.Results;
 
 namespace Zeye.Sorting.Hub.Host.Routing;
 
@@ -87,7 +90,7 @@ public static class ParcelAdminApiRouteExtensions {
             .ProducesProblem(StatusCodes.Status500InternalServerError);
 
         // ── 危险治理接口（单独分组，明确区分于普通业务端点）─────────────────────────
-        group.MapPost("/cleanup-expired", CleanupExpiredParcelsAsync)
+        group.MapPost("/cleanup-expired", CleanupExpiredParcelsAsync).RequireRateLimiting("account-login")
             .WithName("AdminCleanupExpiredParcels")
             .WithSummary("[治理接口] 触发过期包裹清理（由仓储隔离器决策 blocked/dry-run/execute，不可绕过）")
             .WithDescription("治理型危险接口：仅用于按 createdBefore 清理过期包裹。执行结果受仓储隔离器决策（blocked/dry-run/execute）约束，异常会被记录日志且返回问题详情。")
@@ -95,7 +98,35 @@ public static class ParcelAdminApiRouteExtensions {
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status500InternalServerError);
 
+        group.MapGet("/cleanup-history", async (HttpContext context, [FromServices] ParcelCleanupHistoryService history, CancellationToken ct) => {
+            if (CleanupHistoryAccessProblem(context) is { } denied) return denied;
+            if (!TryCleanupPage(context, out var page, out var size)) return Results.Problem(statusCode: 400, detail: "分页参数无效。");
+            context.Response.Headers.CacheControl = "private, no-store";
+            return Results.Ok(await history.ListAsync(page, size, ct));
+        });
+        group.MapGet("/cleanup-history/{id:guid}", async (Guid id, HttpContext context, [FromServices] ParcelCleanupHistoryService history, CancellationToken ct) => {
+            if (CleanupHistoryAccessProblem(context) is { } denied) return denied;
+            if (!TryCleanupPage(context, out var page, out var size)) return Results.Problem(statusCode: 400, detail: "分页参数无效。");
+            var search = context.Request.Query["search"].ToString().Trim();
+            if (search.Length > 128) return Results.Problem(statusCode: 400, detail: "检索内容不能超过 128 字。");
+            context.Response.Headers.CacheControl = "private, no-store";
+            return await history.DetailAsync(id.ToString("N"), page, size, search, ct) is { } detail ? Results.Ok(detail) : Results.NotFound();
+        });
+
         return routeBuilder;
+    }
+
+    /// <summary>永久删除记录始终需要登录及治理或审计读取权限。</summary>
+    private static IResult? CleanupHistoryAccessProblem(HttpContext context) => context.User.Identity?.IsAuthenticated != true
+        ? Results.Problem(statusCode: 401, detail: "请先登录。")
+        : !context.User.HasClaim("permission", "governance.manage") && !context.User.HasClaim("permission", "audit.read")
+            ? Results.Problem(statusCode: 403, detail: "需要数据治理或审计读取权限。") : null;
+
+    /// <summary>有界历史分页，避免传入超大或非法页码。</summary>
+    private static bool TryCleanupPage(HttpContext context, out int page, out int size) {
+        page = 1; size = 10;
+        return (!context.Request.Query.ContainsKey("pageNumber") || int.TryParse(context.Request.Query["pageNumber"], out page)) && page is > 0 and <= 100000
+            && (!context.Request.Query.ContainsKey("pageSize") || int.TryParse(context.Request.Query["pageSize"], out size)) && size is > 0 and <= 100;
     }
 
     /// <summary>
@@ -327,8 +358,7 @@ public static class ParcelAdminApiRouteExtensions {
 
     /// <summary>
     /// 处理过期包裹清理请求（治理型端点，不得绕过仓储隔离器）。
-    /// 鉴权预留：此端点应在生产环境配置更严格的鉴权（如管理员角色或 API-Key），
-    ///   建议在 MapGroup 或此端点上追加 .RequireAuthorization("DangerousActionPolicy")。
+    /// 无论一般鉴权开关如何配置，都必须验证当前会话、治理权限及登录密码。
     /// </summary>
     /// <param name="request">清理请求合同（JSON body，含 createdBefore 本地时间字符串）。</param>
     /// <param name="commandService">过期清理应用服务。</param>
@@ -337,7 +367,11 @@ public static class ParcelAdminApiRouteExtensions {
     private static async Task<IResult> CleanupExpiredParcelsAsync(
         [Microsoft.AspNetCore.Mvc.FromBody] ParcelCleanupExpiredRequest request,
         CleanupExpiredParcelsCommandService commandService,
+        HttpContext context,
         CancellationToken cancellationToken) {
+        if (context.User.Identity?.IsAuthenticated != true) return Results.Problem(statusCode: 401, detail: "请先登录后再提交清理。");
+        if (!context.User.HasClaim("permission", "governance.manage")) return Results.Problem(statusCode: 403, detail: "当前账号没有数据治理权限。");
+        if (context.Request.Headers["X-Zeye-Client"] != "web") return Results.Problem(statusCode: 403, detail: "写入请求缺少来源校验标识。");
         if (request is null) {
             return LocalDateTimeParsing.CreateBadRequestProblem("请求参数无效", "请求体不能为空。");
         }
@@ -348,10 +382,19 @@ public static class ParcelAdminApiRouteExtensions {
                 "请求参数无效",
                 "createdBefore 必须是本地时间格式（如 yyyy-MM-dd HH:mm:ss），且不允许包含 UTC 或时区偏移。");
         }
+        if (request.Password is not { Length: > 0 and <= 128 }) return Results.Problem(statusCode: 400, detail: "请输入当前登录用户的密码。");
+        var access = context.RequestServices.GetRequiredService<AccessDirectoryService>();
+        var (directory, _) = await access.ReadAsync(cancellationToken);
+        var user = directory.Users.SingleOrDefault(x => x.Id == context.User.FindFirstValue(ClaimTypes.NameIdentifier));
+        var role = directory.Roles.SingleOrDefault(x => x.Id == user?.RoleId);
+        if (user is null || !user.Enabled || user.SecurityStamp != context.User.FindFirstValue("security-stamp")) return Results.Problem(statusCode: 401, detail: "登录已失效，请重新登录。");
+        if (role is null || !role.Permissions.Contains("governance.manage")) return Results.Problem(statusCode: 403, detail: "当前账号没有数据治理权限。");
+        if (!AccessDirectoryService.VerifyPassword(user, request.Password)) return Results.Problem(statusCode: 400, detail: "登录密码不正确，未执行清理。");
 
         try {
             // 步骤 2：调用应用服务（内部不绕过仓储隔离器）。
-            var response = await commandService.ExecuteAsync(createdBefore, cancellationToken);
+            var actor = new ParcelCleanupOperator(user.Id, user.Account, user.Name, context.Connection.RemoteIpAddress?.ToString() ?? "", context.TraceIdentifier);
+            var response = await commandService.ExecuteAsync(createdBefore, cancellationToken, actor);
             return Results.Ok(response);
         }
         catch (InvalidOperationException ex) {

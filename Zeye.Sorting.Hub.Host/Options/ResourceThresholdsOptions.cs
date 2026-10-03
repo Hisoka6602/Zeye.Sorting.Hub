@@ -21,4 +21,13 @@ public sealed class ResourceThresholdsOptions {
     /// 可填写范围：正整数（MB），建议值 1024（1 GB），0 表示不启用内存阈值告警。
     /// </summary>
     public int MemoryWarningThresholdMB { get; init; } = 1024;
+
+    /// <summary>进程句柄或文件描述符告警阈值。可填写范围：0~1000000，0 表示关闭。</summary>
+    public int HandleWarningThreshold { get; init; } = 10000;
+
+    /// <summary>日志、备份和运行目录所在文件系统的最小剩余空间（MiB）。可填写范围：0~1048576，0 表示关闭。</summary>
+    public int MinimumDiskFreeMB { get; init; } = 1024;
+
+    /// <summary>后台资源采样间隔秒数。可填写范围：10~3600。</summary>
+    public int SampleIntervalSeconds { get; init; } = 60;
 }

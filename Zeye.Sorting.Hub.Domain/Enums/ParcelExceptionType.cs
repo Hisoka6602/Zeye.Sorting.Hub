@@ -7,6 +7,10 @@ namespace Zeye.Sorting.Hub.Domain.Enums {
     /// </summary>
     public enum ParcelExceptionType {
 
+        /// <summary>所有来源异常分类规则均未匹配时使用的系统兜底类型。</summary>
+        [Description("未知异常")]
+        Unknown = 0,
+
         /// <summary>
         /// 接口响应异常
         /// </summary>

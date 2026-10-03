@@ -3,7 +3,7 @@ import { useSyncExternalStore } from 'react';
 type ListUpdate<T> = T[] | ((current: T[]) => T[]);
 
 /** A small persistent external store with a stable snapshot and focused subscription. */
-export function createStoredList<T>(key: string, initial: T[]) {
+export function createStoredList<T>(key: string, initial: T[], normalize: (items: T[]) => T[] = items => items) {
   let snapshot: T[] | undefined;
   let listening = false;
   const listeners = new Set<() => void>();
@@ -11,9 +11,9 @@ export function createStoredList<T>(key: string, initial: T[]) {
   const readStorage = (): T[] => {
     try {
       const value: unknown = JSON.parse(localStorage.getItem(key) || 'null');
-      return Array.isArray(value) ? value as T[] : initial;
+      return normalize(Array.isArray(value) ? value as T[] : initial);
     } catch {
-      return initial;
+      return normalize(initial);
     }
   };
 
@@ -37,8 +37,8 @@ export function createStoredList<T>(key: string, initial: T[]) {
     const current = getSnapshot();
     const value = typeof next === 'function' ? (next as (items: T[]) => T[])(current) : next;
     if (value === current) return;
-    snapshot = value;
-    try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* The demo still works when storage is unavailable. */ }
+    snapshot = normalize(value);
+    try { localStorage.setItem(key, JSON.stringify(snapshot)); } catch { /* The demo still works when storage is unavailable. */ }
     notify();
   };
 

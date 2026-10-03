@@ -77,8 +77,11 @@ public sealed class ShardingTablePrebuildService {
     /// 生成分表预建计划。
     /// </summary>
     /// <param name="cancellationToken">取消令牌。</param>
+    /// <param name="aheadHours">覆盖部署默认值的运行期窗口。</param>
     /// <returns>预建计划。</returns>
-    public async Task<ShardingPrebuildPlan> BuildPlanAsync(CancellationToken cancellationToken) {
+    public async Task<ShardingPrebuildPlan> BuildPlanAsync(CancellationToken cancellationToken, int? aheadHours = null) {
+        var window = aheadHours ?? _options.PrebuildAheadHours;
+        if (window is < ShardingPrebuildOptions.MinPrebuildAheadHours or > ShardingPrebuildOptions.MaxPrebuildAheadHours) throw new ArgumentOutOfRangeException(nameof(aheadHours));
         if (!_options.IsEnabled) {
             var disabledPlan = BuildPlan([], [], "分表预建计划未启用。", false);
             Volatile.Write(ref _lastPlan, disabledPlan);
@@ -91,7 +94,7 @@ public sealed class ShardingTablePrebuildService {
             var plannedTableNames = _tablePlanBuilder.BuildExpectedPhysicalTableNames(
                 dbContext,
                 DateTime.Now,
-                _options.PrebuildAheadHours,
+                window,
                 true);
             var missingTables = await _physicalTableProbe.FindMissingTablesAsync(
                 dbContext,
@@ -101,8 +104,9 @@ public sealed class ShardingTablePrebuildService {
             var plan = BuildPlan(
                 plannedTableNames,
                 missingTables,
-                _options.DryRun ? "分表预建 dry-run 计划已生成；未执行任何 DDL。" : "分表预建计划已生成；真实执行需接入危险动作隔离器。",
-                true);
+                _options.DryRun ? "分表预建 dry-run 计划已生成；未执行任何 DDL。" : "分表预建窗口物理表检查已完成。",
+                true,
+                window);
             Volatile.Write(ref _lastPlan, plan);
             Logger.Info(
                 "分表预建计划生成：Provider={Provider}, DryRun={DryRun}, PrebuildAheadHours={PrebuildAheadHours}, PlannedCount={PlannedCount}, MissingCount={MissingCount}",
@@ -137,12 +141,12 @@ public sealed class ShardingTablePrebuildService {
         IReadOnlyList<string> plannedPhysicalTables,
         IReadOnlyList<string> missingPhysicalTables,
         string message,
-        bool isEnabled) {
+        bool isEnabled, int? aheadHours = null) {
         return new ShardingPrebuildPlan {
             GeneratedAtLocal = DateTime.Now,
             IsEnabled = isEnabled,
             IsDryRun = _options.DryRun,
-            PrebuildAheadHours = _options.PrebuildAheadHours,
+            PrebuildAheadHours = aheadHours ?? _options.PrebuildAheadHours,
             PlannedPhysicalTables = plannedPhysicalTables,
             MissingPhysicalTables = missingPhysicalTables,
             Message = message

@@ -13,10 +13,11 @@
   background: #fff; border-bottom: 1px solid #e1e7f0;
   white-space: nowrap; cursor: pointer;
 }
-.shared-shell .header-wordmark { display: block; flex: none; }
+.shared-shell .header-wordmark { display: block; flex: none; transform: translateX(1px); }
 .shared-shell .app-sider.ant-layout-sider-collapsed .brand { padding: 0; justify-content: center; }
 @media (min-width: 1550px) {
   .shared-shell .app-sider.ant-layout-sider-collapsed .hub-brand-mark { width: 26px; height: 29px; }
+  .shared-shell .header-wordmark { transform: translateX(4px); }
 }
 .shared-shell .side-menu {
   flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; scrollbar-color: transparent transparent;
@@ -32,12 +33,28 @@
   border-radius: 5px; font-weight: 400;
 }
 .shared-shell .side-menu .ant-menu-submenu { margin: 0; }
+.shared-shell .side-menu > .nav-root-home { margin-bottom: 14px !important; }
+.shared-shell .side-menu > .nav-root-parcels { margin-bottom: 16px; }
+.shared-shell .side-menu > .nav-root-test-data { margin-bottom: 16px; }
+.shared-shell .side-menu > .nav-root-governance { margin-bottom: 22px; }
+.shared-shell .side-menu > .nav-root-observability { margin-bottom: 21px; }
+.shared-shell .side-menu > .nav-root-system { margin-bottom: 21px; }
+.shared-shell .side-menu .ant-menu-submenu-title,
+.shared-shell .side-menu > .ant-menu-item:not(.ant-menu-item-selected) { color: #344476; }
+.shared-shell .side-menu .ant-menu-sub .ant-menu-item:not(.ant-menu-item-selected) { color: #4f5e8f; }
 .shared-shell .side-menu .ant-menu-sub { padding: 0; background: transparent; }
 .shared-shell .side-menu .ant-menu-submenu-title { font-weight: 500; }
 .shared-shell .side-menu .ant-menu-sub .ant-menu-item { padding-left: 50px !important; }
 .shared-shell .side-menu .ant-menu-item-selected { background: #e7efff; color: #0964e8; }
+.shared-shell .side-menu .ant-menu-item-selected {
+  margin-left: 0 !important; width: calc(100% - 10px) !important; padding-left: 25px !important;
+  border-left: 3px solid #1677ff; border-radius: 0 5px 5px 0;
+}
+.shared-shell .side-menu .ant-menu-sub .ant-menu-item-selected { padding-left: 55px !important; }
 .shared-shell .side-menu .ant-menu-submenu-selected > .ant-menu-submenu-title { color: #0964e8; }
 .shared-shell .shell-nav-icon { vertical-align: middle; }
+.shared-shell .side-menu .ant-menu-submenu-arrow::before,
+.shared-shell .side-menu .ant-menu-submenu-arrow::after { border-radius: 999px; }
 .shared-shell .collapse-button {
   position: static; flex: none; align-self: flex-end; margin: 8px 12px;
   background: transparent; color: #8290aa;
@@ -74,15 +91,16 @@
     width: calc(100% + var(--content-width-correction, 0px));
   }
 }
-.shared-shell .page-breadcrumb { margin: 0 0 20px; font-size: 16px; line-height: 24px; color: #152342; }
-.shared-shell .page-breadcrumb a { color: #536580; }
+.shared-shell .page-breadcrumb { position: relative; left: 2px; top: -5px; margin: 0 0 20px; font-size: 15px; line-height: 24px; color: #657395; }
+.shared-shell .page-breadcrumb .ant-breadcrumb-link,
+.shared-shell .page-breadcrumb .ant-breadcrumb-link a { color: #657395; }
+.shared-shell .page-breadcrumb .ant-breadcrumb-separator { margin-left: 11px; margin-right: 11px; }
 .shared-shell .page-breadcrumb a:hover { color: #1677ff; }
 .shared-shell .page-breadcrumb a:focus-visible { outline: 2px solid #1677ff; outline-offset: 3px; border-radius: 2px; }
 .shared-shell .mobile-menu-button, .shared-shell .mobile-scrim { display: none; }
 
 /* Drawer widths are state-specific content reservations; the header stays full width. */
 body:has(.archive-drawer.ant-drawer-open) .shared-shell .body-layout { --panel-width: 362px; }
-body:has(.outbox-drawer.ant-drawer-open) .shared-shell .body-layout { --panel-width: 368px; }
 body:has(.live-drawer.ant-drawer-open) .shared-shell .body-layout { --panel-width: 347px; }
 body:has(.rules-drawer.ant-drawer-open) .shared-shell .body-layout { --panel-width: 392px; }
 body:has(.access-drawer.ant-drawer-open) .shared-shell .body-layout { --panel-width: 398px; }

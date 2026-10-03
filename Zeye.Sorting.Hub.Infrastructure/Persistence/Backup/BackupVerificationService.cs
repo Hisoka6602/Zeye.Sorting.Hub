@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using NLog;
+using Zeye.Sorting.Hub.Application.Abstractions.Storage;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Backup;
 
@@ -33,6 +34,9 @@ public sealed class BackupVerificationService {
     /// </summary>
     private readonly RestoreDrillPlanner _restoreDrillPlanner;
 
+    /// <summary>事务快照完整性核验接口，原生备份仍使用提供程序运行手册。</summary>
+    private readonly IDatabaseBackupArtifactService? _artifacts;
+
     /// <summary>
     /// 最近一次执行记录。
     /// </summary>
@@ -45,15 +49,18 @@ public sealed class BackupVerificationService {
     /// <param name="options">备份配置。</param>
     /// <param name="configuration">配置根。</param>
     /// <param name="restoreDrillPlanner">恢复演练与 Runbook 规划器。</param>
+    /// <param name="artifacts">事务快照完整性核验器。</param>
     public BackupVerificationService(
         IBackupProvider backupProvider,
         IOptions<BackupOptions> options,
         IConfiguration configuration,
-        RestoreDrillPlanner restoreDrillPlanner) {
+        RestoreDrillPlanner restoreDrillPlanner,
+        IDatabaseBackupArtifactService? artifacts = null) {
         _backupProvider = backupProvider ?? throw new ArgumentNullException(nameof(backupProvider));
         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _restoreDrillPlanner = restoreDrillPlanner ?? throw new ArgumentNullException(nameof(restoreDrillPlanner));
+        _artifacts = artifacts;
     }
 
     /// <summary>
@@ -108,6 +115,13 @@ public sealed class BackupVerificationService {
             }
 
             // 步骤 4：文件系统时间统一使用本地时间语义，避免引入 UTC 转换链路。
+            if (verifiedBackupFilePath.EndsWith(".zeye.zip", StringComparison.Ordinal)) {
+                if (_artifacts is null) throw new InvalidOperationException("事务快照完整性核验器未配置。");
+                using var verifyBudget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                verifyBudget.CancelAfter(TimeSpan.FromMinutes(_options.OperationTimeoutMinutes));
+                var id = Path.GetFileName(verifiedBackupFilePath)[..^9];
+                await _artifacts.DownloadPathAsync(id, verifyBudget.Token);
+            }
             var verifiedBackupAtLocal = File.GetLastWriteTime(verifiedBackupFilePath);
             var isFresh = DateTime.Now - verifiedBackupAtLocal <= TimeSpan.FromHours(_options.MaxAllowedBackupAgeHours);
             return PublishRecord(new BackupExecutionRecord {
@@ -224,7 +238,7 @@ public sealed class BackupVerificationService {
 
         string? latestFilePath = null;
         var latestWriteTime = DateTime.MinValue;
-        foreach (var filePath in Directory.EnumerateFiles(providerDirectory, $"*{_backupProvider.BackupFileExtension}", SearchOption.TopDirectoryOnly)) {
+        foreach (var filePath in Directory.EnumerateFiles(providerDirectory, "*", SearchOption.TopDirectoryOnly).Where(path => path.EndsWith(_backupProvider.BackupFileExtension, StringComparison.OrdinalIgnoreCase) || path.EndsWith(".zeye.zip", StringComparison.Ordinal) && File.Exists(path[..^9] + ".manifest.json"))) {
             var writeTime = File.GetLastWriteTime(filePath);
             if (writeTime <= latestWriteTime) {
                 continue;

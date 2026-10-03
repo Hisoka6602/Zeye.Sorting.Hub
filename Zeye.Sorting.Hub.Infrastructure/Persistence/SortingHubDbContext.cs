@@ -40,6 +40,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence {
                 typeof(SortingHubDbContext).Assembly,
                 type => type != typeof(ParcelEntityTypeConfiguration));
             modelBuilder.ApplyConfiguration(new ParcelEntityTypeConfiguration(Database.ProviderName == DbProviderNames.SqlServer));
+            modelBuilder.Entity<Management.ManagedDocument>(b => {
+                b.ToTable("ManagedDocuments"); b.HasKey(x => x.Key); b.Property(x => x.Key).HasMaxLength(128);
+                b.Property(x => x.Revision).IsConcurrencyToken();
+            });
 
             // 步骤1：全局目录与去重凭据保持基础表名，跨分表身份不随粒度变化。
             modelBuilder.Entity<ParcelPartitionCatalogEntry>(b => {

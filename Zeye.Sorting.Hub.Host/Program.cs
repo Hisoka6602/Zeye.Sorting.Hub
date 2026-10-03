@@ -4,6 +4,8 @@ using Microsoft.OpenApi.Models;
 using Microsoft.AspNetCore.Mvc;
 using Zeye.Sorting.Hub.Host.Options;
 using Zeye.Sorting.Hub.Host.Routing;
+using Zeye.Sorting.Hub.Host.Extensions;
+using Zeye.Sorting.Hub.Host.Queries;
 using Zeye.Sorting.Hub.Host.Swagger;
 using Microsoft.AspNetCore.Diagnostics;
 using Zeye.Sorting.Hub.Host.Middleware;
@@ -28,6 +30,7 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.MigrationGovernance;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Retention;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.WriteBuffering;
+using Zeye.Sorting.Hub.Application.Abstractions.Storage;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using System.IO.Compression;
 using System.Threading.RateLimiting;
@@ -44,7 +47,12 @@ const string UrlsConfigKey = "urls";
 
 try {
     var startupLogger = LogManager.GetLogger($"{nameof(Program)}.Startup");
-    var builder = WebApplication.CreateBuilder(args);
+    var verifyLatestBackup = args.Contains("--verify-latest-backup", StringComparer.Ordinal);
+    // 发布程序始终从自身目录读取配置和前端，不依赖启动时的工作目录。
+    var builder = WebApplication.CreateBuilder(new WebApplicationOptions {
+        Args = args.Where(arg => arg != "--verify-latest-backup").ToArray(),
+        ContentRootPath = AppContext.BaseDirectory
+    });
     builder.WebHost.ConfigureKestrel(static options => {
         // 请求体硬上限用于在 JSON 反序列化前阻断异常大批次。
         options.Limits.MaxRequestBodySize = 8L * 1024L * 1024L;
@@ -80,7 +88,11 @@ try {
         builder.Configuration.GetSection("LogCleanup"));
     builder.Services.Configure<HostingOptions>(builder.Configuration.GetSection("Hosting"));
     builder.Services.Configure<AuditReadOnlyApiOptions>(builder.Configuration.GetSection(AuditReadOnlyApiOptions.SectionName));
-    builder.Services.Configure<ResourceThresholdsOptions>(builder.Configuration.GetSection(ResourceThresholdsOptions.SectionName));
+    builder.Services.AddOptions<ResourceThresholdsOptions>().Bind(builder.Configuration.GetSection(ResourceThresholdsOptions.SectionName))
+        .Validate(static options => options.MaxConnectionPoolSize is >= 1 and <= 10000 && options.MemoryWarningThresholdMB is >= 0 and <= 1048576, "连接池阈值为 1~10000，内存阈值为 0~1048576 MiB")
+        .Validate(static options => options.HandleWarningThreshold is >= 0 and <= 1000000 && options.MinimumDiskFreeMB is >= 0 and <= 1048576, "句柄阈值为 0~1000000，磁盘剩余空间阈值为 0~1048576 MiB")
+        .Validate(static options => options.SampleIntervalSeconds is >= 10 and <= 3600, "资源采样间隔为 10~3600 秒")
+        .ValidateOnStart();
     builder.Services.Configure<HostOptions>(static options => {
         options.ServicesStopConcurrently = true;
         options.ShutdownTimeout = TimeSpan.FromSeconds(30);
@@ -101,6 +113,7 @@ try {
     builder.Services.Replace(ServiceDescriptor.Singleton<IAutoTuningObservability, AutoTuningLoggerObservability>());
     // 数据库启动链路严格按“迁移治理 -> 初始化 -> 预热/后台任务”顺序注册，避免后台查询抢跑迁移。
     builder.Services.AddHostedService<DatabaseInitializerHostedService>();
+    builder.Services.AddHostedService<BuiltInAccountHostedService>();
     builder.Services.AddHostedService<DatabaseConnectionWarmupHostedService>();
     builder.Services.AddHostedService<ParcelBatchWriteFlushHostedService>();
     builder.Services.AddHostedService<ShardingPrebuildHostedService>();
@@ -110,8 +123,9 @@ try {
     builder.Services.AddHostedService<DataRetentionHostedService>();
     builder.Services.AddHostedService<BaselineDataValidationHostedService>();
     builder.Services.AddHostedService<QueryGovernanceReportHostedService>();
-    builder.Services.AddHostedService<OutboxDispatchHostedService>();
     builder.Services.AddHostedService<DatabaseAutoTuningHostedService>();
+    builder.Services.AddHostedService<RuntimeResourceMonitorHostedService>();
+    builder.Services.AddSingleton(TimeProvider.System);
     // ──────────────────────────────────────────────────────
     // 健康检查：存活探针（/health/live）+ 就绪探针（/health/ready）
     //   - /health/live   仅判断进程健康（无依赖检查），用于容器重启决策
@@ -127,9 +141,6 @@ try {
         .AddCheck<BaselineDataHealthCheck>(
             name: "baseline-data",
             tags: ["deep"])
-        .AddCheck<OutboxHealthCheck>(
-            name: "outbox",
-            tags: ["deep"])
         .AddCheck<BackupHealthCheck>(
             name: "backup",
             tags: ["deep"])
@@ -144,7 +155,10 @@ try {
             tags: ["deep"])
         .AddCheck<ShardingGovernanceHealthCheck>(
             name: "sharding-governance",
-            tags: ["deep"]);
+            tags: ["deep"])
+        .AddCheck<RuntimeResourceHealthCheck>(
+            name: "runtime-resources",
+            tags: ["deep"], timeout: TimeSpan.FromSeconds(5));
     builder.Services.AddProblemDetails();
     builder.Services.ConfigureHttpJsonOptions(static options => {
         options.SerializerOptions.TypeInfoResolverChain.Insert(0, SortingHubJsonSerializerContext.Default);
@@ -168,6 +182,10 @@ try {
         };
     });
     builder.Services.AddRateLimiter(options => {
+        options.AddPolicy("account-login", context => RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions {
+                PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true
+            }));
         options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
         options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(static _ =>
             RateLimitPartition.GetConcurrencyLimiter(
@@ -185,6 +203,7 @@ try {
         .AddAuthentication(GuardedAuthenticationHandler.SchemeName)
         .AddScheme<AuthenticationSchemeOptions, GuardedAuthenticationHandler>(GuardedAuthenticationHandler.SchemeName, static _ => { });
     builder.Services.AddAuthorization();
+    builder.Services.AddSortingHubAccess(builder.Environment.ContentRootPath);
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSwaggerGen(options => {
         var documentName = hostingOptions.GetSwaggerDocumentName();
@@ -209,6 +228,12 @@ try {
         options.SchemaFilter<EnumDescriptionSchemaFilter>();
     });
     builder.Services.AddScoped<GetParcelPagedQueryService>();
+    builder.Services.AddScoped<OperationalPartitionReadService>();
+    builder.Services.AddSingleton<IDatabaseBackupArtifactService, DatabaseBackupArtifactService>();
+    builder.Services.AddSingleton<OperationalPolicyService>();
+    builder.Services.AddSingleton<Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding.PartitionMaintenanceService>();
+    builder.Services.AddScoped<ManagedDocumentService>();
+    builder.Services.AddScoped<ParcelCleanupHistoryService>();
     builder.Services.AddScoped<GetParcelCursorPagedQueryService>();
     builder.Services.AddScoped<GetParcelByIdQueryService>();
     builder.Services.AddScoped<ParcelProcessingApplicationService>();
@@ -226,12 +251,17 @@ try {
     builder.Services.AddScoped<RetryArchiveTaskCommandService>();
     builder.Services.AddScoped<GetSlowQueryProfileQueryService>();
     builder.Services.AddScoped<InboxMessageGuardService>();
-    builder.Services.AddScoped<AppendOutboxMessageCommandService>();
-    builder.Services.AddScoped<GetOutboxMessagePagedQueryService>();
-    builder.Services.AddScoped<DispatchOutboxMessageCommandService>();
     builder.Services.AddWebRequestAuditLogging(builder.Configuration);
 
     var app = builder.Build();
+    if (verifyLatestBackup) {
+        var artifacts = app.Services.GetRequiredService<IDatabaseBackupArtifactService>();
+        var latest = (await artifacts.ListAsync(CancellationToken.None)).FirstOrDefault() ?? throw new InvalidOperationException("没有可用于隔离恢复核验的实际备份。");
+        var verified = await artifacts.RestoreIsolatedAsync(latest.Id, CancellationToken.None);
+        Console.WriteLine($"备份隔离恢复核验完成：Id={verified.Id}, Tables={verified.TableRows.Count}, Rows={verified.TableRows.Values.Sum()}, Database={verified.RestoredDatabase}");
+        await app.DisposeAsync();
+        return;
+    }
     app.UseResponseCompression();
 
     // ──────────────────────────────────────────────────────
@@ -282,6 +312,7 @@ try {
     if (hostingOptions.EnableHttpsRedirection) {
         app.UseHttpsRedirection();
     }
+    app.UseBundledWebUi();
     app.UseRouting();
     // 路由解析后再进入审计，使中间件可以按端点元数据和路径排除探针流量。
     app.UseWebRequestAuditLogging();
@@ -289,6 +320,7 @@ try {
     app.UseRateLimiter();
     app.UseAuthentication();
     app.UseAuthorization();
+    app.UseSortingHubAccess();
     app.UseOutputCache();
     var isSwaggerEnabled = app.Environment.IsDevelopment() && hostingOptions.Swagger.Enabled;
     if (isSwaggerEnabled) {
@@ -339,7 +371,7 @@ try {
     .WithName("DeepHealthDiagnostics")
     .DisableRateLimiting()
     .WithSummary("深度健康诊断")
-    .WithDescription("包含备份、归档、Outbox、迁移与分片治理，仅用于低频运维诊断。");
+    .WithDescription("包含备份、归档、迁移与分片治理，仅用于低频运维诊断。");
 
     // 兼容端点：保持旧版 /health 接入链路可用
     app.MapGet("/health", () => Results.Ok(new { status = "Healthy" }))
@@ -364,6 +396,9 @@ try {
 
     app.MapDataGovernanceApis();
     app.MapDiagnosticsApis();
+    app.MapOperationalReadApis();
+    app.MapRuleManagementApis();
+    app.MapAccessApis();
 
     app.Run();
 }

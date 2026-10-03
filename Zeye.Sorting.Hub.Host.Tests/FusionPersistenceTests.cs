@@ -295,7 +295,11 @@ public sealed class FusionPersistenceTests {
         await database.InitializeAsync();
         await database.Processing.AppendAsync(Fact("first", 1), default);
         await database.Processing.AppendAsync(Fact("second", 2) with { RecordedAt = new(2026, 9, 29) }, default);
-        var blocked = await database.Parcels.RemoveExpiredAsync(new(2026, 10, 1), default);
+        var blockedConfiguration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> {
+            ["Persistence:RepositoryDangerousActions:ParcelRemoveExpired:Isolator:AllowDangerousActionExecution"] = "false"
+        }).Build();
+        var blockedRepository = new Zeye.Sorting.Hub.Infrastructure.Repositories.ParcelRepository(database.Factory, blockedConfiguration, database.Partitions);
+        var blocked = await blockedRepository.RemoveExpiredAsync(new(2026, 10, 1), default);
         Assert.True(blocked.IsSuccess, blocked.ErrorMessage);
         Assert.Equal(2, blocked.Value!.PlannedCount);
         Assert.True(blocked.Value.IsBlockedByGuard);

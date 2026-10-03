@@ -28,10 +28,14 @@ internal sealed class TestObservability : IAutoTuningObservability {
     /// </summary>
     public readonly List<ObservabilityEntry> EventEntries = [];
 
+    /// <summary>在实际指标提交点注入一次故障，用于验证后台周期恢复。</summary>
+    public Action<string>? BeforeEmitMetric { get; set; }
+
     /// <summary>
     /// 验证场景：EmitMetric。
     /// </summary>
     public void EmitMetric(string name, decimal value, IReadOnlyDictionary<string, string>? tags = null) {
+        BeforeEmitMetric?.Invoke(name);
         Metrics.Add(name);
         MetricEntries.Add(new ObservabilityEntry(name, value, CloneTags(tags)));
     }

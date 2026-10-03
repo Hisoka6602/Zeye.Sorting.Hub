@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="480" viewBox="0 0 720 480" role="img" aria-labelledby="title">
+  <title id="title">模拟包裹侧面视图，非现场照片</title>
+  <rect width="720" height="480" fill="#e8edf3"/>
+  <rect y="334" width="720" height="74" fill="#cdd6e2"/>
+  <path d="M0 350h720M0 380h720" stroke="#f4f6fa" stroke-width="10"/>
+  <ellipse cx="367" cy="337" rx="229" ry="18" fill="#94a3b8" opacity=".2"/>
+  <path d="M158 160l352-26 64 36-352 29z" fill="#dec297"/>
+  <path d="M158 160v161l352 16V134z" fill="#c7a375"/>
+  <path d="M510 134l64 36v140l-64 27z" fill="#ab875a"/>
+  <path d="M323 148l46-4v186l-46-2z" fill="#ebddbf"/>
+  <rect x="185" y="202" width="108" height="62" rx="4" fill="#f6eddc"/>
+  <text x="201" y="225" font-family="sans-serif" font-size="13" fill="#786448">SIMULATED</text>
+  <text x="201" y="247" font-family="sans-serif" font-size="15" fill="#786448">1.28 kg</text>
+  <path d="M438 252v-55m-10 12 10-12 10 12m17 43v-55m-10 12 10-12 10 12" fill="none" stroke="#80643e" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="24" y="22" width="448" height="48" rx="10" fill="#fff"/>
+  <text x="42" y="53" font-family="sans-serif" font-size="21" fill="#475569">模拟图片 · 侧面相机 · 非现场照片</text>
+  <text x="28" y="451" font-family="sans-serif" font-size="17" fill="#64748b">ZEYE / MULTI-IMAGE DEMO / SIDE VIEW</text>
+</svg>

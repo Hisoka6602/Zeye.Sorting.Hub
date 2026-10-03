@@ -122,6 +122,9 @@ function analytics(params: URLSearchParams) {
     fromDate, toDate, detectedCount, completedCount: detectedCount, exceptionCount,
     noReadCount: 0, chuteMismatchCount: 0,
     averageLifecycleSeconds: rows.length ? rows.reduce((sum, row) => sum + row.averageLifecycleSeconds, 0) / rows.length : null,
+    // 参考稿没有逐票创建事实，不从生命周期耗时伪造小时产能。
+    medianCreationIntervalMilliseconds: null, minimumCreationIntervalMilliseconds: null,
+    actualSortingThroughputPerHour: null, theoreticalSortingThroughputPerHour: null, creationIntervalSampleCount: 0,
     daily: rows,
     exceptionTypes: rows.length ? exceptionTypes.map(([name, count, designPreviewPercent], index) => ({ code: `reference-${index}`, name, count: Math.round(count * scale), designPreviewPercent })) : [],
     workstations: rows.length ? workstations.map(([name, count, designPreviewPercent], index) => ({ code: `reference-${index}`, name, count: Math.round(count * scale), designPreviewPercent })) : [],

@@ -13,6 +13,35 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 /// 备份治理测试。
 /// </summary>
 public sealed class BackupGovernanceTests {
+    /// <summary>文件删除或快照失效后，之前的成功结果不能继续显示健康。</summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task BackupHealthRechecksFileExistenceAndResultAge(bool staleRecord) {
+        var rootPath = CreateTempDirectory();
+        try {
+            using var provider = BuildServiceProvider(rootPath, MySqlProvider, true, true);
+            var directory = Path.Combine(rootPath, "backup-artifacts", MySqlProvider);
+            Directory.CreateDirectory(directory);
+            var file = Path.Combine(directory, "sorting-hub-test.sql");
+            await File.WriteAllTextAsync(file, "有效备份测试");
+            var verification = provider.GetRequiredService<BackupVerificationService>();
+            var record = await verification.ExecuteAsync(default);
+            var health = provider.GetRequiredService<BackupHealthCheck>();
+            Assert.Equal(HealthStatus.Healthy, (await health.CheckHealthAsync(new HealthCheckContext())).Status);
+            if (staleRecord) {
+                var field = typeof(BackupVerificationService).GetField("_lastExecutionRecord", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+                typeof(BackupExecutionRecord).GetProperty(nameof(BackupExecutionRecord.RecordedAtLocal))!.SetValue(record, DateTime.Now.AddHours(-4));
+                field.SetValue(verification, record);
+            }
+            else File.Delete(file);
+            var result = await health.CheckHealthAsync(new HealthCheckContext());
+            Assert.Equal(HealthStatus.Degraded, result.Status);
+            Assert.Contains(staleRecord ? "过期" : "不存在", result.Description!, StringComparison.Ordinal);
+        }
+        finally { DeleteTempDirectory(rootPath); }
+    }
+
     /// <summary>
     /// MySQL 配置层 Provider 名称。
     /// </summary>

@@ -1,0 +1,56 @@
+import type { ParcelDetail, ParcelProcessingRecord } from '../../data/api/parcelTypes.ts';
+
+const exceptionLabels: Record<number, string> = {
+  0: '未知异常', 1: '接口响应异常', 2: '等待DWS数据超时', 3: '等待目标格口超时',
+  4: '无效目标格口', 5: '速度不匹配', 6: '锁格', 7: '叠包', 8: '灰度仪响应异常',
+  9: '位置检测异常', 10: '包裹丢失', 11: '机械故障', 12: '飘格',
+  13: '包裹间距违规', 14: '目标格口分配被拒绝', 15: '来源设备异常',
+};
+
+// These exact source-code mappings are implemented by the Hub's processing projection.
+const sourceRules: Record<string, { type: number; name: string }> = {
+  parcelspacingviolation: { type: 13, name: '包裹间距违规分类规则' },
+  targetchuteassignmentrejected: { type: 14, name: '目标格口分配被拒绝分类规则' },
+  routingtimeout: { type: 3, name: '等待目标格口超时分类规则' },
+};
+
+type ExceptionParcel = Pick<ParcelDetail, 'status' | 'exceptionType' | 'sourceExceptionCode' | 'processingRecords' | 'apiRequests'>;
+
+/** Describe saved facts only; a browser draft is not evidence of the rule that classified a parcel. */
+export function parcelExceptionDetails(parcel: ExceptionParcel | undefined) {
+  if (!parcel) return null;
+  const records = parcel.processingRecords.filter(record => record.stage === 7 || record.isSuccess === false || Boolean(record.errorMessage?.trim()))
+    .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt) || right.attemptNumber - left.attemptNumber || right.recordId.localeCompare(left.recordId));
+  const interfaceErrors = parcel.apiRequests.filter(request => typeof request.exception === 'string' && request.exception.trim());
+  const current = parcel.status === 2 || parcel.exceptionType != null;
+  if (!current && !records.length && !interfaceErrors.length && !parcel.sourceExceptionCode?.trim()) return null;
+
+  const sourceCode = parcel.sourceExceptionCode?.trim()
+    || records.find(record => record.stage === 7 && record.exceptionCode?.trim())?.exceptionCode?.trim();
+  const sourceRule = sourceCode ? sourceRules[sourceCode.toLowerCase()] : undefined;
+  // A historical source event can be described even after completion clears the current exception type.
+  const type = parcel.exceptionType ?? (sourceRule && records.some(record => record.stage === 7 && record.exceptionCode?.trim().toLowerCase() === sourceCode?.toLowerCase()) ? sourceRule.type : undefined);
+  const rule = type === 0
+    ? '未知异常兜底规则：所有异常分类规则均未匹配。'
+    : sourceRule && sourceRule.type === type
+      ? `${sourceRule.name}：来源异常代码等于 ${sourceCode}。`
+      : '未提供异常判定规则';
+  const messages = [...new Set([
+    ...records.flatMap(record => [record.errorMessage, record.decisionReason]).filter((value): value is string => Boolean(value?.trim())),
+    ...interfaceErrors.map(request => String(request.exception)),
+  ])];
+  return {
+    current,
+    type: type == null ? '未提供异常类型' : exceptionLabels[type] ?? `异常类型 ${type}`,
+    rule,
+    sourceCode,
+    messages,
+    records,
+    interfaceErrors,
+  };
+}
+
+export function exceptionRecordKeys(record: ParcelProcessingRecord): string[] {
+  return ['occurredAt', 'stage', 'exceptionCode', 'errorMessage', 'decisionReason', 'rawPayload', 'responseStatusCode', 'requestBody', 'responseBody']
+    .filter(key => record[key as keyof ParcelProcessingRecord] != null && record[key as keyof ParcelProcessingRecord] !== '');
+}

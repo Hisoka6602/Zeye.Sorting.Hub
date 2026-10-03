@@ -51,13 +51,22 @@ public sealed class ShardingIndexInspectionService {
                 continue;
             }
 
-            var missingIndexes = await _physicalTableProbe.FindMissingIndexesAsync(
+            // 新物理模型使用带周期及 Id 稳定排序列的索引；旧周期仍允许历史索引名。
+            var currentModelIndexes = physicalTableName.StartsWith("Parcels_", StringComparison.Ordinal)
+                ? expectedIndexes.ToDictionary(index => index, index => index.Replace("IX_Parcels_", $"IX_{physicalTableName}_", StringComparison.Ordinal) + "_Id", StringComparer.OrdinalIgnoreCase)
+                : physicalTableName.StartsWith("WebRequestAuditLog", StringComparison.Ordinal)
+                    ? expectedIndexes.ToDictionary(index => index, index => index + physicalTableName[physicalTableName.LastIndexOf('_')..], StringComparer.OrdinalIgnoreCase)
+                    : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var absentIndexes = await _physicalTableProbe.FindMissingIndexesAsync(
                 dbContext,
                 schemaName,
                 physicalTableName,
-                expectedIndexes,
+                expectedIndexes.Concat(currentModelIndexes.Values).ToArray(),
                 cancellationToken);
-            if (missingIndexes.Count == 0) {
+            var absentSet = absentIndexes.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var missingIndexes = expectedIndexes.Where(index => absentSet.Contains(index)
+                && (!currentModelIndexes.TryGetValue(index, out var currentIndex) || absentSet.Contains(currentIndex))).ToArray();
+            if (missingIndexes.Length == 0) {
                 continue;
             }
 

@@ -16,7 +16,7 @@
 2. Domain 仅放聚合、值对象、事件、仓储契约；Infrastructure 才能放 EF Core 与仓储实现。
 3. 查询必须带本地时间范围保护；高频列表优先游标分页。
 4. 写入必须优先评估幂等；批量写入优先复用 WriteBuffer。
-5. 需要事件持久化时优先使用 Outbox；消费外部事件时优先使用 Inbox。
+5. 消费外部事件时优先使用 Inbox。
 6. 需要站点 / 产线 / 设备 / 工作站边界时，必须复用 OperationalScopeNormalizer、OperationalScopeRequest、OperationalScopeResponse。
 7. Host 路由必须复用 EndpointRouteBuilderConventionExtensions，不得把实现直接堆进 Program.cs。
 8. 应用层失败结果必须复用 ApplicationResult 与 ApplicationErrorCodes，并映射为统一 ProblemDetails。
@@ -33,6 +33,6 @@
 
 - 如果模块存在高频明细查询，优先沿用游标分页合同结构，不要重新设计一套同义分页协议。
 - 如果模块会出现“重复提交同一业务键”的风险，应先设计幂等键，再接入 `IdempotencyGuardService`。
-- 如果模块写入后需要异步投递下游，应先定义事件载荷，再接入 Outbox，而不是直接写后台线程。
+- 本项目仅接收、持久化和分析包裹相关数据，不增加向外部业务系统发送事件的功能。
 - 如果模块消费外部事件，需要先落 Inbox 状态，再做业务处理，避免重复消费。
 - 如果模块需要跨站点 / 产线 / 设备查询，必须先定义运营边界输入，禁止散落多个字符串参数并各自做 trim / 空值判断。

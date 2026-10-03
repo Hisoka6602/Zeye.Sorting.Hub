@@ -48,23 +48,6 @@ public static class SortingHubPerformanceMetrics {
     /// </summary>
     private static readonly Counter<long> SlowQueryDroppedCounter = PerformanceMeter.CreateCounter<long>("sorting.slow_query.dropped");
     /// <summary>
-    /// Outbox 处理计数器。
-    /// </summary>
-    private static readonly Counter<long> OutboxProcessedCounter = PerformanceMeter.CreateCounter<long>("sorting.outbox.processed");
-    /// <summary>
-    /// Outbox 成功计数器。
-    /// </summary>
-    private static readonly Counter<long> OutboxSucceededCounter = PerformanceMeter.CreateCounter<long>("sorting.outbox.succeeded");
-    /// <summary>
-    /// Outbox 失败计数器。
-    /// </summary>
-    private static readonly Counter<long> OutboxFailedCounter = PerformanceMeter.CreateCounter<long>("sorting.outbox.failed");
-    /// <summary>
-    /// Outbox 批次耗时直方图。
-    /// </summary>
-    private static readonly Histogram<decimal> OutboxBatchDurationHistogram = PerformanceMeter.CreateHistogram<decimal>("sorting.outbox.batch.duration", "ms");
-
-    /// <summary>
     /// 记录一条审计项成功入队。
     /// </summary>
     public static void RecordAuditEnqueued() {
@@ -119,17 +102,4 @@ public static class SortingHubPerformanceMetrics {
         }
     }
 
-    /// <summary>
-    /// 记录一个 Outbox 批次的处理结果和耗时。
-    /// </summary>
-    /// <param name="processedCount">处理数量。</param>
-    /// <param name="succeededCount">成功数量。</param>
-    /// <param name="failedCount">失败数量。</param>
-    /// <param name="elapsedMilliseconds">批次耗时毫秒数。</param>
-    public static void RecordOutboxBatch(int processedCount, int succeededCount, int failedCount, decimal elapsedMilliseconds) {
-        OutboxProcessedCounter.Add(processedCount);
-        OutboxSucceededCounter.Add(succeededCount);
-        OutboxFailedCounter.Add(failedCount);
-        OutboxBatchDurationHistogram.Record(elapsedMilliseconds);
-    }
 }

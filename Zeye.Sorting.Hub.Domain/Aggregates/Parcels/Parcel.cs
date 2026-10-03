@@ -87,7 +87,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         }
 
         /// <summary>按来源发生时间重放已保存记录，保证晚到消息不会倒退快照，失败与重试仍保留历史。</summary>
-        public void ApplyProcessingRecords(IReadOnlyList<ParcelProcessingRecord> records) {
+        public void ApplyProcessingRecords(IReadOnlyList<ParcelProcessingRecord> records, IReadOnlyList<ClassificationRule>? rules = null) {
             ProcessingRecords = records;
             // 重放采用完整历史，先清除派生快照，避免先到的晚期事实影响后续重放结果。
             DetectedTime = null;
@@ -101,7 +101,9 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
             BarCodes = string.Empty;
             HasImages = false;
             RequestStatus = ApiRequestStatus.NotRequested;
+            Type = ParcelType.Normal;
             ApplyStatus(ParcelStatus.Pending, null);
+            ParcelProcessingRecord? providerResponse = null;
             foreach (var record in records.OrderBy(x => x.OccurredAt).ThenBy(x => x.AttemptNumber).ThenBy(x => x.RecordId, StringComparer.Ordinal)) {
                 // 步骤1：只接受明确关联到当前来源身份的记录，未绑定DWS不得更新包裹。
                 if (record.ParcelId != Id || record.SourceInstanceId != SourceInstanceId || record.SourceRunId != SourceRunId || record.SourceParcelId != SourceParcelId) continue;
@@ -133,14 +135,18 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
                     IsFallbackChuteAssigned = record.IsFallback ?? IsFallbackChuteAssigned;
                 }
                 IsRoutingBlocked = record.IsRoutingBlocked ?? IsRoutingBlocked;
+                if (record.Stage == ParcelProcessingStage.ScanUploaded) providerResponse = record;
+                var facts = ExceptionRuleMatcher.Facts(this, record, providerResponse);
+                var previousType = Type;
+                if (rules is not null && Status != ParcelStatus.Completed && record.Stage is ParcelProcessingStage.Detected or ParcelProcessingStage.DwsBound or ParcelProcessingStage.ScanUploaded)
+                    Type = ExceptionRuleMatcher.MatchParcel(rules, facts, WorkstationName, SourceInstanceId) ?? Type;
+                if (Type != previousType) facts = ExceptionRuleMatcher.Facts(this, record, providerResponse);
+                var matchedType = rules is not null ? ExceptionRuleMatcher.Match(rules, facts, WorkstationName, SourceInstanceId) : null;
+                if (matchedType.HasValue && Status != ParcelStatus.Completed && record.Stage is ParcelProcessingStage.Detected or ParcelProcessingStage.DwsBound or ParcelProcessingStage.ScanUploaded)
+                    ApplyStatus(ParcelStatus.SortingException, matchedType.Value);
                 if (record.Stage == ParcelProcessingStage.ParcelException) {
                     SourceExceptionCode = record.ExceptionCode;
-                    if (Status != ParcelStatus.Completed) ApplyStatus(ParcelStatus.SortingException, record.ExceptionCode switch {
-                        "ParcelSpacingViolation" => ParcelExceptionType.ParcelSpacingViolation,
-                        "TargetChuteAssignmentRejected" => ParcelExceptionType.TargetChuteAssignmentRejected,
-                        "RoutingTimeout" => ParcelExceptionType.WaitTargetChuteTimeout,
-                        _ => ParcelExceptionType.SourceDeviceException
-                    });
+                    if (Status != ParcelStatus.Completed) ApplyStatus(ParcelStatus.SortingException, matchedType ?? SorterExceptionClassifier.Classify(record.ExceptionCode));
                 }
                 if (record.Stage == ParcelProcessingStage.SortingCompleted && record.IsSuccess != false) {
                     ActualChuteCode = record.ActualChuteCode;

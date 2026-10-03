@@ -154,20 +154,6 @@ export const headerBrandAssets = {
     "width": 200,
     "height": 29
   },
-  "P12": {
-    "file": "header-brand-P12.png",
-    "source": "P12-outbox-messages.png",
-    "crop": [
-      25,
-      14,
-      221,
-      42
-    ],
-    "x": 25,
-    "y": 14,
-    "width": 196,
-    "height": 28
-  },
   "P13": {
     "file": "header-brand-P13.png",
     "source": "P13-health-check.png",

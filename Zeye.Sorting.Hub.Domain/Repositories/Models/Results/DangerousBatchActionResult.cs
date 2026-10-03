@@ -6,6 +6,8 @@ namespace Zeye.Sorting.Hub.Domain.Repositories.Models.Results;
 /// 危险批量动作执行结果。
 /// </summary>
 public readonly record struct DangerousBatchActionResult {
+    /// <summary>永久清理操作记录编号。</summary>
+    public string? CleanupRecordId { get; init; }
     /// <summary>
     /// 动作名称（用于审计检索）。
     /// </summary>

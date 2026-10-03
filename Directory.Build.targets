@@ -31,7 +31,9 @@
     <_ChineseGarbledTextCheckFiles Remove="$(ChineseGarbledTextCheckRoot).vs\**" />
     <!-- 第三方依赖与测试产物不属于仓库源代码，避免编码字典误触发乱码门禁。 -->
     <_ChineseGarbledTextCheckFiles Remove="$(ChineseGarbledTextCheckRoot).codex-artifacts\**" />
+    <_ChineseGarbledTextCheckFiles Remove="$(ChineseGarbledTextCheckRoot)artifacts\**" />
     <_ChineseGarbledTextCheckFiles Remove="$(ChineseGarbledTextCheckRoot)**\node_modules\**" />
+    <_ChineseGarbledTextCheckFiles Remove="$(ChineseGarbledTextCheckRoot)performance\results\**" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(EnableRepositoryCompilationGuards)' == 'true'">
@@ -49,6 +51,7 @@
     <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory).vs\**" />
     <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory).config\**" />
     <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory).codex-artifacts\**" />
+    <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory)artifacts\**" />
     <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory)**\node_modules\**" />
     <!-- 中文说明：前端依赖清单、TypeScript工具配置及生成的设计数据不是后端运行配置。 -->
     <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory)**\dist\**" />
@@ -57,6 +60,8 @@
     <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory)Zeye.Sorting.Hub.Web\package*.json" />
     <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory)Zeye.Sorting.Hub.Web\tsconfig*.json" />
     <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory)design\**" />
+    <!-- 中文说明：压测生成结果不是项目配置文件。 -->
+    <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory)performance\results\**" />
   </ItemGroup>
 
   <UsingTask

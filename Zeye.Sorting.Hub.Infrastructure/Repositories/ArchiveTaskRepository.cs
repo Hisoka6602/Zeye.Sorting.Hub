@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using System.Data;
 using NLog;
 using Zeye.Sorting.Hub.Domain.Aggregates.DataGovernance;
 using Zeye.Sorting.Hub.Domain.Enums.DataGovernance;
@@ -131,6 +132,7 @@ public sealed class ArchiveTaskRepository : RepositoryBase<ArchiveTask, SortingH
             for (var attempt = 0; attempt < MaxAcquireAttempts; attempt++) {
                 // 步骤 1：按最早创建顺序读取一个 Pending 任务，保持跟踪状态以便并发令牌参与更新。
                 var nextPendingTask = await dbContext.Set<ArchiveTask>()
+                    .AsTracking()
                     .Where(x => x.Status == ArchiveTaskStatus.Pending)
                     .OrderBy(x => x.CreatedAt)
                     .ThenBy(x => x.Id)
@@ -174,16 +176,37 @@ public sealed class ArchiveTaskRepository : RepositoryBase<ArchiveTask, SortingH
         }
 
         try {
+            await using var strategyContext = await ContextFactory.CreateDbContextAsync(cancellationToken);
+            return await strategyContext.Database.CreateExecutionStrategy().ExecuteAsync(async () => {
             await using var dbContext = await ContextFactory.CreateDbContextAsync(cancellationToken);
+            // 串行化事务把尝试标识校验和提交绑定在一起，防止旧执行器覆盖恢复后的新尝试。
+            await using var transaction = dbContext.Database.IsRelational()
+                ? await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
+                : null;
             var persistedTask = await dbContext.Set<ArchiveTask>()
+                .AsTracking()
                 .FirstOrDefaultAsync(x => x.Id == archiveTask.Id, cancellationToken);
             if (persistedTask is null) {
                 return RepositoryResult.Fail("归档任务不存在。");
             }
+            if (persistedTask.LastAttemptedAt != archiveTask.LastAttemptedAt) {
+                Logger.Warn("拒绝归档任务旧执行器写入，TaskId={TaskId}, ExpectedAttempt={ExpectedAttempt}, CurrentAttempt={CurrentAttempt}", archiveTask.Id, archiveTask.LastAttemptedAt, persistedTask.LastAttemptedAt);
+                return RepositoryResult.Fail("归档任务已由新的执行尝试接管。");
+            }
+            if (archiveTask.LastAttemptedAt.HasValue && archiveTask.Status is ArchiveTaskStatus.Completed or ArchiveTaskStatus.Failed
+                && (persistedTask.Status != ArchiveTaskStatus.Running || persistedTask.RetryCount != archiveTask.RetryCount)) {
+                return RepositoryResult.Fail("归档任务执行尝试已结束或被恢复，拒绝旧结果。");
+            }
+            if (archiveTask.Status == ArchiveTaskStatus.Pending
+                && (persistedTask.Status == ArchiveTaskStatus.Running || archiveTask.RetryCount != persistedTask.RetryCount + 1)) {
+                return RepositoryResult.Fail("归档任务状态已变化，不能重复重新排队。");
+            }
 
             dbContext.Entry(persistedTask).CurrentValues.SetValues(archiveTask);
             await dbContext.SaveChangesAsync(cancellationToken);
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
             return RepositoryResult.Success();
+            });
         }
         catch (DbUpdateConcurrencyException ex) {
             Logger.Warn(ex, "更新归档任务发生并发冲突，TaskId={TaskId}, Status={Status}", archiveTask.Id, archiveTask.Status);
@@ -193,5 +216,40 @@ public sealed class ArchiveTaskRepository : RepositoryBase<ArchiveTask, SortingH
             Logger.Error(ex, "更新归档任务失败，TaskId={TaskId}, Status={Status}", archiveTask.Id, archiveTask.Status);
             return RepositoryResult.Fail("更新归档任务失败。");
         }
+    }
+
+    /// <inheritdoc />
+    public async Task<int> RecoverAbandonedAsync(DateTime attemptedBefore, int maxRetryCount, int batchSize, CancellationToken cancellationToken) {
+        if (maxRetryCount is < 0 or > 10 || batchSize is < 1 or > 100) throw new ArgumentOutOfRangeException(nameof(batchSize), "恢复重试上限为 0~10，批次为 1~100。");
+        try {
+            await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
+            var taskIds = await db.Set<ArchiveTask>().AsNoTracking()
+                .Where(task => task.IsDryRun && task.Status == ArchiveTaskStatus.Running && task.LastAttemptedAt <= attemptedBefore)
+                .OrderBy(task => task.LastAttemptedAt).ThenBy(task => task.Id).Select(task => task.Id).Take(batchSize).ToListAsync(cancellationToken);
+            var recovered = 0;
+            foreach (var taskId in taskIds) {
+                // 每个候选都在独立串行化事务中重新校验，防止 Running→Pending→Running 后误恢复新尝试。
+                if (await db.Database.CreateExecutionStrategy().ExecuteAsync(() => RecoverTaskAsync(taskId, attemptedBefore, maxRetryCount, cancellationToken))) recovered++;
+            }
+            return recovered;
+        }
+        catch (Exception exception) { Logger.Error(exception, "恢复遗留归档任务失败。"); throw; }
+    }
+
+    /// <summary>原子复核并恢复一项超时预演任务，同一尝试只能恢复一次。</summary>
+    private async Task<bool> RecoverTaskAsync(long taskId, DateTime attemptedBefore, int maxRetryCount, CancellationToken cancellationToken) {
+        await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
+        await using var transaction = db.Database.IsRelational()
+            ? await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
+            : null;
+        var task = await db.Set<ArchiveTask>().AsTracking().FirstOrDefaultAsync(
+            task => task.Id == taskId && task.IsDryRun && task.Status == ArchiveTaskStatus.Running && task.LastAttemptedAt <= attemptedBefore, cancellationToken);
+        if (task is null) return false;
+        task.MarkFailed("执行尝试超过恢复窗口，自动隔离遗留任务。");
+        if (task.RetryCount < maxRetryCount) task.Requeue();
+        await db.SaveChangesAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+        Logger.Warn("遗留归档任务恢复审计：TaskId={TaskId}, Status={Status}, RetryCount={RetryCount}", task.Id, task.Status, task.RetryCount);
+        return true;
     }
 }

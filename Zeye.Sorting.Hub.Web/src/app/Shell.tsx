@@ -1,24 +1,41 @@
-import { Avatar, Breadcrumb, Button, Dropdown, Layout, Menu, Tooltip, type MenuProps } from 'antd';
-import Icon, { BellOutlined, DownOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
+import { App, Breadcrumb, Button, Dropdown, Layout, Menu, Result, Spin, Tooltip, type MenuProps } from 'antd';
+import { BellOutlined, DownOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { crumbsForPath, defaultOpenKeys, getSelected, navigationItems } from './navigation';
 import { BrandMark } from '../components/BrandMark';
 import { HeaderBrand } from './HeaderBrand';
 import { contentFrameForPath } from './contentFrame';
+import { useAccessSession, sessionChanged } from '../data/api/useAccessSession';
+import { requestApi } from '../data/api/client';
+import { ApiFeedback } from '../components/ApiFeedback';
+import { AccountAvatar } from '../components/AccountAvatar';
+import { canManageParcelTests, isParcelTestPath } from '../features/parcels/testAccess';
 
 const { Header, Sider, Content } = Layout;
-
-function AccountGlyph() {
-  return <svg width="1em" height="1em" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">
-    <circle cx="12" cy="7" r="4" />
-    <path d="M4 20.5c0-4.2 3.2-7 8-7s8 2.8 8 7Z" />
-  </svg>;
-}
 
 export function AppShell({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const session = useAccessSession();
+  const { message } = App.useApp();
+  const isHealthPage = location.pathname === '/diagnostics/health';
+  const isTestPage = isParcelTestPath(location.pathname);
+  const canUseTests = canManageParcelTests(session.data);
+  const needsAuthentication = session.data?.enforceAuthorization || location.pathname === '/profile' || isTestPage;
+  useEffect(() => {
+    if (!isHealthPage && session.data && needsAuthentication && !session.data.authenticated)
+      navigate(location.pathname === '/profile' ? '/access/login?returnTo=%2Fprofile' : '/access/login', { replace: true });
+  }, [session.data, needsAuthentication, isHealthPage, location.pathname, navigate]);
+  const accountName = session.data?.authenticated ? session.data.name || '已登录' : '未登录';
+  const logout = async () => {
+    try {
+      await requestApi('/api/access/logout', undefined, { method: 'POST' });
+      sessionChanged(); navigate('/access/login');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '退出登录失败，请重试');
+    }
+  };
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [openKeys, setOpenKeys] = useState<string[]>(defaultOpenKeys);
@@ -36,10 +53,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, []);
   const crumbs = crumbsForPath(location.pathname);
   const accountItems: MenuProps['items'] = [
-    { key: 'profile', label: '张三 · 演示账号', disabled: true },
+    { key: 'account', label: accountName, disabled: true },
+    { key: 'profile', label: '个人中心', disabled: !session.data?.authenticated, onClick: () => navigate('/profile') },
     { key: 'access', label: '账号与权限', onClick: () => navigate('/access') },
-    { key: 'login', label: '登录页（规划稿）', onClick: () => navigate('/access/login') },
-    { key: 'planned', label: '其他设计页面', children: [
+    { key: 'login', label: session.data?.authenticated ? '退出登录' : '登录', onClick: () => session.data?.authenticated ? void logout() : navigate('/access/login') },
+    { key: 'planned', label: '功能页面', children: [
       { key: 'live', label: '实时运行态势', onClick: () => navigate('/operations/live') },
       { key: 'rules', label: '规则管理', onClick: () => navigate('/rules') },
       { key: 'analytics', label: '分析报表', onClick: () => navigate('/analytics') },
@@ -51,24 +69,29 @@ export function AppShell({ children }: { children: ReactNode }) {
   return <Layout className="app-layout shared-shell">
     {mobileOpen && <div className="mobile-scrim" onClick={() => setMobileOpen(false)} />}
     <Sider width={246} collapsedWidth={72} collapsed={siderCollapsed} className={`app-sider ${mobileOpen ? 'mobile-open' : ''}`} trigger={null} theme="light">
-      <div className="brand" role="button" aria-label="Zeye Sorting Hub" tabIndex={0} onClick={() => navigate('/overview')} onKeyDown={event => event.key === 'Enter' && navigate('/overview')}>
+      <div className="brand" role="button" aria-label="Zeye Sorting Hub" tabIndex={0} onClick={() => navigate('/data-overview')} onKeyDown={event => event.key === 'Enter' && navigate('/data-overview')}>
         {siderCollapsed ? <BrandMark /> : <HeaderBrand />}
       </div>
-      <Menu mode="inline" theme="light" items={navigationItems} selectedKeys={[getSelected(location.pathname)]} openKeys={siderCollapsed ? [] : openKeys} onOpenChange={keys => setOpenKeys(keys)} onClick={({ key }) => key.startsWith('/') && navigate(key)} className="side-menu" inlineIndent={20} />
+      <Menu mode="inline" theme="light" items={navigationItems.filter(item => item?.key !== 'test-data' || canUseTests)} selectedKeys={[getSelected(location.pathname)]} openKeys={siderCollapsed ? [] : openKeys} onOpenChange={keys => setOpenKeys(keys)} onClick={({ key }) => key.startsWith('/') && navigate(key)} className="side-menu" inlineIndent={20} />
       <Tooltip title={collapsed ? '展开导航' : '收起导航'}><Button className="collapse-button" aria-label={collapsed ? '展开导航' : '收起导航'} type="text" icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} onClick={() => setCollapsed(!collapsed)} /></Tooltip>
     </Sider>
     <Layout className="body-layout">
       <Header className="app-header">
         <Button className="mobile-menu-button" aria-label="打开导航" type="text" icon={<MenuUnfoldOutlined />} onClick={() => { setOpenKeys(keys => keys.length ? keys : defaultOpenKeys()); setMobileOpen(true); }} />
         <div className="header-spacer" />
-        <Tooltip title="本地演示：暂无通知"><Button className="header-icon" aria-label="通知" type="text" icon={<BellOutlined />} /></Tooltip>
-        <Dropdown menu={{ items: accountItems }} trigger={['click']}><Button type="text" aria-label="张三，账号菜单" className="account-button"><Avatar shape="circle" size={32} style={{ fontSize: 23, color: '#fff', backgroundColor: '#609bf5' }} icon={<Icon component={AccountGlyph} />} /><span>张三</span><DownOutlined className="account-chevron" /></Button></Dropdown>
+        <Tooltip title="查看健康检查"><Button className="header-icon" aria-label="查看健康检查" type="text" icon={<BellOutlined />} onClick={() => navigate('/diagnostics/health')} /></Tooltip>
+        <Dropdown menu={{ items: accountItems }} trigger={['click']}><Button type="text" aria-label={accountName + '，账号菜单'} className="account-button"><AccountAvatar src={session.data?.authenticated ? session.data.avatarUrl : undefined} name={session.data?.name} /><span>{accountName}</span><DownOutlined className="account-chevron" /></Button></Dropdown>
       </Header>
       <Content className="app-content">
         <Breadcrumb aria-label="面包屑导航" items={crumbs.map(({ title, href }, index) => ({ title: index === crumbs.length - 1
           ? <span aria-current="page">{title}</span>
           : href ? <Link to={href}>{title}</Link> : <span>{title}</span> }))} className="page-breadcrumb" />
-        <div className="page-body" style={contentFrameForPath(location.pathname)}>{children}</div>
+        <div className="page-body" style={contentFrameForPath(location.pathname)}>
+          {!isHealthPage && (session.loading || needsAuthentication && !session.data?.authenticated)
+            ? <Spin aria-label="正在验证登录状态" />
+            : session.error && !isHealthPage ? <ApiFeedback error={session.error} retry={session.refresh} />
+              : isTestPage && !canUseTests ? <Result status="403" title="仅限管理员测试" subTitle="手工创建包裹仅供管理员测试使用。业务包裹由工作台或融合服务自动传入。" extra={<Button type="primary" onClick={() => navigate('/parcels')}>返回包裹台账</Button>} /> : children}
+        </div>
       </Content>
     </Layout>
   </Layout>;

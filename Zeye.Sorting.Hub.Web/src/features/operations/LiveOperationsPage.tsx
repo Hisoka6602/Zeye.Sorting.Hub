@@ -40,11 +40,11 @@ export function LiveOperationsPage() {
       <div className="metric-card live-metric"><ClockCircleOutlined className="metric-side-icon purple" /><div><div className="metric-title">最近更新时间</div><div style={{ fontSize: 16, fontWeight: 700, marginTop: 9, whiteSpace: 'nowrap', letterSpacing: '-.4px' }}>2026-09-25 16:28:40</div><div className="metric-caption">实时数据</div></div></div>
     </div>
     <div style={{ height: 18 }} />
-    <SectionCard title="事件动态" className="live-table"><DataTable dataSource={filtered} tableLayout="fixed" scroll={{ x: undefined }} rowClassName={item => drawerOpen && item.id === selectedId ? 'selected-table-row' : ''} columns={[
+    <SectionCard title="事件动态" className="live-table"><DataTable dataSource={filtered} tableLayout="fixed" scroll={{ x: 850 }} rowClassName={item => drawerOpen && item.id === selectedId ? 'selected-table-row' : ''} columns={[
       { title: '时间', dataIndex: 'time', width: 172 }, { title: '产线', dataIndex: 'line', width: 98 }, { title: '设备', dataIndex: 'device', width: 105 },
       { title: '事件类型', dataIndex: 'type', width: 115, render: (value: string) => <StatusTag value={value} /> }, { title: '关联包裹', dataIndex: 'parcel', width: 156 },
       { title: '状态', dataIndex: 'status', width: 98, render: (value: string) => <StatusTag value={value} /> },
-      { title: '操作', render: (_, item: LiveEvent) => <Button type="link" className="table-link" onClick={() => { setSelectedId(item.id); setDrawerOpen(true); }}>查看</Button> },
+      { title: '操作', width: 80, render: (_, item: LiveEvent) => <Button type="link" className="table-link" onClick={() => { setSelectedId(item.id); setDrawerOpen(true); }}>查看</Button> },
     ]} /></SectionCard>
     <Drawer title="事件详情" open={drawerOpen} onClose={() => setDrawerOpen(false)} width={347} mask={false} rootClassName="reference-drawer live-drawer" footer={<Space><Button type="primary" onClick={mark} disabled={selected?.status === '已处理'}>标记为已处理</Button><Button onClick={() => modal.info({ title: '演示工单已创建', content: `事件 ${selected?.device || ''} 已生成本地演示工单。` })}>创建工单</Button></Space>}>
       {selected && <><Space style={{ marginBottom: 18 }}><StatusTag value={selected.type} /><StatusTag value={selected.status} /></Space>

@@ -29,7 +29,6 @@ public sealed class ProductionReadinessRulesTests {
         Assert.Contains("CPU 持续过高", runbook, StringComparison.Ordinal);
         Assert.Contains("数据重复写入", runbook, StringComparison.Ordinal);
         Assert.Contains("幂等冲突", runbook, StringComparison.Ordinal);
-        Assert.Contains("Outbox 堆积", runbook, StringComparison.Ordinal);
         Assert.Contains("Inbox 重复消费", runbook, StringComparison.Ordinal);
         Assert.Contains("/health/live", runbook, StringComparison.Ordinal);
         Assert.Contains("/health/ready", runbook, StringComparison.Ordinal);

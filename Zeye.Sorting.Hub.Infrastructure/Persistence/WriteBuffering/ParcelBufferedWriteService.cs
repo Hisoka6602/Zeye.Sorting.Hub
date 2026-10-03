@@ -51,14 +51,14 @@ public sealed class ParcelBufferedWriteService : IBufferedWriteService {
             });
         }
 
-        if (!_options.IsEnabled) {
+        if (!_options.IsEnabled || !_writeChannel.IsAccepting) {
             Logger.Warn("Parcel 批量缓冲写入未启用，拒绝本次请求。Count={Count}", parcels.Length);
             return Task.FromResult(new BufferedWriteResult {
                 AcceptedCount = 0,
                 RejectedCount = parcels.Length,
                 QueueDepth = _writeChannel.Depth,
                 IsBackpressureTriggered = false,
-                Message = "批量缓冲写入当前未启用。"
+                Message = _writeChannel.IsAccepting ? "批量缓冲写入当前未启用。" : "服务正在停止，未接收本次批量请求。"
             });
         }
 

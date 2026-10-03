@@ -169,6 +169,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 throw new InvalidOperationException($"不支持的数据库类型：{provider}，可选值：{ConfiguredProviderNames.MySql} / {ConfiguredProviderNames.SqlServer}");
             }
 
+            // 后台服务按作用域获取 DbContext；统一从已注册的池化工厂创建，避免第二套连接池。
+            services.AddScoped<SortingHubDbContext>(static serviceProvider =>
+                serviceProvider.GetRequiredService<IDbContextFactory<SortingHubDbContext>>().CreateDbContext());
+
             services.AddScoped<IParcelRepository, ParcelRepository>();
             services.AddSingleton<ParcelPartitionStore>();
             services.AddScoped<IParcelProcessingRepository, ParcelProcessingRepository>();
@@ -176,7 +180,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             services.AddScoped<IArchiveTaskRepository, ArchiveTaskRepository>();
             services.AddScoped<IIdempotencyRepository, IdempotencyRepository>();
             services.AddScoped<IInboxMessageRepository, InboxMessageRepository>();
-            services.AddScoped<IOutboxMessageRepository, OutboxMessageRepository>();
             services.AddScoped<WebRequestAuditLogRepository>();
             services.AddScoped<IWebRequestAuditLogRepository>(serviceProvider =>
                 serviceProvider.GetRequiredService<WebRequestAuditLogRepository>());
@@ -260,8 +263,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                     static options => options.PrebuildAheadHours is >= ShardingPrebuildOptions.MinPrebuildAheadHours and <= ShardingPrebuildOptions.MaxPrebuildAheadHours,
                     $"PrebuildAheadHours 必须在 {ShardingPrebuildOptions.MinPrebuildAheadHours}~{ShardingPrebuildOptions.MaxPrebuildAheadHours} 之间")
                 .Validate(
-                    static options => options.DryRun,
-                    "当前版本仅允许 Persistence:Sharding:Prebuild:DryRun=true；真实预建需先接入危险动作隔离器")
+                    options => options.DryRun || ReadBooleanSetting(configuration, "Persistence:Sharding:WriteRouting:AllowTableCreation", false) && !ReadBooleanSetting(configuration, "Persistence:Sharding:WriteRouting:DryRun", true),
+                    "真实预建需要显式允许 Persistence:Sharding:WriteRouting:AllowTableCreation 并关闭建表 DryRun")
                 .ValidateOnStart();
 
             services.TryAddSingleton(new ShardingPhysicalTablePlanBuilder(parcelShardingStrategyEvaluation.Decision));
@@ -269,6 +272,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             services.TryAddSingleton<ShardingIndexInspectionService>();
             services.TryAddSingleton<ShardingTableInspectionService>();
             services.TryAddSingleton<ShardingTablePrebuildService>();
+            services.TryAddSingleton<AuditPartitionMaintenanceService>();
         }
 
         /// <summary>
@@ -291,9 +295,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 .Validate(
                     static options => options.MaxRetryCount is >= BufferedWriteOptions.MinMaxRetryCount and <= BufferedWriteOptions.MaxMaxRetryCount,
                     $"MaxRetryCount 必须在 {BufferedWriteOptions.MinMaxRetryCount}~{BufferedWriteOptions.MaxMaxRetryCount} 之间")
-                .Validate(static options => options.RetryBaseDelayMilliseconds >= 0, "RetryBaseDelayMilliseconds 不能小于 0")
-                .Validate(static options => options.MaxRetryDelayMilliseconds >= options.RetryBaseDelayMilliseconds, "MaxRetryDelayMilliseconds 不能小于 RetryBaseDelayMilliseconds")
-                .Validate(static options => options.RetryJitterMilliseconds >= 0, "RetryJitterMilliseconds 不能小于 0")
+                .Validate(static options => options.RetryBaseDelayMilliseconds is >= 0 and <= 60000, "RetryBaseDelayMilliseconds 必须在 0~60000 之间")
+                .Validate(static options => options.MaxRetryDelayMilliseconds >= options.RetryBaseDelayMilliseconds && options.MaxRetryDelayMilliseconds <= 300000, "MaxRetryDelayMilliseconds 必须不小于基础延迟且不超过 300000")
+                .Validate(static options => options.RetryJitterMilliseconds is >= 0 and <= 60000, "RetryJitterMilliseconds 必须在 0~60000 之间")
+                .Validate(static options => options.ShutdownDrainTimeoutSeconds is >= 1 and <= 20, "ShutdownDrainTimeoutSeconds 必须在 1~20 之间")
                 .Validate(
                     static options => options.DeadLetterCapacity is >= BufferedWriteOptions.MinDeadLetterCapacity and <= BufferedWriteOptions.MaxDeadLetterCapacity,
                     $"DeadLetterCapacity 必须在 {BufferedWriteOptions.MinDeadLetterCapacity}~{BufferedWriteOptions.MaxDeadLetterCapacity} 之间")
@@ -330,6 +335,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 .Validate(
                     static options => options.SampleItemLimit is >= DataArchiveOptions.MinSampleItemLimit and <= DataArchiveOptions.MaxSampleItemLimit,
                     $"SampleItemLimit 必须在 {DataArchiveOptions.MinSampleItemLimit}~{DataArchiveOptions.MaxSampleItemLimit} 之间")
+                .Validate(static options => options.ExecutionTimeoutSeconds is >= 5 and <= 3600, "ExecutionTimeoutSeconds 必须在 5~3600 之间")
+                .Validate(static options => options.AbandonedTaskTimeoutMinutes is >= 5 and <= 1440 && options.AbandonedTaskTimeoutMinutes * 60 > options.ExecutionTimeoutSeconds, "遗留任务恢复窗口必须在 5~1440 分钟之间且大于执行预算")
+                .Validate(static options => options.MaxAutomaticRecoveryAttempts is >= 0 and <= 10 && options.AutomaticRecoveryBatchSize is >= 1 and <= 100, "归档恢复重试次数为 0~10，恢复批次为 1~100")
                 .ValidateOnStart();
 
             services.AddScoped<DataArchivePlanner>();
@@ -364,6 +372,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 .Validate(
                     static options => !string.IsNullOrWhiteSpace(options.DrillRecordDirectory),
                     "Persistence:Backup:DrillRecordDirectory 不允许为空")
+                .Validate(static options => options.OperationTimeoutMinutes is >= 1 and <= 1440, "备份 OperationTimeoutMinutes 必须在 1~1440 之间")
+                .Validate(static options => options.MaxExportGiB is >= 1 and <= 1024, "备份 MaxExportGiB 必须在 1~1024 之间")
+                .Validate(static options => options.ArtifactRetentionDays is >= 1 and <= 3650, "备份 ArtifactRetentionDays 必须在 1~3650 之间")
+                .Validate(static options => options.MinimumRetainedArtifacts is >= 2 and <= 100 && options.MaxRetainedArtifacts >= options.MinimumRetainedArtifacts && options.MaxRetainedArtifacts <= 5000, "备份最低保留份数为 2~100，最大份数不小于最低份数且不超过 5000")
+                .Validate(static options => options.MaxRetainedGiB is >= 1 and <= 4096, "备份 MaxRetainedGiB 必须在 1~4096 之间")
                 .ValidateOnStart();
 
             services.TryAddSingleton<RestoreDrillPlanner>();
@@ -435,6 +448,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             options.RetryJitterMilliseconds = ReadIntSetting(configuration, $"{BufferedWriteOptions.SectionPath}:RetryJitterMilliseconds", options.RetryJitterMilliseconds);
             options.BackpressureRejectThreshold = ReadIntSetting(configuration, $"{BufferedWriteOptions.SectionPath}:BackpressureRejectThreshold", options.BackpressureRejectThreshold);
             options.DeadLetterCapacity = ReadIntSetting(configuration, $"{BufferedWriteOptions.SectionPath}:DeadLetterCapacity", options.DeadLetterCapacity);
+            options.ShutdownDrainTimeoutSeconds = ReadIntSetting(configuration, $"{BufferedWriteOptions.SectionPath}:ShutdownDrainTimeoutSeconds", options.ShutdownDrainTimeoutSeconds);
         }
 
         /// <summary>
@@ -446,6 +460,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             options.IsEnabled = ReadBooleanSetting(configuration, "Persistence:Archiving:IsEnabled", options.IsEnabled);
             options.WorkerPollIntervalSeconds = ReadIntSetting(configuration, "Persistence:Archiving:WorkerPollIntervalSeconds", options.WorkerPollIntervalSeconds);
             options.SampleItemLimit = ReadIntSetting(configuration, "Persistence:Archiving:SampleItemLimit", options.SampleItemLimit);
+            options.ExecutionTimeoutSeconds = ReadIntSetting(configuration, "Persistence:Archiving:ExecutionTimeoutSeconds", options.ExecutionTimeoutSeconds);
+            options.AbandonedTaskTimeoutMinutes = ReadIntSetting(configuration, "Persistence:Archiving:AbandonedTaskTimeoutMinutes", options.AbandonedTaskTimeoutMinutes);
+            options.MaxAutomaticRecoveryAttempts = ReadIntSetting(configuration, "Persistence:Archiving:MaxAutomaticRecoveryAttempts", options.MaxAutomaticRecoveryAttempts);
+            options.AutomaticRecoveryBatchSize = ReadIntSetting(configuration, "Persistence:Archiving:AutomaticRecoveryBatchSize", options.AutomaticRecoveryBatchSize);
         }
 
         /// <summary>
@@ -462,6 +480,13 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             options.BackupFilePrefix = ReadStringSetting(configuration, $"{BackupOptions.SectionPath}:BackupFilePrefix", options.BackupFilePrefix);
             options.RestoreRunbookDirectory = ReadStringSetting(configuration, $"{BackupOptions.SectionPath}:RestoreRunbookDirectory", options.RestoreRunbookDirectory);
             options.DrillRecordDirectory = ReadStringSetting(configuration, $"{BackupOptions.SectionPath}:DrillRecordDirectory", options.DrillRecordDirectory);
+            options.OperationTimeoutMinutes = ReadIntSetting(configuration, $"{BackupOptions.SectionPath}:OperationTimeoutMinutes", options.OperationTimeoutMinutes);
+            options.MaxExportGiB = ReadIntSetting(configuration, $"{BackupOptions.SectionPath}:MaxExportGiB", options.MaxExportGiB);
+            options.ArtifactRetentionEnabled = ReadBooleanSetting(configuration, $"{BackupOptions.SectionPath}:ArtifactRetentionEnabled", options.ArtifactRetentionEnabled);
+            options.ArtifactRetentionDays = ReadIntSetting(configuration, $"{BackupOptions.SectionPath}:ArtifactRetentionDays", options.ArtifactRetentionDays);
+            options.MinimumRetainedArtifacts = ReadIntSetting(configuration, $"{BackupOptions.SectionPath}:MinimumRetainedArtifacts", options.MinimumRetainedArtifacts);
+            options.MaxRetainedArtifacts = ReadIntSetting(configuration, $"{BackupOptions.SectionPath}:MaxRetainedArtifacts", options.MaxRetainedArtifacts);
+            options.MaxRetainedGiB = ReadIntSetting(configuration, $"{BackupOptions.SectionPath}:MaxRetainedGiB", options.MaxRetainedGiB);
         }
 
         /// <summary>

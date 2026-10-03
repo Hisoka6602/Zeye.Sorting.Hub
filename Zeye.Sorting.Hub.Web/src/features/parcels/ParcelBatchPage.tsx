@@ -1,3 +1,4 @@
+import { formatNumber } from '../../data/formatNumber';
 import { App, Button, Input, Space, Tabs, Typography, Upload } from 'antd';
 import { DownloadOutlined } from '@ant-design/icons';
 import { useState } from 'react';
@@ -66,7 +67,7 @@ export function ParcelBatchPage() {
     finally { setSaving(false); }
   };
   return <>
-    <PageIntro title="批量入队" />
+    <PageIntro title="批量入队" description="仅供管理员测试使用。业务包裹由工作台或融合服务自动传入。" />
     <InfoAlert message="最多 1000 条；入队不等于数据库写入完成。" />
     <SectionCard className="batch-input-card">
       <Tabs activeKey={tab} onChange={value => { setTab(value); setValidated(false); }} items={[{ key: 'json', label: '粘贴 JSON' }, { key: 'csv', label: '本地 CSV' }]} />
@@ -75,10 +76,10 @@ export function ParcelBatchPage() {
       <div className="batch-validate-action"><Button type="primary" onClick={parse}>校验数据</Button></div>
     </SectionCard>
     <SectionCard title="预览与校验结果" className="batch-preview-card">
-      <DataTable dataSource={preview} rowKey="key" pagination={false} scroll={{ x: undefined }} locale={{ emptyText: '请导入待提交数据' }} columns={[
-        { title: '包裹 ID', dataIndex: 'id', width: 200 }, { title: '主条码', dataIndex: 'barcode', width: 240 }, { title: '工作台', dataIndex: 'workstation', width: 160 },
-        { title: '重量 (kg)', dataIndex: 'weight', width: 165, render: value => typeof value === 'number' && Number.isFinite(value) ? value.toFixed(2) : String(value ?? '未提供') }, { title: '目标格口', dataIndex: 'target', width: 195 },
-        { title: '校验状态', width: 163, render: (_, row) => row.error ? <Typography.Text type="danger">{row.error}</Typography.Text> : <StatusTag value="校验通过" /> },
+      <DataTable dataSource={preview} rowKey="key" pagination={false} tableLayout="fixed" scroll={{ x: 1180 }} locale={{ emptyText: '请导入待提交数据' }} columns={[
+        { title: '包裹 ID', dataIndex: 'id', width: 202 }, { title: '主条码', dataIndex: 'barcode', width: 240 }, { title: '工作台', dataIndex: 'workstation', width: 162 },
+        { title: '重量 (kg)', dataIndex: 'weight', width: 165, render: value => typeof value === 'number' && Number.isFinite(value) ? formatNumber(value) : String(value ?? '未提供') }, { title: '目标格口', dataIndex: 'target', width: 198 },
+        { title: '校验状态', render: (_, row) => row.error ? <Typography.Text type="danger">{row.error}</Typography.Text> : <StatusTag value="校验通过" /> },
       ]} />
       <div className="batch-submit-action"><span>待提交 <b className="batch-pending-count">{preview.length}</b> 条，错误 <b className="batch-error-count">{preview.filter(item => item.error).length}</b> 条</span><Space><Button onClick={() => { setRaw(''); setPreview([]); setValidated(false); }}>取消</Button><Button type="primary" loading={saving} disabled={!validated || preview.some(item => !!item.error)} onClick={submit}>提交入队</Button></Space></div>
     </SectionCard>

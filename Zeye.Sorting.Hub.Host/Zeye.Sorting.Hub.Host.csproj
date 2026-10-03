@@ -8,6 +8,10 @@
 		<UserSecretsId>dotnet-Zeye.Sorting.Hub.Host-6c5f01b5-c5a0-403c-b3c3-bf396b712902</UserSecretsId>
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
 		<NoWarn>$(NoWarn);1591</NoWarn>
+		<!-- 发布默认包含同源前端；仅 API 镜像可显式设为 false。 -->
+		<BundleWebUi Condition="'$(BundleWebUi)' == ''">true</BundleWebUi>
+		<RestoreWebDependencies Condition="'$(RestoreWebDependencies)' == ''">true</RestoreWebDependencies>
+		<WebUiRoot>$(MSBuildProjectDirectory)/../Zeye.Sorting.Hub.Web</WebUiRoot>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -26,6 +30,7 @@
 		<Content Update="nlog.config">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</Content>
+		<Content Include="Start-Hub.cmd" CopyToPublishDirectory="PreserveNewest" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -42,4 +47,19 @@
 			<_Parameter1>Zeye.Sorting.Hub.Host.Tests</_Parameter1>
 		</AssemblyAttribute>
 	</ItemGroup>
+
+	<!-- 前端先完整构建，随后纳入标准发布清单；目标机只运行 Host。 -->
+	<Target Name="PublishBundledWebUi" AfterTargets="ComputeFilesToPublish" Condition="'$(BundleWebUi)' == 'true'">
+		<Exec WorkingDirectory="$(WebUiRoot)" Command="npm ci --include=optional --no-audit --no-fund" Condition="'$(RestoreWebDependencies)' == 'true'" />
+		<Exec WorkingDirectory="$(WebUiRoot)" Command="npm run build" />
+		<Error Condition="!Exists('$(WebUiRoot)/dist/index.html')" Text="前端构建未生成 index.html，不能发布不完整的前后端程序。" />
+		<ItemGroup>
+			<_BundledWebFile Include="$(WebUiRoot)/dist/**/*" />
+			<ResolvedFileToPublish Include="@(_BundledWebFile)" Exclude="@(ResolvedFileToPublish)">
+				<RelativePath>wwwroot/%(_BundledWebFile.RecursiveDir)%(_BundledWebFile.Filename)%(_BundledWebFile.Extension)</RelativePath>
+				<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+				<ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+			</ResolvedFileToPublish>
+		</ItemGroup>
+	</Target>
 </Project>

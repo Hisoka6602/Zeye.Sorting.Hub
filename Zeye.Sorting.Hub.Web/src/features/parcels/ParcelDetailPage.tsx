@@ -1,3 +1,5 @@
+import { formatNumber } from '../../data/formatNumber';
+import { PictureOutlined } from '@ant-design/icons';
 import { Button, Collapse, Drawer, Empty, Skeleton, Space, Timeline, Typography } from 'antd';
 import { useState } from 'react';
 import { useParams } from 'react-router';
@@ -9,6 +11,8 @@ import { ApiError } from '../../data/api/client';
 import { useApiResource } from '../../data/api/useApiResource';
 import { processingStages, type ParcelDetail, type ParcelProcessingRecord } from '../../data/api/parcelTypes';
 import { ParcelFacts, parcelFactValue } from './ParcelFacts';
+import { ParcelExceptionPanel } from './ParcelExceptionPanel';
+import { ParcelImagesDrawer } from './ParcelImagesDrawer';
 
 /** Every existing value object remains available below the reference-sized summary. */
 const detailGroups = [
@@ -29,6 +33,7 @@ export function ParcelDetailPage() {
   const { id } = useParams();
   const { data: parcel, loading, error, refresh } = useApiResource<ParcelDetail>(id ? `/api/parcels/${encodeURIComponent(id)}` : null);
   const [selectedRecord, setSelectedRecord] = useState<ParcelProcessingRecord | null>(null);
+  const [imagesOpen, setImagesOpen] = useState(false);
   const history = [...(parcel?.processingRecords ?? [])].sort((left, right) => right.occurredAt.localeCompare(left.occurredAt) || right.attemptNumber - left.attemptNumber || right.recordId.localeCompare(left.recordId));
   const notFound = !loading && ((error instanceof ApiError && error.status === 404) || (!error && !parcel));
   const unavailable = !parcel;
@@ -45,14 +50,14 @@ export function ParcelDetailPage() {
     <div>
       <div className="detail-pair"><span className="detail-label">目标格口</span><span className="detail-value">{display('targetChuteCode', parcel?.targetChuteCode ?? parcel?.targetChuteId, unavailable)}</span></div>
       <div className="detail-pair"><span className="detail-label">目的工作台</span><span className="detail-value">{display('workstationName', parcel?.workstationName, unavailable)}</span></div>
-      <div className="detail-pair"><span className="detail-label">重量</span><span className="detail-value">{parcel?.weight != null ? `${parcel.weight.toFixed(2)} kg` : parcel ? '未提供' : '—'}</span></div>
+      <div className="detail-pair"><span className="detail-label">重量</span><span className="detail-value">{parcel?.weight != null ? `${formatNumber(parcel.weight)} kg` : parcel ? '未提供' : '—'}</span></div>
       <div className="detail-pair"><span className="detail-label">物理尺寸</span><span className="detail-value">{dimensions(parcel)}</span></div>
       <div className="detail-pair"><span className="detail-label">创建时间</span><span className="detail-value">{display('createdTime', parcel?.createdTime, unavailable)}</span></div>
     </div>
   </div>;
 
   return <div className="parcel-detail-page">
-    <PageIntro title="包裹详情" description="查看包裹的详细信息、处理轨迹及相关记录。" />
+    <PageIntro title="包裹详情" description="查看包裹的详细信息、处理轨迹及相关记录。" action={parcel?.hasImages && <Button icon={<PictureOutlined />} onClick={() => setImagesOpen(true)}>查看图片</Button>} />
     <SectionCard title="基本信息" className="parcel-detail-basic" extra={error && !notFound ? <Space><Typography.Text type="danger">详情加载失败：{error.message}</Typography.Text><Button onClick={refresh}>重试</Button></Space> : status && <StatusTag value={status} />}>
       {notFound ? <Empty description="未找到该包裹" /> : loading ? <Skeleton active paragraph={{ rows: 5 }} /> : summary}
     </SectionCard>
@@ -64,15 +69,16 @@ export function ParcelDetailPage() {
         }))} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={error ? '重试后显示处理轨迹' : '暂无处理事实记录'} />}
       </SectionCard>
       <SectionCard title="相关记录">
-        <DataTable<ParcelProcessingRecord> rowKey="recordId" dataSource={history} loading={loading} tableLayout="fixed" scroll={{ x: undefined }} columns={[
-          { title: '时间', dataIndex: 'occurredAt', width: 159, render: value => parcelFactValue('occurredAt', value) },
-          { title: '类型', dataIndex: 'stage', width: 99, render: (value, record) => <StatusTag value={previewText(record, 'previewType') ?? processingStages[value] ?? String(value)} /> },
-          { title: '关联编号', width: 121, render: (_, record) => previewText(record, 'previewReference') ?? record.actualChuteCode ?? record.targetChuteCode ?? record.sourceParcelId ?? record.recordId },
-          { title: '内容', width: 227, render: (_, record) => previewText(record, 'previewContent') ?? record.errorMessage ?? record.decisionReason ?? record.messageIdentity ?? record.recordId },
-          { title: '操作', render: (_, record) => <Button type="link" className="table-link" onClick={() => setSelectedRecord(record)}>查看</Button> },
+        <DataTable<ParcelProcessingRecord> className="parcel-related-records" rowKey="recordId" dataSource={history} loading={loading} tableLayout="fixed" scroll={{ x: 900 }} columns={[
+          { title: '时间', dataIndex: 'occurredAt', width: 230, render: value => parcelFactValue('occurredAt', value) },
+          { title: '类型', dataIndex: 'stage', width: 126, render: (value, record) => <StatusTag value={previewText(record, 'previewType') ?? processingStages[value] ?? String(value)} /> },
+          { title: '关联编号', width: 140, render: (_, record) => previewText(record, 'previewReference') ?? record.actualChuteCode ?? record.targetChuteCode ?? record.sourceParcelId ?? record.recordId },
+          { title: '内容', render: (_, record) => previewText(record, 'previewContent') ?? record.errorMessage ?? record.decisionReason ?? record.messageIdentity ?? record.recordId },
+          { title: '操作', width: 80, render: (_, record) => <Button type="link" className="table-link" onClick={() => setSelectedRecord(record)}>查看</Button> },
         ]} locale={{ emptyText: error ? '重试后显示相关记录' : '暂无处理记录' }} />
       </SectionCard>
     </div>}
+    <ParcelExceptionPanel parcel={parcel} />
     {parcel && <SectionCard title="完整合同字段" className="parcel-detail-complete">
       <ParcelFacts facts={parcel} keys={Object.keys(parcel).filter(key => key !== 'processingRecords' && !detailGroups.some(([group]) => group === key))} />
       <Collapse items={detailGroups.map(([key, title]) => {
@@ -84,5 +90,6 @@ export function ParcelDetailPage() {
     <Drawer title="处理记录详情" width={540} open={!!selectedRecord} onClose={() => setSelectedRecord(null)}>
       {selectedRecord && <ParcelFacts facts={selectedRecord} />}
     </Drawer>
+    {parcel && imagesOpen && <ParcelImagesDrawer key={parcel.id} parcel={parcel} onClose={() => setImagesOpen(false)} />}
   </div>;
 }

@@ -94,7 +94,9 @@ public sealed class WebRequestAuditLogMiddleware {
         var capturedException = (Exception?)null;
         var requestSizeBytes = context.Request.ContentLength ?? 0L;
 
-        if (isSampled && _options.IncludeRequestBody) {
+        // 账号维护载荷可能包含密码或初始化密钥，任何采样策略都不采集其正文。
+        if (isSampled && _options.IncludeRequestBody && !context.Request.Path.StartsWithSegments("/api/access")
+            && !string.Equals(context.Request.Path.Value?.TrimEnd('/'), "/api/admin/parcels/cleanup-expired", StringComparison.OrdinalIgnoreCase)) {
             try {
                 requestBodyCapture = await CaptureRequestBodyAsync(context.Request, _options.MaxRequestBodyLength);
                 requestSizeBytes = requestBodyCapture.OriginalLengthBytes;
@@ -538,7 +540,7 @@ public sealed class WebRequestAuditLogMiddleware {
     private static string SerializeHeaders(IHeaderDictionary headers) {
         var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var pair in headers) {
-            values[pair.Key] = pair.Value.ToString();
+            values[pair.Key] = IsCredentialHeader(pair.Key) ? "[REDACTED]" : pair.Value.ToString();
         }
 
         return JsonSerializer.Serialize(values, JsonSerializerOptions);
@@ -582,11 +584,6 @@ public sealed class WebRequestAuditLogMiddleware {
         var userAgent = request.Headers.UserAgent.ToString();
         if (!string.IsNullOrWhiteSpace(userAgent)) {
             builder.Append(" -H ").Append(ShellEscapeSingleQuoted($"User-Agent: {userAgent}"));
-        }
-
-        var authorization = request.Headers.Authorization.ToString();
-        if (!string.IsNullOrWhiteSpace(authorization)) {
-            builder.Append(" -H ").Append(ShellEscapeSingleQuoted($"Authorization: {authorization}"));
         }
 
         foreach (var header in request.Headers) {
@@ -655,7 +652,8 @@ public sealed class WebRequestAuditLogMiddleware {
             return false;
         }
 
-        return !headerName.Equals("Content-Type", StringComparison.OrdinalIgnoreCase)
+        return !IsCredentialHeader(headerName)
+               && !headerName.Equals("Content-Type", StringComparison.OrdinalIgnoreCase)
                && !headerName.Equals("Accept", StringComparison.OrdinalIgnoreCase)
                && !headerName.Equals("Authorization", StringComparison.OrdinalIgnoreCase)
                && !headerName.Equals("User-Agent", StringComparison.OrdinalIgnoreCase)
@@ -666,6 +664,12 @@ public sealed class WebRequestAuditLogMiddleware {
                && !headerName.Equals("X-Api-Key", StringComparison.OrdinalIgnoreCase)
                && !headerName.Equals("Connection", StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>凭据头不进入审计载荷或回放命令，避免账号会话和机器密钥泄露。</summary>
+    private static bool IsCredentialHeader(string name) => name.Equals("Authorization", StringComparison.OrdinalIgnoreCase)
+        || name.Equals("Cookie", StringComparison.OrdinalIgnoreCase) || name.Equals("Set-Cookie", StringComparison.OrdinalIgnoreCase)
+        || name.Contains("api-key", StringComparison.OrdinalIgnoreCase) || name.Contains("token", StringComparison.OrdinalIgnoreCase)
+        || name.Contains("secret", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// 对 shell 单引号字符串进行安全转义。

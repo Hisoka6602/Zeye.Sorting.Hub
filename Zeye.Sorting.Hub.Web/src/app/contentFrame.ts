@@ -3,10 +3,15 @@ import type { CSSProperties } from "react";
 // Business content positions measured against the source screenshots.
 // The fixed shell and clickable breadcrumb use their common layout.
 const frames: Record<string, { x: number; y: number; width: number }> = {
+  "/parcels/batch": {
+    "x": 0,
+    "y": -4,
+    "width": 17
+  },
   "/overview": {
     "x": 0,
-    "y": -6.009,
-    "width": 3
+    "y": 0,
+    "width": 0
   },
   "/audit/requests": {
     "x": -1,
@@ -22,11 +27,6 @@ const frames: Record<string, { x: number; y: number; width: number }> = {
     "x": 3,
     "y": -4,
     "width": 3
-  },
-  "/governance/outbox": {
-    "x": -2,
-    "y": 0,
-    "width": 7
   },
   "/diagnostics/health": {
     "x": 21,
@@ -54,9 +54,9 @@ const frames: Record<string, { x: number; y: number; width: number }> = {
     "width": 0
   },
   "/analytics": {
-    "x": -5,
-    "y": -12,
-    "width": 24.857
+    "x": 0,
+    "y": 0,
+    "width": 0
   },
   "/governance/backup": {
     "x": 14,
@@ -70,8 +70,8 @@ const frames: Record<string, { x: number; y: number; width: number }> = {
   },
   "/settings": {
     "x": 0,
-    "y": -7,
-    "width": 17.857
+    "y": 0,
+    "width": 0
   },
   "/audit/requests/:id": {
     "x": -1,

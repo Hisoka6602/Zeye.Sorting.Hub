@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Options;
 using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Retention;
 
@@ -13,12 +14,22 @@ public sealed class DataRetentionHealthCheck : IHealthCheck {
     /// </summary>
     private readonly DataRetentionExecutor _executor;
 
+    /// <summary>保留治理轮询间隔。</summary>
+    private readonly DataRetentionOptions _options;
+
+    /// <summary>用于快照年龄判定的时间来源。</summary>
+    private readonly TimeProvider _timeProvider;
+
     /// <summary>
     /// 初始化数据保留治理健康检查。
     /// </summary>
     /// <param name="executor">数据保留执行器。</param>
-    public DataRetentionHealthCheck(DataRetentionExecutor executor) {
+    /// <param name="options">后台轮询间隔。</param>
+    /// <param name="timeProvider">本地快照时间来源。</param>
+    public DataRetentionHealthCheck(DataRetentionExecutor executor, IOptions<DataRetentionOptions>? options = null, TimeProvider? timeProvider = null) {
         _executor = executor ?? throw new ArgumentNullException(nameof(executor));
+        _options = options?.Value ?? new DataRetentionOptions();
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     /// <inheritdoc />
@@ -31,6 +42,10 @@ public sealed class DataRetentionHealthCheck : IHealthCheck {
 
         if (!record.IsEnabled) {
             return Task.FromResult(HealthCheckResult.Healthy("数据保留治理未启用。", data: data));
+        }
+
+        if (HealthSnapshotFreshness.IsStale(record.RecordedAtLocal, TimeSpan.FromMinutes(_options.PollIntervalMinutes * 2L + 5), _timeProvider)) {
+            return Task.FromResult(HealthCheckResult.Degraded("数据保留治理结果已过期，后台任务可能已停滞。", data: data));
         }
 
         if (record.FailedPolicyCount > 0) {

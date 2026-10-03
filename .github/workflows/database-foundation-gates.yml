@@ -8,6 +8,8 @@ on:
       - ".github/scripts/**"
       - ".github/workflows/**"
       - "Directory.Build.targets"
+      - ".gitattributes"
+      - "deploy/**"
       - "README.md"
       - "数据库底座门禁说明.md"
       - "检查台账/**"
@@ -19,14 +21,19 @@ on:
       - "Zeye.Sorting.Hub.Host.Tests/**"
       - "Zeye.Sorting.Hub.Infrastructure/**"
       - "Zeye.Sorting.Hub.SharedKernel/**"
+      - "Zeye.Sorting.Hub.Web/**"
 
 permissions:
   contents: read
 
 jobs:
   build-and-test:
-    name: 数据库底座构建与测试
-    runs-on: ubuntu-latest
+    name: 数据库底座构建与测试 (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,6 +46,7 @@ jobs:
           dotnet-version: "10.0.x"
 
       - name: Validate garbled Chinese text
+        shell: bash
         run: bash ./.github/scripts/validate-garbled-chinese-text.sh
 
       - name: Restore
@@ -49,6 +57,54 @@ jobs:
 
       - name: Test
         run: dotnet test Zeye.Sorting.Hub.sln --no-build -c Release --logger "console;verbosity=normal"
+
+      - name: Setup Node.js for bundled publish
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: Zeye.Sorting.Hub.Web/package-lock.json
+
+      - name: Publish bundled frontend and backend
+        shell: pwsh
+        run: |
+          $publishPath = Join-Path $env:RUNNER_TEMP 'hub-single-host'
+          $arguments = @('publish', 'Zeye.Sorting.Hub.Host/Zeye.Sorting.Hub.Host.csproj', '-c', 'Release', '-o', $publishPath)
+          if ($IsWindows) { $arguments += '-p:PublishProfile=Windows-x64' }
+          & dotnet @arguments
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path (Join-Path $publishPath 'wwwroot/index.html'))) { throw 'Bundled frontend is missing.' }
+          if (-not (Test-Path (Join-Path $publishPath 'Zeye.Sorting.Hub.Host.dll'))) { throw 'Backend is missing.' }
+
+  frontend-build-and-test:
+    name: 前端构建与测试 (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        working-directory: Zeye.Sorting.Hub.Web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: Zeye.Sorting.Hub.Web/package-lock.json
+
+      - name: Install
+        run: npm ci --include=optional --no-audit --no-fund
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
 
   foundation-rules:
     name: 数据库底座规则门禁

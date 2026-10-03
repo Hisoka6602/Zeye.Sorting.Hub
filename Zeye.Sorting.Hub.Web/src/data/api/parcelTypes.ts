@@ -128,6 +128,10 @@ export interface ParcelDetail extends ParcelSummary {
 /** 服务端分页合同。 */
 export interface ParcelList { items: ParcelSummary[]; pageNumber: number; pageSize: number; totalCount: number; hasTotalCount: boolean }
 
+/** 图片查询只在用户查看时加载，地址可能为对象存储临时签名。 */
+export interface ParcelImage { cameraName: string; sourcePath: string; url: string | null; unavailableReason: string | null }
+export interface ParcelImages { parcelId: string; hasImages: boolean; images: ParcelImage[] }
+
 /** 来源阶段中文名称，与合同Stage数值一一对应。 */
 export const processingStages = ['分拣机检测', 'DWS 接收', 'DWS 绑定', '扫描上传', '格口分配', '分拣指令', '实际落格', '设备异常', '落格上报', '图片登记', '图片上传'] as const;
 

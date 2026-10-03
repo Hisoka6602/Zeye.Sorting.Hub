@@ -52,10 +52,6 @@ P01 为现有接口可拼装的轻量概览；P06 过期清理和 P07–P08 审�
 
 ![P11 归档任务](P11-archive-tasks.png)
 
-### P12 Outbox 消息
-
-![P12 Outbox 消息](P12-outbox-messages.png)
-
 ### P13 系统健康
 
 ![P13 系统健康](P13-health-check.png)

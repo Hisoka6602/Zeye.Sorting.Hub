@@ -110,12 +110,6 @@ public sealed class DataRetentionPlanner {
                     query => query.OrderBy(x => x.CreatedAt).ThenBy(x => x.Id),
                     batchSize,
                     cancellationToken),
-                DataRetentionPolicy.OutboxMessageName => await CountAsync<OutboxMessage>(
-                    query => query.Where(x => (x.Status == OutboxMessageStatus.Succeeded || x.Status == OutboxMessageStatus.DeadLettered)
-                                             && (x.CompletedAt ?? x.UpdatedAt) <= expireBefore),
-                    query => query.OrderBy(x => x.CompletedAt ?? x.UpdatedAt).ThenBy(x => x.Id),
-                    batchSize,
-                    cancellationToken),
                 DataRetentionPolicy.InboxMessageName => await CountAsync<InboxMessage>(
                     query => query.Where(x => x.Status != InboxMessageStatus.Processing && x.ExpiresAt <= expireBefore),
                     query => query.OrderBy(x => x.ExpiresAt).ThenBy(x => x.Id),
@@ -163,12 +157,6 @@ public sealed class DataRetentionPlanner {
         try {
             return policy.Name switch {
                 DataRetentionPolicy.WebRequestAuditLogName => await DeleteWebRequestAuditLogsAsync(expireBefore, batchSize, cancellationToken),
-                DataRetentionPolicy.OutboxMessageName => await DeleteAsync<OutboxMessage>(
-                    query => query.Where(x => (x.Status == OutboxMessageStatus.Succeeded || x.Status == OutboxMessageStatus.DeadLettered)
-                                             && (x.CompletedAt ?? x.UpdatedAt) <= expireBefore),
-                    query => query.OrderBy(x => x.CompletedAt ?? x.UpdatedAt).ThenBy(x => x.Id),
-                    batchSize,
-                    cancellationToken),
                 DataRetentionPolicy.InboxMessageName => await DeleteAsync<InboxMessage>(
                     query => query.Where(x => x.Status != InboxMessageStatus.Processing && x.ExpiresAt <= expireBefore),
                     query => query.OrderBy(x => x.ExpiresAt).ThenBy(x => x.Id),

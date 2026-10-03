@@ -61,13 +61,16 @@ public sealed class DataArchiveHostedWorker {
             return false;
         }
 
+        await _archiveTaskRepository.RecoverAbandonedAsync(DateTime.Now.AddMinutes(-_options.AbandonedTaskTimeoutMinutes), _options.MaxAutomaticRecoveryAttempts, _options.AutomaticRecoveryBatchSize, cancellationToken);
         var nextTask = await _archiveTaskRepository.TryAcquireNextPendingAsync(cancellationToken);
         if (nextTask is null) {
             return false;
         }
 
         Logger.Info("归档 Worker 获取到待执行任务，TaskId={TaskId}, TaskType={TaskType}", nextTask.Id, nextTask.TaskType);
-        await _dataArchiveExecutor.ExecuteAsync(nextTask, cancellationToken);
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        budget.CancelAfter(TimeSpan.FromSeconds(_options.ExecutionTimeoutSeconds));
+        await _dataArchiveExecutor.ExecuteAsync(nextTask, budget.Token);
         return true;
     }
 }

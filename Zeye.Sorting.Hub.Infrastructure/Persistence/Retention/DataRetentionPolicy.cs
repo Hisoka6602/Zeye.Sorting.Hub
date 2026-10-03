@@ -10,11 +10,6 @@ public sealed record class DataRetentionPolicy {
     public const string WebRequestAuditLogName = "WebRequestAuditLog";
 
     /// <summary>
-    /// 支持的策略名称：OutboxMessage。
-    /// </summary>
-    public const string OutboxMessageName = "OutboxMessage";
-
-    /// <summary>
     /// 支持的策略名称：InboxMessage。
     /// </summary>
     public const string InboxMessageName = "InboxMessage";
@@ -54,7 +49,6 @@ public sealed record class DataRetentionPolicy {
     /// </summary>
     private static readonly IReadOnlySet<string> SupportedNames = new HashSet<string>(StringComparer.Ordinal) {
         WebRequestAuditLogName,
-        OutboxMessageName,
         InboxMessageName,
         IdempotencyRecordName,
         ArchiveTaskName,
@@ -97,7 +91,6 @@ public sealed record class DataRetentionPolicy {
     public static IReadOnlyList<DataRetentionPolicy> CreateDefaultPolicies() {
         return [
             new DataRetentionPolicy { Name = WebRequestAuditLogName, RetentionDays = 30 },
-            new DataRetentionPolicy { Name = OutboxMessageName, RetentionDays = 14 },
             new DataRetentionPolicy { Name = InboxMessageName, RetentionDays = 30 },
             new DataRetentionPolicy { Name = IdempotencyRecordName, RetentionDays = 30 },
             new DataRetentionPolicy { Name = ArchiveTaskName, RetentionDays = 90 },

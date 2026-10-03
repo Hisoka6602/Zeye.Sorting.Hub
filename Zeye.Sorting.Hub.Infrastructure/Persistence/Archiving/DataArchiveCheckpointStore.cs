@@ -39,19 +39,17 @@ public sealed class DataArchiveCheckpointStore {
     /// <summary>
     /// 标记任务执行完成。
     /// </summary>
-    /// <param name="taskId">任务主键。</param>
+    /// <param name="archiveTask">持有当前尝试标识的归档任务。</param>
     /// <param name="plannedItemCount">计划数量。</param>
     /// <param name="planSummary">摘要。</param>
     /// <param name="checkpointPayload">检查点载荷。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     public async Task MarkCompletedAsync(
-        long taskId,
+        ArchiveTask archiveTask,
         long plannedItemCount,
         string planSummary,
         string checkpointPayload,
         CancellationToken cancellationToken) {
-        var archiveTask = await _archiveTaskRepository.GetByIdAsync(taskId, cancellationToken)
-            ?? throw new InvalidOperationException($"未找到 Id 为 {taskId} 的归档任务。");
         archiveTask.MarkCompleted(plannedItemCount, planSummary, checkpointPayload);
         await PersistAsync(archiveTask, cancellationToken);
     }
@@ -59,12 +57,10 @@ public sealed class DataArchiveCheckpointStore {
     /// <summary>
     /// 标记任务执行失败。
     /// </summary>
-    /// <param name="taskId">任务主键。</param>
+    /// <param name="archiveTask">持有当前尝试标识的归档任务。</param>
     /// <param name="failureMessage">失败消息。</param>
     /// <param name="cancellationToken">取消令牌。</param>
-    public async Task MarkFailedAsync(long taskId, string failureMessage, CancellationToken cancellationToken) {
-        var archiveTask = await _archiveTaskRepository.GetByIdAsync(taskId, cancellationToken)
-            ?? throw new InvalidOperationException($"未找到 Id 为 {taskId} 的归档任务。");
+    public async Task MarkFailedAsync(ArchiveTask archiveTask, string failureMessage, CancellationToken cancellationToken) {
         archiveTask.MarkFailed(failureMessage);
         await PersistAsync(archiveTask, cancellationToken);
     }

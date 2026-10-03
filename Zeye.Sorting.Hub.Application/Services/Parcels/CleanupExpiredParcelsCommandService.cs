@@ -2,6 +2,7 @@ using NLog;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.Admin;
 using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Repositories;
+using Zeye.Sorting.Hub.Domain.Repositories.Models.Results;
 
 namespace Zeye.Sorting.Hub.Application.Services.Parcels;
 
@@ -33,11 +34,11 @@ public sealed class CleanupExpiredParcelsCommandService {
     /// <param name="createdBefore">过期时间上界（本地时间，早于此时间创建的包裹为过期候选）。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>清理治理响应合同（含决策、计划量、执行量、补偿边界）。</returns>
-    public async Task<ParcelCleanupExpiredResponse> ExecuteAsync(DateTime createdBefore, CancellationToken cancellationToken) {
+    public async Task<ParcelCleanupExpiredResponse> ExecuteAsync(DateTime createdBefore, CancellationToken cancellationToken, ParcelCleanupOperator? auditOperator = null) {
         try {
             // 步骤 1：调用仓储过期清理方法，由仓储内置隔离器完成 blocked/dry-run/execute 决策。
             //         本层不得绕过隔离器，不可直接操作数据。
-            var result = await _parcelRepository.RemoveExpiredAsync(createdBefore, cancellationToken);
+            var result = await _parcelRepository.RemoveExpiredAsync(createdBefore, cancellationToken, auditOperator);
 
             if (!result.IsSuccess) {
                 Logger.Error(
@@ -50,6 +51,7 @@ public sealed class CleanupExpiredParcelsCommandService {
             // 步骤 2：将领域层 DangerousBatchActionResult 映射为对外合同响应。
             var actionResult = result.Value;
             return new ParcelCleanupExpiredResponse {
+                CleanupRecordId = actionResult.CleanupRecordId,
                 ActionName = actionResult.ActionName,
                 Decision = MapDecisionToString(actionResult.Decision),
                 PlannedCount = actionResult.PlannedCount,

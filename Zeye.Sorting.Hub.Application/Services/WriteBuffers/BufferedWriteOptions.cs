@@ -91,16 +91,19 @@ public sealed class BufferedWriteOptions {
 
     /// <summary>
     /// 首次重试基础延迟（毫秒）。
+    /// 可填写范围：0~60000。
     /// </summary>
     public int RetryBaseDelayMilliseconds { get; set; } = 250;
 
     /// <summary>
     /// 重试最大延迟（毫秒）。
+    /// 可填写范围：RetryBaseDelayMilliseconds~300000。
     /// </summary>
     public int MaxRetryDelayMilliseconds { get; set; } = 5000;
 
     /// <summary>
     /// 重试随机抖动上限（毫秒）。
+    /// 可填写范围：0~60000。
     /// </summary>
     public int RetryJitterMilliseconds { get; set; } = 200;
 
@@ -115,4 +118,7 @@ public sealed class BufferedWriteOptions {
     /// 可填写范围：1~100000。
     /// </summary>
     public int DeadLetterCapacity { get; set; } = 10000;
+
+    /// <summary>停止接收后排空已接收批次的最大秒数。可填写范围：1~20，小于宿主停止预算。</summary>
+    public int ShutdownDrainTimeoutSeconds { get; set; } = 15;
 }

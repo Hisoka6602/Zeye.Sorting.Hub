@@ -1,0 +1,72 @@
+/* Shared control geometry takes precedence over the older page-specific sizes. */
+.filter-card .filter-field > :is(.ant-input, .ant-select, .ant-picker, .ant-input-number),
+.filter-card .filter-field > .ant-select .ant-select-selector,
+.filter-card .filter-actions .ant-btn {
+  height: 40px !important;
+}
+
+.filter-card .filter-field > :is(.ant-input, .ant-select, .ant-picker, .ant-input-number) {
+  width: 100% !important;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.filter-card .filter-field .ant-select-selection-item,
+.filter-card .filter-field .ant-select-selection-placeholder {
+  line-height: 38px !important;
+}
+
+.filter-card .filter-field .ant-input-number-input {
+  height: 38px;
+}
+
+.filter-card .filter-actions {
+  height: auto;
+  min-height: 40px;
+  max-width: 100%;
+  align-self: end;
+}
+
+.filter-actions > .ant-space-item {
+  display: flex;
+  align-items: center;
+}
+
+/* Reserve room for the whole audit action group before shrinking the fields. */
+.audit-list-filter .audit-filter-row-bottom {
+  grid-template-columns: minmax(0, .9fr) minmax(0, 1.7fr) max-content;
+}
+
+.create-card :is(.ant-input:not(textarea), .ant-input-number, .ant-picker, .ant-select, .ant-select-selector, .number-unit-control),
+.create-form-footer .ant-btn {
+  height: 40px !important;
+}
+
+.create-card .ant-input-number-input {
+  height: 38px;
+}
+
+.create-card .three-cols {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.create-card .two-cols {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 1100px) {
+  .audit-list-filter .audit-filter-row-bottom {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .audit-list-filter .audit-filter-row-bottom .filter-actions {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 820px) {
+  .audit-list-filter .audit-filter-row-bottom,
+  .create-card .three-cols,
+  .create-card .two-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

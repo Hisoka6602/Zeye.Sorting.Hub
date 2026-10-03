@@ -25,7 +25,9 @@ public sealed class RelationalParcelTestDatabase : IAsyncDisposable {
 
     /// <summary>配置测试专用数据库和允许执行的DDL隔离器。</summary>
     public RelationalParcelTestDatabase(string? granularity = null) {
-        var options = new DbContextOptionsBuilder<SortingHubDbContext>().UseSqlite("Data Source=" + _path).AddInterceptors(Failure).Options;
+        // 与生产工厂保持一致，验证写仓储显式启用跟踪或执行数据库更新。
+        var options = new DbContextOptionsBuilder<SortingHubDbContext>().UseSqlite("Data Source=" + _path)
+            .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking).AddInterceptors(Failure).Options;
         Factory = new PooledDbContextFactory<SortingHubDbContext>(options);
         var settings = new Dictionary<string, string?> {
             ["Persistence:Sharding:WriteRouting:AllowTableCreation"] = "true",

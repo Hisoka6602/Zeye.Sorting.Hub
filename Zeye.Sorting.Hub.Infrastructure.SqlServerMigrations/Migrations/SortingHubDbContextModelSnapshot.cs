@@ -481,58 +481,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations.Migrations
                     b.ToTable("InboxMessages", "dbo");
                 });
 
-            modelBuilder.Entity("Zeye.Sorting.Hub.Domain.Aggregates.Events.OutboxMessage", b =>
-                {
-                    b.Property<long>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bigint");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
-
-                    b.Property<DateTime?>("CompletedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("EventType")
-                        .IsRequired()
-                        .HasMaxLength(256)
-                        .HasColumnType("nvarchar(256)");
-
-                    b.Property<string>("FailureMessage")
-                        .IsRequired()
-                        .HasMaxLength(1024)
-                        .HasColumnType("nvarchar(1024)");
-
-                    b.Property<DateTime?>("LastAttemptedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("PayloadJson")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int>("RetryCount")
-                        .HasColumnType("int");
-
-                    b.Property<int>("Status")
-                        .IsConcurrencyToken()
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("EventType", "CreatedAt", "Id");
-
-                    b.HasIndex("Status", "CreatedAt", "Id");
-
-                    b.HasIndex("Status", "LastAttemptedAt", "UpdatedAt", "Id");
-
-                    b.ToTable("OutboxMessages", "dbo");
-                });
-
             modelBuilder.Entity("Zeye.Sorting.Hub.Domain.Aggregates.Idempotency.IdempotencyRecord", b =>
                 {
                     b.Property<long>("Id")
@@ -1042,6 +990,28 @@ namespace Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations.Migrations
                     b.ToTable("Bags", "dbo");
                 });
 
+            modelBuilder.Entity("Zeye.Sorting.Hub.Infrastructure.Persistence.Management.ManagedDocument", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("Json")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("ModifiedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("int");
+
+                    b.HasKey("Key");
+
+                    b.ToTable("ManagedDocuments", "dbo");
+                });
+
             modelBuilder.Entity("Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding.ParcelLocation", b =>
                 {
                     b.Property<long>("Id")
@@ -1471,6 +1441,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations.Migrations
 
                             b1.HasKey("Id");
 
+                            b1.HasIndex("BucketName");
+
                             b1.HasIndex("ImageType");
 
                             b1.HasIndex("ParcelId");
@@ -1478,8 +1450,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations.Migrations
                             b1.HasIndex("StorageProvider");
 
                             b1.HasIndex("UploadedAtLocal");
-
-                            b1.HasIndex("BucketName");
 
                             b1.ToTable("Parcel_ImageInfos", "dbo");
 

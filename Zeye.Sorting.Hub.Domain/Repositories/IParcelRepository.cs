@@ -119,7 +119,7 @@ namespace Zeye.Sorting.Hub.Domain.Repositories {
         /// <summary>
         /// 按创建时间清理过期包裹（危险动作：受隔离器开关、dry-run 与审计约束）。
         /// </summary>
-        Task<RepositoryResult<DangerousBatchActionResult>> RemoveExpiredAsync(DateTime createdBefore, CancellationToken cancellationToken);
+        Task<RepositoryResult<DangerousBatchActionResult>> RemoveExpiredAsync(DateTime createdBefore, CancellationToken cancellationToken, ParcelCleanupOperator? auditOperator = null);
 
         /// <summary>
         /// 批量新增包裹聚合。

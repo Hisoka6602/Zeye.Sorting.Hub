@@ -14,6 +14,7 @@ namespace Zeye.Sorting.Hub.Host.Serialization;
 [JsonSerializable(typeof(ParcelListResponse))]
 [JsonSerializable(typeof(ParcelCursorListResponse))]
 [JsonSerializable(typeof(ParcelDetailResponse))]
+[JsonSerializable(typeof(ParcelImagesResponse))]
 [JsonSerializable(typeof(ParcelAnalyticsResponse))]
 [JsonSerializable(typeof(Zeye.Sorting.Hub.Contracts.Models.Parcels.Processing.ParcelProcessingRecordRequest))]
 [JsonSerializable(typeof(Zeye.Sorting.Hub.Contracts.Models.Parcels.Processing.ParcelProcessingWriteResponse))]

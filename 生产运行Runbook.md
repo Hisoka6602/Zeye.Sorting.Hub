@@ -21,7 +21,7 @@
 - 存活探针：`/health/live`
 - 就绪探针：`/health/ready`
 - 诊断 API：`/api/diagnostics/slow-queries`
-- 数据治理 API：`/api/data-governance/archive-tasks`、`/api/data-governance/outbox-messages`
+- 数据治理 API：`/api/data-governance/archive-tasks`
 - 只读查询入口：`/api/parcels`、`/api/parcels/cursor`、`/api/audit/web-requests`
 
 ### 2. 优先检查的实现位置
@@ -33,7 +33,6 @@
 - 分表巡检与预建：`Zeye.Sorting.Hub.Host/HostedServices/ShardingInspectionHostedService.cs`、`Zeye.Sorting.Hub.Host/HostedServices/ShardingPrebuildHostedService.cs`
 - 备份与恢复：`Zeye.Sorting.Hub.Host/HostedServices/BackupHostedService.cs`、`Zeye.Sorting.Hub.Host/HealthChecks/BackupHealthCheck.cs`
 - 数据保留治理：`Zeye.Sorting.Hub.Host/HostedServices/DataRetentionHostedService.cs`
-- Outbox：`Zeye.Sorting.Hub.Host/HostedServices/OutboxDispatchHostedService.cs`
 - 长期门禁：`.github/workflows/stability-gates.yml`
 
 ---
@@ -60,7 +59,6 @@
 | CPU 持续过高 | CPU 长时间接近阈值 | 慢查询画像、后台任务周期 | 先辨别是查询热点、归档/分表任务还是日志风暴 |
 | 数据重复写入 | 幂等键命中率异常、重复业务键 | `IdempotencyGuardService` | 先检查幂等键、载荷哈希与重放结果 |
 | 幂等冲突 | 处理中状态长时间不释放 | `IdempotencyGuardException`、幂等仓储 | 检查处理中超时、取消重试与业务补偿 |
-| Outbox 堆积 | 待处理/失败/死信数量上升 | `OutboxHealthCheck`、`OutboxDispatchHostedService` | 先查消息状态推进，再决定重派发或死信隔离 |
 | Inbox 重复消费 | 同一消息多次进入处理链路 | `InboxMessageGuardService` | 先查消息键、处理中状态与失败重试窗口 |
 
 ---
@@ -71,7 +69,7 @@
 
 1. 记录故障开始时间、本地时间窗口、影响接口、影响租户/站点/设备边界。
 2. 检查 `/health/live` 与 `/health/ready`，确认是进程故障、依赖故障还是局部功能降级。
-3. 检查对应 HealthCheck 输出的 `Data` 字段，优先抓取数据库、分表、备份、Outbox、保留治理快照。
+3. 检查对应 HealthCheck 输出的 `Data` 字段，优先抓取数据库、分表、备份、保留治理快照。
 4. 查询 NLog 最新错误日志，按 `EvidenceId`、`CorrelationId` 汇总同一故障链路。
 
 ### 2. 30 分钟内定位
@@ -140,17 +138,17 @@
 3. 审计日志膨胀时，同时核查 `DataRetentionHostedService` 是否按计划运行。
 4. 需要清理时，保留审计痕迹与补偿边界。
 
-### 8. 数据重复写入 / 幂等冲突 / Outbox 堆积 / Inbox 重复消费
+### 8. 数据重复写入 / 幂等冲突 / Inbox 重复消费
 
 1. 先定位业务键、幂等键、消息键是否稳定。
-2. 检查 `IdempotencyGuardService`、`OutboxDispatchHostedService`、`InboxMessageGuardService` 的状态推进日志。
+2. 检查 `IdempotencyGuardService`、`InboxMessageGuardService` 的状态推进日志。
 3. 若存在处理中长时间不释放，优先排查后台任务卡顿与数据库写入冲突。
 4. 仅在证据完整且已保留回放上下文后，才允许做人工补偿。
 
 ### 9. CPU 持续过高 / 内存持续增长
 
 1. 先区分是查询、后台任务、日志风暴还是缓冲队列导致。
-2. 检查慢查询画像、归档/分表/备份/Outbox 周期任务是否在同一时间窗口集中触发。
+2. 检查慢查询画像、归档/分表/备份 周期任务是否在同一时间窗口集中触发。
 3. 检查写入队列、审计后台队列、慢查询画像快照是否持续积压。
 4. 必要时先降级低优先级任务，再恢复主链路。
 
@@ -162,3 +160,13 @@
 2. 季度演练记录统一沉淀到 `drill-records/`。
 3. 每次故障处理后，至少更新一次对应台账或运行记录，保证后续交接可续接。
 4. 若开始新业务模块开发，必须先通过 `业务接入前底座验收清单.md`。
+
+## 七、超长时间运行补强与验收边界
+
+最新源码审查、故障回归、配置预算和本机部署证据集中记录于 `超长时间无人值守补强审查报告.md`。
+
+- `/health/deep` 的 `runtime-resources` 读取真实进程内存、句柄和持久化目录剩余空间。后台每分钟采样，异常和恢复都会记录；资源阈值是告警，不能替代数据库/MinIO 容量监控或业务保留策略。
+- 备份、分表和保留治理快照超过轮询有效期后降级；事务快照核对长度与摘要。旧的成功记录不再代表当前健康。
+- Running 归档预演超过恢复窗口后限次重新排队，最终超限转 Failed。恢复和检查点提交必须保留执行尝试身份，不能人工绕过仓储保护写入旧结果。
+- Compose 持久化 `host_governance`，标准输出日志 10 MiB × 3；升级前保存原容器未挂载目录。Host 停止宽限 45 秒，管理员测试缓冲排空 15 秒；正式 Fusion 数据在数据库事务提交后确认。
+- 按一年真实包裹、去重凭据、影像和审计增长预留空间，配置离机备份并进行隔离恢复。分表和短时回归测试不能证明无限增长场景或已完成 365 天持续运行。

@@ -154,20 +154,6 @@ export const headerAccountAssets = {
     "gap": 7,
     "offsetY": 0.0
   },
-  "P12": {
-    "file": "header-account-P12.png",
-    "source": "P12-outbox-messages.png",
-    "crop": [
-      1362,
-      11,
-      1395,
-      45
-    ],
-    "width": 33,
-    "height": 34,
-    "gap": 9,
-    "offsetY": 0.0
-  },
   "P13": {
     "file": "header-account-P13.png",
     "source": "P13-health-check.png",

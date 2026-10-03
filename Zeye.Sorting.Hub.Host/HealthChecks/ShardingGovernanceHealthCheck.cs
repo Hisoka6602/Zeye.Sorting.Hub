@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Options;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 
 namespace Zeye.Sorting.Hub.Host.HealthChecks;
@@ -17,16 +18,34 @@ public sealed class ShardingGovernanceHealthCheck : IHealthCheck {
     /// </summary>
     private readonly ShardingTablePrebuildService _prebuildService;
 
+    /// <summary>分表巡检周期。</summary>
+    private readonly ShardingRuntimeInspectionOptions _inspectionOptions;
+
+    /// <summary>是否启用周期预建。</summary>
+    private readonly ShardingPrebuildOptions _prebuildOptions;
+
+    /// <summary>用于本地快照有效期判定的时间来源。</summary>
+    private readonly TimeProvider _timeProvider;
+
     /// <summary>
     /// 初始化分表治理健康检查。
     /// </summary>
     /// <param name="inspectionService">分表巡检服务。</param>
     /// <param name="prebuildService">分表预建计划服务。</param>
+    /// <param name="inspectionOptions">分表巡检周期。</param>
+    /// <param name="prebuildOptions">分表预建启用策略。</param>
+    /// <param name="timeProvider">本地快照时间来源。</param>
     public ShardingGovernanceHealthCheck(
         ShardingTableInspectionService inspectionService,
-        ShardingTablePrebuildService prebuildService) {
+        ShardingTablePrebuildService prebuildService,
+        IOptions<ShardingRuntimeInspectionOptions>? inspectionOptions = null,
+        IOptions<ShardingPrebuildOptions>? prebuildOptions = null,
+        TimeProvider? timeProvider = null) {
         _inspectionService = inspectionService;
         _prebuildService = prebuildService;
+        _inspectionOptions = inspectionOptions?.Value ?? new ShardingRuntimeInspectionOptions();
+        _prebuildOptions = prebuildOptions?.Value ?? new ShardingPrebuildOptions();
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     /// <inheritdoc />
@@ -40,6 +59,13 @@ public sealed class ShardingGovernanceHealthCheck : IHealthCheck {
 
         if (!report.IsEnabled) {
             return Task.FromResult(HealthCheckResult.Healthy("分表运行期巡检未启用。", data: data));
+        }
+
+        if (HealthSnapshotFreshness.IsStale(report.CheckedAtLocal, TimeSpan.FromMinutes(_inspectionOptions.InspectionIntervalMinutes * 2L + 5), _timeProvider)) {
+            return Task.FromResult(HealthCheckResult.Degraded("分表巡检结果已过期，后台任务可能已停滞。", data: data));
+        }
+        if (_prebuildOptions.IsEnabled && plan is not null && HealthSnapshotFreshness.IsStale(plan.GeneratedAtLocal, TimeSpan.FromMinutes(5), _timeProvider)) {
+            return Task.FromResult(HealthCheckResult.Degraded("分表预建计划已过期，跨周期建表可能未持续执行。", data: data));
         }
 
         if (!report.IsHealthy) {

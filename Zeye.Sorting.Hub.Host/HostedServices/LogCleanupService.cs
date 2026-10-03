@@ -91,7 +91,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <param name="settings">当前配置。</param>
         /// <returns>有效保留天数（至少为 1）。</returns>
         private static int GetEffectiveRetentionDays(LogCleanupSettings settings) =>
-            Math.Max(1, settings.RetentionDays);
+            Math.Clamp(settings.RetentionDays, 1, 3650);
 
         /// <summary>
         /// 获取有效检查间隔小时数（对无效配置值进行保护性回退，防止 0/负数导致忙等待循环）。
@@ -99,13 +99,12 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <param name="settings">当前配置。</param>
         /// <returns>有效检查间隔（至少为 1 小时）。</returns>
         private static int GetEffectiveCheckIntervalHours(LogCleanupSettings settings) =>
-            Math.Max(1, settings.CheckIntervalHours);
+            Math.Clamp(settings.CheckIntervalHours, 1, 168);
 
         /// <summary>后台服务主循环：按设定间隔周期性执行日志清理。</summary>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
             if (!Settings.Enabled) {
                 Logger.Info("日志清理服务已禁用");
-                return;
             }
 
             Logger.Info("日志清理服务已启动，保留天数（有效值）: {EffectiveRetentionDays}天（配置原始值: {ConfiguredRetentionDays}），检查间隔（有效值）: {EffectiveCheckIntervalHours}小时（配置原始值: {ConfiguredCheckIntervalHours}）",
@@ -113,9 +112,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 GetEffectiveCheckIntervalHours(Settings), Settings.CheckIntervalHours);
 
             // 首次启动时立即执行一次清理
-            _safeExecutor.Execute(
-                () => CleanupOldLogs(stoppingToken),
-                "首次日志清理");
+            if (Settings.Enabled) {
+                _safeExecutor.Execute(() => CleanupOldLogs(stoppingToken), "首次日志清理");
+            }
 
             while (!stoppingToken.IsCancellationRequested) {
                 try {
@@ -136,6 +135,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <summary>扫描日志目录，删除超过保留天数的旧日志文件。</summary>
         internal void CleanupOldLogs(CancellationToken cancellationToken) {
             var settings = Settings;
+            if (!settings.Enabled || cancellationToken.IsCancellationRequested) {
+                return;
+            }
             var logDirectory = ResolveLogDirectoryPath(settings);
 
             if (!Directory.Exists(logDirectory)) {
@@ -203,6 +205,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
                 try {
                     foreach (var file in Directory.EnumerateFiles(currentDirectory, "*.log", SearchOption.TopDirectoryOnly)) {
+                        if (cancellationToken.IsCancellationRequested) return (deletedCount, failedCount);
                         try {
                             var fileInfo = new FileInfo(file);
                             if (fileInfo.LastWriteTime < cutoffDate) {
@@ -220,7 +223,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     }
 
                     foreach (var subDirectory in Directory.EnumerateDirectories(currentDirectory, "*", SearchOption.TopDirectoryOnly)) {
-                        directoryStack.Push(subDirectory);
+                        // 符号链接或目录联接可能形成循环或越过日志根目录，禁止递归进入。
+                        if ((File.GetAttributes(subDirectory) & FileAttributes.ReparsePoint) == 0) directoryStack.Push(subDirectory);
                     }
                 }
                 catch (Exception ex) {

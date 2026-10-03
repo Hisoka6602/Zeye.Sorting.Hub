@@ -59,11 +59,6 @@ export const navigationAlignment: Record<string, Record<string, NavigationAlignm
       "tracking": 0,
       "ink": "#475c8a"
     },
-    "Outbox 消息": {
-      "x": -1,
-      "y": -1,
-      "tracking": 0.375
-    },
     "过期清理": {
       "x": 0,
       "y": -1,
@@ -165,11 +160,6 @@ export const navigationAlignment: Record<string, Record<string, NavigationAlignm
       "ink": "#455775",
       "stroke": 0.1
     },
-    "Outbox 消息": {
-      "x": -1,
-      "y": -0.5,
-      "tracking": 0.5
-    },
     "过期清理": {
       "x": 0,
       "y": -1,
@@ -258,13 +248,6 @@ export const navigationAlignment: Record<string, Record<string, NavigationAlignm
       "x": 3,
       "y": -0.5,
       "tracking": -0.333,
-      "ink": "#455775",
-      "stroke": 0.1
-    },
-    "Outbox 消息": {
-      "x": 3,
-      "y": -2,
-      "tracking": 0.5,
       "ink": "#455775",
       "stroke": 0.1
     },
@@ -365,11 +348,6 @@ export const navigationAlignment: Record<string, Record<string, NavigationAlignm
       "ink": "#455775",
       "stroke": 0.1
     },
-    "Outbox 消息": {
-      "x": -1,
-      "y": -0.5,
-      "tracking": 0.75
-    },
     "过期清理": {
       "x": 0,
       "y": -1,
@@ -462,13 +440,6 @@ export const navigationAlignment: Record<string, Record<string, NavigationAlignm
       "x": 0,
       "y": 0.5,
       "tracking": 0,
-      "ink": "#455775",
-      "stroke": 0.1
-    },
-    "Outbox 消息": {
-      "x": -1,
-      "y": -0.5,
-      "tracking": 0.875,
       "ink": "#455775",
       "stroke": 0.1
     },
@@ -573,13 +544,6 @@ export const navigationAlignment: Record<string, Record<string, NavigationAlignm
       "ink": "#455775",
       "stroke": 0.1
     },
-    "Outbox 消息": {
-      "x": -1,
-      "y": -1,
-      "tracking": 0.375,
-      "ink": "#455775",
-      "stroke": 0.1
-    },
     "过期清理": {
       "x": 0,
       "y": -2,
@@ -675,11 +639,6 @@ export const navigationAlignment: Record<string, Record<string, NavigationAlignm
       "y": 0.5,
       "tracking": 0
     },
-    "Outbox 消息": {
-      "x": -1,
-      "y": -1,
-      "tracking": 0.375
-    },
     "过期清理": {
       "x": 0,
       "y": -0.5,
@@ -771,11 +730,6 @@ export const navigationAlignment: Record<string, Record<string, NavigationAlignm
       "y": 0.5,
       "tracking": -0.333
     },
-    "Outbox 消息": {
-      "x": -1,
-      "y": -1,
-      "tracking": 0.375
-    },
     "过期清理": {
       "x": 0,
       "y": -1.5,
@@ -864,11 +818,6 @@ export const navigationAlignment: Record<string, Record<string, NavigationAlignm
       "tracking": -0.667,
       "ink": "#455775",
       "stroke": 0.1
-    },
-    "Outbox 消息": {
-      "x": 3,
-      "y": 1.5,
-      "tracking": 0.375
     },
     "过期清理": {
       "x": 4,
@@ -965,11 +914,6 @@ export const navigationAlignment: Record<string, Record<string, NavigationAlignm
       "ink": "#455775",
       "stroke": 0.1
     },
-    "Outbox 消息": {
-      "x": -1,
-      "y": -1,
-      "tracking": 0.5
-    },
     "过期清理": {
       "x": 0,
       "y": -1,
@@ -1065,13 +1009,6 @@ export const navigationAlignment: Record<string, Record<string, NavigationAlignm
       "y": 0,
       "tracking": 0
     },
-    "Outbox 消息": {
-      "x": 0,
-      "y": 0,
-      "tracking": 0,
-      "ink": "#455775",
-      "stroke": 0.1
-    },
     "过期清理": {
       "x": 0,
       "y": 0,
@@ -1111,112 +1048,6 @@ export const navigationAlignment: Record<string, Record<string, NavigationAlignm
       "tracking": 0,
       "iconX": -1,
       "iconY": -1,
-      "ink": "#455775",
-      "stroke": 0.25
-    }
-  },
-  "/governance/outbox": {
-    "工作台": {
-      "x": -1,
-      "y": 0.5,
-      "tracking": 0.5,
-      "iconX": -1,
-      "iconY": 2,
-      "ink": "#455775",
-      "stroke": 0.1
-    },
-    "包裹中心": {
-      "x": 0,
-      "y": 1,
-      "tracking": 0,
-      "iconX": -1,
-      "iconY": 2,
-      "ink": "#455775",
-      "stroke": 0.25
-    },
-    "包裹台账": {
-      "x": 0,
-      "y": 0.5,
-      "tracking": 0,
-      "ink": "#455775",
-      "stroke": 0.1
-    },
-    "新建包裹": {
-      "x": 0,
-      "y": 1,
-      "tracking": -0.333,
-      "ink": "#485883",
-      "stroke": 0.1
-    },
-    "批量入队": {
-      "x": 0,
-      "y": 1,
-      "tracking": 0.333,
-      "ink": "#455775",
-      "stroke": 0.1
-    },
-    "数据治理": {
-      "x": -1,
-      "y": 1,
-      "tracking": 0.333,
-      "iconX": -1,
-      "iconY": 1,
-      "ink": "#455775",
-      "stroke": 0.25
-    },
-    "归档任务": {
-      "x": -1,
-      "y": 0,
-      "tracking": 0.333,
-      "ink": "#455775",
-      "stroke": 0.1
-    },
-    "Outbox 消息": {
-      "x": -1,
-      "y": -2,
-      "tracking": 0.625
-    },
-    "过期清理": {
-      "x": -1,
-      "y": -2,
-      "tracking": 0.333,
-      "ink": "#455775",
-      "stroke": 0.1
-    },
-    "可观测性": {
-      "x": 0,
-      "y": -1.5,
-      "tracking": 0,
-      "iconX": -1,
-      "iconY": -2,
-      "ink": "#455775",
-      "stroke": 0.25
-    },
-    "请求审计": {
-      "x": 0,
-      "y": -2.5,
-      "tracking": 0
-    },
-    "慢查询": {
-      "x": -1,
-      "y": -3,
-      "tracking": 0.5,
-      "ink": "#455775",
-      "stroke": 0.1
-    },
-    "系统健康": {
-      "x": -1,
-      "y": -2.5,
-      "tracking": 0.333,
-      "ink": "#455775",
-      "stroke": 0.1
-    },
-    "操作指南": {
-      "x": -2,
-      "y": -6,
-      "tracking": 0,
-      "iconX": -2,
-      "iconY": -7,
       "ink": "#455775",
       "stroke": 0.25
     }
@@ -1271,13 +1102,6 @@ export const navigationAlignment: Record<string, Record<string, NavigationAlignm
       "y": -0.5,
       "tracking": 0,
       "ink": "#455775",
-      "stroke": 0.1
-    },
-    "Outbox 消息": {
-      "x": 3,
-      "y": 0.5,
-      "tracking": 0.375,
-      "ink": "#43578b",
       "stroke": 0.1
     },
     "过期清理": {
@@ -1374,11 +1198,6 @@ export const navigationAlignment: Record<string, Record<string, NavigationAlignm
       "x": 2,
       "y": 1.5,
       "tracking": -0.333
-    },
-    "Outbox 消息": {
-      "x": 2,
-      "y": 2.5,
-      "tracking": 0.375
     },
     "过期清理": {
       "x": 3,
@@ -1479,11 +1298,6 @@ export const navigationAlignment: Record<string, Record<string, NavigationAlignm
       "tracking": 0.333,
       "ink": "#455775",
       "stroke": 0.1
-    },
-    "Outbox 消息": {
-      "x": -1,
-      "y": 0,
-      "tracking": 0.375
     },
     "过期清理": {
       "x": 0,
@@ -1613,11 +1427,6 @@ export const navigationAlignment: Record<string, Record<string, NavigationAlignm
       "tracking": -0.333,
       "ink": "#455775",
       "stroke": 0.1
-    },
-    "Outbox 消息": {
-      "x": -1,
-      "y": -1.5,
-      "tracking": 0.375
     },
     "过期清理": {
       "x": 0,
@@ -1910,11 +1719,6 @@ export const navigationAlignment: Record<string, Record<string, NavigationAlignm
       "ink": "#455775",
       "stroke": 0.1
     },
-    "Outbox 消息": {
-      "x": 0,
-      "y": 1,
-      "tracking": 0.125
-    },
     "过期清理": {
       "x": 1,
       "y": 1.5,
@@ -2023,11 +1827,6 @@ export const navigationAlignment: Record<string, Record<string, NavigationAlignm
       "ink": "#455775",
       "stroke": 0.1
     },
-    "Outbox 消息": {
-      "x": 0,
-      "y": -1,
-      "tracking": 0
-    },
     "过期清理": {
       "x": 1,
       "y": -2,
@@ -2120,11 +1919,6 @@ export const navigationAlignment: Record<string, Record<string, NavigationAlignm
       "tracking": 0,
       "ink": "#455775",
       "stroke": 0.1
-    },
-    "Outbox 消息": {
-      "x": -1,
-      "y": -1,
-      "tracking": 0.25
     },
     "过期清理": {
       "x": 0,

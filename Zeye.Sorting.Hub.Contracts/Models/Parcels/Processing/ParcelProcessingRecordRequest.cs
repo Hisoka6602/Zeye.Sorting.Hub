@@ -5,6 +5,10 @@ namespace Zeye.Sorting.Hub.Contracts.Models.Parcels.Processing;
 
 /// <summary>来源处理事实合同；Stage取值0检测、1DWS接收、2绑定、3扫描上传、4格口分配、5指令下发、6实际落格、7异常、8落格上报、9图片登记、10图片上传。所有时间为本地时间。</summary>
 public record ParcelProcessingRecordRequest {
+    /// <summary>为生产源生成 JSON 解析保留缺省尝试序号；显式传入无效序号仍由领域校验拒绝。</summary>
+    [JsonConstructor]
+    public ParcelProcessingRecordRequest(int attemptNumber = 1) => AttemptNumber = attemptNumber;
+
     /// <summary>与前一检测包裹的间隔，单位毫秒。</summary>
     public long? PreviousCreationGapMilliseconds { get; init; }
     /// <summary>是否触发包裹间距违规。</summary>

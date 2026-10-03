@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="480" viewBox="0 0 720 480" role="img" aria-labelledby="title">
+  <title id="title">模拟包裹面单特写，不包含真实收件信息</title>
+  <rect width="720" height="480" fill="#cdb18b"/>
+  <path d="M20 0v480M694 0v480" stroke="#bd9e74" stroke-width="14"/>
+  <rect x="121" y="108" width="490" height="302" rx="10" fill="#5b4835" opacity=".12"/>
+  <rect x="112" y="98" width="490" height="302" rx="7" fill="#fffdf8"/>
+  <text x="140" y="132" font-family="sans-serif" font-weight="700" font-size="23" fill="#26344a">SIMULATED SHIPPING LABEL</text>
+  <text x="140" y="161" font-family="sans-serif" font-size="17" fill="#657289">DEMO ONLY / NO CUSTOMER DATA</text>
+  <path d="M137 180h440M137 274h440" stroke="#d5dce5" stroke-width="2"/>
+  <text x="140" y="210" font-family="sans-serif" font-size="17" fill="#475569">模拟目的地：演示分拣区</text>
+  <text x="140" y="239" font-family="sans-serif" font-size="17" fill="#475569">格口 6101 · 320 × 240 × 180 mm</text>
+  <path d="M147 289v62m8-62v62m11-62v62m7-62v62m9-62v62m14-62v62m7-62v62m9-62v62m11-62v62m6-62v62m13-62v62m9-62v62m7-62v62m11-62v62m14-62v62m6-62v62m9-62v62m11-62v62m7-62v62m13-62v62m9-62v62m7-62v62m11-62v62m15-62v62m8-62v62m12-62v62m7-62v62m11-62v62m13-62v62m7-62v62m10-62v62m12-62v62m7-62v62m10-62v62m13-62v62m8-62v62m12-62v62m9-62v62m8-62v62m12-62v62m9-62v62" stroke="#26344a" stroke-width="4"/>
+  <text x="181" y="377" font-family="sans-serif" font-size="19" fill="#26344a">SIM-MULTI-IMAGE-20261003</text>
+  <rect x="24" y="22" width="448" height="48" rx="10" fill="#fff"/>
+  <text x="42" y="53" font-family="sans-serif" font-size="21" fill="#475569">模拟图片 · 面单相机 · 非现场照片</text>
+  <text x="28" y="451" font-family="sans-serif" font-size="17" fill="#6c573c">ZEYE / MULTI-IMAGE DEMO / LABEL CLOSE-UP</text>
+</svg>

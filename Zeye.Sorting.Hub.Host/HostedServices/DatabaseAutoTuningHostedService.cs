@@ -486,9 +486,30 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <summary>后台循环：按固定周期分析慢 SQL，并执行自治策略/验证/清理。</summary>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
             AuditBaseline();
-
             while (!stoppingToken.IsCancellationRequested) {
-                await Task.Delay(TimeSpan.FromSeconds(_analyzeIntervalSeconds), stoppingToken);
+                try {
+                    await Task.Delay(TimeSpan.FromSeconds(_analyzeIntervalSeconds), stoppingToken);
+                    using var cycleBudget = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                    cycleBudget.CancelAfter(TimeSpan.FromMinutes(5));
+                    await AnalyzeOnceAsync(cycleBudget.Token);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) {
+                    NLogLogger.Info("自动调优后台服务收到停止信号。");
+                    break;
+                }
+                catch (Exception exception) {
+                    // 数据库瞬断、执行计划探测或观测故障只结束当前周期，下个周期自动复核。
+                    NLogLogger.Error(exception, "自动调优分析周期失败，将在下一周期重试。");
+                }
+                finally {
+                    // 无样本窗口和失败窗口也必须裁剪状态，不能依赖新慢查询才释放历史容量。
+                    PruneTrackingState();
+                }
+            }
+        }
+
+        /// <summary>执行一轮完整分析、隔离执行和验证，取消令牌包含单轮执行预算。</summary>
+        private async Task AnalyzeOnceAsync(CancellationToken stoppingToken) {
                 MoveToStage(AutoTuningClosedLoopStage.Monitor, "analysis-cycle-start");
 
                 var result = _pipeline.Analyze(_dialect);
@@ -502,7 +523,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     if (result.ShouldEmitAnnualDashboard) {
                         await EmitAnnualDashboardAsync(result, stoppingToken);
                     }
-                    continue;
+                    return;
                 }
                 result = await ApplyIndexSuggestionGuardsAsync(result, stoppingToken);
                 _analysisCycleCounter++;
@@ -565,7 +586,6 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 if (result.ShouldEmitAnnualDashboard) {
                     await EmitAnnualDashboardAsync(result, stoppingToken);
                 }
-            }
         }
 
         /// <summary>输出每日慢 SQL 汇总报告与只读建议。</summary>
@@ -2197,7 +2217,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
         /// <summary>输出单个参数的基线审计结果。</summary>
         private void AuditBaselineItem(string key, int configured, int baseline) {
-            AuditBaselineItem(key, configured, baseline);
+            AuditBaselineItem(key, (decimal)configured, (decimal)baseline);
         }
 
         /// <summary>审计单条基线配置项是否在合理范围，偏差时写入告警日志。</summary>
@@ -2277,6 +2297,26 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 .ToArray();
             foreach (var fingerprint in expiredFingerprints) {
                 _pendingRollbackByFingerprint.Remove(fingerprint);
+            }
+
+            // 容量预测可独立启用，不能依赖全自动模式维护的热度字典来限制容量字典。
+            var expiredCapacityTables = _capacitySnapshotsByTable
+                .Where(pair => pair.Value.Count == 0 || now - pair.Value.Last().CapturedLocalTime > PendingRollbackRetention)
+                .Select(static pair => pair.Key)
+                .ToArray();
+            foreach (var table in expiredCapacityTables) {
+                _capacitySnapshotsByTable.Remove(table);
+            }
+            var capacityOverflow = _capacitySnapshotsByTable.Count - MaxTrackedTableCount;
+            if (capacityOverflow > 0) {
+                var oldestTables = _capacitySnapshotsByTable
+                    .OrderBy(static pair => pair.Value.Last().CapturedLocalTime)
+                    .Take(capacityOverflow)
+                    .Select(static pair => pair.Key)
+                    .ToArray();
+                foreach (var table in oldestTables) {
+                    _capacitySnapshotsByTable.Remove(table);
+                }
             }
 
             var tableOverflow = _tableHeatByTable.Count - MaxTrackedTableCount;

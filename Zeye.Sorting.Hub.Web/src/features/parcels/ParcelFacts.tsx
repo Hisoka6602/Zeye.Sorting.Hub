@@ -1,5 +1,6 @@
 import { Descriptions, Typography } from 'antd';
 import { parcelFieldLabels, processingStages } from '../../data/api/parcelTypes';
+import { formatNumber } from '../../data/formatNumber';
 
 /** 按后端字段语义格式化真实值，未知值与零保持区别。 */
 export function parcelFactValue(key: string, value: unknown): string {
@@ -10,6 +11,7 @@ export function parcelFactValue(key: string, value: unknown): string {
   if (key === 'requestStatus' && typeof value === 'number') return ['未访问', '成功', '失败'][value] ?? String(value);
   if (key === 'type' && typeof value === 'number') return ['普通包裹', '大型包裹', '聚合包裹', '超薄包裹', '异形件', '流体包裹', '易碎品'][value] ?? String(value);
   if (key === 'noReadType' && typeof value === 'number') return ['未分类', '画面无包裹', '无面单', '面单模糊', '面单褶皱', '条码截断', '反光', '光线不足', '条码污损', '对焦模糊'][value] ?? String(value);
+  if (typeof value === 'number') return formatNumber(value);
   if (typeof value === 'object') return JSON.stringify(value, null, 2);
   return String(value).replace(/^(\d{4}-\d{2}-\d{2})T/, '$1 ');
 }

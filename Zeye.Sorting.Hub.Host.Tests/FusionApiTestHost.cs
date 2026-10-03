@@ -17,6 +17,8 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.ReadModels;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 using Zeye.Sorting.Hub.Infrastructure.Queries;
 using Microsoft.EntityFrameworkCore;
+using Zeye.Sorting.Hub.Host.Serialization;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Zeye.Sorting.Hub.Host.Tests;
 
@@ -26,6 +28,10 @@ public static class FusionApiTestHost {
     public static async Task<WebApplication> CreateAsync(RelationalParcelTestDatabase database, bool useTestServer = true) {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
         builder.Logging.ClearProviders();
+        builder.Services.AddRateLimiter(o => o.AddFixedWindowLimiter("account-login", x => { x.PermitLimit = 100; x.Window = TimeSpan.FromMinutes(1); }));
+        builder.Services.ConfigureHttpJsonOptions(static options => {
+            options.SerializerOptions.TypeInfoResolverChain.Insert(0, SortingHubJsonSerializerContext.Default);
+        });
         if (useTestServer) builder.WebHost.UseTestServer();
         else builder.WebHost.UseUrls("http://127.0.0.1:5098");
         builder.Services.AddSingleton<IParcelRepository>(database.Parcels);
@@ -58,6 +64,7 @@ public static class FusionApiTestHost {
         builder.Services.AddSingleton<ParcelBatchWriteFlushService>();
         if (!useTestServer) builder.Services.AddHostedService<Zeye.Sorting.Hub.Host.HostedServices.ParcelBatchWriteFlushHostedService>();
         var app = builder.Build();
+        app.UseRouting(); app.UseRateLimiter();
         app.MapParcelReadOnlyApis();
         app.MapParcelAnalyticsApis();
         app.MapParcelProcessingApis();

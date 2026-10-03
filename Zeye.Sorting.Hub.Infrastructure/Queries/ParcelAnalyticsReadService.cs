@@ -79,6 +79,20 @@ public sealed class ParcelAnalyticsReadService : IParcelAnalyticsReadService {
         }).ToArray();
         var lifecycleSamples = dayRows.Sum(x => x.LifecycleSampleCount);
         var lifecycleMilliseconds = dayRows.Sum(x => x.LifecycleMilliseconds);
+        var creationIntervals = await ParcelCreationIntervalQuery.ReadAsync(db,
+            budget.RangeStartLocal, budget.RangeEndLocal, cancellationToken);
+
+        // 趋势按实际完成日期计数，包含更早入库、但在窗口内完成的包裹。
+        var completedParcels = (await ParcelPartitionQueryBuilder.BuildAsync<Parcel>(db, _partitions, cancellationToken))
+            .Where(x => x.Status == ParcelStatus.Completed && x.SourceParcelId != null && x.DetectedTime != null
+                && x.CompletedTime >= budget.RangeStartLocal && x.CompletedTime < budget.RangeEndLocal);
+        var sortingDayRows = await completedParcels.GroupBy(x => x.CompletedTime!.Value.Date)
+            .Select(group => new { Date = group.Key, SortedCount = group.LongCount() })
+            .OrderBy(x => x.Date).ToListAsync(cancellationToken);
+        var dailySorting = sortingDayRows.Select(x => new ParcelAnalyticsDailySortingItem {
+            Date = x.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            SortedCount = x.SortedCount
+        }).ToArray();
 
         // 步骤2：工作台和异常类型先在数据库分组，返回行数受既有报表预算控制。
         var exceptionRows = await parcels.Where(x => x.Status == ParcelStatus.SortingException)
@@ -120,7 +134,15 @@ public sealed class ParcelAnalyticsReadService : IParcelAnalyticsReadService {
             NoReadCount = daily.Sum(x => x.NoReadCount),
             ChuteMismatchCount = daily.Sum(x => x.ChuteMismatchCount),
             AverageLifecycleSeconds = lifecycleSamples == 0 ? null : (decimal)lifecycleMilliseconds / lifecycleSamples / 1000m,
+            MedianCreationIntervalMilliseconds = creationIntervals.MedianIntervalMilliseconds,
+            MinimumCreationIntervalMilliseconds = creationIntervals.MinimumIntervalMilliseconds,
+            ActualSortingThroughputPerHour = creationIntervals.MedianIntervalMilliseconds is > 0
+                ? 3_600_000m / creationIntervals.MedianIntervalMilliseconds.Value : null,
+            TheoreticalSortingThroughputPerHour = creationIntervals.MinimumIntervalMilliseconds is > 0
+                ? 3_600_000m / creationIntervals.MinimumIntervalMilliseconds.Value : null,
+            CreationIntervalSampleCount = creationIntervals.SampleCount,
             Daily = daily,
+            DailySorting = dailySorting,
             ExceptionTypes = exceptionTypes,
             Workstations = workstations,
             WorkstationsTruncated = workstationsTruncated,

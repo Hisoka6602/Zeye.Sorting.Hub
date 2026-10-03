@@ -27,7 +27,7 @@ export function ParcelDetectionPage() {
     finally { setSaving(false); }
   };
   return <>
-    <PageIntro title="来源检测登记" description="登记一次过机检测，后续量测、格口和落格结果可继续补充。" />
+    <PageIntro title="来源检测登记" description="仅供管理员测试来源检测。业务检测记录由工作台或融合服务自动传入。" />
     <SectionCard className="create-card">
       {error && <Alert showIcon type="error" message="保存失败" description={error} style={{ marginBottom: 20 }} />}
       <Form<DetectionForm> layout="vertical" onFinish={create} disabled={saving} requiredMark>

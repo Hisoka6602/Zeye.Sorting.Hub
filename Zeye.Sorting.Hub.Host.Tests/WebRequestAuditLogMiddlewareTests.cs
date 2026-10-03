@@ -26,6 +26,31 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 /// Web 请求审计日志中间件回归测试。
 /// </summary>
 public sealed class WebRequestAuditLogMiddlewareTests {
+    /// <summary>即使开启完整采样，账号载荷也不进入审计正文或重放命令。</summary>
+    [Theory]
+    [InlineData("bootstrap")]
+    [InlineData("login")]
+    [InlineData("users")]
+    [InlineData("/API/ADMIN/PARCELS/CLEANUP-EXPIRED/")]
+    public async Task AccountCredentialsAreNeverCaptured(string operation) {
+        var repository = new InMemoryWebRequestAuditLogRepository();
+        await using var app = await BuildTestAppAsync(new WebRequestAuditLogOptions {
+            Enabled = true, SampleRate = 1, IncludeRequestBody = true, IncludeResponseBody = true,
+            MaxRequestBodyLength = 2048, MaxResponseBodyLength = 2048
+        }, repository);
+        using var client = app.GetTestClient();
+        client.DefaultRequestHeaders.Add("X-Sorting-Api-Key", "private-machine-test-key");
+        using var response = await client.PostAsJsonAsync(operation.StartsWith('/') ? operation : $"/api/access/{operation}", new {
+            password = "private-test-password", bootstrapKey = "private-bootstrap-test-key"
+        });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        await WaitForWriteCountAsync(repository, 1, 20, 50);
+        var log = Assert.Single(repository.Logs);
+        Assert.Empty(log.Detail!.RequestBody);
+        Assert.DoesNotContain("private-", log.Detail.CurlCommand, StringComparison.Ordinal);
+        Assert.DoesNotContain("private-machine-test-key", log.Detail.RequestHeadersJson, StringComparison.Ordinal);
+        Assert.Contains("[REDACTED]", log.Detail.RequestHeadersJson, StringComparison.Ordinal);
+    }
     /// <summary>
     /// 验证场景：Enabled=false 时不写审计日志。
     /// </summary>
@@ -144,9 +169,9 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         Assert.False(string.IsNullOrWhiteSpace(log.Detail.RequestUrl));
         Assert.Equal("middleware-tests/1.0", log.Detail.UserAgent);
         Assert.NotNull(log.Detail.RequestHeadersJson);
-        Assert.Contains("\"Authorization\":\"Bearer abcdefghijklmnopqrstuvwxyz9876543210\"", log.Detail.RequestHeadersJson, StringComparison.Ordinal);
-        Assert.Contains("\"Cookie\":\"sessionid=secret-cookie\"", log.Detail.RequestHeadersJson, StringComparison.Ordinal);
-        Assert.Contains("\"X-Api-Key\":\"secret-api-key\"", log.Detail.RequestHeadersJson, StringComparison.Ordinal);
+        Assert.Contains("\"Authorization\":\"[REDACTED]\"", log.Detail.RequestHeadersJson, StringComparison.Ordinal);
+        Assert.Contains("\"Cookie\":\"[REDACTED]\"", log.Detail.RequestHeadersJson, StringComparison.Ordinal);
+        Assert.Contains("\"X-Api-Key\":\"[REDACTED]\"", log.Detail.RequestHeadersJson, StringComparison.Ordinal);
 
         var curl = log.Detail.CurlCommand;
         Assert.Contains("curl -X POST", curl, StringComparison.Ordinal);
@@ -154,7 +179,9 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         Assert.Contains("-H 'Content-Type: application/json", curl, StringComparison.Ordinal);
         Assert.Contains("-H 'Accept:", curl, StringComparison.Ordinal);
         Assert.Contains("-H 'User-Agent: middleware-tests/1.0'", curl, StringComparison.Ordinal);
-        Assert.Contains("-H 'Authorization: Bearer abcdefghijklmnopqrstuvwxyz9876543210'", curl, StringComparison.Ordinal);
+        Assert.DoesNotContain("abcdefghijklmnopqrstuvwxyz9876543210", curl, StringComparison.Ordinal);
+        Assert.DoesNotContain("secret-cookie", curl, StringComparison.Ordinal);
+        Assert.DoesNotContain("secret-api-key", curl, StringComparison.Ordinal);
         Assert.Contains("--data-raw", curl, StringComparison.Ordinal);
 
         var bodyShellLiteral = ToSingleQuotedShellLiteral(log.Detail.RequestBody);
@@ -497,6 +524,8 @@ public sealed class WebRequestAuditLogMiddlewareTests {
     /// <param name="app">应用对象。</param>
     private static void ConfigureEndpoints(WebApplication app) {
         app.MapGet("/ok", () => Results.Text("pong", "text/plain"));
+        app.MapPost("/api/access/{operation}", () => Results.Text("ok"));
+        app.MapPost("/api/admin/parcels/cleanup-expired", () => Results.Text("ok"));
         app.MapPost("/echo", async context => {
             using var reader = new StreamReader(context.Request.Body, Encoding.UTF8);
             _ = await reader.ReadToEndAsync();

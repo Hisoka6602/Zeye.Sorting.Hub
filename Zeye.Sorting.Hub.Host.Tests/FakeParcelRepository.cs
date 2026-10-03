@@ -263,7 +263,7 @@ internal sealed class FakeParcelRepository : IParcelRepository {
     /// <summary>
     /// 过期清理（由 CleanupDecision 属性控制返回三态决策，不依赖真实隔离器）。
     /// </summary>
-    public Task<RepositoryResult<DangerousBatchActionResult>> RemoveExpiredAsync(DateTime createdBefore, CancellationToken cancellationToken) {
+    public Task<RepositoryResult<DangerousBatchActionResult>> RemoveExpiredAsync(DateTime createdBefore, CancellationToken cancellationToken, ParcelCleanupOperator? auditOperator = null) {
         var executedCount = CleanupDecision == ActionIsolationDecision.Execute ? CleanupExecutedCount : 0;
         var result = new DangerousBatchActionResult {
             ActionName = "remove-expired-parcels",

@@ -39,6 +39,9 @@ public sealed class DatabaseConnectionDiagnosticsService : IDatabaseConnectionDi
     /// </summary>
     private DatabaseConnectionHealthSnapshot? _latestSnapshot;
 
+    /// <summary>最新探测的单调时间戳，系统校时不会延长缓存有效期。</summary>
+    private long _latestProbeTimestamp;
+
     /// <summary>
     /// 连续失败次数。
     /// </summary>
@@ -100,12 +103,17 @@ public sealed class DatabaseConnectionDiagnosticsService : IDatabaseConnectionDi
 
             // 步骤 2：执行最小连接探测，仅确认数据库可连通，不承载业务查询副作用。
             var canConnect = await dbContext.Database.CanConnectAsync(timeoutTokenSource.Token);
+            cancellationToken.ThrowIfCancellationRequested();
             var elapsedMilliseconds = GetElapsedMilliseconds(probeTimestamp);
             if (!canConnect) {
                 return RecordFailureSnapshot(provider, database, elapsedMilliseconds, "数据库连接不可用。");
             }
 
             return RecordSuccessSnapshot(provider, database, elapsedMilliseconds);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            Logger.Info("数据库连接诊断调用已取消，不计为数据库故障。");
+            throw;
         }
         catch (Exception ex) {
             var elapsedMilliseconds = GetElapsedMilliseconds(probeTimestamp);
@@ -128,7 +136,7 @@ public sealed class DatabaseConnectionDiagnosticsService : IDatabaseConnectionDi
                 return null;
             }
 
-            var age = DateTime.Now - _latestSnapshot.CheckedAtLocal;
+            var age = Stopwatch.GetElapsedTime(_latestProbeTimestamp);
             return age <= TimeSpan.FromMilliseconds(_options.ProbeCacheMilliseconds)
                 ? _latestSnapshot
                 : null;
@@ -179,6 +187,7 @@ public sealed class DatabaseConnectionDiagnosticsService : IDatabaseConnectionDi
                 IsRecoveryPending = _isRecoveryPending,
                 FailureMessage = null
             };
+            _latestProbeTimestamp = Stopwatch.GetTimestamp();
             return _latestSnapshot;
         }
     }
@@ -210,6 +219,7 @@ public sealed class DatabaseConnectionDiagnosticsService : IDatabaseConnectionDi
                 IsRecoveryPending = _isRecoveryPending,
                 FailureMessage = failureMessage
             };
+            _latestProbeTimestamp = Stopwatch.GetTimestamp();
             return _latestSnapshot;
         }
     }

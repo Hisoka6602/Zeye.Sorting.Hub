@@ -144,7 +144,9 @@ public sealed class ArchiveTask : IEntity<long> {
     /// </summary>
     public void MarkRunning() {
         Status = ArchiveTaskStatus.Running;
-        LastAttemptedAt = DateTime.Now;
+        // MySQL 使用微秒精度，领取对象与重新读取的尝试标识必须保持一致。
+        var now = DateTime.Now;
+        LastAttemptedAt = new DateTime(now.Ticks - now.Ticks % 10, now.Kind);
         FailureMessage = string.Empty;
         UpdatedAt = LastAttemptedAt.Value;
     }

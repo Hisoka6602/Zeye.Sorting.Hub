@@ -454,7 +454,8 @@ public sealed class ParcelRepositoryTests {
             Assert.True(addRangeResult.IsSuccess, addRangeResult.ErrorMessage);
 
             // 步骤 1：默认配置下危险清理动作应被守卫阻断（安全默认值）。
-            var removeExpiredBlockedResult = await contractRepository.RemoveExpiredAsync(baseTime.AddMinutes(1), CancellationToken.None);
+            var blockedRepository = CreateRepository(databaseName, BuildRemoveExpiredIsolationConfiguration(true, false, true));
+            var removeExpiredBlockedResult = await blockedRepository.RemoveExpiredAsync(baseTime.AddMinutes(1), CancellationToken.None);
             Assert.True(removeExpiredBlockedResult.IsSuccess, removeExpiredBlockedResult.ErrorMessage);
             var blockedAction = removeExpiredBlockedResult.Value;
             Assert.True(blockedAction.IsBlockedByGuard);

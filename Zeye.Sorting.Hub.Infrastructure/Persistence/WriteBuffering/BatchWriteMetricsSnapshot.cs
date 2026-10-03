@@ -24,6 +24,15 @@ public sealed record BatchWriteMetricsSnapshot {
     /// </summary>
     public required long DroppedCount { get; init; }
 
+    /// <summary>死信容量不足造成的实际覆盖数量，与未接收请求的拒绝数量区分。</summary>
+    public long DeadLetterDroppedCount { get; init; }
+
+    /// <summary>消费循环是否已启动过。</summary>
+    public bool HasWorkerStarted { get; init; }
+
+    /// <summary>消费循环是否仍在运行。</summary>
+    public bool IsWorkerRunning { get; init; }
+
     /// <summary>
     /// 最近一次成功刷新时间（本地时间）。
     /// </summary>

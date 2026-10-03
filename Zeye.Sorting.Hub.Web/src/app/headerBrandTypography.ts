@@ -69,12 +69,6 @@ export const headerBrandTypography: Record<HeaderBrandKey, { x: number; y: numbe
     "width": 162,
     "height": 20
   },
-  "P12": {
-    "x": 36,
-    "y": 6,
-    "width": 159,
-    "height": 19
-  },
   "P13": {
     "x": 39,
     "y": 6,
