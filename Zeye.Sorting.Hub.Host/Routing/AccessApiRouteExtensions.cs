@@ -23,7 +23,8 @@ public static class AccessApiRouteExtensions {
             if (user is not null) { var (profile, revision) = await service.ReadProfileAsync(user.Id, ct); avatarUrl = profile.AvatarUrl(revision); }
             context.Response.Headers.CacheControl = "private, no-store";
             return Results.Ok(new { configured = directory.HasManagedUsers, bootstrapAvailable = service.BootstrapAvailable, authenticated = context.User.Identity?.IsAuthenticated == true,
-                enforceAuthorization = service.EnforceAuthorization, name = context.User.Identity?.Name, avatarUrl, permissions = context.User.FindAll("permission").Select(x => x.Value).ToArray() });
+                isSuperAdministrator = AccessDirectoryService.IsSuperAdministrator(context.User), enforceAuthorization = service.EnforceAuthorization,
+                name = context.User.Identity?.Name, avatarUrl, permissions = context.User.FindAll("permission").Select(x => x.Value).ToArray() });
         });
         group.MapPost("/bootstrap", async (JsonElement body, AccessDirectoryService service, HttpContext context, CancellationToken ct) => {
             if (!service.MatchesSecret(Text(body, "bootstrapKey"), "Access:BootstrapKey")) return Results.Problem(statusCode: 403, detail: "初始化密钥无效或未配置。");
@@ -32,7 +33,7 @@ public static class AccessApiRouteExtensions {
             var account = Text(body, "username").Trim(); var name = Text(body, "name").Trim(); var password = Text(body, "password");
             if (BuiltInSuperUser.IsReservedAccount(account)) return Results.Problem(statusCode: 400, detail: "hisoka 为内置超级用户的保留账号名，请使用其他账号名创建管理员。");
             if (!AccessDirectoryService.ValidUser(account, name, password, true)) return Results.Problem(statusCode: 400, detail: "账号需为 3~64 位字母、数字或 _.-；姓名不能为空；密码长度为 12~128。");
-            var user = AccessDirectoryService.CreateUser(account, name, 1, password);
+            var user = AccessDirectoryService.CreateUser(account, name, AccessDirectoryService.SuperAdministratorRoleId, password);
             if (!await service.SaveAsync(directory with { Initialized = true, Users = [.. directory.Users.Where(BuiltInSuperUser.Is), user] }, revision, ct)) return Results.Problem(statusCode: 409, detail: "初始化存在并发冲突，请登录或重试。");
             await context.SignInAsync("SortingCookie", AccessDirectoryService.Principal(user, directory.Roles[0]));
             return Results.Ok(new { name = user.Name });
@@ -81,6 +82,9 @@ public static class AccessApiRouteExtensions {
             if (body.TryGetProperty("id", out _) && existing is null) return Results.Problem(statusCode: 404, detail: "账号不存在。");
             if (existing is not null && BuiltInSuperUser.Is(existing)) return Results.Problem(statusCode: 400, detail: "内置超级用户由程序固定，不能修改账号、密码、角色或启用状态。");
             var account = Text(body, "account").Trim(); var name = Text(body, "name").Trim(); var password = Text(body, "password"); var roleId = Number(body, "roleId");
+            if (!AccessDirectoryService.IsSuperAdministrator(context.User)
+                && (roleId == AccessDirectoryService.SuperAdministratorRoleId || existing?.RoleId == AccessDirectoryService.SuperAdministratorRoleId))
+                return Results.Problem(statusCode: 403, detail: "仅超级管理员或内置超级用户可以创建或维护超级管理员账号。");
             if (BuiltInSuperUser.IsReservedAccount(account)) return Results.Problem(statusCode: 400, detail: "hisoka 为内置超级用户的保留账号名，不能用于创建或重命名其他用户。");
             var enabled = !body.TryGetProperty("enabled", out var flag) || flag.ValueKind == JsonValueKind.True;
             if (body.TryGetProperty("enabled", out flag) && flag.ValueKind is not (JsonValueKind.True or JsonValueKind.False)) return Results.Problem(statusCode: 400, detail: "启用状态必须为布尔值。");

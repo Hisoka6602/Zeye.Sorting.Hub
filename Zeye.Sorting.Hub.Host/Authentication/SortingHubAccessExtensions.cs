@@ -16,8 +16,8 @@ public static class SortingHubAccessExtensions {
             options.Events.OnRedirectToLogin = context => { context.Response.StatusCode = 401; return Task.CompletedTask; };
             options.Events.OnRedirectToAccessDenied = context => { context.Response.StatusCode = 403; return Task.CompletedTask; };
             options.Events.OnValidatePrincipal = async context => {
-                // 探针公开且不使用账号权限；数据库故障时仍须返回真实的 503 健康报告。
-                if (context.Request.Path.StartsWithSegments("/health")) return;
+                // 存活与就绪探针保持公开且不依赖账号数据库；深度诊断重新验证当前身份。
+                if (context.Request.Path.Equals(new PathString("/health/live")) || context.Request.Path.Equals(new PathString("/health/ready"))) return;
                 var service = context.HttpContext.RequestServices.GetRequiredService<AccessDirectoryService>();
                 var (directory, _) = await service.ReadAsync(context.HttpContext.RequestAborted);
                 var user = directory.Users.SingleOrDefault(x => x.Id == context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier));
@@ -31,24 +31,22 @@ public static class SortingHubAccessExtensions {
     /// <summary>登录会话写请求校验来源标识；开启权限保护时，按真实角色权限保护 API。</summary>
     public static IApplicationBuilder UseSortingHubAccess(this IApplicationBuilder app) => app.Use(async (context, next) => {
         var path = (context.Request.Path.Value ?? "").TrimEnd('/').ToLowerInvariant();
-        if (!path.StartsWith("/api/", StringComparison.OrdinalIgnoreCase)) { await next(); return; }
+        if (!path.StartsWith("/api/", StringComparison.OrdinalIgnoreCase) && path != "/health/deep") { await next(); return; }
         var service = context.RequestServices.GetRequiredService<AccessDirectoryService>();
         var write = !HttpMethods.IsGet(context.Request.Method) && !HttpMethods.IsHead(context.Request.Method);
         if (context.User.Identity?.IsAuthenticated == true && write && context.Request.Headers["X-Zeye-Client"] != "web") {
             await Results.Problem(statusCode: 403, detail: "写入请求缺少来源校验标识。").ExecuteAsync(context); return;
         }
-        // 手工新增仅用于管理员测试，即使关闭一般业务鉴权，也不能开放此入口。
-        var normalizedPath = path.TrimEnd('/');
-        var manualCreate = HttpMethods.IsPost(context.Request.Method) && (
-            normalizedPath.Equals("/api/admin/parcels", StringComparison.OrdinalIgnoreCase)
-            || normalizedPath.Equals("/api/admin/parcels/batch-buffer", StringComparison.OrdinalIgnoreCase));
-        if (manualCreate) {
-            if (context.User.Identity?.IsAuthenticated != true) { await Results.Problem(statusCode: 401, detail: "请先登录管理员账号。").ExecuteAsync(context); return; }
-            if (!context.User.HasClaim("permission", "access.manage")) { await Results.Problem(statusCode: 403, detail: "手工创建包裹仅供管理员测试使用。").ExecuteAsync(context); return; }
-            await next(); return;
+        // 自动上报继续使用专用机器密钥；该凭据不能读取或操作其他敏感版块。
+        if (path == "/api/admin/parcels/processing-records" && HttpMethods.IsPost(context.Request.Method)
+            && service.MatchesSecret(context.Request.Headers["X-Sorting-Api-Key"], "Access:MachineApiKey")) { await next(); return; }
+        // 测试、治理与可观测性在通用鉴权关闭时也不得对普通账号或匿名请求开放。
+        if (RequiresSuperAdministrator(path, context.Request.Method)) {
+            if (context.User.Identity?.IsAuthenticated != true) { await Results.Problem(statusCode: 401, detail: "请先登录超级管理员账号。").ExecuteAsync(context); return; }
+            if (!AccessDirectoryService.IsSuperAdministrator(context.User)) { await Results.Problem(statusCode: 403, detail: "当前版块仅限超级管理员或内置超级用户访问。").ExecuteAsync(context); return; }
+            if (path == "/health/deep") { await next(); return; }
         }
         if (!service.EnforceAuthorization || path is "/api/access/session" or "/api/access/login" or "/api/access/bootstrap") { await next(); return; }
-        if (path == "/api/admin/parcels/processing-records" && service.MatchesSecret(context.Request.Headers["X-Sorting-Api-Key"], "Access:MachineApiKey")) { await next(); return; }
         if (context.User.Identity?.IsAuthenticated != true) { await Results.Problem(statusCode: 401, detail: "请先登录。").ExecuteAsync(context); return; }
         if (path is "/api/access/logout" or "/api/access/profile" or "/api/access/profile/avatar") { await next(); return; }
         var permission = path switch {
@@ -68,4 +66,12 @@ public static class SortingHubAccessExtensions {
         if (permission is null || !context.User.HasClaim("permission", permission)) { await Results.Problem(statusCode: 403, detail: "当前账号没有此操作权限。").ExecuteAsync(context); return; }
         await next();
     });
+    /// <summary>按正式入口识别敏感版块，覆盖读取、写入、历史明细和深度诊断。</summary>
+    private static bool RequiresSuperAdministrator(string path, string method) => path == "/health/deep"
+        || path == "/api/admin/parcels/cleanup-expired" || path.StartsWith("/api/admin/parcels/cleanup-history", StringComparison.Ordinal)
+        || path == "/api/audit" || path.StartsWith("/api/audit/", StringComparison.Ordinal)
+        || path == "/api/diagnostics" || path.StartsWith("/api/diagnostics/", StringComparison.Ordinal)
+        || path == "/api/data-governance" || path.StartsWith("/api/data-governance/", StringComparison.Ordinal)
+        || path == "/api/operations/partitions" || path.StartsWith("/api/operations/partitions/", StringComparison.Ordinal)
+        || HttpMethods.IsPost(method) && path is "/api/admin/parcels" or "/api/admin/parcels/batch-buffer" or "/api/admin/parcels/processing-records";
 }

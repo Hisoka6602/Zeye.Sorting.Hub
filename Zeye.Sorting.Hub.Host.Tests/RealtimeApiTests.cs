@@ -12,11 +12,31 @@ using Zeye.Sorting.Hub.Contracts.Models.Realtime;
 using Zeye.Sorting.Hub.Host.Extensions;
 using Zeye.Sorting.Hub.Host.Hubs;
 using Zeye.Sorting.Hub.Host.Middleware;
+using Zeye.Sorting.Hub.Host.Queries;
 
 namespace Zeye.Sorting.Hub.Host.Tests;
 
 /// <summary>使用生产认证与正式实时入口验证握手、读取、变更推送、取消和权限撤销。</summary>
 public sealed class RealtimeApiTests {
+    /// <summary>拥有全部单项权限的普通角色也不能通过实时读取、订阅和命名提交绕过敏感版块边界。</summary>
+    [Fact]
+    public async Task SensitiveRealtimeResourcesRequireSuperAdministratorIdentity() {
+        await using var db = new RelationalParcelTestDatabase(); await db.InitializeAsync();
+        await using var app = await CreateAsync(db); using var admin = app.GetTestClient(); await LoginAsync(admin);
+        await admin.PostAsJsonAsync("/api/access/roles", new { expectedRevision = 1, name = "超级管理员", permissions = AccessDirectoryService.PermissionCodes });
+        await admin.PostAsJsonAsync("/api/access/users", new { expectedRevision = 2, account = "ordinary", name = "普通用户", roleId = 2, password = "test-ordinary-password" });
+        using var ordinary = app.GetTestClient(); ordinary.DefaultRequestHeaders.Add("X-Zeye-Client", "web");
+        AccessApiTests.UseCookie(ordinary, await ordinary.PostAsJsonAsync("/api/access/login", new { username = "ordinary", password = "test-ordinary-password" }));
+        await using var hub = CreateConnection(app, ordinary); await hub.StartAsync();
+        foreach (var path in new[] { "/api/audit/web-requests", "/api/diagnostics/slow-queries", "/api/data-governance/archive-tasks", "/api/operations/partitions", "/health/deep" })
+            Assert.Equal(403, (await hub.InvokeAsync<RealtimeResponse>("Read", path)).StatusCode);
+        Assert.Equal(403, (await hub.InvokeAsync<RealtimeResponse>("AppendProcessingRecord", "{}")).StatusCode);
+        Assert.Equal(200, (await hub.InvokeAsync<RealtimeResponse>("Read", "/api/parcels")).StatusCode);
+        Assert.Equal(200, (await hub.InvokeAsync<RealtimeResponse>("UpdateParcelStatus", "1", "{\"status\":2}")).StatusCode);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        await using var stream = hub.StreamAsync<RealtimeResponse>("Watch", "/api/audit/web-requests", cancellation.Token).GetAsyncEnumerator(cancellation.Token);
+        Assert.True(await stream.MoveNextAsync()); Assert.Equal(403, stream.Current.StatusCode); Assert.False(await stream.MoveNextAsync());
+    }
     /// <summary>危险、外部、非规范路径不能经只读通道执行。</summary>
     [Theory]
     [InlineData("/api/admin/parcels/cleanup-expired")]

@@ -11,6 +11,7 @@ import { StatusTag } from '../../components/StatusTag';
 import { readHealthReport } from '../../data/api/client';
 import { useApiResource } from '../../data/api/useApiResource';
 import { useAccessSession } from '../../data/api/useAccessSession';
+import { canAccessRestrictedSections } from '../../app/sectionAccess';
 import { getRealtimeState, subscribeRealtimeState } from '../../data/api/realtimeTransport';
 import { archiveStatusLabels, localTime, type ArchiveTask, type HealthReport, type PagedResult } from '../../data/api/operationalTypes';
 import type { ParcelList, ParcelSummary } from '../../data/api/parcelTypes';
@@ -62,11 +63,11 @@ export function OverviewPage() {
   const session = useAccessSession();
   const [automaticRefresh, setAutomaticRefresh] = useState(true);
   const connection = useSyncExternalStore(subscribeRealtimeState, getRealtimeState, getRealtimeState);
-  const canReadGovernance = session.data?.permissions.includes('governance.manage') ?? false;
+  const canReadGovernance = canAccessRestrictedSections(session.data);
   const parcels = useApiResource<ParcelList>('/api/parcels?pageNumber=1&pageSize=200&includeTotalCount=false', undefined, automaticRefresh);
   const live = useApiResource<HealthReport>('/health/live', readHealthReport, automaticRefresh);
   const ready = useApiResource<HealthReport>('/health/ready', readHealthReport, automaticRefresh);
-  const deep = useApiResource<HealthReport>('/health/deep', readHealthReport, automaticRefresh);
+  const deep = useApiResource<HealthReport>(canReadGovernance ? '/health/deep' : null, readHealthReport, automaticRefresh);
   const archives = useApiResource<PagedResult<ArchiveTask>>(canReadGovernance ? '/api/data-governance/archive-tasks?pageNumber=1&pageSize=5' : null, undefined, automaticRefresh);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
@@ -92,8 +93,8 @@ export function OverviewPage() {
     <ApiFeedback error={session.error} retry={session.refresh} />
     <section aria-labelledby="platform-status-title" className="workbench-platform">
       <div className="workbench-section-heading"><div><h2 id="platform-status-title">管理平台状态</h2><p>Zeye.Sorting.Hub 服务及依赖健康</p></div>
-        <Button type="link" icon={<ArrowRightOutlined />} iconPosition="end" onClick={() => navigate('/diagnostics/health')}>查看诊断</Button></div>
-      <div className="workbench-probes">{healthProbes.map((probe, index) => <PlatformProbe key={probe.path} probe={probe} resource={[live, ready, deep][index]} />)}</div>
+        {canReadGovernance && <Button type="link" icon={<ArrowRightOutlined />} iconPosition="end" onClick={() => navigate('/diagnostics/health')}>查看诊断</Button>}</div>
+      <div className={`workbench-probes ${canReadGovernance ? '' : 'is-basic'}`}>{healthProbes.map((probe, index) => (index < 2 || canReadGovernance) && <PlatformProbe key={probe.path} probe={probe} resource={[live, ready, deep][index]} />)}</div>
     </section>
     <SectionCard className="workbench-stations-card" title={<div className="workbench-section-title"><AppstoreOutlined /><div><h2>分拣工作台</h2><p>按来源实例查看处理情况，支持多个工作台同时工作</p></div></div>} extra={<span className="workbench-connection-state"><ApiOutlined />{connection === 'connected' ? '实时通道已连接' : connection === 'reconnecting' ? '实时通道重连中' : connection === 'connecting' ? '正在连接实时通道' : '实时通道未连接'}</span>}>
       <div className="workbench-source-note"><span><CheckCircleOutlined />处理情况来自已入库包裹</span><p>包裹变化实时更新，设备在线状态等待融合服务上报。当前观察最近 24 小时内最新 200 条记录，不代表全部工作台。</p></div>
@@ -123,13 +124,13 @@ export function OverviewPage() {
         ]} locale={{ emptyText: selectedKey ? '该工作台在当前窗口暂无包裹' : '暂无包裹记录' }} />}
       </SectionCard>
     </div>
-    <div className="workbench-bottom">
-      <SectionCard title={<div className="workbench-section-title"><h2>最近归档任务</h2></div>} extra={<Button type="link" disabled={!canReadGovernance} onClick={() => navigate('/governance/archive-tasks')}>查看全部 <ArrowRightOutlined /></Button>}>
-        {!canReadGovernance ? <p className="workbench-permission-note">{session.loading ? '正在确认查看权限…' : session.error ? '查看权限暂不可用，请重试读取会话' : '当前账号没有数据治理权限'}</p> : archives.error ? <ApiFeedback error={archives.error} retry={archives.refresh} /> : <DataTable<ArchiveTask> loading={archives.loading} dataSource={archives.data?.items ?? []} pagination={false} scroll={{ x: 510 }} columns={[
+    {canReadGovernance && <div className="workbench-bottom">
+      <SectionCard title={<div className="workbench-section-title"><h2>最近归档任务</h2></div>} extra={<Button type="link" onClick={() => navigate('/governance/archive-tasks')}>查看全部 <ArrowRightOutlined /></Button>}>
+        {archives.error ? <ApiFeedback error={archives.error} retry={archives.refresh} /> : <DataTable<ArchiveTask> loading={archives.loading} dataSource={archives.data?.items ?? []} pagination={false} scroll={{ x: 510 }} columns={[
           { title: '创建时间', dataIndex: 'createdAt', width: 160, render: localTime }, { title: '任务 ID', dataIndex: 'id', width: 150 },
           { title: '状态', dataIndex: 'status', width: 90, render: (value: string) => <StatusTag value={archiveStatusLabels[value] ?? value} /> }, { title: '发起人', dataIndex: 'requestedBy', width: 110 },
         ]} locale={{ emptyText: '暂无归档任务' }} />}
       </SectionCard>
-    </div>
+    </div>}
   </div>;
 }

@@ -4,6 +4,8 @@
 
 登录后的高频读取、包裹处理事实提交及状态更新使用同源 SignalR `/hubs/sorting`，多个组件共享连接和订阅；认证、文件与清理等管理入口保留 HTTP 安全流程。实时入口复用原接口权限、限流和审计，写入断线不自动重放。Windows 一体部署、Docker 及 Vite 的代理配置共同支持长连接，详见 `deploy/README.md`。
 
+测试数据、数据治理与可观测性仅向固定的超级管理员角色和内置超级用户开放，菜单、直接地址、HTTP 和 SignalR 均验证此边界。自定义角色即使获得全部单项权限也不能开放这些版块或自行晋升；关闭通用鉴权仍保留限制。公开存活与就绪探针继续用于部署检查，自动包裹上报使用独立机器密钥。
+
 ## 仓库文件结构（当前）
 
 > 说明：以下基础结构与“Fusion处理事实与实际物理分表”中的新增文件结构共同组成当前清单（不含 `.git`、`bin/`、`obj/` 等构建产物）。
@@ -1484,6 +1486,7 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 
 ## 本次更新内容
 
+- 统一三个敏感版块的固定角色限制，收紧页面、快捷入口、实时接口及超级管理员账号维护的权限边界。
 - 将 SQL Server 对象存储迁移的旧图片物理分表与含对象定位数据的回退限制写入迁移，并在独立库验证升级、阻断、完整回退和重升；CI 回退脚本覆盖两条 SQL Server 迁移。
 - 修正代码与门禁中对 NLog、迁移文件和凭据形态的误判，归档双 Provider 隔离演练及既有库只读盘点结果。
 - 为SQL Server建立独立EF迁移程序集与空库基线，按Provider选择迁移链；增加历史事实分表索引回填预演和双Provider迁移门禁，并在隔离LocalDB验证迁移、守卫及真实分表索引。
@@ -1744,6 +1747,7 @@ Zeye.Sorting.Hub.Web/public/demo/
   parcel-multi-top.svg
   parcel-sample.svg
 Zeye.Sorting.Hub.Web/src/app/
+  sectionAccess.ts
   typography.css
   typography.ts
 Zeye.Sorting.Hub.Web/src/components/
@@ -1773,7 +1777,6 @@ Zeye.Sorting.Hub.Web/src/features/parcels/
   parcelImages.css
   ParcelImagesDrawer.tsx
   sortingThroughputMetric.ts
-  testAccess.ts
   workbench.css
   workbenchMetricDays.ts
   WorkbenchMetricTrend.tsx
@@ -1781,7 +1784,7 @@ Zeye.Sorting.Hub.Web/src/features/parcels/
 Zeye.Sorting.Hub.Web/tests/
   analyticsModel.test.mjs
   formatNumber.test.mjs
-  parcelTestAccess.test.mjs
+  sectionAccess.test.mjs
   requestDescriptions.test.mjs
   sortingThroughputMetric.test.mjs
   workbenchMetricDays.test.mjs
@@ -1851,14 +1854,14 @@ Zeye.Sorting.Hub.Web/tests/
 | Zeye.Sorting.Hub.Web/src/features/parcels | `parcelImages.css` | 多图画廊、缩略图与图片状态样式 |
 | Zeye.Sorting.Hub.Web/src/features/parcels | `ParcelImagesDrawer.tsx` | 包裹台账图片抽屉及加载状态 |
 | Zeye.Sorting.Hub.Web/src/features/parcels | `sortingThroughputMetric.ts` | 实际和理论小时产能的展示值与说明 |
-| Zeye.Sorting.Hub.Web/src/features/parcels | `testAccess.ts` | 包裹测试页面的机器凭据与权限辅助逻辑 |
+| Zeye.Sorting.Hub.Web/src/app | `sectionAccess.ts` | 敏感版块的服务端身份判断、菜单与直接路由边界 |
 | Zeye.Sorting.Hub.Web/src/features/parcels | `workbench.css` | 平台健康及多工作台信息展示样式 |
 | Zeye.Sorting.Hub.Web/src/features/parcels | `workbenchMetricDays.ts` | 时间范围内每日工作台指标补齐与汇总 |
 | Zeye.Sorting.Hub.Web/src/features/parcels | `WorkbenchMetricTrend.tsx` | 工作台指标卡片的轻量趋势与占比图表 |
 | Zeye.Sorting.Hub.Web/src/features/parcels | `workbenchModel.ts` | 来源工作台分组、筛选及处理情况汇总 |
 | Zeye.Sorting.Hub.Web/tests | `analyticsModel.test.mjs` | 报表模型映射与空数据场景回归 |
 | Zeye.Sorting.Hub.Web/tests | `formatNumber.test.mjs` | 数字、精度及单位展示回归 |
-| Zeye.Sorting.Hub.Web/tests | `parcelTestAccess.test.mjs` | 包裹测试接口的权限与凭据处理回归 |
+| Zeye.Sorting.Hub.Web/tests | `sectionAccess.test.mjs` | 三个敏感版块、编码路径与固定身份限制回归 |
 | Zeye.Sorting.Hub.Web/tests | `requestDescriptions.test.mjs` | 审计请求说明映射回归 |
 | Zeye.Sorting.Hub.Web/tests | `sortingThroughputMetric.test.mjs` | 实际和理论产能展示语义回归 |
 | Zeye.Sorting.Hub.Web/tests | `workbenchMetricDays.test.mjs` | 每日指标补齐与统计范围回归 |

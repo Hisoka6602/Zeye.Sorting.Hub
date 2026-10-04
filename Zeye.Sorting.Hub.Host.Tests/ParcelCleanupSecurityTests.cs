@@ -25,7 +25,7 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 
 /// <summary>对真实密码、权限、数据库清理与永久查询使用完整会话管线验证。</summary>
 public sealed class ParcelCleanupSecurityTests {
-    /// <summary>关闭通用鉴权也不能绕过密码和治理权限；密码错误不产生任何删除。</summary>
+    /// <summary>关闭通用鉴权也不能绕过超级管理员身份和密码；普通审计权限不能读取删除记录。</summary>
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -54,7 +54,8 @@ public sealed class ParcelCleanupSecurityTests {
         var response = await result.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("execute", response.GetProperty("decision").GetString()); Assert.Equal(1, response.GetProperty("executedCount").GetInt32());
         var id = response.GetProperty("cleanupRecordId").GetString();
-        var detail = await writer.GetFromJsonAsync<JsonElement>("/api/admin/parcels/cleanup-history/" + id);
+        Assert.Equal(HttpStatusCode.Forbidden, (await writer.GetAsync("/api/admin/parcels/cleanup-history/" + id)).StatusCode);
+        var detail = await admin.GetFromJsonAsync<JsonElement>("/api/admin/parcels/cleanup-history/" + id);
         Assert.Equal("清理管理员", detail.GetProperty("record").GetProperty("operator").GetProperty("name").GetString());
         Assert.Equal("admin", detail.GetProperty("record").GetProperty("operator").GetProperty("account").GetString());
         Assert.Single(detail.GetProperty("items").EnumerateArray());
@@ -63,7 +64,8 @@ public sealed class ParcelCleanupSecurityTests {
         await using var context = await db.Factory.CreateDbContextAsync();
         var permanent = await context.Set<ManagedDocument>().Where(x => x.Key.StartsWith(ParcelCleanupAudit.Prefix) || x.Key.StartsWith("parcel-cleanup-batch:")).ToListAsync();
         Assert.Equal(2, permanent.Count); Assert.All(permanent, x => Assert.DoesNotContain(body.password, x.Json));
-        Assert.Equal(HttpStatusCode.BadRequest, (await writer.GetAsync("/api/admin/parcels/cleanup-history?pageSize=999999")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await writer.GetAsync("/api/admin/parcels/cleanup-history?pageSize=999999")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await admin.GetAsync("/api/admin/parcels/cleanup-history?pageSize=999999")).StatusCode);
     }
     /// <summary>密码确认的尝试也受限流保护。</summary>
     [Fact]

@@ -12,6 +12,7 @@ import { useAccessSession, sessionChanged } from '../../data/api/useAccessSessio
 import { localTime } from '../../data/api/operationalTypes';
 import type { AccessDirectory, AccessRole, AccessUser } from '../../data/api/accessTypes';
 import { reservedAccountRule } from '../../data/api/reservedAccountValidation';
+import { canAccessRestrictedSections } from '../../app/sectionAccess';
 export function AccessPage() {
   const { message } = App.useApp();
   const navigate = useNavigate();
@@ -35,6 +36,7 @@ export function AccessPage() {
     } catch (error) { message.error(error instanceof Error ? error.message : '保存失败'); } finally { setBusy(false); }
   };
   const canManage = session.data?.permissions.includes('access.manage') === true;
+  const canManageSuperAdministrators = canAccessRestrictedSections(session.data);
   return <>
     <PageIntro title="账号与权限" description="维护真实用户和角色。停用或修改密码后，旧会话将失效。" action={<Button onClick={() => { session.refresh(); directory.refresh(); }}>刷新</Button>} />
     <ApiFeedback error={session.error ?? directory.error} retry={() => { session.refresh(); directory.refresh(); }} />
@@ -44,7 +46,7 @@ export function AccessPage() {
         { key: 'users', label: '用户', children: <DataTable<AccessUser> loading={directory.loading} dataSource={(data?.users ?? []).filter(x => !x.builtIn && (x.name + x.account + (data?.roles.find(role => role.id === x.roleId)?.name ?? '')).includes(search))} columns={[
           { title: '姓名', dataIndex: 'name' }, { title: '账号', dataIndex: 'account' }, { title: '角色', render: (_, user) => data?.roles.find(x => x.id === user.roleId)?.name ?? '-' },
           { title: '状态', dataIndex: 'enabled', render: (enabled: boolean) => <Tag color={enabled ? 'green' : 'default'}>{enabled ? '启用' : '停用'}</Tag> }, { title: '最近登录', dataIndex: 'lastLogin', render: localTime },
-          { title: '操作', render: (_, user) => <Button type="link" onClick={() => openUser(user)} disabled={!canManage}>编辑</Button> },
+          { title: '操作', render: (_, user) => <Button type="link" onClick={() => openUser(user)} disabled={!canManage || !canManageSuperAdministrators && data?.roles.some(role => role.id === user.roleId && role.builtIn)}>编辑</Button> },
         ]} /> },
         { key: 'roles', label: '角色', children: <DataTable<AccessRole> loading={directory.loading} dataSource={(data?.roles ?? []).filter(x => (x.name + x.description).includes(search))} columns={[
           { title: '角色名称', dataIndex: 'name', render: (name: string, role) => <Space>{name}{role.builtIn && <Tag color="blue">内置</Tag>}</Space> }, { title: '说明', dataIndex: 'description' },
@@ -62,7 +64,7 @@ export function AccessPage() {
         </> : <>
           <Form.Item name="name" label="姓名" rules={[{ required: true, whitespace: true }]}><Input maxLength={100} /></Form.Item>
           <Form.Item name="account" label="账号" rules={[{ required: true }, { pattern: /^[A-Za-z0-9_.-]{3,64}$/, message: '3~64 位字母、数字或 _.-' }, reservedAccountRule]}><Input autoComplete="off" /></Form.Item>
-          <Form.Item name="roleId" label="角色" rules={[{ required: true }]}><Select options={(data?.roles ?? []).map(role => ({ value: Number(role.id), label: role.name }))} /></Form.Item>
+          <Form.Item name="roleId" label="角色" rules={[{ required: true }]}><Select options={(data?.roles ?? []).filter(role => canManageSuperAdministrators || !role.builtIn).map(role => ({ value: Number(role.id), label: role.name }))} /></Form.Item>
           <Form.Item name="password" label={selectedUser ? '新密码（留空则保持原密码）' : '密码'} rules={[{ required: !selectedUser }, { min: 12, max: 128, message: '密码长度需为 12~128' }]}><Input.Password autoComplete="new-password" /></Form.Item>
           <Form.Item name="enabled" label="启用" valuePropName="checked"><Switch /></Form.Item>
         </>}

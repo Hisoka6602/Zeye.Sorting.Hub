@@ -4,6 +4,10 @@ using Microsoft.AspNetCore.Identity;
 namespace Zeye.Sorting.Hub.Host.Queries;
 /// <summary>管理真实账号、密码散列及可撤销的角色权限。</summary>
 public sealed class AccessDirectoryService(ManagedDocumentService store, IConfiguration config) {
+    /// <summary>目录中固定且受保护的超级管理员角色编号。</summary>
+    public const long SuperAdministratorRoleId = 1;
+    /// <summary>仅由服务端目录授予的超级管理员身份，不从名称或权限集合推断。</summary>
+    private const string SuperAdministratorRole = "SuperAdministrator";
     /// <summary>服务端权限白名单。</summary>
     public static readonly string[] PermissionCodes = ["parcels.read", "parcels.write", "audit.read", "diagnostics.read", "governance.manage", "rules.manage", "settings.read", "access.manage"];
     /// <summary>口令散列器，默认使用框架的随机盐 PBKDF2 实现。</summary>
@@ -27,11 +31,11 @@ public sealed class AccessDirectoryService(ManagedDocumentService store, IConfig
     /// <summary>保持首次初始化状态，并在所有读写入口统一保留程序定义的账号和完整管理员权限。</summary>
     private static AccessDirectory Normalize(AccessDirectory directory) {
         var initialized = directory.Initialized || directory.Users.Any(x => !BuiltInSuperUser.Is(x));
-        var administrator = directory.Roles.FirstOrDefault(x => x.Id == 1) ?? new AccessRole { Id = 1, Name = "超级管理员", Description = "管理平台全部已接入功能" };
+        var administrator = directory.Roles.FirstOrDefault(x => x.Id == SuperAdministratorRoleId) ?? new AccessRole { Id = SuperAdministratorRoleId, Name = "超级管理员", Description = "管理平台全部已接入功能" };
         var users = directory.Users.Where(x => !BuiltInSuperUser.IsReservedAccount(x.Account) && x.Id != BuiltInSuperUser.Id).ToArray();
         return directory with {
             Initialized = initialized,
-            Roles = [administrator with { BuiltIn = true, Permissions = PermissionCodes }, .. directory.Roles.Where(x => x.Id != 1)],
+            Roles = [administrator with { BuiltIn = true, Permissions = PermissionCodes }, .. directory.Roles.Where(x => x.Id != SuperAdministratorRoleId)],
             Users = initialized ? [.. users, BuiltInSuperUser.Restore(directory.Users.FirstOrDefault(BuiltInSuperUser.Is))] : []
         };
     }
@@ -75,8 +79,12 @@ public sealed class AccessDirectoryService(ManagedDocumentService store, IConfig
     /// <summary>创建包含当前权限的会话主体。</summary>
     public static ClaimsPrincipal Principal(AccessUser user, AccessRole role) => new(new ClaimsIdentity([
         new Claim(ClaimTypes.NameIdentifier, user.Id), new Claim(ClaimTypes.Name, user.Name), new Claim("security-stamp", user.SecurityStamp),
+        .. (BuiltInSuperUser.Is(user) || role.Id == SuperAdministratorRoleId && role.BuiltIn
+            ? new[] { new Claim(ClaimTypes.Role, SuperAdministratorRole) } : Array.Empty<Claim>()),
         .. (BuiltInSuperUser.Is(user) ? PermissionCodes : role.Permissions).Select(x => new Claim("permission", x))
     ], "SortingCookie"));
+    /// <summary>敏感版块仅对已认证的固定超级管理员角色或内置超级用户开放。</summary>
+    public static bool IsSuperAdministrator(ClaimsPrincipal principal) => principal.Identity?.IsAuthenticated == true && principal.IsInRole(SuperAdministratorRole);
     /// <summary>公开普通成员和角色人数，隐藏内置身份、密码散列及安全标记。</summary>
     public static object PublicDirectory(AccessDirectory directory, int revision) {
         var users = directory.Users.Where(x => !BuiltInSuperUser.Is(x)).ToArray();

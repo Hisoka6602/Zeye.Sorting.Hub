@@ -6,7 +6,8 @@
 .workbench-page h2, .workbench-page h3, .workbench-page p { margin: 0; }
 .workbench-page h2 { font-size: var(--hub-font-section); line-height: 28px; font-weight: var(--hub-weight-semibold); color: var(--hub-text-heading); }
 .workbench-page .workbench-section-heading p { color: var(--hub-text-secondary); font-size: var(--hub-font-caption); line-height: 22px; font-weight: var(--hub-weight-regular); margin-top: 3px; }
-.workbench-page .workbench-probes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.workbench-page .workbench-probes { display: grid; grid-template-columns: repeat(var(--workbench-probe-count, 3), minmax(0, 1fr)); gap: 16px; }
+.workbench-page .workbench-probes.is-basic { --workbench-probe-count: 2; }
 .workbench-page .workbench-probe { min-width: 0; background: #fff; border: 1px solid #e5ebf3; border-radius: 12px; padding: 18px 20px; }
 .workbench-page .workbench-probe-top { display: flex; align-items: center; gap: 9px; color: var(--hub-text-heading); font-size: var(--hub-font-item); font-weight: var(--hub-weight-semibold); line-height: 24px; }
 .workbench-page .workbench-probe-icon { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; background: #edf3ff; color: #4778df; font-size: 18px; flex: none; }
@@ -70,7 +71,6 @@
 .workbench-page .workbench-bottom { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
 .workbench-page .workbench-recent-anchor { min-width: 0; scroll-margin-top: 18px; }
 .workbench-page .workbench-table-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.workbench-page .workbench-permission-note { color: var(--hub-text-secondary); font-size: var(--hub-font-caption); line-height: 22px; }
 .workbench-page .data-table { min-width: 0; }
 .workbench-page .data-table .ant-table-cell { padding: 12px 14px !important; }
 @media (max-width: 1280px) {
