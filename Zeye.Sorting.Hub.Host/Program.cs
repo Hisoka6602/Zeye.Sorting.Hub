@@ -204,6 +204,7 @@ try {
         .AddScheme<AuthenticationSchemeOptions, GuardedAuthenticationHandler>(GuardedAuthenticationHandler.SchemeName, static _ => { });
     builder.Services.AddAuthorization();
     builder.Services.AddSortingHubAccess(builder.Environment.ContentRootPath);
+    builder.Services.AddSortingRealtime();
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSwaggerGen(options => {
         var documentName = hostingOptions.GetSwaggerDocumentName();
@@ -314,6 +315,7 @@ try {
     }
     app.UseBundledWebUi();
     app.UseRouting();
+    app.UseSortingRealtime();
     // 路由解析后再进入审计，使中间件可以按端点元数据和路径排除探针流量。
     app.UseWebRequestAuditLogging();
     app.UseRequestTimeouts();
@@ -399,6 +401,7 @@ try {
     app.MapOperationalReadApis();
     app.MapRuleManagementApis();
     app.MapAccessApis();
+    app.MapSortingRealtime();
 
     app.Run();
 }

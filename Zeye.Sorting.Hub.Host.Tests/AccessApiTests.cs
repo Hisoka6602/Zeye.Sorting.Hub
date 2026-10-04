@@ -191,17 +191,20 @@ public sealed class AccessApiTests {
         client.DefaultRequestHeaders.Remove("Cookie"); client.DefaultRequestHeaders.Add("Cookie", response.Headers.GetValues("Set-Cookie").Single().Split(';')[0]);
     }
     /// <summary>使用同一生产认证管线及数据库的隔离宿主。</summary>
-    internal static async Task<WebApplication> CreateAsync(RelationalParcelTestDatabase db, bool enforceAuthorization = true) {
+    internal static async Task<WebApplication> CreateAsync(RelationalParcelTestDatabase db, bool enforceAuthorization = true,
+        Action<WebApplicationBuilder>? configureServices = null, Action<WebApplication>? configureRoutes = null) {
         var builder = WebApplication.CreateBuilder(); builder.WebHost.UseTestServer(); builder.Logging.ClearProviders();
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["Access:EnforceAuthorization"] = enforceAuthorization.ToString(), ["Access:BootstrapKey"] = "test-bootstrap-key", ["Access:MachineApiKey"] = "test-machine-key" });
         builder.Services.AddSingleton(db.Factory); builder.Services.AddScoped<ManagedDocumentService>();
         builder.Services.AddSortingHubAccess(Path.Combine(Path.GetTempPath(), "zeye-access-tests")); builder.Services.AddDataProtection().UseEphemeralDataProtectionProvider();
         builder.Services.AddAuthorization(); builder.Services.AddRateLimiter(o => o.AddFixedWindowLimiter("account-login", x => { x.PermitLimit = 100; x.Window = TimeSpan.FromMinutes(1); }));
+        configureServices?.Invoke(builder);
         var app = builder.Build(); app.UseRouting(); app.UseRateLimiter(); app.UseAuthentication(); app.UseAuthorization(); app.UseSortingHubAccess();
         app.MapAccessApis(); app.MapRuleManagementApis(); app.MapGet("/api/parcels/test", () => Results.Ok()); app.MapPost("/api/admin/parcels/processing-records", () => Results.Ok());
         app.MapPost("/api/admin/parcels", () => Results.Ok()); app.MapPost("/api/admin/parcels/batch-buffer", () => Results.Ok());
         app.MapGet("/api/parcels/{id:long}/images", () => Results.Ok());
         app.MapGet("/health/ready", () => Results.Ok(new { status = "Healthy" }));
+        configureRoutes?.Invoke(app);
         await app.StartAsync(); return app;
     }
 }
