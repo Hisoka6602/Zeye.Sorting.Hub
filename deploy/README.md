@@ -1,5 +1,7 @@
 # Windows / Linux 部署
 
+来源：部署命令及参数依据本仓库 `publish-windows.ps1`、`compose.yaml` 和 Host 入口配置；实时协议及客户端行为参考[微软 SignalR 文档](https://learn.microsoft.com/aspnet/core/signalr/javascript-client)。
+
 ## Windows 前后端一体化发布
 
 在仓库根目录执行一个命令即可构建并发布前后端：
@@ -11,6 +13,10 @@
 构建机需要 .NET 10 SDK 和 Node.js 24/npm。默认输出为 `artifacts/windows-x64`，包含 Windows x64 自包含 Host、前端 `wwwroot`、配置和 `Start-Hub.cmd`。将整个目录一次复制到目标主机，配置数据库后运行 `Start-Hub.cmd` 或 `Zeye.Sorting.Hub.Host.exe`。目标机不需要 Node、Nginx、独立前端服务或另外安装 .NET；数据库继续使用现有 MySQL / SQL Server 连接。
 
 页面、登录、API、包裹图片及健康探针由同一个进程和端口提供，默认入口为 `http://127.0.0.1:5078/`。深层页面刷新也可直接访问。程序从自身目录加载配置和 `wwwroot`，从其他工作目录启动同样有效。默认仅监听 HTTP，无需开发证书；配置服务器证书后可用 `Hosting:Urls` 或 `--urls` 启用 HTTPS。
+
+登录后的包裹列表、概览、报表、规则和平台状态通过同源 `/hubs/sorting` 的 SignalR 通道查询与订阅。处理事实提交与包裹状态更新使用两个明确的实时方法，正文最多 4 KiB，较大请求继续走原 HTTP 入口。成功业务写入会唤醒快照更新；后台状态另有低频检查，前端不再定时发送 HTTP 查询。Windows 内置前端直接连接 Host；Docker Nginx 与 Vite 开发代理均已转发 WebSocket。额外反向代理需同时转发 `/hubs/`、HTTP Upgrade 与 Cookie，并允许长连接。
+
+实时通道复用原接口认证、权限、限流及审计，每次调用重新验证账号；断线自动重连并恢复订阅，JSON 原文保证长编号不失真。写入只发送一次，断线或超时未收到结果时先检查业务记录，不能自动重放。账号、上传、下载、清理和其余管理写入继续使用现有 HTTP 安全流程。融合服务尚未上报的设备在线状态仍显示待接入，不能由浏览器实时连接推断设备在线。客户端参考：[微软 SignalR JavaScript 文档](https://learn.microsoft.com/aspnet/core/signalr/javascript-client)。
 
 原生部署使用已有环境变量或独立的 `appsettings.Production.json` 配置数据库及认证。例如在 PowerShell 中设置实际连接和不同的初始化、设备密钥后启动：
 

@@ -2,6 +2,8 @@
 
 本项目负责接收、持久化和分析包裹相关内容，不向 WMS 等外部业务系统投递消息。
 
+登录后的高频读取、包裹处理事实提交及状态更新使用同源 SignalR `/hubs/sorting`，多个组件共享连接和订阅；认证、文件与清理等管理入口保留 HTTP 安全流程。实时入口复用原接口权限、限流和审计，写入断线不自动重放。Windows 一体部署、Docker 及 Vite 的代理配置共同支持长连接，详见 `deploy/README.md`。
+
 ## 仓库文件结构（当前）
 
 > 说明：以下基础结构与“Fusion处理事实与实际物理分表”中的新增文件结构共同组成当前清单（不含 `.git`、`bin/`、`obj/` 等构建产物）。
@@ -1861,3 +1863,41 @@ Zeye.Sorting.Hub.Web/tests/
 | Zeye.Sorting.Hub.Web/tests | `sortingThroughputMetric.test.mjs` | 实际和理论产能展示语义回归 |
 | Zeye.Sorting.Hub.Web/tests | `workbenchMetricDays.test.mjs` | 每日指标补齐与统计范围回归 |
 | Zeye.Sorting.Hub.Web/tests | `workbenchModel.test.mjs` | 多个工作台的分组、筛选和汇总回归 |
+
+## 各层级与各文件作用说明（逐项）：SignalR 实时通道
+
+```text
+Zeye.Sorting.Hub.Contracts/Models/Realtime/
+  RealtimeResponse.cs
+Zeye.Sorting.Hub.Host/Hubs/
+  RealtimeEndpointDispatcher.cs
+  RealtimeReadPolicy.cs
+  RealtimeRequestBodyFeature.cs
+  RealtimeResourceSignal.cs
+  SortingRealtimeHub.cs
+Zeye.Sorting.Hub.Host/Extensions/
+  RealtimeApplicationExtensions.cs
+Zeye.Sorting.Hub.Host.Tests/
+  RealtimeApiTests.cs
+Zeye.Sorting.Hub.Web/src/data/api/
+  apiResponse.ts
+  realtimePolicy.ts
+  realtimeTransport.ts
+Zeye.Sorting.Hub.Web/tests/
+  realtimeContract.test.mjs
+```
+
+| 目录 | 文件 | 职责 |
+| --- | --- | --- |
+| Zeye.Sorting.Hub.Contracts/Models/Realtime | `RealtimeResponse.cs` | 保留原状态码与 JSON 原文的实时响应合同 |
+| Zeye.Sorting.Hub.Host/Hubs | `RealtimeEndpointDispatcher.cs` | 固定用例复用原业务端点的作用域、认证、权限、限流和审计 |
+| Zeye.Sorting.Hub.Host/Hubs | `RealtimeReadPolicy.cs` | 实时读取资源白名单和路径规范校验 |
+| Zeye.Sorting.Hub.Host/Hubs | `RealtimeRequestBodyFeature.cs` | 使正式 JSON 端点识别命名实时提交的正文 |
+| Zeye.Sorting.Hub.Host/Hubs | `RealtimeResourceSignal.cs` | 合并写入通知及限制连接订阅数量 |
+| Zeye.Sorting.Hub.Host/Hubs | `SortingRealtimeHub.cs` | 认证的快照查询、持续订阅与包裹命名提交入口 |
+| Zeye.Sorting.Hub.Host/Extensions | `RealtimeApplicationExtensions.cs` | 实时依赖注册、来源校验、握手限流及路由组装 |
+| Zeye.Sorting.Hub.Host.Tests | `RealtimeApiTests.cs` | 正式客户端读取、推送、命令边界及会话权限撤销回归 |
+| Zeye.Sorting.Hub.Web/src/data/api | `apiResponse.ts` | HTTP 与实时响应共用的长编号、状态码和健康报告解析 |
+| Zeye.Sorting.Hub.Web/src/data/api | `realtimePolicy.ts` | 前端读取白名单、命名提交映射与实际会话状态 |
+| Zeye.Sorting.Hub.Web/src/data/api | `realtimeTransport.ts` | 官方共享连接、去重订阅、自动重连及一次性提交 |
+| Zeye.Sorting.Hub.Web/tests | `realtimeContract.test.mjs` | JSON 精度、读写入口和真实健康状态合同回归 |

@@ -1,7 +1,7 @@
 import { formatNumber } from '../../data/formatNumber';
 import { Button, Empty, Input, Pagination, Segmented, Skeleton, Switch } from 'antd';
 import { ApiOutlined, AppstoreOutlined, ArrowRightOutlined, CheckCircleOutlined, CloudServerOutlined, DatabaseOutlined, DesktopOutlined, QuestionCircleOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useNavigate } from 'react-router';
 import { ApiFeedback } from '../../components/ApiFeedback';
 import { DataTable } from '../../components/DataTable';
@@ -11,6 +11,7 @@ import { StatusTag } from '../../components/StatusTag';
 import { readHealthReport } from '../../data/api/client';
 import { useApiResource } from '../../data/api/useApiResource';
 import { useAccessSession } from '../../data/api/useAccessSession';
+import { getRealtimeState, subscribeRealtimeState } from '../../data/api/realtimeTransport';
 import { archiveStatusLabels, localTime, type ArchiveTask, type HealthReport, type PagedResult } from '../../data/api/operationalTypes';
 import type { ParcelList, ParcelSummary } from '../../data/api/parcelTypes';
 import { observeWorkstations, workstationKey, type WorkstationObservation } from './workbenchModel';
@@ -59,13 +60,14 @@ function WorkstationCard({ station, onSelect }: { station: WorkstationObservatio
 export function OverviewPage() {
   const navigate = useNavigate();
   const session = useAccessSession();
+  const [automaticRefresh, setAutomaticRefresh] = useState(true);
+  const connection = useSyncExternalStore(subscribeRealtimeState, getRealtimeState, getRealtimeState);
   const canReadGovernance = session.data?.permissions.includes('governance.manage') ?? false;
-  const parcels = useApiResource<ParcelList>('/api/parcels?pageNumber=1&pageSize=200&includeTotalCount=false');
-  const live = useApiResource<HealthReport>('/health/live', readHealthReport);
-  const ready = useApiResource<HealthReport>('/health/ready', readHealthReport);
-  const deep = useApiResource<HealthReport>('/health/deep', readHealthReport);
-  const archives = useApiResource<PagedResult<ArchiveTask>>(canReadGovernance ? '/api/data-governance/archive-tasks?pageNumber=1&pageSize=5' : null);
-  const [automaticRefresh, setAutomaticRefresh] = useState(false);
+  const parcels = useApiResource<ParcelList>('/api/parcels?pageNumber=1&pageSize=200&includeTotalCount=false', undefined, automaticRefresh);
+  const live = useApiResource<HealthReport>('/health/live', readHealthReport, automaticRefresh);
+  const ready = useApiResource<HealthReport>('/health/ready', readHealthReport, automaticRefresh);
+  const deep = useApiResource<HealthReport>('/health/deep', readHealthReport, automaticRefresh);
+  const archives = useApiResource<PagedResult<ArchiveTask>>(canReadGovernance ? '/api/data-governance/archive-tasks?pageNumber=1&pageSize=5' : null, undefined, automaticRefresh);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
   const [page, setPage] = useState(1);
@@ -81,15 +83,10 @@ export function OverviewPage() {
   const resources = [parcels, live, ready, deep, archives];
   const loading = resources.some(item => item.loading);
   const refresh = () => resources.forEach(item => item.refresh());
-  useEffect(() => {
-    if (!automaticRefresh) return;
-    const timer = window.setInterval(() => { if (document.visibilityState === 'visible') { parcels.refresh(); live.refresh(); ready.refresh(); deep.refresh(); archives.refresh(); } }, 15_000);
-    return () => window.clearInterval(timer);
-  }, [automaticRefresh, parcels.refresh, live.refresh, ready.refresh, deep.refresh, archives.refresh]);
 
   return <div className="workbench-page">
     <PageIntro title="工作台" description="集中查看平台健康与多个分拣工作台的处理情况。" action={<div className="workbench-header-actions">
-      <label className="workbench-auto-refresh"><Switch size="small" checked={automaticRefresh} onChange={setAutomaticRefresh} aria-label="每 15 秒自动刷新" /><span>每 15 秒自动刷新</span></label>
+      <label className="workbench-auto-refresh"><Switch size="small" checked={automaticRefresh} onChange={setAutomaticRefresh} aria-label="实时更新" /><span>实时更新</span></label>
       <Button icon={<ReloadOutlined />} onClick={refresh} loading={loading}>刷新数据</Button>
     </div>} />
     <ApiFeedback error={session.error} retry={session.refresh} />
@@ -98,8 +95,8 @@ export function OverviewPage() {
         <Button type="link" icon={<ArrowRightOutlined />} iconPosition="end" onClick={() => navigate('/diagnostics/health')}>查看诊断</Button></div>
       <div className="workbench-probes">{healthProbes.map((probe, index) => <PlatformProbe key={probe.path} probe={probe} resource={[live, ready, deep][index]} />)}</div>
     </section>
-    <SectionCard className="workbench-stations-card" title={<div className="workbench-section-title"><AppstoreOutlined /><div><h2>分拣工作台</h2><p>按来源实例查看处理情况，支持多个工作台同时工作</p></div></div>} extra={<span className="workbench-connection-state"><QuestionCircleOutlined />实时状态待接入</span>}>
-      <div className="workbench-source-note"><span><CheckCircleOutlined />处理情况来自已入库包裹</span><p>在线与设备连接状态等待 SignalR 接入。当前仅观察最近 24 小时内最新 200 条记录，不代表全部工作台。</p></div>
+    <SectionCard className="workbench-stations-card" title={<div className="workbench-section-title"><AppstoreOutlined /><div><h2>分拣工作台</h2><p>按来源实例查看处理情况，支持多个工作台同时工作</p></div></div>} extra={<span className="workbench-connection-state"><ApiOutlined />{connection === 'connected' ? '实时通道已连接' : connection === 'reconnecting' ? '实时通道重连中' : connection === 'connecting' ? '正在连接实时通道' : '实时通道未连接'}</span>}>
+      <div className="workbench-source-note"><span><CheckCircleOutlined />处理情况来自已入库包裹</span><p>包裹变化实时更新，设备在线状态等待融合服务上报。当前观察最近 24 小时内最新 200 条记录，不代表全部工作台。</p></div>
       <div className="workbench-summary"><div><span>观察到的工作台</span><strong>{parcels.data ? observations.workstations.length : '—'}</strong></div>
         <div><span>观察包裹</span><strong>{parcels.data ? formatNumber(items.length, { grouping: true }) : '—'}<small>件</small></strong></div>
         <div><span>有包裹异常的工作台</span><strong>{parcels.data ? observations.workstations.filter(item => item.exceptionCount > 0).length : '—'}</strong></div></div>
@@ -109,7 +106,7 @@ export function OverviewPage() {
         : filteredStations.length ? <><div className="workbench-station-grid">{filteredStations.slice((currentPage - 1) * 6, currentPage * 6).map(station => <WorkstationCard key={station.key} station={station} onSelect={() => { setSelectedKey(station.key); recentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} />)}</div>
           {filteredStations.length > 6 && <Pagination className="workbench-station-pagination" current={currentPage} total={filteredStations.length} pageSize={6} showSizeChanger={false} onChange={setPage} showTotal={total => `共 ${total} 个工作台`} />}</>
         : <div className="workbench-stations-empty"><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={keyword || filter !== 'all' ? '没有匹配的工作台' : '暂无工作台处理记录'} />
-          {keyword || filter !== 'all' ? <Button onClick={() => { setSearch(''); setFilter('all'); setPage(1); }}>清除筛选</Button> : <p>上报包裹后将显示来源工作台；实时连接状态将在 SignalR 接入后提供。</p>}</div>}
+          {keyword || filter !== 'all' ? <Button onClick={() => { setSearch(''); setFilter('all'); setPage(1); }}>清除筛选</Button> : <p>上报包裹后将实时显示来源工作台；设备在线状态等待融合服务上报。</p>}</div>}
       {parcels.data && observations.unassignedCount > 0 && <p className="workbench-unassigned-note">另有 {observations.unassignedCount} 条记录未提供工作台名称或来源实例编码，未计入工作台数量。</p>}
     </SectionCard>
     <div ref={recentRef} className="workbench-recent-anchor">

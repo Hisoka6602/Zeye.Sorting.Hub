@@ -25,10 +25,6 @@ export function LiveOperationsPage() {
   const [lastUpdated, setLastUpdated] = useState<string>();
 
   useEffect(() => {
-    const timer = window.setInterval(() => { parcels.refresh(); live.refresh(); ready.refresh(); }, 15_000);
-    return () => window.clearInterval(timer);
-  }, [parcels.refresh, live.refresh, ready.refresh]);
-  useEffect(() => {
     if (parcels.data && live.data && ready.data) setLastUpdated(dayjs().format('YYYY-MM-DD HH:mm:ss'));
   }, [parcels.data, live.data, ready.data]);
 
@@ -39,7 +35,7 @@ export function LiveOperationsPage() {
   const refresh = () => { parcels.refresh(); live.refresh(); ready.refresh(); };
 
   return <div className="live-operations-page">
-    <PageIntro title="实时运行态势" description="查看服务状态与最近入库包裹；数据每 15 秒刷新。" action={<Space>
+    <PageIntro title="实时运行态势" description="查看服务状态与最近入库包裹，业务变化通过实时通道持续更新。" action={<Space>
       <Typography.Text type="secondary">最后更新：{lastUpdated ?? '等待数据'}</Typography.Text>
       <Button icon={<ReloadOutlined />} onClick={refresh} loading={parcels.loading || live.loading || ready.loading}>立即刷新</Button>
     </Space>} />
