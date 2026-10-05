@@ -58,7 +58,8 @@ public sealed class ParcelCleanupSecurityTests {
         var detail = await admin.GetFromJsonAsync<JsonElement>("/api/admin/parcels/cleanup-history/" + id);
         Assert.Equal("清理管理员", detail.GetProperty("record").GetProperty("operator").GetProperty("name").GetString());
         Assert.Equal("admin", detail.GetProperty("record").GetProperty("operator").GetProperty("account").GetString());
-        Assert.Single(detail.GetProperty("items").EnumerateArray());
+        Assert.False(detail.TryGetProperty("items", out _));
+        Assert.Equal(1, detail.GetProperty("record").GetProperty("executedCount").GetInt32());
         Assert.DoesNotContain(body.password, detail.GetRawText());
         Assert.Equal(0, await db.CountPhysicalAsync("Parcels_20260928"));
         await using var context = await db.Factory.CreateDbContextAsync();

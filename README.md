@@ -1653,7 +1653,8 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 | 接口 | 路径 | 开放条件 |
 |------|------|---------|
 | 过期清理 | `POST /api/admin/parcels/cleanup-expired` | 当前登录用户 + 数据治理权限 + 再次验证密码 |
-| 清理历史 | `GET /api/admin/parcels/cleanup-history` | 数据治理或审计读取权限，支持分页 |
+| 清理历史 | `GET /api/admin/parcels/cleanup-history` | 仅超级管理员及内置超级用户可查看，支持分页 |
+| 清理操作汇总 | `GET /api/admin/parcels/cleanup-history/{id}` | 永久保留操作人、条件、时间、数量和结果，不返回逐票包裹清单 |
 | 已删除清单 | `GET /api/admin/parcels/cleanup-history/{id}` | 同上，支持分页及编号、条码、工作台检索 |
 
 - **当前状态**：默认真实执行，保留隔离守卫；部署可显式设置禁止执行或演练。即使通用鉴权关闭，清理入口仍强制验证会话、治理权限、来源标识及当前用户密码，并限制密码尝试频率。
@@ -1829,6 +1830,7 @@ Zeye.Sorting.Hub.Host.Tests/
   BuiltInSuperUserTests.cs
   MessageStorageRemovalTests.cs
   ParcelCleanupAuditTests.cs
+  ParcelCleanupCompactionTests.cs
   ParcelCleanupSecurityTests.cs
   ParcelImageApiTests.cs
 Zeye.Sorting.Hub.Host/HostedServices/
@@ -1846,7 +1848,9 @@ Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations/
   20261002180129_RemoveRetiredMessageStorageSqlServer.Designer.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/Management/
   ParcelCleanupAudit.cs
-  ParcelCleanupDeletedItem.cs
+  ParcelCleanupAuditCompactor.cs
+  ParcelCleanupBatchAudit.cs
+  ParcelCleanupIsolationPolicy.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/
   20261002180106_RemoveRetiredMessageStorage.cs
   20261002180106_RemoveRetiredMessageStorage.Designer.cs
@@ -1923,12 +1927,13 @@ Zeye.Sorting.Hub.Web/tests/
 | Zeye.Sorting.Hub.Host.Tests | `AuditPartitionMaintenanceTests.cs` | 审计分表自动创建、维护及故障恢复回归 |
 | Zeye.Sorting.Hub.Host.Tests | `BuiltInSuperUserTests.cs` | 内置用户权限、保留账号及管理员创建入口回归 |
 | Zeye.Sorting.Hub.Host.Tests | `MessageStorageRemovalTests.cs` | 退役消息存储及迁移清理一致性回归 |
-| Zeye.Sorting.Hub.Host.Tests | `ParcelCleanupAuditTests.cs` | 清理历史、删除明细和事务一致性回归 |
+| Zeye.Sorting.Hub.Host.Tests | `ParcelCleanupAuditTests.cs` | 清理汇总存储上限、跨分表删除和事务一致性回归 |
+| Zeye.Sorting.Hub.Host.Tests | `ParcelCleanupCompactionTests.cs` | 旧清单精简、隔离决策、失败回滚与压缩恢复脚本回归 |
 | Zeye.Sorting.Hub.Host.Tests | `ParcelCleanupSecurityTests.cs` | 清理登录密码确认与操作权限回归 |
 | Zeye.Sorting.Hub.Host.Tests | `ParcelImageApiTests.cs` | 图片集合查询、去重及受控访问回归 |
 | Zeye.Sorting.Hub.Host/HostedServices | `BuiltInAccountHostedService.cs` | 启动时恢复固定内置身份并处理保留账号冲突 |
 | Zeye.Sorting.Hub.Host/Queries | `BuiltInSuperUser.cs` | 内置身份、固定口令散列与保留账号定义 |
-| Zeye.Sorting.Hub.Host/Queries | `ParcelCleanupHistoryService.cs` | 读取永久保留的清理历史和删除明细 |
+| Zeye.Sorting.Hub.Host/Queries | `ParcelCleanupHistoryService.cs` | 只读取永久清理历史及操作汇总，避免加载逐票清单 |
 | Zeye.Sorting.Hub.Host/Queries | `ParcelImageCatalog.cs` | 汇总包裹图片来源、规范化地址并去重 |
 | Zeye.Sorting.Hub.Host/Queries | `PersonalProfile.cs` | 用户个人资料和头像文档模型 |
 | Zeye.Sorting.Hub.Host/Routing | `ParcelImageApiRouteExtensions.cs` | 同源图片集合与受控图片访问接口 |
@@ -1936,7 +1941,9 @@ Zeye.Sorting.Hub.Web/tests/
 | Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations | `20261002180129_RemoveRetiredMessageStorageSqlServer.cs` | SQL Server 退役消息存储结构清理迁移 |
 | Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations | `20261002180129_RemoveRetiredMessageStorageSqlServer.Designer.cs` | SQL Server 退役消息存储迁移模型元数据 |
 | Zeye.Sorting.Hub.Infrastructure/Persistence/Management | `ParcelCleanupAudit.cs` | 永久保存的包裹清理操作记录 |
-| Zeye.Sorting.Hub.Infrastructure/Persistence/Management | `ParcelCleanupDeletedItem.cs` | 关联清理记录的被删除包裹追溯明细 |
+| Zeye.Sorting.Hub.Infrastructure/Persistence/Management | `ParcelCleanupAuditCompactor.cs` | 按隔离决策将旧清单转换为汇总，转换前保存压缩回滚脚本 |
+| Zeye.Sorting.Hub.Infrastructure/Persistence/Management | `ParcelCleanupBatchAudit.cs` | 与删除同事务提交的批次数量凭据，不复制逐票身份和业务载荷 |
+| Zeye.Sorting.Hub.Infrastructure/Persistence/Management | `ParcelCleanupIsolationPolicy.cs` | 清理和历史精简共用的守卫、执行及演练配置 |
 | Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations | `20261002180106_RemoveRetiredMessageStorage.cs` | MySQL 退役消息存储结构清理迁移 |
 | Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations | `20261002180106_RemoveRetiredMessageStorage.Designer.cs` | MySQL 退役消息存储迁移模型元数据 |
 | Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding | `AuditPartitionMaintenanceService.cs` | 请求审计分表自动建表、索引与窗口维护 |
@@ -1963,7 +1970,7 @@ Zeye.Sorting.Hub.Web/tests/
 | Zeye.Sorting.Hub.Web/src/features/operations | `AnalyticsCharts.tsx` | 运营报表趋势与分布图表 |
 | Zeye.Sorting.Hub.Web/src/features/operations | `analyticsModel.ts` | 真实报表数据到展示指标的映射 |
 | Zeye.Sorting.Hub.Web/src/features/parcels | `parcelCleanup.css` | 清理表单、结果及历史列表样式 |
-| Zeye.Sorting.Hub.Web/src/features/parcels | `ParcelCleanupHistory.tsx` | 永久清理记录列表及删除明细展示 |
+| Zeye.Sorting.Hub.Web/src/features/parcels | `ParcelCleanupHistory.tsx` | 永久清理记录列表及操作人、条件、数量和结果汇总 |
 | Zeye.Sorting.Hub.Web/src/features/parcels | `ParcelImageGallery.tsx` | 包裹多图主图、缩略图切换与放大预览 |
 | Zeye.Sorting.Hub.Web/src/features/parcels | `parcelImages.css` | 多图画廊、缩略图与图片状态样式 |
 | Zeye.Sorting.Hub.Web/src/features/parcels | `ParcelImagesDrawer.tsx` | 包裹台账图片抽屉及加载状态 |

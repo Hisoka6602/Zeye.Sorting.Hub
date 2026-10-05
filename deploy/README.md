@@ -79,6 +79,10 @@ Host 镜像同样内置前端，可直接从 Host 端口访问页面；已有 Co
 
 设备或 Fusion 客户端提交 `/api/admin/parcels/processing-records` 时，需在 `X-Sorting-Api-Key` 请求头中提供 `ZEYE_MACHINE_API_KEY`。该密钥仅授权这一处理事实接口，不能读取或维护三个敏感版块、账号或规则。未配置此请求头的匿名客户端返回 401；部署切换前应完成客户端配置。
 
+包裹清理历史仅永久保存操作人、清理条件、开始与结束时间、实际删除数和结果；每批保存少量事务提交凭据，不复制逐票编号、条码、图片或业务报文。旧版逐票清单在 Host 启动时自动转换，执行中的操作和数量校验不一致的记录保持原样并记录日志。历史转换复用 `Persistence:RepositoryDangerousActions:ParcelRemoveExpired:Isolator` 的守卫、允许执行和演练开关，阻断或演练均不修改记录。转换前生成 `.rollback.sql.gz`；默认目录为 `governance-artifacts/cleanup-audit-rollback`，Docker 位于 `host_governance` 卷，Windows 位于运行目录。可通过 `Persistence:RepositoryDangerousActions:ParcelRemoveExpired:AuditCompaction:RollbackDirectory` 指定可写目录。历史恢复时先关闭执行或开启演练，再在停服状态解压并执行对应数据库方言的 SQL，避免重新转换或覆盖后续修改。
+
+独立来源身份与处理事实仍按原策略保留，清理汇总不是包裹备份。删除和载荷精简释放的数据库空间可供后续写入复用；本升级不执行需要重建业务表的磁盘压缩操作。
+
 测试数据、数据治理及可观测性必须由固定超级管理员角色或内置超级用户访问。普通自定义角色即使拥有全部单项权限也不能进入这些版块；关闭 `ZEYE_AUTH_ENABLED` 仍保留此限制和超级管理员账号维护保护。`/health/live`、`/health/ready` 保持公开供容器探针使用，`/health/deep` 需要超级管理员身份。HTTP 与 SignalR 共用权限判断，已有登录会话在下一次请求重新验证，无需重建账号。
 
 系统配置中的自动备份、备份间隔和包裹预建窗口可在线保存，重启后保留，后台在一分钟内加载；修改需要账号管理权限。其余部署参数通过服务器配置维护。备份页支持 MySQL 事务表结构及数据快照、受认证下载和隔离恢复核验，文件持久化在 `host_backups` 卷中；恢复只新建 `zeye_restore_` 前缀的数据库，逐表核对行数，不覆盖或切换当前业务库。分区页可实际预建当前及窗口内的包裹主表、关联表并登记目录，重复执行自动跳过。审计日表规划不由包裹预建执行。包裹规则和异常规则均可保存、发布并参与实际记录处理；包裹规则只标记包裹类型，物理格口控制由 Fusion 链路执行。

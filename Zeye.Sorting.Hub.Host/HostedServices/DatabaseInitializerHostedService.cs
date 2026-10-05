@@ -20,6 +20,7 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.MigrationGovernance;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Management;
 
 namespace Zeye.Sorting.Hub.Host.HostedServices {
 
@@ -370,6 +371,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     }
 
                     await AssertMigrationConsistencyAsync(db, ct);
+                    // 旧清理清单仅升级为少量汇总；共用危险动作隔离器并先保存压缩回滚脚本。
+                    await ParcelCleanupAuditCompactor.CompactAsync(db, _configuration, ct);
 
                     // 包裹聚合实际路由使用同周期物理表；启动预建与写入建表共用隔离器和DDL审计。
                     if (_createShardingTableOnStarting) {

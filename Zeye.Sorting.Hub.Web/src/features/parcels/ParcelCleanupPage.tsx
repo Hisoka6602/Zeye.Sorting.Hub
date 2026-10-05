@@ -47,7 +47,7 @@ export function ParcelCleanupPage() {
   };
   return <div className="cleanup-page">
     <PageIntro title="过期包裹清理" description="按创建时间清理包裹数据，释放存储空间，并保留完整的操作追溯记录。" />
-    <InfoAlert type="warning" message="清理会永久删除符合条件的包裹；提交前需验证当前用户的登录密码" description="每次操作及已删除包裹清单会长期保留在清理历史中。单次最多清理 10,000 条，物理删除不支持撤销。" closable={false} />
+    <InfoAlert type="warning" message="清理会永久删除符合条件的包裹；提交前需验证当前用户的登录密码" description="清理历史仅永久保存操作汇总，不复制逐票包裹数据。单次最多清理 10,000 条，物理删除不支持撤销。" closable={false} />
     <SectionCard title="清理条件" className="cleanup-condition"><p className="text-muted" style={{ marginTop: -8 }}>选择清理日期并确认影响范围，再验证密码提交。</p>
       <div className="cleanup-form">
         <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}><b style={{ minWidth: 126 }}><span className="cleanup-required-inline">* </span>创建时间早于</b><DatePicker value={before} onChange={value => { setBefore(value); setAccepted(false); }} style={{ width: 405, maxWidth: '100%' }} placeholder="请选择日期" /></div>
@@ -62,7 +62,7 @@ export function ParcelCleanupPage() {
     </SectionCard>
     <SectionCard title="清理历史" className="cleanup-history"><ParcelCleanupHistory revision={historyRevision} selectedId={selectedId} onSelect={setSelectedId} /></SectionCard>
     <Modal title="验证密码并确认清理" open={confirmDate !== null} onCancel={() => { if (!saving) { setConfirmDate(null); passwordForm.resetFields(); setPasswordError(''); } }} onOk={confirmCleanup} okText="验证并清理" cancelText="取消" confirmLoading={saving} okButtonProps={{ danger: true }} cancelButtonProps={{ disabled: saving }} closable={!saving} maskClosable={false} keyboard={!saving} destroyOnHidden>
-      <p>将删除创建时间早于 <strong>{confirmDate?.format('YYYY-MM-DD')}</strong> 的包裹。此操作无法撤销，执行结果和删除清单将永久记录。</p>
+      <p>将删除创建时间早于 <strong>{confirmDate?.format('YYYY-MM-DD')}</strong> 的包裹。此操作无法撤销，操作人、清理条件和执行结果将永久记录。</p>
       <Form form={passwordForm} layout="vertical" preserve={false} onFinish={confirmCleanup}>
         <Form.Item name="password" label={`当前用户登录密码${session.data?.name ? `（${session.data.name}）` : ''}`} rules={[{ required: true, message: '请输入当前登录用户的密码' }]}>
           <Input.Password aria-label="当前用户登录密码" autoComplete="current-password" placeholder="请输入您的登录密码" maxLength={128} autoFocus disabled={saving} />
