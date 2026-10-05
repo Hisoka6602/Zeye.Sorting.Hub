@@ -701,8 +701,8 @@ Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/FusionEntityTypeConfigurati
 Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionConnectionLease.cs
 Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionDiscoveryService.cs
 Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionIngestionOptions.cs
-Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionIngestionService.Facts.cs
-Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionIngestionService.Images.cs
+Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionIngestionServiceFacts.cs
+Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionIngestionServiceImages.cs
 Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionIngestionService.cs
 Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionProtocol.cs
 Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionSourceOptions.cs
@@ -755,8 +755,8 @@ deploy/fusion-ingestion.example.json
 - `FusionConnectionLease.cs`（`Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionConnectionLease.cs`）：当前连接独立的来源租约缓存。
 - `FusionDiscoveryService.cs`（`Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionDiscoveryService.cs`）：有界、签名认证的独立 UDP 发现，不在 UDP 上传输业务内容或凭据。
 - `FusionIngestionOptions.cs`（`Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionIngestionOptions.cs`）：融合接收端的独立配置，不复用网页账号或全局旧机器密钥。
-- `FusionIngestionService.Facts.cs`（`Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionIngestionService.Facts.cs`）：原文接收、独立编号去重与可恢复投影任务。
-- `FusionIngestionService.Images.cs`（`Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionIngestionService.Images.cs`）：来源图片的耐久分块、重放校验和完整对象确认。
+- `FusionIngestionServiceFacts.cs`（`Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionIngestionServiceFacts.cs`）：原文接收、独立编号去重与可恢复投影任务。
+- `FusionIngestionServiceImages.cs`（`Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionIngestionServiceImages.cs`）：来源图片的耐久分块、重放校验和完整对象确认。
 - `FusionIngestionService.cs`（`Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionIngestionService.cs`）：独立设备协议接入，实现认证、耐久接收与图片存储协作。
 - `FusionProtocol.cs`（`Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionProtocol.cs`）：验证原始协议边界并映射既有处理用例，业务时间统一为登记来源的本地时间。
 - `FusionSourceOptions.cs`（`Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionSourceOptions.cs`）：由 Hub 登记的单个工作台身份及业务归属。

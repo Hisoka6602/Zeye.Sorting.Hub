@@ -14,6 +14,8 @@ namespace Zeye.Sorting.Hub.Host.Extensions;
 
 /// <summary>组装融合来源入口与恢复服务，网页实时通道保持原有独立限额。</summary>
 public static class FusionIngestionExtensions {
+    /// <summary>接收端映射及查询输入校验诊断日志。</summary>
+    private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
     /// <summary>注册机器认证、耐久接收实现及有界投影任务。</summary>
     public static IServiceCollection AddFusionIngestion(this IServiceCollection services, IConfiguration configuration, string contentRoot) {
         services.Configure<FusionIngestionOptions>(configuration.GetSection("FusionIngestion"));
@@ -43,7 +45,7 @@ public static class FusionIngestionExtensions {
             Results.Ok(await gateway.GetSourcesAsync(token))).WithTags("Fusion").WithSummary("读取已登记分拣工作台及心跳状态");
         app.MapGet("/api/diagnostics/fusion/facts", async (string sourceInstanceId, string? journalId, int? limit, IFusionIngestionGateway gateway, CancellationToken token) => {
             try { return Results.Ok(await gateway.GetFactsAsync(sourceInstanceId, journalId, limit ?? 50, token)); }
-            catch (ArgumentException exception) { return Results.Problem(statusCode: 400, detail: exception.Message); }
+            catch (ArgumentException exception) { Logger.Debug(exception, "Fusion 原始事实查询参数无效。"); return Results.Problem(statusCode: 400, detail: exception.Message); }
         }).WithTags("Fusion").WithSummary("追溯来源原始事实及业务投影结果");
         app.MapGet("/api/parcels/fusion/images/{key}/content", async (string key, HttpContext context, IFusionIngestionGateway gateway, CancellationToken token) => {
             var image = await gateway.ReadImageAsync(key, token);

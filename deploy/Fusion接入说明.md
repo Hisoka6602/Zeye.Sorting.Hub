@@ -1,5 +1,7 @@
 # Fusion 工作台接入 Hub
 
+来源：`Zeye.SortingFusionService/docs/fusion-hub-protocol.md`、发送端 `HubProtocol.cs` 合同、本项目实现及跨平台运行验证。
+
 本项目实现 Fusion 1.0 接收端，协议依据 `Zeye.SortingFusionService/docs/fusion-hub-protocol.md` 及发送端 `Zeye.SortingFusionService.Contracts/Hub/HubProtocol.cs`。设备配置尚未提供，因此默认来源目录为空，UDP 发现关闭；部署不会自动启用或修改 Fusion 发送端。
 
 ## 配置来源

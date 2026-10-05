@@ -10,11 +10,11 @@ public sealed class FusionDiscoveryHostedService(IFusionDiscoveryService discove
     protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
         while (!stoppingToken.IsCancellationRequested) {
             try { await discovery.ListenAsync(stoppingToken); return; }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { return; }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { Logger.Debug("Fusion 发现监听已取消。"); return; }
             catch (Exception exception) when (exception is System.Net.Sockets.SocketException or IOException) {
                 Logger.Error(exception, "Fusion 发现端口暂不可用，30 秒后重试；机器接收入口继续工作。");
                 try { await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken); }
-                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { return; }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { Logger.Debug("Fusion 发现端口重试已取消。"); return; }
             }
             catch (Exception exception) { Logger.Error(exception, "Fusion 发现配置无效，启动失败。"); throw; }
         }

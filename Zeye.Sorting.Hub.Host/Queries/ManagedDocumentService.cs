@@ -4,6 +4,8 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.Management;
 namespace Zeye.Sorting.Hub.Host.Queries;
 /// <summary>使用数据库集中存储管理数据，跨平台共享同一持久化语义。</summary>
 public sealed class ManagedDocumentService(IDbContextFactory<SortingHubDbContext> factory) {
+    /// <summary>管理文档版本冲突及写入失败诊断日志，不输出文档内容。</summary>
+    private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
     /// <summary>管理文档低频写入的进程闸门，避免 SQLite 的读写锁升级竞争；数据库版本令牌仍保护跨进程写入。</summary>
     private static readonly SemaphoreSlim WriteGate = new(1, 1);
     /// <summary>按版本原子保存多个文档，个人资料与账号名称不能部分写入。</summary>
@@ -18,8 +20,9 @@ public sealed class ManagedDocumentService(IDbContextFactory<SortingHubDbContext
                 document.Json = write.Json; document.Revision = checked(write.Revision + 1); document.ModifiedAt = DateTime.Now;
             }
             try { await db.SaveChangesAsync(cancellationToken); return true; }
-            catch (DbUpdateConcurrencyException) { return false; }
-            catch (DbUpdateException) {
+            catch (DbUpdateConcurrencyException exception) { Logger.Debug(exception, "管理文档批次版本冲突。"); return false; }
+            catch (DbUpdateException exception) {
+                Logger.Warn(exception, "管理文档批次写入失败，核对唯一键冲突。");
                 foreach (var write in writes) {
                     if (await ReadAsync(write.Key, cancellationToken) is { } existing && existing.Revision > write.Revision) return false;
                 }
@@ -44,8 +47,9 @@ public sealed class ManagedDocumentService(IDbContextFactory<SortingHubDbContext
             if (document is null) { document = new ManagedDocument { Key = key }; db.Add(document); }
             document.Json = json; document.Revision = checked(expectedRevision + 1); document.ModifiedAt = DateTime.Now;
             try { await db.SaveChangesAsync(cancellationToken); return document; }
-            catch (DbUpdateConcurrencyException) { return null; }
-            catch (DbUpdateException) {
+            catch (DbUpdateConcurrencyException exception) { Logger.Debug(exception, "管理文档版本冲突。"); return null; }
+            catch (DbUpdateException exception) {
+                Logger.Warn(exception, "管理文档写入失败，核对唯一键冲突。");
                 // 唯一键插入竞争与更新冲突统一返回版本冲突；其他数据库错误继续向上报告。
                 if (await ReadAsync(key, cancellationToken) is { } existing && existing.Revision > expectedRevision) return null;
                 throw;

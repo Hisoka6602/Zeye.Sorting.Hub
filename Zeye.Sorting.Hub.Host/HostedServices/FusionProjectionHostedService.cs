@@ -19,7 +19,7 @@ public sealed class FusionProjectionHostedService(IServiceScopeFactory scopes, I
                 if (changed > 0) changes.Notify();
                 if (DateTime.Now >= maintenance) { await ingress.MaintainUploadsAsync(stoppingToken); maintenance = DateTime.Now.AddHours(1); }
             }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { Logger.Debug("Fusion 事实投影已取消。"); break; }
             catch (Exception exception) { Logger.Error(exception, "Fusion 耐久事实投影或图片维护失败，将继续恢复。"); }
             await Task.Delay(TimeSpan.FromMilliseconds(changed > 0 ? 250 : 2000), stoppingToken);
         }

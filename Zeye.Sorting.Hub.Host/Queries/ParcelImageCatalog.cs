@@ -6,6 +6,8 @@ namespace Zeye.Sorting.Hub.Host.Queries;
 
 /// <summary>汇总已保存图片信息与来源处理事实，不推测来源设备的文件访问地址。</summary>
 public static class ParcelImageCatalog {
+    /// <summary>图片预览诊断日志，不输出签名地址或对象存储凭据。</summary>
+    private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
     /// <summary>优先使用对象存储元数据，登记和上传同一路径只展示一次。</summary>
     /// <param name="parcel">已保存包裹详情。</param>
     /// <param name="signReadUrl">现有对象存储的读取签名器，未启用时为空。</param>
@@ -30,6 +32,7 @@ public static class ParcelImageCatalog {
                         if (url is null) reason = "对象存储未返回可访问的图片地址。";
                     }
                     catch (Exception exception) when (exception is not OperationCanceledException) {
+                        Logger.Warn("图片访问地址获取失败，ErrorType={ErrorType}", exception.GetType().Name);
                         reason = "暂时无法获取图片访问地址，请重试。";
                     }
                 }
