@@ -47,7 +47,9 @@ public sealed class FusionDiscoveryTests {
         Assert.Equal(packet.Nonce, offer.Nonce); Assert.Equal("offer", offer.Type);
         Assert.Equal(FusionDiscoveryService.Sign(offer, FusionIngressTestEnvironment.FirstKey), offer.Signature);
         await stop.CancelAsync();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => listener);
+        // 取消可能发生在等待收包期间或两次循环之间，两种退出方式都必须限时释放端口。
+        var cancellation = await Record.ExceptionAsync(() => listener.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.True(cancellation is null or OperationCanceledException, cancellation?.ToString());
         using var rebound = new UdpClient(new IPEndPoint(IPAddress.Any, port));
     }
     /// <summary>合法来源收到相同 nonce 的认证地址，显式错误协议或内容变更不能被接受。</summary>
