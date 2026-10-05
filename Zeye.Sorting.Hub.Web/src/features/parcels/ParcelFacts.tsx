@@ -1,4 +1,4 @@
-import { Descriptions, Typography } from 'antd';
+import { Typography } from 'antd';
 import { parcelFieldLabels, processingStages } from '../../data/api/parcelTypes';
 import { formatNumber } from '../../data/formatNumber';
 
@@ -16,13 +16,12 @@ export function parcelFactValue(key: string, value: unknown): string {
   return String(value).replace(/^(\d{4}-\d{2}-\d{2})T/, '$1 ');
 }
 
-/** 完整展示合同字段，原始报文、接口正文与图片路径可复制，禁止截断事实。 */
+/** 按实际容器宽度展示合同字段，长正文独占整行并保留全文复制。 */
 export function ParcelFacts({ facts, keys }: { facts: object; keys?: string[] }) {
   const values = facts as Record<string, unknown>;
   const entries = (keys ?? Object.keys(values)).map(key => [key, values[key]] as const);
-  return <Descriptions size="small" column={{ xs: 1, sm: 2, lg: 3 }} items={entries.map(([key, value]) => ({
-    key, label: parcelFieldLabels[key] ?? key,
-    span: /Payload|Body|Headers|Json|Data|Message|Exception|Path|Reason/i.test(key) ? 'filled' as const : 1,
-    children: <Typography.Text copyable={value !== null && value !== undefined && value !== ''} style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{parcelFactValue(key, value)}</Typography.Text>,
-  }))} />;
+  return <dl className="parcel-facts">{entries.map(([key, value]) => <div key={key} className={/Payload|Body|Headers|Json|Data|Message|Exception|Path|Reason/i.test(key) ? 'parcel-fact parcel-fact-full' : 'parcel-fact'}>
+    <dt>{parcelFieldLabels[key] ?? key}</dt>
+    <dd><Typography.Text copyable={value !== null && value !== undefined && value !== ''}>{parcelFactValue(key, value)}</Typography.Text></dd>
+  </div>)}</dl>;
 }

@@ -87,7 +87,7 @@ export function ParcelDetailPage() {
         return { key, label: `${title}（${rows.length}）`, children: rows.length ? rows.map((row, index) => <ParcelFacts key={index} facts={row} />) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={`暂无${title}`} /> };
       })} />
     </SectionCard>}
-    <Drawer title="处理记录详情" width={540} open={!!selectedRecord} onClose={() => setSelectedRecord(null)}>
+    <Drawer title="处理记录详情" width="min(960px, 100vw)" open={!!selectedRecord} onClose={() => setSelectedRecord(null)}>
       {selectedRecord && <ParcelFacts facts={selectedRecord} />}
     </Drawer>
     {parcel && imagesOpen && <ParcelImagesDrawer key={parcel.id} parcel={parcel} onClose={() => setImagesOpen(false)} />}
