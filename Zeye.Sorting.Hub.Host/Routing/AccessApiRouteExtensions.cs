@@ -25,7 +25,8 @@ public static class AccessApiRouteExtensions {
             return Results.Ok(new { configured = directory.HasManagedUsers, bootstrapAvailable = service.BootstrapAvailable, authenticated = context.User.Identity?.IsAuthenticated == true,
                 isSuperAdministrator = AccessDirectoryService.IsSuperAdministrator(context.User), enforceAuthorization = service.EnforceAuthorization,
                 name = context.User.Identity?.Name, avatarUrl, permissions = context.User.FindAll("permission").Select(x => x.Value).ToArray() });
-        });
+        }).WithSummary("读取当前登录状态与访问权限")
+            .WithDescription("返回系统是否需要创建管理员、当前会话身份及权限，用于登录入口和页面访问控制；不返回密码或初始化密钥。");
         group.MapPost("/bootstrap", async (JsonElement body, AccessDirectoryService service, HttpContext context, CancellationToken ct) => {
             if (!service.MatchesSecret(Text(body, "bootstrapKey"), "Access:BootstrapKey")) return Results.Problem(statusCode: 403, detail: "初始化密钥无效或未配置。");
             var (directory, revision) = await service.ReadAsync(ct);
@@ -37,7 +38,8 @@ public static class AccessApiRouteExtensions {
             if (!await service.SaveAsync(directory with { Initialized = true, Users = [.. directory.Users.Where(BuiltInSuperUser.Is), user] }, revision, ct)) return Results.Problem(statusCode: 409, detail: "初始化存在并发冲突，请登录或重试。");
             await context.SignInAsync("SortingCookie", AccessDirectoryService.Principal(user, directory.Roles[0]));
             return Results.Ok(new { name = user.Name });
-        }).RequireRateLimiting("account-login");
+        }).RequireRateLimiting("account-login").WithSummary("首次创建管理员并登录")
+            .WithDescription("仅在不存在普通成员时，校验部署初始化密钥后创建超级管理员并建立登录会话；内置保留账号不能用于初始化，并发初始化返回冲突。");
         group.MapPost("/login", async (JsonElement body, AccessDirectoryService service, HttpContext context, CancellationToken ct) => {
             var (directory, revision) = await service.ReadAsync(ct);
             var account = Text(body, "username").Trim(); var password = Text(body, "password");
@@ -50,13 +52,16 @@ public static class AccessApiRouteExtensions {
                 IsPersistent = body.TryGetProperty("remember", out var remember) && remember.ValueKind == JsonValueKind.True
             });
             return Results.Ok(new { name = user.Name });
-        }).RequireRateLimiting("account-login");
-        group.MapPost("/logout", async (HttpContext context) => { await context.SignOutAsync("SortingCookie"); return Results.NoContent(); });
+        }).RequireRateLimiting("account-login").WithSummary("账号密码登录")
+            .WithDescription("校验启用账号的登录密码，更新最近登录时间并建立认证会话；账号不区分大小写，可选择保持登录，错误凭据或禁用账号无法登录。");
+        group.MapPost("/logout", async (HttpContext context) => { await context.SignOutAsync("SortingCookie"); return Results.NoContent(); })
+            .WithSummary("退出当前登录会话").WithDescription("清除当前用户的认证 Cookie，结束本次登录会话并返回空响应。");
         group.MapGet("", async (AccessDirectoryService service, HttpContext context, CancellationToken ct) => {
             if (!IsAdmin(context)) return Results.Problem(statusCode: 403, detail: "请以具有账号管理权限的账号登录。");
             var (directory, revision) = await service.ReadAsync(ct);
             return Results.Ok(AccessDirectoryService.PublicDirectory(directory, revision));
-        });
+        }).WithSummary("读取用户与角色目录")
+            .WithDescription("具有账号管理权限的用户可读取成员、角色、权限及目录版本，用于账号管理；隐藏内置超级用户，不返回密码摘要。");
         group.MapPost("/roles", async (JsonElement body, AccessDirectoryService service, HttpContext context, CancellationToken ct) => {
             if (!IsAdmin(context)) return Results.Problem(statusCode: 403, detail: "需要账号管理权限。");
             var (directory, revision) = await service.ReadAsync(ct);
@@ -73,7 +78,8 @@ public static class AccessApiRouteExtensions {
             var role = new AccessRole { Id = existing?.Id ?? directory.Roles.Max(x => x.Id) + 1, Name = name, Description = description, Permissions = codes, Modified = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") };
             var updated = directory with { Roles = existing is null ? [.. directory.Roles, role] : directory.Roles.Select(x => x.Id == role.Id ? role : x).ToArray() };
             return await service.SaveAsync(updated, revision, ct) ? Results.Ok(AccessDirectoryService.PublicDirectory(updated, revision + 1)) : Results.Problem(statusCode: 409, detail: "并发修改，请刷新重试。");
-        });
+        }).WithSummary("创建或修改角色权限")
+            .WithDescription("具有账号管理权限的用户可按目录版本新建或更新自定义角色及权限；禁止修改内置角色，版本冲突时保留已有配置。");
         group.MapPost("/users", async (JsonElement body, AccessDirectoryService service, HttpContext context, CancellationToken ct) => {
             if (!IsAdmin(context)) return Results.Problem(statusCode: 403, detail: "需要账号管理权限。");
             var (directory, revision) = await service.ReadAsync(ct);
@@ -95,7 +101,8 @@ public static class AccessApiRouteExtensions {
             var updated = directory with { Users = existing is null ? [.. directory.Users, user] : directory.Users.Select(x => x.Id == existing.Id ? user : x).ToArray() };
             if (!updated.Users.Any(x => x.Enabled && updated.Roles.Any(r => r.Id == x.RoleId && r.BuiltIn))) return Results.Problem(statusCode: 400, detail: "至少保留一个启用的超级管理员。");
             return await service.SaveAsync(updated, revision, ct) ? Results.Ok(AccessDirectoryService.PublicDirectory(updated, revision + 1)) : Results.Problem(statusCode: 409, detail: "并发修改，请刷新重试。");
-        });
+        }).WithSummary("创建或修改用户账号")
+            .WithDescription("具有账号管理权限的用户可按目录版本维护账号、角色、密码及启用状态；超级管理员成员仅允许超级管理员维护，内置保留账号不可创建或修改。");
         routes.MapProfileApis();
         return routes;
     }

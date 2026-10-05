@@ -15,7 +15,8 @@ public static class RuleManagementApiRouteExtensions {
             var document = await store.ReadAsync("rules-" + category, ct);
             var rules = document is null ? category == "exception" ? ClassificationRuleDefaults.Create() : [] : JsonSerializer.Deserialize<ClassificationRule[]>(document.Json, JsonOptions)!;
             return Results.Ok(new { revision = document?.Revision ?? 0, rules });
-        });
+        }).WithSummary("读取包裹或异常分类规则")
+            .WithDescription("category 为 parcel 或 exception，返回对应分类规则及版本；异常分类默认包含分拣机异常和不可删除的未知异常兜底。");
         group.MapPut("/{category}", async (string category, RuleWriteRequest request, ManagedDocumentService store, HttpContext context, CancellationToken ct) => {
             if (category is not ("parcel" or "exception")) return Results.NotFound();
             if (request.Rules is null || request.Rules.Any(x => x is null) || request.Rules.Length > 200 || request.ExpectedRevision < 0 || request.Rules.Select(x => x.Id).Distinct().Count() != request.Rules.Length)
@@ -45,7 +46,8 @@ public static class RuleManagementApiRouteExtensions {
             var rules = request.Rules.Select(x => x.SystemRule is null ? x with { Modified = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), Editor = context.User.Identity?.Name ?? "操作员" } : x).ToArray();
             var saved = await store.WriteAsync("rules-" + category, JsonSerializer.Serialize(rules, JsonOptions), request.ExpectedRevision, ct);
             return saved is null ? Results.Problem(statusCode: 409, detail: "规则已被其他操作更新，请刷新后重试。") : Results.Ok(new { revision = saved.Revision, rules });
-        });
+        }).WithSummary("保存包裹或异常分类规则")
+            .WithDescription("按期望版本校验并保存分类条件、标记动作及发布状态；系统默认异常和未知异常兜底不可修改或删除，格口命令仍由 Fusion 分拣链路执行。");
         return routes;
     }
 }

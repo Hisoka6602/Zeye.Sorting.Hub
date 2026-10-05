@@ -49,7 +49,9 @@ public static class RealtimeApplicationExtensions {
             options.CloseOnAuthenticationExpiration = true;
             options.ApplicationMaxBufferSize = 64 * 1024;
             options.TransportMaxBufferSize = 256 * 1024;
-        }).DisableRequestTimeout().RequireRateLimiting("realtime-connect");
+        }).DisableRequestTimeout().RequireRateLimiting("realtime-connect")
+            .WithSummary("管理页面实时业务通道")
+            .WithDescription("使用当前登录会话建立 SignalR 连接，复用业务接口权限执行频繁读取、变更订阅、包裹状态更新及处理记录追加；协商端点确定连接和传输方式，长连接不绕过敏感版块的超级管理员限制。");
         app.Services.GetRequiredService<RealtimeEndpointDispatcher>().Configure(app);
     }
 }

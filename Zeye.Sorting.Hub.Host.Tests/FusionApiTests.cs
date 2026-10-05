@@ -3,6 +3,8 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http.Connections;
+using Microsoft.AspNetCore.Http.Metadata;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.AspNetCore.TestHost;
@@ -22,6 +24,35 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 
 /// <summary>通过官方 SignalR 客户端验证生产认证、完整协议方法和受保护的读取路径。</summary>
 public sealed class FusionApiTests {
+    /// <summary>真实映射生成的账号、规则、Fusion 路由与两条 SignalR 隐式端点均包含中文摘要和业务说明。</summary>
+    [Fact]
+    public async Task BusinessEndpointsAndSignalRTransportsExposeChineseDescriptions() {
+        await using var env = new FusionIngressTestEnvironment(); await env.InitializeAsync();
+        await using var app = await AccessApiTests.CreateAsync(env.Database, configureServices: builder => {
+            builder.Services.AddSortingRealtime();
+            builder.Services.Configure<Zeye.Sorting.Hub.Host.Middleware.WebRequestAuditLogOptions>(options => options.Enabled = false);
+            builder.Services.AddSingleton(new Zeye.Sorting.Hub.Host.Middleware.WebRequestAuditBackgroundQueue(32, TimeSpan.FromSeconds(30)));
+            builder.Services.AddSingleton<IFusionIngestionGateway>(env.Ingress);
+        }, configureRoutes: app => { app.MapFusionIngestion(); app.MapSortingRealtime(); });
+        // 只检查此测试宿主实际安装的生产入口，排除账号测试所需的模拟业务响应。
+        var productionPrefixes = new[] { "/hubs/", "/api/access", "/api/operations/rules/", "/api/operations/configuration/fusion",
+            "/api/parcels/fusion/", "/api/diagnostics/fusion/" };
+        var endpoints = ((IEndpointRouteBuilder)app).DataSources.SelectMany(source => source.Endpoints).OfType<RouteEndpoint>()
+            .Where(endpoint => endpoint.RoutePattern.RawText is { } path
+                && productionPrefixes.Any(prefix => path.StartsWith(prefix, StringComparison.Ordinal))).ToArray();
+        Assert.True(endpoints.Length >= 19, "未完整读取生产业务端点。");
+        foreach (var endpoint in endpoints) {
+            Assert.True(endpoint.Metadata.GetMetadata<IEndpointSummaryMetadata>() is not null, $"{endpoint.RoutePattern.RawText} 缺少摘要元数据。");
+            Assert.True(endpoint.Metadata.GetMetadata<IEndpointDescriptionMetadata>() is not null, $"{endpoint.RoutePattern.RawText} 缺少业务说明元数据。");
+            Assert.Matches("[\\u4e00-\\u9fff]", endpoint.Metadata.GetMetadata<IEndpointSummaryMetadata>()?.Summary ?? string.Empty);
+            Assert.Matches("[\\u4e00-\\u9fff]", endpoint.Metadata.GetMetadata<IEndpointDescriptionMetadata>()?.Description ?? string.Empty);
+        }
+        foreach (var path in new[] { "/hubs/fusion-ingestion", "/hubs/sorting" }) {
+            Assert.Contains(endpoints, endpoint => endpoint.RoutePattern.RawText == path);
+            Assert.Contains(endpoints, endpoint => endpoint.RoutePattern.RawText == path + "/negotiate");
+        }
+    }
+
     /// <summary>两种真实传输均验证六方法、超过浏览器预算的报文、断线续传和持久读取。</summary>
     [Theory]
     [InlineData(HttpTransportType.WebSockets)]

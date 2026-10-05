@@ -16,6 +16,8 @@ public static class ParcelImageApiRouteExtensions {
         routeBuilder.MapGet("/api/parcels/{id:long}/images", GetImagesAsync)
             .WithTags("Parcels").WithName("GetParcelImages")
             .WithSummary("读取包裹图片及预览地址")
+            .WithDescription("按包裹编号读取所有已关联图片及可用预览地址，用于多图浏览；沿用包裹读取权限，必要时生成临时签名地址，不将来源本地路径转换为任意文件读取。")
+            .WithDescription("按包裹编号读取所有已关联图片及可用预览地址，用于多图浏览；沿用包裹读取权限，必要时生成临时签名地址，不将来源本地路径转换为任意文件读取。")
             .Produces<ParcelImagesResponse>()
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status400BadRequest);
