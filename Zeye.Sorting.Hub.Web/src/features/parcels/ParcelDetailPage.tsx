@@ -49,7 +49,7 @@ export function ParcelDetailPage() {
     </div>
     <div>
       <div className="detail-pair"><span className="detail-label">目标格口</span><span className="detail-value">{display('targetChuteCode', parcel?.targetChuteCode ?? parcel?.targetChuteId, unavailable)}</span></div>
-      <div className="detail-pair"><span className="detail-label">目的工作台</span><span className="detail-value">{display('workstationName', parcel?.workstationName, unavailable)}</span></div>
+      <div className="detail-pair"><span className="detail-label">来源工作台</span><span className="detail-value">{display('workstationName', parcel?.workstationName, unavailable)}</span></div>
       <div className="detail-pair"><span className="detail-label">重量</span><span className="detail-value">{parcel?.weight != null ? `${formatNumber(parcel.weight)} kg` : parcel ? '未提供' : '—'}</span></div>
       <div className="detail-pair"><span className="detail-label">物理尺寸</span><span className="detail-value">{dimensions(parcel)}</span></div>
       <div className="detail-pair"><span className="detail-label">创建时间</span><span className="detail-value">{display('createdTime', parcel?.createdTime, unavailable)}</span></div>
