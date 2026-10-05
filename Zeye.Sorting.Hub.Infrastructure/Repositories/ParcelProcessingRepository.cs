@@ -13,6 +13,7 @@ using Zeye.Sorting.Hub.Domain.Enums.Parcels;
 using Zeye.Sorting.Hub.Domain.Repositories;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.Results;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Management;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Repositories;
@@ -23,6 +24,8 @@ public sealed class ParcelProcessingRepository : IParcelProcessingRepository {
     private readonly IDbContextFactory<SortingHubDbContext> _factory;
     /// <summary>实际分表路由与预建。</summary>
     private readonly ParcelPartitionStore _partitions;
+    /// <summary>已提交的内存分类配置，处理事务不读取管理文档表。</summary>
+    private readonly ClassificationRuleSnapshotCache _rules;
     /// <summary>有界进程内锁，数据库串行化事务提供跨进程保护。</summary>
     private static readonly SemaphoreSlim[] WriteGates = Enumerable.Range(0, 256).Select(static _ => new SemaphoreSlim(1, 1)).ToArray();
     /// <summary>持久化失败与冲突审计日志。</summary>
@@ -31,6 +34,7 @@ public sealed class ParcelProcessingRepository : IParcelProcessingRepository {
     /// <summary>组装处理记录仓储。</summary>
     public ParcelProcessingRepository(IDbContextFactory<SortingHubDbContext> factory, ParcelPartitionStore partitions) {
         _factory = factory; _partitions = partitions;
+        _rules = ClassificationRuleSnapshotCache.For(factory);
     }
 
     /// <summary>重试整个事务，原子保存凭据、记录、定位索引与包裹快照。</summary>
@@ -41,6 +45,7 @@ public sealed class ParcelProcessingRepository : IParcelProcessingRepository {
         await gate.WaitAsync(cancellationToken);
         try {
             record.Validate();
+            var rules = await _rules.GetAsync(cancellationToken);
             await using var template = await _factory.CreateDbContextAsync(cancellationToken);
             var strategy = template.Database.CreateExecutionStrategy();
             var isSqlServer = template.Database.IsSqlServer();
@@ -97,11 +102,6 @@ public sealed class ParcelProcessingRepository : IParcelProcessingRepository {
                 if (parcel is not null) {
                     var history = await db.Set<ParcelProcessingRecord>().AsNoTracking().Where(x => x.ParcelId == parcel.Id).ToListAsync(cancellationToken);
                     history.Add(storedRecord);
-                    var documents = await db.Set<Persistence.Management.ManagedDocument>().AsNoTracking().Where(x => x.Key == "rules-exception" || x.Key == "rules-parcel").ToListAsync(cancellationToken);
-                    var ruleJson = documents.SingleOrDefault(x => x.Key == "rules-exception")?.Json;
-                    var exceptionRules = ruleJson is null ? ClassificationRuleDefaults.Create() : JsonSerializer.Deserialize<ClassificationRule[]>(ruleJson, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
-                    var parcelJson = documents.SingleOrDefault(x => x.Key == "rules-parcel")?.Json;
-                    var rules = parcelJson is null ? exceptionRules : exceptionRules.Concat(JsonSerializer.Deserialize<ClassificationRule[]>(parcelJson, new JsonSerializerOptions(JsonSerializerDefaults.Web))!).ToArray();
                     parcel.ApplyProcessingRecords(history, rules);
                 }
                 await db.SaveChangesAsync(cancellationToken);

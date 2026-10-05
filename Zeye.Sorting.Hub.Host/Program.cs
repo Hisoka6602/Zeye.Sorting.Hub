@@ -114,6 +114,7 @@ try {
     // 数据库启动链路严格按“迁移治理 -> 初始化 -> 预热/后台任务”顺序注册，避免后台查询抢跑迁移。
     builder.Services.AddHostedService<DatabaseInitializerHostedService>();
     builder.Services.AddHostedService<BuiltInAccountHostedService>();
+    builder.Services.AddHostedService<Zeye.Sorting.Hub.Infrastructure.Persistence.ReadModels.PersistenceReadSnapshotRefreshService>();
     builder.Services.AddHostedService<DatabaseConnectionWarmupHostedService>();
     builder.Services.AddHostedService<ParcelBatchWriteFlushHostedService>();
     builder.Services.AddHostedService<ShardingPrebuildHostedService>();

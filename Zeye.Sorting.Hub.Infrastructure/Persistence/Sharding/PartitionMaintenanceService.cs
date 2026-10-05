@@ -26,6 +26,7 @@ public sealed class PartitionMaintenanceService(ParcelPartitionStore store, IDbC
         })
             .Concat(periods).DistinctBy(period => period.Suffix).OrderBy(period => period.Start).ToArray();
         foreach (var period in maintenance) await store.EnsureCreatedAsync(period, cancellationToken, verifyExisting: true);
+        await store.RefreshReadCatalogAsync(cancellationToken);
         return new { plannedSuffixes = periods.Select(x => x.Suffix).ToArray(),
             createdSuffixes = periods.Select(x => x.Suffix).Except(existing.Select(x => x.Suffix)).ToArray(),
             verifiedSuffixes = maintenance.Select(x => x.Suffix).ToArray(),

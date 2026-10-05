@@ -22,11 +22,15 @@ public sealed class ParcelAnalyticsReadService : IParcelAnalyticsReadService {
     private readonly IDbContextFactory<SortingHubDbContext> _factory;
     /// <summary>查询时间及返回行数预算。</summary>
     private readonly ReportingQueryBudgetPlanner _budgetPlanner;
+    /// <summary>启动预热并由后台同步的分表目录快照。</summary>
+    private readonly ParcelPartitionStore _partitions;
 
     /// <summary>组装报表只读服务。</summary>
-    public ParcelAnalyticsReadService(IDbContextFactory<SortingHubDbContext> factory, ReportingQueryBudgetPlanner budgetPlanner) {
+    public ParcelAnalyticsReadService(IDbContextFactory<SortingHubDbContext> factory, ReportingQueryBudgetPlanner budgetPlanner,
+        ParcelPartitionStore partitions) {
         _factory = factory;
         _budgetPlanner = budgetPlanner;
+        _partitions = partitions;
     }
 
     /// <summary>以首次入库日为包裹总体，以发生日为处理事实总体；两个总体不混用。</summary>
@@ -45,14 +49,15 @@ public sealed class ParcelAnalyticsReadService : IParcelAnalyticsReadService {
             throw new ArgumentException(exception.Message, nameof(toLocalDate), exception);
         }
         await using var db = await _factory.CreateDbContextAsync(cancellationToken);
-        // 单次读取目录供全部统计复用；入库总体裁剪周期，完成和事实总体保留全部历史周期。
-        var periods = await db.Set<ParcelPartitionCatalogEntry>().AsNoTracking()
-            .Select(period => new { period.Suffix, period.Start, period.End }).ToListAsync(cancellationToken);
-        var allSuffixes = periods.Select(period => period.Suffix).Append(string.Empty).ToArray();
+        // 复用内存目录；入库总体裁剪周期，完成和事实总体保留全部历史周期。
+        var catalog = await _partitions.GetReadCatalogAsync(cancellationToken);
+        var periods = catalog.Periods;
+        var allSuffixes = catalog.Suffixes;
         var cohortSuffixes = periods.Where(period => period.Start < budget.RangeEndLocal && period.End > budget.RangeStartLocal)
             .Select(period => period.Suffix).Append(string.Empty).ToArray();
-        var parcels = ParcelPartitionQueryBuilder.BuildTimeRangeReadModel<Parcel, ParcelAnalyticsSnapshot>(db,
-            cohortSuffixes, nameof(Parcel.CreatedTime), budget.RangeStartLocal, budget.RangeEndLocal)
+        await using var intake = ParcelPartitionReadContext<ParcelAnalyticsSnapshot>.Create<Parcel>(db, allSuffixes);
+        var parcels = intake.Query(
+            cohortSuffixes, nameof(Parcel.CreatedTime), budget.RangeStartLocal, budget.RangeEndLocal, false)
             .Where(x => x.SourceParcelId != null && x.DetectedTime != null);
 
         // 步骤1：数据库执行条件计数，空时间窗口没有任何伪造的日数据或零秒平均值。
@@ -85,8 +90,9 @@ public sealed class ParcelAnalyticsReadService : IParcelAnalyticsReadService {
             budget.RangeStartLocal, budget.RangeEndLocal, cancellationToken);
 
         // 趋势按实际完成日期计数，包含更早入库、但在窗口内完成的包裹。
-        var completedParcels = ParcelPartitionQueryBuilder.BuildTimeRangeReadModel<Parcel, ParcelCompletionStatisticsRow>(db,
-            allSuffixes, nameof(Parcel.CompletedTime), budget.RangeStartLocal, budget.RangeEndLocal)
+        await using var completion = ParcelPartitionReadContext<ParcelCompletionStatisticsRow>.Create<Parcel>(db, allSuffixes);
+        var completedParcels = completion.Query(
+            allSuffixes, nameof(Parcel.CompletedTime), budget.RangeStartLocal, budget.RangeEndLocal, false)
             .Where(x => x.Status == ParcelStatus.Completed && x.SourceParcelId != null && x.DetectedTime != null);
         var sortingDayRows = await completedParcels.GroupBy(x => x.CompletedTime!.Value.Date)
             .Select(group => new { Date = group.Key, SortedCount = group.LongCount() })
@@ -119,9 +125,10 @@ public sealed class ParcelAnalyticsReadService : IParcelAnalyticsReadService {
 
         // 步骤3：处理事实按事件发生时间独立计数；失败尝试和未绑定消息不除以包裹件数。
         // 每个物理表先在覆盖索引上计数，合并的行数由分表数量决定，不物化全部匹配事件。
+        await using var processing = ParcelPartitionReadContext<ParcelProcessingStatisticsRow>.Create<ParcelProcessingRecord>(db, allSuffixes);
         var eventQueries = allSuffixes.Select(suffix =>
-            ParcelPartitionQueryBuilder.BuildTimeRangeReadModel<ParcelProcessingRecord, ParcelProcessingStatisticsRow>(db,
-                [suffix], nameof(ParcelProcessingRecord.OccurredAt), budget.RangeStartLocal, budget.RangeEndLocal)
+            processing.Query(
+                [suffix], nameof(ParcelProcessingRecord.OccurredAt), budget.RangeStartLocal, budget.RangeEndLocal, false)
             .GroupBy(_ => 1).Select(group => new {
                 Count = group.LongCount(),
                 Failed = group.LongCount(x => x.IsSuccess == false),

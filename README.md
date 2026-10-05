@@ -2089,4 +2089,34 @@ Zeye.Sorting.Hub.Host.Tests/
 | Host.Tests | `FusionProjectionBatchTests.cs` | 批量投影结果、错误重试和失效认领保护回归 |
 | Host.Tests | `FusionProjectionChunkTests.cs` | SQL Server CASE 层数限制下的有界投影结果更新回归 |
 
-统计查询通过 `ParcelPartitionQueryBuilder.BuildTimeRangeReadModel` 在各物理表内先过滤时间、只投影所需字段；处理事实先按表聚合，再合并少量汇总行。完成日期和迟到事实继续跨历史周期查询，不用入库周期代替事实发生周期。`PartitionMaintenanceService` 在启动和既有预建周期中检查已登记历史分表的索引，遵守建表授权和预演开关；执行前记录 DDL 与索引回滚语句，不改写业务数据。
+统计查询通过 `ParcelPartitionReadContext` 的 EF Core 只读映射及 LINQ，在各物理表内先过滤时间、只投影所需字段；处理事实先按表聚合，再合并少量汇总行。完成日期和迟到事实继续跨历史周期查询，不用入库周期代替事实发生周期。`PartitionMaintenanceService` 在启动和既有预建周期中检查已登记历史分表的索引，遵守建表授权和预演开关；执行前记录 DDL 与索引回滚语句，不改写业务数据。
+
+## 各层级与各文件作用说明（逐项）：EF Core 查询与热路径元数据
+
+```text
+Zeye.Sorting.Hub.Infrastructure/Persistence/
+  Management/ClassificationRuleSnapshotCache.cs
+  ReadModels/PersistenceReadSnapshotRefreshService.cs
+  Sharding/ParcelPartitionCatalogSnapshot.cs
+  Sharding/IParcelPartitionReadModelContext.cs
+  Sharding/ParcelPartitionReadContext.cs
+  Sharding/ParcelPartitionReadModelCacheKeyFactory.cs
+Zeye.Sorting.Hub.Host.Tests/
+  ParcelMetadataIoInterceptor.cs
+  ParcelReadSnapshotTests.cs
+```
+
+| 目录 | 文件 | 职责 |
+| --- | --- | --- |
+| Infrastructure/Persistence/Management | `ClassificationRuleSnapshotCache.cs` | 按数据库工厂隔离的不可变规则快照，耐久保存后即时发布及版本保护 |
+| Infrastructure/Persistence/ReadModels | `PersistenceReadSnapshotRefreshService.cs` | 数据库初始化之后预热分表目录与分类规则，每分钟后台同步其他 Hub 实例的变更 |
+| Infrastructure/Persistence/Sharding | `ParcelPartitionCatalogSnapshot.cs` | 不可变周期及后缀集合，服务请求复用同一份目录 |
+| Infrastructure/Persistence/Sharding | `IParcelPartitionReadModelContext.cs` | 只读映射的内部缓存键契约，避免业务层依赖 EF 元数据 |
+| Infrastructure/Persistence/Sharding | `ParcelPartitionReadContext.cs` | 复用已有提供器和列映射，使用共享只读实体及 LINQ 合并窄字段统计查询 |
+| Infrastructure/Persistence/Sharding | `ParcelPartitionReadModelCacheKeyFactory.cs` | 按来源实体、读模型和物理分表集合隔离 EF 模型缓存，日期保持查询参数 |
+| Host.Tests | `ParcelMetadataIoInterceptor.cs` | 记录真实 EF 命令中的配置与目录读取次数 |
+| Host.Tests | `ParcelReadSnapshotTests.cs` | 预热后零配置读取、并发冷加载、保存即时生效、跨实例刷新与失败隔离回归 |
+
+业务查询与写入优先使用 EF Core 的 LINQ、`SaveChangesAsync`、`ExecuteUpdateAsync` 和 `ExecuteDeleteAsync`。报表及工作台统计不再手写跨表窄字段 SELECT；独立分表的列表查询直接使用对应 EF 模型。尚需原生语句的范围限于数据库维护、跨实体物理分表路由和精确创建间隔窗口统计，集中在基础设施实现并复用提供器映射与参数化，禁止把语句散落到页面、应用用例或高频收包逻辑。
+
+热处理不逐票读取管理配置或反复检查已预建的分表；本实例保存规则及完成建表后立即更新内存，其他实例的元数据变更由后台每分钟同步。快照仅缓存规则和目录，不缓存包裹统计结果。接收事实的确认仍在 EF Core 事务提交之后，图片存储确认仍在完整落盘及摘要校验之后；这些耐久边界不能改为提前返回成功。请求审计和业务投影继续由既有有界后台链路处理。

@@ -124,7 +124,7 @@ internal static class Program {
             var partitions = new ParcelPartitionStore(factory, config);
             var writer = new ParcelProcessingRepository(factory, partitions);
             var reader = new ParcelAnalyticsReadService(factory,
-                new ReportingQueryBudgetPlanner(Options.Create(new ReadOnlyDatabaseOptions())));
+                new ReportingQueryBudgetPlanner(Options.Create(new ReadOnlyDatabaseOptions())), partitions);
             var parcelReader = new ParcelRepository(factory, config, partitions);
             var records = BuildRecords(start, days, parcelsPerDay, runId);
             if (payloadBytes > 0) {

@@ -34,13 +34,14 @@ public sealed class ParcelStatisticsQueryTests {
         Assert.True((await database.Processing.AppendAsync(late, default)).IsSuccess);
         await using var db = await database.Factory.CreateDbContextAsync();
         var suffixes = await database.Partitions.GetReadSuffixesAsync(default);
-        var query = ParcelPartitionQueryBuilder.BuildTimeRangeReadModel<ParcelProcessingRecord, ParcelProcessingStatisticsRow>(db,
-            suffixes, nameof(ParcelProcessingRecord.OccurredAt), late.OccurredAt.Date, late.OccurredAt.Date.AddDays(1));
+        await using var read = ParcelPartitionReadContext<ParcelProcessingStatisticsRow>.Create<ParcelProcessingRecord>(db, suffixes);
+        var query = read.Query(
+            suffixes, nameof(ParcelProcessingRecord.OccurredAt), late.OccurredAt.Date, late.OccurredAt.Date.AddDays(1), false);
         var sql = query.ToQueryString();
         Assert.DoesNotContain(nameof(ParcelProcessingRecord.RawPayload), sql);
         Assert.DoesNotContain(nameof(ParcelProcessingRecord.ResponseBody), sql);
-        Assert.Equal(suffixes.Count, sql.Split("WHERE \"OccurredAt\" >=", StringSplitOptions.None).Length - 1);
-        Assert.Contains("@p0", sql); Assert.Contains("@p1", sql);
+        Assert.Equal(suffixes.Count, sql.Split("WHERE", StringSplitOptions.None).Length - 1);
+        Assert.Contains("@__fromLocal", sql); Assert.Contains("@__toLocal", sql);
         var row = Assert.Single(await query.ToListAsync());
         Assert.False(row.IsSuccess);
         Assert.Equal(ParcelProcessingStage.ScanUploaded, row.Stage);
@@ -62,7 +63,7 @@ public sealed class ParcelStatisticsQueryTests {
             Assert.True((await database.Processing.AppendAsync(fact, default)).IsSuccess);
         }
         var reader = new ParcelAnalyticsReadService(database.Factory,
-            new ReportingQueryBudgetPlanner(TestOptions.Create(new ReadOnlyDatabaseOptions())));
+            new ReportingQueryBudgetPlanner(TestOptions.Create(new ReadOnlyDatabaseOptions())), database.Partitions);
         var tasks = Enumerable.Range(0, 12).Select(index => reader.GetAsync(first.Date,
             first.Date.AddDays(index % 2), default)).ToArray();
         var results = await Task.WhenAll(tasks);

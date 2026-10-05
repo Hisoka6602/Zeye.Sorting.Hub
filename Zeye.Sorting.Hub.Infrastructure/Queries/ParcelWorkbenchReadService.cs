@@ -17,7 +17,8 @@ public sealed class ParcelWorkbenchReadService(IDbContextFactory<SortingHubDbCon
         var from = nowLocal.AddHours(-24);
         await using var db = await factory.CreateDbContextAsync(cancellationToken);
         var suffixes = await partitions.GetReadSuffixesAsync(cancellationToken);
-        var parcels = ParcelPartitionQueryBuilder.BuildTimeRangeReadModel<Parcel, ParcelWorkbenchSnapshot>(db,
+        await using var read = ParcelPartitionReadContext<ParcelWorkbenchSnapshot>.Create<Parcel>(db, suffixes);
+        var parcels = read.Query(
             suffixes, nameof(Parcel.ScannedTime), from, nowLocal, includeEnd: true);
         var rows = await parcels.GroupBy(x => new {
             // 来源身份与接入认证一样区分大小写，避免数据库默认排序规则合并不同 Fusion。

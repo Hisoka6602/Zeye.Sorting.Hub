@@ -743,8 +743,9 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
         await Parallel.ForEachAsync(Enumerable.Range(0, suffixes.Count),
             new ParallelOptions { MaxDegreeOfParallelism = _readFanoutConcurrency, CancellationToken = cancellationToken },
             async (index, token) => {
-                await using var db = await ContextFactory.CreateDbContextAsync(token);
-                var query = ApplyFilter(ParcelPartitionQueryBuilder.BuildSingle<Parcel>(db, suffixes[index]),
+                await using var db = suffixes[index].Length == 0 ? await ContextFactory.CreateDbContextAsync(token)
+                    : await _partitions!.CreateContextAsync(suffixes[index], token);
+                var query = ApplyFilter(db.Set<Parcel>().AsNoTracking(),
                     filter, db.Database.ProviderName);
                 if (cursor is not null) query = query.ApplyCursorCondition(cursor);
                 var count = includeCount ? await query.LongCountAsync(token) : 0L;

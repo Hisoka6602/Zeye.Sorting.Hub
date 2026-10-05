@@ -19,7 +19,11 @@ public sealed class ManagedDocumentService(IDbContextFactory<SortingHubDbContext
                 if (document is null) { document = new ManagedDocument { Key = write.Key }; db.Add(document); }
                 document.Json = write.Json; document.Revision = checked(write.Revision + 1); document.ModifiedAt = DateTime.Now;
             }
-            try { await db.SaveChangesAsync(cancellationToken); return true; }
+            try {
+                await db.SaveChangesAsync(cancellationToken);
+                ClassificationRuleSnapshotCache.For(factory).Publish(db.ChangeTracker.Entries<ManagedDocument>().Select(entry => entry.Entity));
+                return true;
+            }
             catch (DbUpdateConcurrencyException exception) { Logger.Debug(exception, "管理文档批次版本冲突。"); return false; }
             catch (DbUpdateException exception) {
                 Logger.Warn(exception, "管理文档批次写入失败，核对唯一键冲突。");
@@ -46,7 +50,11 @@ public sealed class ManagedDocumentService(IDbContextFactory<SortingHubDbContext
             if ((document?.Revision ?? 0) != expectedRevision) return null;
             if (document is null) { document = new ManagedDocument { Key = key }; db.Add(document); }
             document.Json = json; document.Revision = checked(expectedRevision + 1); document.ModifiedAt = DateTime.Now;
-            try { await db.SaveChangesAsync(cancellationToken); return document; }
+            try {
+                await db.SaveChangesAsync(cancellationToken);
+                ClassificationRuleSnapshotCache.For(factory).Publish([document]);
+                return document;
+            }
             catch (DbUpdateConcurrencyException exception) { Logger.Debug(exception, "管理文档版本冲突。"); return null; }
             catch (DbUpdateException exception) {
                 Logger.Warn(exception, "管理文档写入失败，核对唯一键冲突。");

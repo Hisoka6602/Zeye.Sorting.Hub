@@ -250,7 +250,7 @@ public sealed class FusionPersistenceTests {
         Assert.Equal(2, page.TotalCount);
         Assert.Equal(2, (await database.Parcels.GetByIdAsync(original.Value.ParcelId!.Value, default))!.ProcessingRecords.Count);
         var analytics = new ParcelAnalyticsReadService(database.Factory,
-            new ReportingQueryBudgetPlanner(Microsoft.Extensions.Options.Options.Create(new ReadOnlyDatabaseOptions())));
+            new ReportingQueryBudgetPlanner(Microsoft.Extensions.Options.Options.Create(new ReadOnlyDatabaseOptions())), database.Partitions);
         var report = await analytics.GetAsync(new(2026, 9, 28), new(2026, 9, 28), default);
         Assert.Equal(2, report.DetectedCount);
         Assert.Equal(3, report.ProcessingEventCount);
@@ -267,7 +267,8 @@ public sealed class FusionPersistenceTests {
             await db.Database.ExecuteSqlRawAsync("DELETE FROM ParcelPartitionCatalog");
             await db.Database.ExecuteSqlRawAsync("DROP TABLE Parcel_ProcessingRecords_202609");
         }
-        await database.Partitions.EnsureCreatedAsync(period, default);
+        // 显式维护复核绕过热路径就绪快照，恢复外部移除的目录和实际表。
+        await database.Partitions.EnsureCreatedAsync(period, default, verifyExisting: true);
         var result = await database.Processing.AppendAsync(Fact("after-recovery", 1), default);
         Assert.True(result.IsSuccess, result.ErrorMessage);
         Assert.Equal(1, await database.CountPhysicalAsync("Parcels_202609"));
