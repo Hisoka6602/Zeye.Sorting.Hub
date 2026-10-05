@@ -1,6 +1,19 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { observeWorkstations, workstationKey } from '../src/features/parcels/workbenchModel.ts';
+import { mergeWorkstationSources, observeWorkstations, workstationKey } from '../src/features/parcels/workbenchModel.ts';
+
+test('登记来源无包裹也展示，心跳与包裹统计保持独立且不修改原观察结果', () => {
+  const observed = observeWorkstations([parcel('fusion-a', '旧名称')]);
+  const presence = { sourceInstanceId: 'fusion-a', workstationName: '登记名称', isOnline: false, pendingFacts: 8 };
+  const result = mergeWorkstationSources(observed, [presence, { sourceInstanceId: 'fusion-b', workstationName: '新工作台', isOnline: true }]);
+  assert.equal(result.workstations.length, 2);
+  assert.equal(result.workstations[0].name, '登记名称');
+  assert.equal(result.workstations[0].parcelCount, 1);
+  assert.equal(result.workstations[0].presence.isOnline, false);
+  assert.equal(result.workstations[1].parcelCount, 0);
+  assert.equal(result.workstations[1].presence.isOnline, true);
+  assert.equal(observed.workstations[0].presence, undefined);
+});
 
 const parcel = (sourceInstanceId, workstationName, status = 1, createdTime = '2026-10-03T10:00:00') => ({ sourceInstanceId, workstationName, status, createdTime });
 

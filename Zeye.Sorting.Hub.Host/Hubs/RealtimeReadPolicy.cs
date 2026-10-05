@@ -10,7 +10,7 @@ internal static partial class RealtimeReadPolicy {
         "/api/data-governance/archive-tasks", "/api/diagnostics/slow-queries", "/api/audit/web-requests",
         "/api/operations/partitions", "/api/operations/configuration", "/api/operations/configuration/policy",
         "/api/operations/rules/parcel", "/api/operations/rules/exception", "/api/operations/backup", "/api/operations/backup/artifacts",
-        "/health/live", "/health/ready", "/health/deep"
+        "/health/live", "/health/ready", "/health/deep", "/api/parcels/fusion/sources"
     };
 
     /// <summary>检查本地路径边界；查询参数仍接受正常的 URL 编码。</summary>

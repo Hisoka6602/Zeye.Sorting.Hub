@@ -370,4 +370,8 @@ logs/
 # 隔离数据库压测的原始结果与错误日志，可能包含执行计划和样本详情。
 performance/results/
 /deploy/.env
+/deploy/fusion-ingestion.json
+# Fusion 耐久图片和未完成分块是部署数据，不属于源码。
+/fusion-images/
+/Zeye.Sorting.Hub.Host/fusion-images/
 !Zeye.Sorting.Hub.Host/Properties/PublishProfiles/Windows-x64.pubxml

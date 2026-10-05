@@ -15,7 +15,7 @@ import { canAccessRestrictedSections } from '../../app/sectionAccess';
 import { getRealtimeState, subscribeRealtimeState } from '../../data/api/realtimeTransport';
 import { archiveStatusLabels, localTime, type ArchiveTask, type HealthReport, type PagedResult } from '../../data/api/operationalTypes';
 import type { ParcelList, ParcelSummary } from '../../data/api/parcelTypes';
-import { observeWorkstations, workstationKey, type WorkstationObservation } from './workbenchModel';
+import { mergeWorkstationSources, observeWorkstations, workstationKey, type WorkstationObservation, type FusionSourcePresence } from './workbenchModel';
 import './workbench.css';
 
 const healthProbes = [
@@ -49,7 +49,15 @@ function WorkstationCard({ station, onSelect }: { station: WorkstationObservatio
     <div className="workbench-station-head"><span className="workbench-station-icon" aria-hidden="true"><DesktopOutlined /></span><div>
       <h3>{station.name}</h3><p title={station.sourceInstanceId ?? undefined}>{station.sourceInstanceId ? `实例 ${station.sourceInstanceId}` : '来源实例编码未提供'}</p>
     </div></div>
-    <div className="workbench-station-presence"><QuestionCircleOutlined /><span>在线状态待接入</span></div>
+    <div className="workbench-station-presence">
+      {station.presence ? <><StatusTag value={station.presence.isOnline ? '在线' : '离线'} tone={station.presence.isOnline ? 'green' : 'orange'} /><span>{station.presence.lineId}{station.presence.deviceCode ? ` · ${station.presence.deviceCode}` : ''}</span></>
+        : <><QuestionCircleOutlined /><span>来源未登记，在线状态未知</span></>}
+    </div>
+    {station.presence && <div className="workbench-station-heartbeat">最近心跳 {station.presence.lastSeenAt ? localTime(station.presence.lastSeenAt) : '尚未连接'}
+      <span>待确认事实 {formatNumber(station.presence.pendingFacts, { grouping: true })} · 待传图片 {formatNumber(station.presence.pendingImages, { grouping: true })}</span></div>}
+    {station.presence && (station.presence.droppedUnacknowledgedFacts > 0 || station.presence.droppedUnacknowledgedImages > 0) &&
+      <div className="workbench-station-loss" role="status">发送端累计舍弃 {formatNumber(station.presence.droppedUnacknowledgedFacts, { grouping: true })} 条未确认事实、
+        {formatNumber(station.presence.droppedUnacknowledgedImages, { grouping: true })} 张未确认图片</div>}
     <dl className="workbench-station-counts"><div><dt>待分拣</dt><dd>{formatNumber(station.pendingCount, { grouping: true })}</dd></div>
       <div><dt>已完成</dt><dd>{formatNumber(station.completedCount, { grouping: true })}</dd></div><div className={station.exceptionCount > 0 ? 'has-exceptions' : ''}><dt>分拣异常</dt><dd>{formatNumber(station.exceptionCount, { grouping: true })}</dd></div></dl>
     {station.otherCount > 0 && <div className="workbench-station-other">其他状态 {formatNumber(station.otherCount, { grouping: true })} 件</div>}
@@ -65,6 +73,7 @@ export function OverviewPage() {
   const connection = useSyncExternalStore(subscribeRealtimeState, getRealtimeState, getRealtimeState);
   const canReadGovernance = canAccessRestrictedSections(session.data);
   const parcels = useApiResource<ParcelList>('/api/parcels?pageNumber=1&pageSize=200&includeTotalCount=false', undefined, automaticRefresh);
+  const sources = useApiResource<FusionSourcePresence[]>('/api/parcels/fusion/sources', undefined, automaticRefresh);
   const live = useApiResource<HealthReport>('/health/live', readHealthReport, automaticRefresh);
   const ready = useApiResource<HealthReport>('/health/ready', readHealthReport, automaticRefresh);
   const deep = useApiResource<HealthReport>(canReadGovernance ? '/health/deep' : null, readHealthReport, automaticRefresh);
@@ -75,13 +84,13 @@ export function OverviewPage() {
   const [selectedKey, setSelectedKey] = useState<string>();
   const recentRef = useRef<HTMLDivElement>(null);
   const items = parcels.data?.items ?? emptyParcels;
-  const observations = useMemo(() => observeWorkstations(items), [items]);
+  const observations = useMemo(() => mergeWorkstationSources(observeWorkstations(items), sources.data ?? []), [items, sources.data]);
   const keyword = search.trim().toLocaleLowerCase();
   const filteredStations = observations.workstations.filter(item => (!keyword || `${item.name} ${item.sourceInstanceId ?? ''}`.toLocaleLowerCase().includes(keyword)) && (filter !== 'exceptions' || item.exceptionCount > 0));
   const currentPage = Math.min(page, Math.max(1, Math.ceil(filteredStations.length / 6)));
   const selectedStation = observations.workstations.find(item => item.key === selectedKey);
   const recent = selectedKey ? items.filter(item => workstationKey(item) === selectedKey) : items;
-  const resources = [parcels, live, ready, deep, archives];
+  const resources = [parcels, sources, live, ready, deep, archives];
   const loading = resources.some(item => item.loading);
   const refresh = () => resources.forEach(item => item.refresh());
 
@@ -97,7 +106,8 @@ export function OverviewPage() {
       <div className={`workbench-probes ${canReadGovernance ? '' : 'is-basic'}`}>{healthProbes.map((probe, index) => (index < 2 || canReadGovernance) && <PlatformProbe key={probe.path} probe={probe} resource={[live, ready, deep][index]} />)}</div>
     </section>
     <SectionCard className="workbench-stations-card" title={<div className="workbench-section-title"><AppstoreOutlined /><div><h2>分拣工作台</h2><p>按来源实例查看处理情况，支持多个工作台同时工作</p></div></div>} extra={<span className="workbench-connection-state"><ApiOutlined />{connection === 'connected' ? '实时通道已连接' : connection === 'reconnecting' ? '实时通道重连中' : connection === 'connecting' ? '正在连接实时通道' : '实时通道未连接'}</span>}>
-      <div className="workbench-source-note"><span><CheckCircleOutlined />处理情况来自已入库包裹</span><p>包裹变化实时更新，设备在线状态等待融合服务上报。当前观察最近 24 小时内最新 200 条记录，不代表全部工作台。</p></div>
+      <div className="workbench-source-note"><span><CheckCircleOutlined />处理情况来自已入库包裹，在线状态来自 Fusion 心跳</span><p>显示已登记工作台及最近出现的来源。包裹统计观察最近 24 小时内最新 200 条记录；Fusion 在线表示服务心跳有效，设备连接状态需另行上报。</p></div>
+      <ApiFeedback error={sources.error} retry={sources.refresh} />
       <div className="workbench-summary"><div><span>观察到的工作台</span><strong>{parcels.data ? observations.workstations.length : '—'}</strong></div>
         <div><span>观察包裹</span><strong>{parcels.data ? formatNumber(items.length, { grouping: true }) : '—'}<small>件</small></strong></div>
         <div><span>有包裹异常的工作台</span><strong>{parcels.data ? observations.workstations.filter(item => item.exceptionCount > 0).length : '—'}</strong></div></div>
@@ -107,7 +117,7 @@ export function OverviewPage() {
         : filteredStations.length ? <><div className="workbench-station-grid">{filteredStations.slice((currentPage - 1) * 6, currentPage * 6).map(station => <WorkstationCard key={station.key} station={station} onSelect={() => { setSelectedKey(station.key); recentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }} />)}</div>
           {filteredStations.length > 6 && <Pagination className="workbench-station-pagination" current={currentPage} total={filteredStations.length} pageSize={6} showSizeChanger={false} onChange={setPage} showTotal={total => `共 ${total} 个工作台`} />}</>
         : <div className="workbench-stations-empty"><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={keyword || filter !== 'all' ? '没有匹配的工作台' : '暂无工作台处理记录'} />
-          {keyword || filter !== 'all' ? <Button onClick={() => { setSearch(''); setFilter('all'); setPage(1); }}>清除筛选</Button> : <p>上报包裹后将实时显示来源工作台；设备在线状态等待融合服务上报。</p>}</div>}
+          {keyword || filter !== 'all' ? <Button onClick={() => { setSearch(''); setFilter('all'); setPage(1); }}>清除筛选</Button> : <p>登记来源并接入 Fusion 后将显示工作台心跳及处理情况。</p>}</div>}
       {parcels.data && observations.unassignedCount > 0 && <p className="workbench-unassigned-note">另有 {observations.unassignedCount} 条记录未提供工作台名称或来源实例编码，未计入工作台数量。</p>}
     </SectionCard>
     <div ref={recentRef} className="workbench-recent-anchor">

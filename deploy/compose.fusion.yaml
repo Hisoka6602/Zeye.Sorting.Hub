@@ -1,0 +1,13 @@
+# 可选 Fusion 接入。复制并修改 fusion-ingestion.example.json 后与主 Compose 叠加使用。
+# 地址应为 Fusion 工作台实际可达的 HTTPS 地址；UDP 仅在配置开启时响应登记来源。
+services:
+  host:
+    volumes:
+      - type: bind
+        source: ./fusion-ingestion.json
+        target: /app/appsettings.LocalDocker.json
+        read_only: true
+        bind:
+          create_host_path: false
+    ports:
+      - "${ZEYE_FUSION_UDP_BIND:-127.0.0.1}:47651:47651/udp"

@@ -205,6 +205,7 @@ try {
     builder.Services.AddAuthorization();
     builder.Services.AddSortingHubAccess(builder.Environment.ContentRootPath);
     builder.Services.AddSortingRealtime();
+    builder.Services.AddFusionIngestion(builder.Configuration, builder.Environment.ContentRootPath);
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSwaggerGen(options => {
         var documentName = hostingOptions.GetSwaggerDocumentName();
@@ -402,6 +403,7 @@ try {
     app.MapRuleManagementApis();
     app.MapAccessApis();
     app.MapSortingRealtime();
+    app.MapFusionIngestion();
 
     app.Run();
 }

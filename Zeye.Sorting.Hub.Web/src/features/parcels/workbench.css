@@ -109,3 +109,5 @@
   .workbench-page .workbench-connection-state { font-size: var(--hub-font-caption); }
   .workbench-page .workbench-table-actions { gap: 4px; }
 }
+.workbench-station-heartbeat { display: flex; flex-direction: column; gap: 4px; margin: 10px 0 14px; color: var(--hub-text-secondary); font-size: var(--hub-font-caption); font-weight: var(--hub-weight-regular); line-height: 1.6; }
+.workbench-station-loss { padding: 8px 12px; margin-bottom: 12px; border-radius: 8px; background: #fff6e8; color: #a77328; font-size: var(--hub-font-caption); font-weight: var(--hub-weight-regular); line-height: 1.6; }

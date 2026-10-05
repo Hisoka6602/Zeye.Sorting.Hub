@@ -1,5 +1,7 @@
 # Windows / Linux 部署
 
+Fusion 1.0 的来源登记、专用 SignalR 机器认证、图片持久化、可选发现和追溯入口见 [Fusion接入说明.md](Fusion接入说明.md)。默认未登记工作台，来源不会自动启用。
+
 来源：部署命令及参数依据本仓库 `publish-windows.ps1`、`compose.yaml` 和 Host 入口配置；实时协议及客户端行为参考[微软 SignalR 文档](https://learn.microsoft.com/aspnet/core/signalr/javascript-client)。
 
 ## Windows 前后端一体化发布

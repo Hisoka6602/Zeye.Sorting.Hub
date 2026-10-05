@@ -4,7 +4,7 @@ const realtimePaths = new Set([
   '/api/data-governance/archive-tasks', '/api/diagnostics/slow-queries', '/api/audit/web-requests',
   '/api/operations/partitions', '/api/operations/configuration', '/api/operations/configuration/policy',
   '/api/operations/rules/parcel', '/api/operations/rules/exception', '/api/operations/backup', '/api/operations/backup/artifacts',
-  '/health/live', '/health/ready', '/health/deep',
+  '/health/live', '/health/ready', '/health/deep', '/api/parcels/fusion/sources',
 ]);
 let authenticated = false;
 const authenticationListeners = new Set<() => void>();

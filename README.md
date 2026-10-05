@@ -2,6 +2,8 @@
 
 本项目负责接收、持久化和分析包裹相关内容，不向 WMS 等外部业务系统投递消息。
 
+Fusion 工作台通过独立的 SignalR `/hubs/fusion-ingestion` 注册、上报不可变事实、心跳及续传图片；接收原文和恢复任务耐久提交后逐条确认，复用现有包裹业务用例与自动分表。默认来源目录为空，配置及实际语义见 [Fusion 接入说明](deploy/Fusion接入说明.md)。
+
 登录后的高频读取、包裹处理事实提交及状态更新使用同源 SignalR `/hubs/sorting`，多个组件共享连接和订阅；认证、文件与清理等管理入口保留 HTTP 安全流程。实时入口复用原接口权限、限流和审计，写入断线不自动重放。Windows 一体部署、Docker 及 Vite 的代理配置共同支持长连接，详见 `deploy/README.md`。
 
 测试数据、数据治理与可观测性仅向固定的超级管理员角色和内置超级用户开放，菜单、直接地址、HTTP 和 SignalR 均验证此边界。自定义角色即使获得全部单项权限也不能开放这些版块或自行晋升；关闭通用鉴权仍保留限制。公开存活与就绪探针继续用于部署检查，自动包裹上报使用独立机器密钥。
@@ -655,6 +657,118 @@
 - 硬性规则：全项目禁止使用 UTC 时间（如 `DateTime.UtcNow`、`DateTimeOffset.UtcNow`、`DateTimeKind.Utc`、`ToUniversalTime` 等），统一使用本地时间语义（如 `DateTime.Now`、`DateTimeKind.Local`）。
 
 ## 各层级与各文件作用说明（逐项）
+
+### Fusion 1.0 耐久接收与工作台接入
+
+新增结构与逐文件职责如下；配置中的机器凭据独立于网页账号，生产来源默认尚未登记。
+
+```text
+Zeye.Sorting.Hub.Application/Abstractions/Integrations/IFusionDiscoveryService.cs
+Zeye.Sorting.Hub.Application/Abstractions/Integrations/IFusionIngestionGateway.cs
+Zeye.Sorting.Hub.Application/Services/Fusion/FusionProjectionService.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/FusionDiscoveryPacket.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/FusionFactInspection.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/FusionHeartbeat.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/FusionHello.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/FusionProjectionItem.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/FusionRegistration.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/FusionSourceStatus.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/HubBatchReceipt.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/HubFactBatch.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/HubFactBody.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/HubFactEnvelope.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/HubFactReceipt.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/HubHeartbeatReceipt.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/HubImageBeginReceipt.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/HubImageChunk.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/HubImageChunkReceipt.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/HubImageComplete.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/HubImageDescriptor.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/HubImageStoredReceipt.cs
+Zeye.Sorting.Hub.Host.Tests/FusionApiTests.cs
+Zeye.Sorting.Hub.Host.Tests/FusionDiscoveryTests.cs
+Zeye.Sorting.Hub.Host.Tests/FusionImageIngestionTests.cs
+Zeye.Sorting.Hub.Host.Tests/FusionIngestionTests.cs
+Zeye.Sorting.Hub.Host.Tests/FusionIngressTestEnvironment.cs
+Zeye.Sorting.Hub.Host/Authentication/FusionMachineAuthenticationHandler.cs
+Zeye.Sorting.Hub.Host/Extensions/FusionIngestionExtensions.cs
+Zeye.Sorting.Hub.Host/HostedServices/FusionDiscoveryHostedService.cs
+Zeye.Sorting.Hub.Host/HostedServices/FusionProjectionHostedService.cs
+Zeye.Sorting.Hub.Host/Hubs/FusionIngestionHub.cs
+Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations/20261005034152_AddFusionIngestionSqlServer.Designer.cs
+Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations/20261005034152_AddFusionIngestionSqlServer.cs
+Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/FusionEntityTypeConfiguration.cs
+Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionConnectionLease.cs
+Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionDiscoveryService.cs
+Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionIngestionOptions.cs
+Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionIngestionService.Facts.cs
+Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionIngestionService.Images.cs
+Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionIngestionService.cs
+Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionProtocol.cs
+Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionSourceOptions.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Fusion/FusionFactReceipt.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Fusion/FusionImageUpload.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Fusion/FusionJournalHeartbeat.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Fusion/FusionSourceLease.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/20261005033908_AddFusionIngestion.Designer.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/20261005033908_AddFusionIngestion.cs
+deploy/Fusion接入说明.md
+deploy/compose.fusion.yaml
+deploy/fusion-ingestion.example.json
+```
+
+- `IFusionDiscoveryService.cs`（`Zeye.Sorting.Hub.Application/Abstractions/Integrations/IFusionDiscoveryService.cs`）：经过来源凭据认证的设备发现生命周期。
+- `IFusionIngestionGateway.cs`（`Zeye.Sorting.Hub.Application/Abstractions/Integrations/IFusionIngestionGateway.cs`）：融合来源的耐久接收、图片存储及待投影事实协作边界。
+- `FusionProjectionService.cs`（`Zeye.Sorting.Hub.Application/Services/Fusion/FusionProjectionService.cs`）：复用现有包裹处理用例，将耐久接收簿投影到业务聚合。
+- `FusionDiscoveryPacket.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/FusionDiscoveryPacket.cs`）：经过认证的有界 UDP 发现报文。
+- `FusionFactInspection.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/FusionFactInspection.cs`）：原始事实与投影结果的追溯视图。
+- `FusionHeartbeat.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/FusionHeartbeat.cs`）：来源心跳及发送缓存舍弃指标。
+- `FusionHello.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/FusionHello.cs`）：工作台注册消息。
+- `FusionProjectionItem.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/FusionProjectionItem.cs`）：已经耐久提交且被当前投影工作者认领的包裹用例。
+- `FusionRegistration.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/FusionRegistration.cs`）：耐久注册租约及传输限额。
+- `FusionSourceStatus.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/FusionSourceStatus.cs`）：不含机器凭据的多工作台状态。
+- `HubBatchReceipt.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/HubBatchReceipt.cs`）：不使用高水位替代确认的批次结果。
+- `HubFactBatch.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/HubFactBatch.cs`）：具有来源租约的事实批次。
+- `HubFactBody.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/HubFactBody.cs`）：保留原文的不可变来源事实。
+- `HubFactEnvelope.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/HubFactEnvelope.cs`）：原始字符串及校验摘要。
+- `HubFactReceipt.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/HubFactReceipt.cs`）：事务提交后的逐条确认。
+- `HubHeartbeatReceipt.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/HubHeartbeatReceipt.cs`）：心跳持久化确认。
+- `HubImageBeginReceipt.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/HubImageBeginReceipt.cs`）：图片恢复偏移与已完成确认。
+- `HubImageChunk.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/HubImageChunk.cs`）：图片顺序分块。
+- `HubImageChunkReceipt.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/HubImageChunkReceipt.cs`）：文件落盘后的分块确认。
+- `HubImageComplete.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/HubImageComplete.cs`）：完整文件校验请求。
+- `HubImageDescriptor.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/HubImageDescriptor.cs`）：不可变图片描述，文件名不参与路径解析。
+- `HubImageStoredReceipt.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/HubImageStoredReceipt.cs`）：对象存在后的耐久存储凭据。
+- `FusionApiTests.cs`（`Zeye.Sorting.Hub.Host.Tests/FusionApiTests.cs`）：通过官方 SignalR 客户端验证生产认证、完整协议方法和受保护的读取路径。
+- `FusionDiscoveryTests.cs`（`Zeye.Sorting.Hub.Host.Tests/FusionDiscoveryTests.cs`）：验证协议签名兼容、过期、来源边界及可达地址。
+- `FusionImageIngestionTests.cs`（`Zeye.Sorting.Hub.Host.Tests/FusionImageIngestionTests.cs`）：测试图片字节耐久性、身份隔离、断点续传及关联先后顺序。
+- `FusionIngestionTests.cs`（`Zeye.Sorting.Hub.Host.Tests/FusionIngestionTests.cs`）：使用实际关系持久化验证认证、租约、逐条确认、乱序与恢复。
+- `FusionIngressTestEnvironment.cs`（`Zeye.Sorting.Hub.Host.Tests/FusionIngressTestEnvironment.cs`）：独立数据库、临时图片根目录与固定协议身份，不连接生产来源。
+- `FusionMachineAuthenticationHandler.cs`（`Zeye.Sorting.Hub.Host/Authentication/FusionMachineAuthenticationHandler.cs`）：只认证已登记来源的 Bearer 机器凭据，网页 Cookie 不能授权设备入口。
+- `FusionIngestionExtensions.cs`（`Zeye.Sorting.Hub.Host/Extensions/FusionIngestionExtensions.cs`）：组装融合来源入口与恢复服务，网页实时通道保持原有独立限额。
+- `FusionDiscoveryHostedService.cs`（`Zeye.Sorting.Hub.Host/HostedServices/FusionDiscoveryHostedService.cs`）：独立 UDP 设备发现的宿主生命周期入口。
+- `FusionProjectionHostedService.cs`（`Zeye.Sorting.Hub.Host/HostedServices/FusionProjectionHostedService.cs`）：承载耐久事实投影生命周期，具体包裹处理仍由应用用例负责。
+- `FusionIngestionHub.cs`（`Zeye.Sorting.Hub.Host/Hubs/FusionIngestionHub.cs`）：Fusion 1.0 的六个独立机器调用入口，不接受网页账号权限作为机器凭据。
+- `20261005034152_AddFusionIngestionSqlServer.Designer.cs`（`Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations/20261005034152_AddFusionIngestionSqlServer.Designer.cs`）：本次新增接收表的提供器目标模型，配合自动结构升级。
+- `20261005034152_AddFusionIngestionSqlServer.cs`（`Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations/20261005034152_AddFusionIngestionSqlServer.cs`）：提供器独立的四张接收表、索引和二进制身份排序规则迁移。
+- `FusionEntityTypeConfiguration.cs`（`Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/FusionEntityTypeConfiguration.cs`）：全局接收凭据、连接租约和图片断点的提供器无关映射。
+- `FusionConnectionLease.cs`（`Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionConnectionLease.cs`）：当前连接独立的来源租约缓存。
+- `FusionDiscoveryService.cs`（`Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionDiscoveryService.cs`）：有界、签名认证的独立 UDP 发现，不在 UDP 上传输业务内容或凭据。
+- `FusionIngestionOptions.cs`（`Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionIngestionOptions.cs`）：融合接收端的独立配置，不复用网页账号或全局旧机器密钥。
+- `FusionIngestionService.Facts.cs`（`Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionIngestionService.Facts.cs`）：原文接收、独立编号去重与可恢复投影任务。
+- `FusionIngestionService.Images.cs`（`Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionIngestionService.Images.cs`）：来源图片的耐久分块、重放校验和完整对象确认。
+- `FusionIngestionService.cs`（`Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionIngestionService.cs`）：独立设备协议接入，实现认证、耐久接收与图片存储协作。
+- `FusionProtocol.cs`（`Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionProtocol.cs`）：验证原始协议边界并映射既有处理用例，业务时间统一为登记来源的本地时间。
+- `FusionSourceOptions.cs`（`Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionSourceOptions.cs`）：由 Hub 登记的单个工作台身份及业务归属。
+- `FusionFactReceipt.cs`（`Zeye.Sorting.Hub.Infrastructure/Persistence/Fusion/FusionFactReceipt.cs`）：不可变原始接收簿及同事务待投影任务。
+- `FusionImageUpload.cs`（`Zeye.Sorting.Hub.Infrastructure/Persistence/Fusion/FusionImageUpload.cs`）：不可变图片描述、耐久偏移及明确关联身份。
+- `FusionJournalHeartbeat.cs`（`Zeye.Sorting.Hub.Infrastructure/Persistence/Fusion/FusionJournalHeartbeat.cs`）：按发送数据库保留的心跳及累计数据舍弃证据。
+- `FusionSourceLease.cs`（`Zeye.Sorting.Hub.Infrastructure/Persistence/Fusion/FusionSourceLease.cs`）：跨服务进程的单来源连接租约。
+- `20261005033908_AddFusionIngestion.Designer.cs`（`Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/20261005033908_AddFusionIngestion.Designer.cs`）：本次新增接收表的提供器目标模型，配合自动结构升级。
+- `20261005033908_AddFusionIngestion.cs`（`Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/20261005033908_AddFusionIngestion.cs`）：提供器独立的四张接收表、索引和二进制身份排序规则迁移。
+- `Fusion接入说明.md`（`deploy/Fusion接入说明.md`）：协议对应关系、Windows/Linux 配置、耐久确认、图片与追溯边界说明。
+- `compose.fusion.yaml`（`deploy/compose.fusion.yaml`）：可选机器接入配置挂载和独立 UDP 端口映射，基础部署仍可单独运行。
+- `fusion-ingestion.example.json`（`deploy/fusion-ingestion.example.json`）：来源身份、独立机器密钥与可达地址的部署占位示例。
 
 ### Fusion处理事实与实际物理分表
 

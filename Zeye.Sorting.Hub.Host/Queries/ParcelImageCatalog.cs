@@ -49,6 +49,7 @@ public static class ParcelImageCatalog {
     private const string LocalPathReason = "图片已登记，但来源尚未提供可访问的图片地址。";
 
     /// <summary>只接受不包含访问凭据的浏览器网页地址。</summary>
-    private static string? WebUrl(string path) => Uri.TryCreate(path, UriKind.Absolute, out var uri)
+    private static string? WebUrl(string path) => System.Text.RegularExpressions.Regex.IsMatch(path, "^/api/parcels/fusion/images/[a-f0-9]{64}/content$")
+        ? path : Uri.TryCreate(path, UriKind.Absolute, out var uri)
         && uri.Scheme is "http" or "https" && string.IsNullOrEmpty(uri.UserInfo) ? uri.AbsoluteUri : null;
 }

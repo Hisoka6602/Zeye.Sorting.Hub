@@ -989,6 +989,274 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                     b.ToTable("Bags", (string)null);
                 });
 
+            modelBuilder.Entity("Zeye.Sorting.Hub.Infrastructure.Persistence.Fusion.FusionFactReceipt", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("BodyJson")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("BodySha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("JournalId")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<DateTime>("NextProjectionAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("ParcelId")
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<int>("ProjectionAttempts")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ProjectionClaimId")
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<DateTime?>("ProjectionClaimUntil")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("ProjectionError")
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<string>("ProjectionJson")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ProjectionState")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)");
+
+                    b.Property<DateTime>("ReceivedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("RecordId")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<string>("SourceInstanceId")
+                        .IsRequired()
+                        .HasMaxLength(96)
+                        .HasColumnType("varchar(96)")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<long>("SourceSequence")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("StoragePartitionId")
+                        .IsRequired()
+                        .HasMaxLength(96)
+                        .HasColumnType("varchar(96)");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(96)
+                        .HasColumnType("varchar(96)");
+
+                    b.HasKey("Key");
+
+                    b.HasIndex("ProjectionState", "NextProjectionAt");
+
+                    b.HasIndex("SourceInstanceId", "JournalId", "RecordId")
+                        .IsUnique();
+
+                    b.HasIndex("SourceInstanceId", "JournalId", "SourceSequence")
+                        .IsUnique();
+
+                    b.ToTable("FusionFactReceipts", (string)null);
+                });
+
+            modelBuilder.Entity("Zeye.Sorting.Hub.Infrastructure.Persistence.Fusion.FusionImageUpload", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("CameraName")
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<string>("ContentSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("FileName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("varchar(256)");
+
+                    b.Property<bool>("IsStored")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<DateTime>("ModifiedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<long>("NextOffset")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("SourceImageId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("SourceInstanceId")
+                        .IsRequired()
+                        .HasMaxLength(96)
+                        .HasColumnType("varchar(96)")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<long?>("SourceParcelId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("SourceRunId")
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<string>("UploadId")
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.HasKey("Key");
+
+                    b.HasIndex("UploadId")
+                        .IsUnique();
+
+                    b.HasIndex("IsStored", "ModifiedAt");
+
+                    b.HasIndex("SourceInstanceId", "SourceImageId")
+                        .IsUnique();
+
+                    b.ToTable("FusionImageUploads", (string)null);
+                });
+
+            modelBuilder.Entity("Zeye.Sorting.Hub.Infrastructure.Persistence.Fusion.FusionJournalHeartbeat", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<long>("DroppedUnacknowledgedFacts")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("DroppedUnacknowledgedImages")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("JournalId")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<long>("PendingFacts")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("PendingImages")
+                        .HasColumnType("bigint");
+
+                    b.Property<bool>("ProtectUnacknowledgedData")
+                        .HasColumnType("tinyint(1)");
+
+                    b.Property<DateTime>("ReceivedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<long>("RejectedFacts")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("RetainedBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("SentAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("SourceInstanceId")
+                        .IsRequired()
+                        .HasMaxLength(96)
+                        .HasColumnType("varchar(96)")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.HasKey("Key");
+
+                    b.HasIndex("SourceInstanceId", "JournalId")
+                        .IsUnique();
+
+                    b.ToTable("FusionJournalHeartbeats", (string)null);
+                });
+
+            modelBuilder.Entity("Zeye.Sorting.Hub.Infrastructure.Persistence.Fusion.FusionSourceLease", b =>
+                {
+                    b.Property<string>("SourceInstanceId")
+                        .HasMaxLength(96)
+                        .HasColumnType("varchar(96)")
+                        .UseCollation("utf8mb4_bin");
+
+                    b.Property<string>("ConnectionId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("JournalId")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<DateTime?>("LastSeenAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("LeaseId")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<long>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ServerId")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.HasKey("SourceInstanceId");
+
+                    b.ToTable("FusionSourceLeases", (string)null);
+                });
+
             modelBuilder.Entity("Zeye.Sorting.Hub.Infrastructure.Persistence.Management.ManagedDocument", b =>
                 {
                     b.Property<string>("Key")

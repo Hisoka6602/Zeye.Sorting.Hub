@@ -40,6 +40,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence {
                 typeof(SortingHubDbContext).Assembly,
                 type => type != typeof(ParcelEntityTypeConfiguration));
             modelBuilder.ApplyConfiguration(new ParcelEntityTypeConfiguration(Database.ProviderName == DbProviderNames.SqlServer));
+            // 协议身份区分大小写，不能由数据库默认语言排序规则合并不同来源图片。
+            FusionEntityTypeConfiguration.ConfigureIdentities(modelBuilder, Database.ProviderName);
             modelBuilder.Entity<Management.ManagedDocument>(b => {
                 b.ToTable("ManagedDocuments"); b.HasKey(x => x.Key); b.Property(x => x.Key).HasMaxLength(128);
                 b.Property(x => x.Revision).IsConcurrencyToken();
