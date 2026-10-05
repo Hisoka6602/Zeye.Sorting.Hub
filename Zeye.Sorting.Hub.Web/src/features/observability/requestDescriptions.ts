@@ -4,6 +4,7 @@ const descriptions: Record<string, string> = {
   'GET /api/parcels/cursor': '通过游标分页查询包裹，连续浏览台账记录。',
   'GET /api/parcels/adjacent': '查询指定包裹的前后邻近记录，辅助定位过机顺序。',
   'GET /api/parcels/analytics': '查询包裹运营统计，用于数据概览与分析报表。',
+  'GET /api/parcels/workbench': '按来源汇总滚动最近24小时的全部包裹，用于分拣工作台计数，不受明细分页上限限制。',
   'GET /api/parcels/processing-records/unbound': '查询未关联包裹的处理记录，排查数据绑定问题。',
   'POST /api/admin/parcels': '管理员手工创建测试包裹，用于验证包裹处理功能。',
   'POST /api/admin/parcels/batch-buffer': '管理员将测试包裹加入缓冲队列，验证异步批量写入。',
