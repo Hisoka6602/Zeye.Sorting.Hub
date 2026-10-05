@@ -22,7 +22,7 @@ public sealed class AccessApiTests {
     [InlineData(false)]
     public async Task SensitiveSectionsRequireTheFixedSuperAdministratorRole(bool enforceAuthorization) {
         string[] readPaths = ["/api/audit/web-requests", "/api/audit/web-requests/123", "/api/diagnostics/slow-queries",
-            "/api/diagnostics/slow-queries/test", "/api/data-governance/archive-tasks", "/api/operations/partitions",
+            "/api/diagnostics/slow-queries/test", "/api/diagnostics/fusion/facts", "/api/data-governance/archive-tasks", "/api/operations/partitions",
             "/api/admin/parcels/cleanup-history", "/api/admin/parcels/cleanup-history/test", "/health/deep"];
         string[] writePaths = ["/api/data-governance/archive-tasks", "/api/data-governance/archive-tasks/123/retry",
             "/api/operations/partitions/prebuild", "/api/admin/parcels/cleanup-expired"];

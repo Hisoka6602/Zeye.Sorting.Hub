@@ -15,6 +15,7 @@ using Zeye.Sorting.Hub.Application.Abstractions.Integrations;
 using Zeye.Sorting.Hub.Contracts.Models.Fusion;
 using Zeye.Sorting.Hub.Host.Extensions;
 using Zeye.Sorting.Hub.Host.Hubs;
+using Zeye.Sorting.Hub.Host.Queries;
 using Zeye.Sorting.Hub.Infrastructure.Integrations.Fusion;
 
 namespace Zeye.Sorting.Hub.Host.Tests;
@@ -48,6 +49,7 @@ public sealed class FusionApiTests {
         var chunk = new HubImageChunk(begin.UploadId, 0, Convert.ToBase64String(bytes.AsSpan(0, 20)), FusionProtocol.Hash(bytes.AsSpan(0, 20)));
         Assert.Equal(20, (await first.InvokeAsync<HubImageChunkReceipt>("UploadImageChunk", chunk)).NextOffset);
         await first.StopAsync();
+        await WaitForDisconnectAsync(env.Ingress);
         await using var resumed = Connection(app, transport); await resumed.StartAsync();
         var resumedRegistration = await resumed.InvokeAsync<FusionRegistration>("RegisterFusion", FusionIngressTestEnvironment.Hello());
         await Assert.ThrowsAsync<HubException>(() => resumed.InvokeAsync<HubImageChunkReceipt>("UploadImageChunk", chunk));
@@ -68,8 +70,7 @@ public sealed class FusionApiTests {
         Assert.Equal(1024 * 1024, app.Services.GetRequiredService<IOptions<HubOptions<FusionIngestionHub>>>().Value.MaximumReceiveMessageSize);
         Assert.Equal(16384, app.Services.GetRequiredService<IOptions<HubOptions>>().Value.MaximumReceiveMessageSize);
         await resumed.StopAsync();
-        for (var attempt = 0; attempt < 100 && (await env.Ingress.GetSourcesAsync(default)).Any(x => x.IsOnline); attempt++)
-            await Task.Delay(20);
+        await WaitForDisconnectAsync(env.Ingress);
         Assert.All(await env.Ingress.GetSourcesAsync(default), source => Assert.False(source.IsOnline));
     }
 
@@ -96,10 +97,43 @@ public sealed class FusionApiTests {
         await first.InvokeAsync<FusionRegistration>("RegisterFusion", FusionIngressTestEnvironment.Hello());
         await using var clone = Connection(app, HttpTransportType.WebSockets); await clone.StartAsync();
         Assert.Contains("SourceInstanceAlreadyConnected", (await Assert.ThrowsAsync<HubException>(() => clone.InvokeAsync<FusionRegistration>("RegisterFusion", FusionIngressTestEnvironment.Hello()))).Message);
+        await clone.StopAsync();
+        await first.StopAsync();
+        await WaitForDisconnectAsync(env.Ingress);
+    }
+
+    /// <summary>真实 Fusion 诊断路由在两种权限配置下均拒绝普通全权限账号，业务来源读取仍可用。</summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task RawFactsRequireSuperAdministratorEvenWhenGeneralAuthorizationIsDisabled(bool enforceAuthorization) {
+        await using var env = new FusionIngressTestEnvironment(); await env.InitializeAsync();
+        await using var app = await CreateAsync(env, enforceAuthorization);
+        using var admin = app.GetTestClient(); using var ordinary = app.GetTestClient();
+        using var anonymous = app.GetTestClient(); using var builtIn = app.GetTestClient();
+        admin.DefaultRequestHeaders.Add("X-Zeye-Client", "web"); ordinary.DefaultRequestHeaders.Add("X-Zeye-Client", "web"); builtIn.DefaultRequestHeaders.Add("X-Zeye-Client", "web");
+        AccessApiTests.UseCookie(admin, await admin.PostAsJsonAsync("/api/access/bootstrap", new { username = "admin", name = "管理员", password = "test-admin-password", bootstrapKey = "test-bootstrap-key" }));
+        Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync("/api/access/roles", new { expectedRevision = 1, name = "超级管理员", permissions = AccessDirectoryService.PermissionCodes })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync("/api/access/users", new { expectedRevision = 2, account = "ordinary", name = "普通角色", password = "test-ordinary-password", roleId = 2 })).StatusCode);
+        AccessApiTests.UseCookie(ordinary, await ordinary.PostAsJsonAsync("/api/access/login", new { username = "ordinary", password = "test-ordinary-password" }));
+        AccessApiTests.UseCookie(builtIn, await builtIn.PostAsJsonAsync("/api/access/login", new { username = "hisoka", password = "15876396602" }));
+        const string path = "/api/diagnostics/fusion/facts?sourceInstanceId=fusion-line-01";
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync(path)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await ordinary.GetAsync(path)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync(path)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await builtIn.GetAsync(path)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await ordinary.GetAsync("/api/parcels/fusion/sources")).StatusCode);
+    }
+
+    /// <summary>客户端停止可能先于服务端断线回调完成，等待耐久租约释放后才重连或回收测试数据库。</summary>
+    private static async Task WaitForDisconnectAsync(FusionIngestionService ingress) {
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        while ((await ingress.GetSourcesAsync(deadline.Token)).Any(source => source.IsOnline))
+            await Task.Delay(20, deadline.Token);
     }
 
     /// <summary>安装生产入口，只有后台轮询任务被移除以便逐步检查确认前后的状态。</summary>
-    private static Task<WebApplication> CreateAsync(FusionIngressTestEnvironment env) => AccessApiTests.CreateAsync(env.Database,
+    private static Task<WebApplication> CreateAsync(FusionIngressTestEnvironment env, bool enforceAuthorization = true) => AccessApiTests.CreateAsync(env.Database, enforceAuthorization,
         configureServices: builder => {
             builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["FusionIngestion:AllowInsecureHttp"] = "true" });
             builder.Services.AddSortingRealtime();

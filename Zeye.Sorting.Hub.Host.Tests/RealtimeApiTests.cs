@@ -18,24 +18,91 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 
 /// <summary>使用生产认证与正式实时入口验证握手、读取、变更推送、取消和权限撤销。</summary>
 public sealed class RealtimeApiTests {
+    /// <summary>三个敏感版块的列表、明细及深度诊断实时读取入口。</summary>
+    private static readonly string[] RestrictedReadPaths = ["/api/audit/web-requests", "/api/audit/web-requests/123",
+        "/api/diagnostics/slow-queries", "/api/diagnostics/slow-queries/test", "/api/data-governance/archive-tasks",
+        "/api/operations/partitions", "/health/deep"];
+
     /// <summary>拥有全部单项权限的普通角色也不能通过实时读取、订阅和命名提交绕过敏感版块边界。</summary>
-    [Fact]
-    public async Task SensitiveRealtimeResourcesRequireSuperAdministratorIdentity() {
+    [Theory]
+    [InlineData(true, HttpTransportType.WebSockets)]
+    [InlineData(false, HttpTransportType.WebSockets)]
+    [InlineData(true, HttpTransportType.LongPolling)]
+    [InlineData(false, HttpTransportType.LongPolling)]
+    public async Task SensitiveRealtimeResourcesRequireSuperAdministratorIdentity(bool enforceAuthorization, HttpTransportType transport) {
         await using var db = new RelationalParcelTestDatabase(); await db.InitializeAsync();
-        await using var app = await CreateAsync(db); using var admin = app.GetTestClient(); await LoginAsync(admin);
+        await using var app = await CreateAsync(db, enforceAuthorization); using var admin = app.GetTestClient(); await LoginAsync(admin);
         await admin.PostAsJsonAsync("/api/access/roles", new { expectedRevision = 1, name = "超级管理员", permissions = AccessDirectoryService.PermissionCodes });
         await admin.PostAsJsonAsync("/api/access/users", new { expectedRevision = 2, account = "ordinary", name = "普通用户", roleId = 2, password = "test-ordinary-password" });
         using var ordinary = app.GetTestClient(); ordinary.DefaultRequestHeaders.Add("X-Zeye-Client", "web");
         AccessApiTests.UseCookie(ordinary, await ordinary.PostAsJsonAsync("/api/access/login", new { username = "ordinary", password = "test-ordinary-password" }));
-        await using var hub = CreateConnection(app, ordinary); await hub.StartAsync();
-        foreach (var path in new[] { "/api/audit/web-requests", "/api/diagnostics/slow-queries", "/api/data-governance/archive-tasks", "/api/operations/partitions", "/health/deep" })
+        await using var hub = CreateConnection(app, ordinary, transport); await hub.StartAsync();
+        foreach (var path in RestrictedReadPaths) {
             Assert.Equal(403, (await hub.InvokeAsync<RealtimeResponse>("Read", path)).StatusCode);
+            using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+            await using var stream = hub.StreamAsync<RealtimeResponse>("Watch", path, cancellation.Token).GetAsyncEnumerator(cancellation.Token);
+            Assert.True(await stream.MoveNextAsync()); Assert.Equal(403, stream.Current.StatusCode); Assert.False(await stream.MoveNextAsync());
+        }
         Assert.Equal(403, (await hub.InvokeAsync<RealtimeResponse>("AppendProcessingRecord", "{}")).StatusCode);
         Assert.Equal(200, (await hub.InvokeAsync<RealtimeResponse>("Read", "/api/parcels")).StatusCode);
         Assert.Equal(200, (await hub.InvokeAsync<RealtimeResponse>("UpdateParcelStatus", "1", "{\"status\":2}")).StatusCode);
+        using var builtIn = app.GetTestClient(); builtIn.DefaultRequestHeaders.Add("X-Zeye-Client", "web");
+        AccessApiTests.UseCookie(builtIn, await builtIn.PostAsJsonAsync("/api/access/login", new { username = "hisoka", password = "15876396602" }));
+        foreach (var client in new[] { admin, builtIn }) {
+            await using var privilegedHub = CreateConnection(app, client, transport); await privilegedHub.StartAsync();
+            foreach (var path in RestrictedReadPaths)
+                Assert.Equal(path == "/health/deep" ? 503 : 200, (await privilegedHub.InvokeAsync<RealtimeResponse>("Read", path)).StatusCode);
+            Assert.Equal(200, (await privilegedHub.InvokeAsync<RealtimeResponse>("AppendProcessingRecord", "{}")).StatusCode);
+        }
+    }
+
+    /// <summary>已建立的超级管理员实时连接在降级后立即停止敏感订阅，重新登录也只能按普通身份访问。</summary>
+    [Theory]
+    [InlineData(true, HttpTransportType.WebSockets)]
+    [InlineData(false, HttpTransportType.LongPolling)]
+    public async Task ExistingSuperAdministratorConnectionLosesRestrictedAccessAfterDemotion(bool enforceAuthorization, HttpTransportType transport) {
+        await using var db = new RelationalParcelTestDatabase(); await db.InitializeAsync();
+        await using var app = await CreateAsync(db, enforceAuthorization); using var admin = app.GetTestClient(); await LoginAsync(admin);
+        await admin.PostAsJsonAsync("/api/access/roles", new { expectedRevision = 1, name = "全部业务权限", permissions = AccessDirectoryService.PermissionCodes });
+        await admin.PostAsJsonAsync("/api/access/users", new { expectedRevision = 2, account = "delegate", name = "临时管理员", roleId = 1, password = "test-delegate-password" });
+        using var member = app.GetTestClient(); member.DefaultRequestHeaders.Add("X-Zeye-Client", "web");
+        AccessApiTests.UseCookie(member, await member.PostAsJsonAsync("/api/access/login", new { username = "delegate", password = "test-delegate-password" }));
+        await using var hub = CreateConnection(app, member, transport); await hub.StartAsync();
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(8));
         await using var stream = hub.StreamAsync<RealtimeResponse>("Watch", "/api/audit/web-requests", cancellation.Token).GetAsyncEnumerator(cancellation.Token);
-        Assert.True(await stream.MoveNextAsync()); Assert.Equal(403, stream.Current.StatusCode); Assert.False(await stream.MoveNextAsync());
+        Assert.True(await stream.MoveNextAsync()); Assert.Equal(200, stream.Current.StatusCode);
+        var directory = await admin.GetFromJsonAsync<JsonElement>("/api/access");
+        var memberId = directory.GetProperty("users").EnumerateArray().Single(user => user.GetProperty("account").GetString() == "delegate").GetProperty("id").GetString();
+        Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync("/api/access/users", new { id = memberId, expectedRevision = directory.GetProperty("revision").GetInt32(), account = "delegate", name = "普通成员", roleId = 2 })).StatusCode);
+        var revocation = await Record.ExceptionAsync(async () => {
+            Assert.True(await stream.MoveNextAsync()); Assert.Equal(401, stream.Current.StatusCode); Assert.False(await stream.MoveNextAsync());
+        });
+        // 长轮询可能先在 HTTP 重新鉴权时关闭传输，两种时序都只接受明确的 401 拒绝。
+        if (transport == HttpTransportType.LongPolling && revocation is HttpRequestException rejected)
+            Assert.Equal(HttpStatusCode.Unauthorized, rejected.StatusCode);
+        else Assert.Null(revocation);
+        if (transport == HttpTransportType.WebSockets)
+            Assert.Equal(401, (await hub.InvokeAsync<RealtimeResponse>("Read", "/health/deep")).StatusCode);
+        await hub.StopAsync();
+        AccessApiTests.UseCookie(member, await member.PostAsJsonAsync("/api/access/login", new { username = "delegate", password = "test-delegate-password" }));
+        await using var newHub = CreateConnection(app, member, transport); await newHub.StartAsync();
+        Assert.Equal(403, (await newHub.InvokeAsync<RealtimeResponse>("Read", "/api/audit/web-requests")).StatusCode);
+    }
+
+    /// <summary>频繁长轮询消息不消耗握手预算，新的连接仍保持每分钟六十次的限流。</summary>
+    [Fact]
+    public async Task LongPollingMessagesDoNotConsumeNegotiationBudget() {
+        await using var db = new RelationalParcelTestDatabase(); await db.InitializeAsync();
+        await using var app = await CreateAsync(db); using var client = app.GetTestClient(); await LoginAsync(client);
+        await using var first = CreateConnection(app, client, HttpTransportType.LongPolling); await first.StartAsync();
+        for (var index = 0; index < 90; index++)
+            Assert.Equal(200, (await first.InvokeAsync<RealtimeResponse>("Read", "/api/parcels")).StatusCode);
+        await using var second = CreateConnection(app, client, HttpTransportType.LongPolling); await second.StartAsync();
+        Assert.Equal(200, (await second.InvokeAsync<RealtimeResponse>("Read", "/api/parcels")).StatusCode);
+        // 前两个客户端各协商一次，其余五十八次协商用尽额度后，下一次必须拒绝。
+        for (var index = 0; index < 58; index++)
+            Assert.Equal(HttpStatusCode.OK, (await client.PostAsync("/hubs/sorting/negotiate?negotiateVersion=1", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, (await client.PostAsync("/hubs/sorting/negotiate?negotiateVersion=1", null)).StatusCode);
     }
     /// <summary>危险、外部、非规范路径不能经只读通道执行。</summary>
     [Theory]
@@ -152,7 +219,7 @@ public sealed class RealtimeApiTests {
     }
 
     /// <summary>为隔离账号数据库注册正式实时配置与确定性的测试读取端点。</summary>
-    private static Task<WebApplication> CreateAsync(RelationalParcelTestDatabase db) => AccessApiTests.CreateAsync(db,
+    private static Task<WebApplication> CreateAsync(RelationalParcelTestDatabase db, bool enforceAuthorization = true) => AccessApiTests.CreateAsync(db, enforceAuthorization,
         configureServices: builder => {
             builder.Services.AddSortingRealtime();
             builder.Services.Configure<WebRequestAuditLogOptions>(options => options.Enabled = false);
@@ -161,6 +228,7 @@ public sealed class RealtimeApiTests {
             app.UseSortingRealtime();
             app.MapGet("/api/parcels", (HttpContext context) => Results.Ok(new { id = 9223372036854775806L, query = context.Request.Query["barCodeKeyword"].ToString() }));
             app.MapGet("/health/deep", () => Results.Json(new { status = "Unhealthy", entries = new { backup = new { status = "Degraded" } } }, statusCode: 503));
+            foreach (var path in RestrictedReadPaths.Where(path => path != "/health/deep")) app.MapGet(path, () => Results.Ok());
             app.MapPut("/api/admin/parcels/{id:long}", (long id, JsonElement body) => Results.Ok(new { id, status = body.GetProperty("status").GetInt32() }));
             app.MapSortingRealtime();
         });

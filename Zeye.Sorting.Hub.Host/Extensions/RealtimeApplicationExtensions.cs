@@ -16,10 +16,15 @@ public static class RealtimeApplicationExtensions {
             options.MaximumParallelInvocationsPerClient = 4;
             options.EnableDetailedErrors = false;
         });
-        services.AddRateLimiter(options => options.AddPolicy("realtime-connect", context => RateLimitPartition.GetFixedWindowLimiter(
-            context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ => new FixedWindowRateLimiterOptions {
+        services.AddRateLimiter(options => options.AddPolicy("realtime-connect", context => {
+            var address = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            // 已协商的长轮询读取、消息提交与断线请求复用连接令牌，不计入新连接预算。
+            var startsConnection = context.Request.Path.Value?.TrimEnd('/').EndsWith("/negotiate", StringComparison.OrdinalIgnoreCase) == true
+                || context.WebSockets.IsWebSocketRequest || string.IsNullOrEmpty(context.Request.Query["id"]);
+            return startsConnection ? RateLimitPartition.GetFixedWindowLimiter(address, _ => new FixedWindowRateLimiterOptions {
                 PermitLimit = 60, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true
-            })));
+            }) : RateLimitPartition.GetNoLimiter("established-transport");
+        }));
         return services;
     }
 
