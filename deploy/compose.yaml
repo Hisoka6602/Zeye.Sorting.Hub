@@ -11,6 +11,9 @@ x-bounded-logging: &bounded-logging
 services:
   mysql:
     image: mysql:8.4
+    # 持续写入与统计共用数据页缓存，避免默认 128 MiB 在大事实表上反复换页。
+    command: ["--innodb-buffer-pool-size=${ZEYE_MYSQL_BUFFER_POOL_SIZE:-1G}"]
+    mem_limit: ${ZEYE_MYSQL_MEMORY_LIMIT:-3g}
     restart: unless-stopped
     logging: *bounded-logging
     environment:

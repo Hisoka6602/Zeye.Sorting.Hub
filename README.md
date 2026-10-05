@@ -890,9 +890,9 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 - `.gitignore`：Git 忽略规则（如 `bin/`、`obj/`、IDE 临时文件）。
 - `.dockerignore`：排除编译产物、前端依赖和验收截图，缩小 Host 镜像构建上下文。
 - `README.md`：仓库总览、结构清单与维护规范文档。
-- `deploy/.env.example`：本机部署所需的独立数据库密码和端口模板；实际 `deploy/.env` 不提交。
+- `deploy/.env.example`：本机部署所需的独立数据库密码、端口、MySQL 数据页缓存及容器内存预算模板；实际 `deploy/.env` 不提交。
 - `deploy/start.ps1`：部署并等待 Web/API 就绪，打开系统默认浏览器；根据用户确认显示或跳过收藏提醒。
-- `deploy/compose.yaml`：构建并启动独立的 MySQL、Host、Web 容器与持久化数据卷。
+- `deploy/compose.yaml`：构建并启动独立的 MySQL、Host、Web 容器与持久化数据卷；MySQL 默认使用可配置的 1 GiB 数据页缓存和 3 GiB 内存上限。
 - `deploy/README.md`：本机 Docker 部署、健康检查与停止命令。
 - `业务模块接入规范.md`：业务模块接入规范，约束新增模块的目录结构、分层边界、查询/写入治理与统一错误处理。
 - `Copilot-业务模块新增模板.md`：Copilot 业务模块新增模板，沉淀新增业务模块时应直接复用的任务模板与检查清单。
