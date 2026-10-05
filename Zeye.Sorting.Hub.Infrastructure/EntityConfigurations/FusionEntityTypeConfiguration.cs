@@ -43,6 +43,10 @@ public sealed class FusionEntityTypeConfiguration :
         b.HasIndex(x => new { x.SourceInstanceId, x.JournalId, x.RecordId }).IsUnique();
         b.HasIndex(x => new { x.SourceInstanceId, x.JournalId, x.SourceSequence }).IsUnique();
         b.HasIndex(x => new { x.ProjectionState, x.NextProjectionAt });
+        b.HasIndex(x => new { x.ProjectionState, x.ReceivedAt, x.SourceSequence, x.NextProjectionAt, x.ProjectionClaimUntil })
+            .HasDatabaseName("IX_FusionFacts_ProjectionQueue");
+        b.HasIndex(x => new { x.SourceInstanceId, x.ProjectionState, x.ProjectionError })
+            .HasDatabaseName("IX_FusionFacts_SourceProgress");
     }
     /// <summary>图片唯一身份不依赖条码或内容摘要。</summary>
     public void Configure(EntityTypeBuilder<FusionImageUpload> b) {

@@ -31,7 +31,7 @@ test('危险动作、身份、文件和跨站地址不进入实时只读通道',
   for (const path of ['/api/admin/parcels/cleanup-expired', '/api/admin/parcels', '/api/access', '/api/access/profile/avatar',
     '/api/operations/backup/artifacts/x/download', 'https://example.test/api/parcels', '//example.test/api/parcels',
     '/api/parcels/../access', '/api/parcels/%2e%2e/access', '/api/parcels#x', '/api/parcels/0', '/hubs/sorting']) assert.equal(isRealtimeResource(path), false, path);
-  for (const path of ['/api/parcels', '/api/parcels?barCodeKeyword=SF%2B1', '/api/parcels/9223372036854775806/images', '/health/deep', '/api/operations/rules/exception']) assert.equal(isRealtimeResource(path), true, path);
+  for (const path of ['/api/parcels', '/api/parcels/workbench', '/api/parcels?sourceInstanceId=fusion-a', '/api/parcels?barCodeKeyword=SF%2B1', '/api/parcels/9223372036854775806/images', '/health/deep', '/api/operations/rules/exception']) assert.equal(isRealtimeResource(path), true, path);
 });
 
 test('会话状态变更只通知一次，退出后不建立匿名实时连接', () => {

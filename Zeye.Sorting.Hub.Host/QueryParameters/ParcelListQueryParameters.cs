@@ -34,6 +34,9 @@ internal sealed record ParcelListQueryParameters {
     /// </summary>
     public string? WorkstationName { get; init; }
 
+    /// <summary>精确来源实例过滤，同名的多个Fusion保持独立。</summary>
+    public string? SourceInstanceId { get; init; }
+
     /// <summary>
     /// 包裹状态。
     /// </summary>

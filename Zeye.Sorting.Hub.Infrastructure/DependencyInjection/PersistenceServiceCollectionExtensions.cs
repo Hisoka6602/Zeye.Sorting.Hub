@@ -177,6 +177,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             services.AddSingleton<ParcelPartitionStore>();
             services.AddScoped<IParcelProcessingRepository, ParcelProcessingRepository>();
             services.AddScoped<Zeye.Sorting.Hub.Application.Abstractions.Queries.IParcelAnalyticsReadService, Zeye.Sorting.Hub.Infrastructure.Queries.ParcelAnalyticsReadService>();
+            services.AddScoped<Zeye.Sorting.Hub.Application.Abstractions.Queries.IParcelWorkbenchReadService, Zeye.Sorting.Hub.Infrastructure.Queries.ParcelWorkbenchReadService>();
             services.AddScoped<IArchiveTaskRepository, ArchiveTaskRepository>();
             services.AddScoped<IIdempotencyRepository, IdempotencyRepository>();
             services.AddScoped<IInboxMessageRepository, InboxMessageRepository>();

@@ -41,7 +41,7 @@ internal static class Program {
             if (Environment.GetEnvironmentVariable("ZEYE_BENCH_VERBOSE_ERRORS") == "1") {
                 var logging = new LoggingConfiguration();
                 logging.AddRule(LogLevel.Error, LogLevel.Fatal, new ConsoleTarget("benchmark-errors") {
-                    Error = true, Layout = "${level}: ${message} ${exception:format=tostring}"
+                    StdErr = true, Layout = "${level}: ${message} ${exception:format=tostring}"
                 });
                 LogManager.Configuration = logging;
             }
@@ -79,6 +79,8 @@ internal static class Program {
             var start = DateTime.ParseExact(Read("ZEYE_BENCH_START_DATE", "2026-08-15"), "yyyy-MM-dd", CultureInfo.InvariantCulture);
             var days = ReadInt("ZEYE_BENCH_DAYS", 31, 31, 366);
             var parcelsPerDay = ReadInt("ZEYE_BENCH_PARCELS_PER_DAY", 20, 1, 10000);
+            // 原文大小允许0至262144字节，用于复现大报文数据页对统计查询的影响。
+            var payloadBytes = ReadInt("ZEYE_BENCH_PAYLOAD_BYTES", 0, 0, 262144);
             var concurrency = ReadInt("ZEYE_BENCH_CONCURRENCY", 4, 1, 32);
             var iterations = ReadInt("ZEYE_BENCH_ITERATIONS", 7, 2, 100);
             var readConcurrency = ReadInt("ZEYE_BENCH_READ_CONCURRENCY", 4, 1, 32);
@@ -121,10 +123,14 @@ internal static class Program {
             }).Build();
             var partitions = new ParcelPartitionStore(factory, config);
             var writer = new ParcelProcessingRepository(factory, partitions);
-            var reader = new ParcelAnalyticsReadService(factory, partitions,
+            var reader = new ParcelAnalyticsReadService(factory,
                 new ReportingQueryBudgetPlanner(Options.Create(new ReadOnlyDatabaseOptions())));
             var parcelReader = new ParcelRepository(factory, config, partitions);
             var records = BuildRecords(start, days, parcelsPerDay, runId);
+            if (payloadBytes > 0) {
+                var payload = new string('x', payloadBytes);
+                records = records.Select(record => record with { RawPayload = payload }).ToList();
+            }
 
             // 步骤1：受现有分表DDL隔离器保护地预建周期，避免把建表耗时混入稳态写入。
             var prebuildClock = Stopwatch.StartNew();
@@ -285,7 +291,7 @@ internal static class Program {
                 Environment = new { Server = server, Port = port, Database = database, Provider = provider, Granularity = granularity,
                     RuntimeVersion = System.Environment.Version.ToString(), ProcessorCount = System.Environment.ProcessorCount,
                     ServerGc = System.Runtime.GCSettings.IsServerGC },
-                Input = new { StartDate = start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), Days = days, ParcelsPerDay = parcelsPerDay, Concurrency = concurrency, Iterations = iterations, ReadConcurrency = readConcurrency, ReadRequests = readRequests, MixedWrites = mixedWrites, FanoutConcurrency = fanoutConcurrency, FanoutMaxPartitions = fanoutMaxPartitions, QueryOnly = queryOnly },
+                Input = new { StartDate = start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), Days = days, ParcelsPerDay = parcelsPerDay, PayloadBytes = payloadBytes, Concurrency = concurrency, Iterations = iterations, ReadConcurrency = readConcurrency, ReadRequests = readRequests, MixedWrites = mixedWrites, FanoutConcurrency = fanoutConcurrency, FanoutMaxPartitions = fanoutMaxPartitions, QueryOnly = queryOnly },
                 Sample = new { ParcelCount = days * parcelsPerDay, FactCount = records.Count, PhysicalPeriods = periods.Length, DuplicateCount = duplicateCount },
                 PrebuildMilliseconds = ElapsedMilliseconds(prebuildClock),
                 Writes = new { Count = writeSamples.Count, ElapsedSeconds = ElapsedMilliseconds(writeClock) / 1000m,

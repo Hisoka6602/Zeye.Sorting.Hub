@@ -385,6 +385,7 @@ try {
     // Parcel 只读查询端点：统一走 Application 查询服务，不直接暴露领域模型。
     app.MapParcelReadOnlyApis();
     app.MapParcelAnalyticsApis();
+    app.MapParcelWorkbenchApis();
     app.MapParcelProcessingApis();
     // Parcel 管理端写接口：普通写操作 + 危险治理接口（cleanup-expired）分开治理。
     app.MapParcelAdminApis();

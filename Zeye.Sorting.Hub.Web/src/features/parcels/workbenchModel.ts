@@ -6,6 +6,30 @@ export interface WorkbenchParcel {
   createdTime: string;
 }
 
+export interface ParcelWorkbenchSummary {
+  windowStartLocal: string;
+  windowEndLocal: string;
+  parcelCount: number;
+  unassignedCount: number;
+  workstations: (Omit<WorkstationObservation, 'key' | 'name' | 'presence'> & { workstationName: string })[];
+}
+
+/** 卡片使用服务器完整窗口汇总；最近包裹分页不会改变计数。 */
+export function observeWorkstationSummaries(summary?: ParcelWorkbenchSummary) {
+  return { unassignedCount: summary?.unassignedCount ?? 0, workstations: (summary?.workstations ?? []).map(item => ({
+    ...item, key: workstationKey(item)!, name: item.workstationName || '未命名工作台',
+  })) };
+}
+
+/** 在服务端按来源筛选后取最新明细，避免被其他工作台的200条记录挤出。 */
+export function recentWorkstationPath(station?: Pick<WorkstationObservation, 'sourceInstanceId' | 'name'>) {
+  const base = '/api/parcels?pageNumber=1&pageSize=200&includeTotalCount=false';
+  if (!station) return base;
+  return base + (station.sourceInstanceId
+    ? '&sourceInstanceId=' + encodeURIComponent(station.sourceInstanceId)
+    : '&workstationName=' + encodeURIComponent(station.name));
+}
+
 export interface WorkstationObservation {
   key: string;
   name: string;
@@ -48,7 +72,7 @@ export function mergeWorkstationSources(observations: ReturnType<typeof observeW
   return { ...observations, workstations: [...workstations.values()] };
 }
 
-export function workstationKey(parcel: WorkbenchParcel): string | null {
+export function workstationKey(parcel: Pick<WorkbenchParcel, 'sourceInstanceId' | 'workstationName'>): string | null {
   const instance = parcel.sourceInstanceId?.trim();
   const name = parcel.workstationName?.trim();
   return instance ? JSON.stringify(['instance', instance]) : name ? JSON.stringify(['name', name]) : null;

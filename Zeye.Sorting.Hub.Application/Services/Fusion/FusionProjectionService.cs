@@ -1,4 +1,5 @@
 using NLog;
+using Zeye.Sorting.Hub.Contracts.Models.Fusion;
 using Zeye.Sorting.Hub.Application.Abstractions.Integrations;
 using Zeye.Sorting.Hub.Application.Services.Parcels;
 
@@ -11,6 +12,7 @@ public sealed class FusionProjectionService(IFusionIngestionGateway ingress, Par
     /// <summary>认领有界任务；每条事实独立重试，不丢失已向来源确认的原文。</summary>
     public async Task<int> ProjectAsync(CancellationToken cancellationToken) {
         var changed = 0;
+        var results = new List<(FusionProjectionItem Item, string? ParcelId, string? Error)>();
         foreach (var item in await ingress.ClaimProjectionsAsync(cancellationToken)) {
             string? parcelId = null;
             string? error = null;
@@ -23,8 +25,9 @@ public sealed class FusionProjectionService(IFusionIngestionGateway ingress, Par
                 Logger.Error(exception, "Fusion 事实投影失败，Key={Key}", item.Key);
                 error = "ProjectionFailed";
             }
-            await ingress.FinishProjectionAsync(item, parcelId, error, cancellationToken);
+            results.Add((item, parcelId, error));
         }
+        await ingress.FinishProjectionsAsync(results, cancellationToken);
         return changed;
     }
 }

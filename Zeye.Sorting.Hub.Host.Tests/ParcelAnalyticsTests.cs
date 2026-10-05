@@ -267,7 +267,6 @@ public sealed class ParcelAnalyticsTests {
     /// <summary>构造报表服务，复用仓库现有查询预算规划器。</summary>
     private static ParcelAnalyticsReadService Reader(RelationalParcelTestDatabase database, int maxDays = 31, int maxRows = 100000) => new(
         database.Factory,
-        database.Partitions,
         new ReportingQueryBudgetPlanner(Microsoft.Extensions.Options.Options.Create(new ReadOnlyDatabaseOptions { MaxReportTimeRangeDays = maxDays, MaxReportRows = maxRows })));
 
     /// <summary>构造稳定来源身份的本地处理事实。</summary>

@@ -90,9 +90,6 @@ public sealed class ParcelPartitionStore {
                 CreateIndexOperation index => IsPartitionTable(index.Table, period.Suffix),
                 _ => false
             }).ToList();
-            var commands = db.GetService<IMigrationsSqlGenerator>().Generate(operations, model);
-            Logger.Info("包裹分表建表审计：Suffix={Suffix}, AllowTableCreation={Allowed}, DryRun={DryRun}, CommandCount={Count}, DDL={DDL}", period.Suffix, _allowCreation, _dryRun, commands.Count, string.Join(Environment.NewLine, commands.Select(x => x.CommandText)));
-            if (!_allowCreation || _dryRun) throw new InvalidOperationException("目标分表尚未预建。请核查DDL审计，显式启用Persistence:Sharding:WriteRouting:AllowTableCreation并关闭DryRun，或提前执行预建。");
             await using var coordinator = await ParcelPartitionDdlCoordinator.AcquireAsync(db, period.Suffix, cancellationToken);
             var hasCatalog = await db.Set<ParcelPartitionCatalogEntry>().AnyAsync(x => x.Suffix == period.Suffix, cancellationToken);
             if (hasCatalog && !verifyExisting) return;
@@ -106,8 +103,19 @@ public sealed class ParcelPartitionStore {
                 }
                 else if (operation is CreateIndexOperation index && !await coordinator.IndexExistsAsync(index.Table, index.Schema, index.Name, cancellationToken)) pending.Add(operation);
             }
-            commands = db.GetService<IMigrationsSqlGenerator>().Generate(pending, model);
-            // 步骤2：DDL只创建新周期；MySQL的DDL独立提交，业务数据事务在建表之后开始。
+            if (pending.Count == 0 && hasCatalog) return;
+            var generator = db.GetService<IMigrationsSqlGenerator>();
+            var commands = generator.Generate(pending, model);
+            // 步骤3：索引升级及对应回滚语句先进入落盘审计，预演和关闭开关始终不执行DDL。
+            var rollbackIndexes = pending.OfType<CreateIndexOperation>().Reverse().Select(index => new DropIndexOperation {
+                Name = index.Name, Table = index.Table, Schema = index.Schema
+            }).Cast<MigrationOperation>().ToArray();
+            var rollback = generator.Generate(rollbackIndexes, model);
+            Logger.Info("包裹分表维护审计：Suffix={Suffix}, AllowTableCreation={Allowed}, DryRun={DryRun}, CommandCount={Count}, DDL={DDL}, IndexRollbackDDL={RollbackDDL}",
+                period.Suffix, _allowCreation, _dryRun, commands.Count,
+                string.Join(Environment.NewLine, commands.Select(x => x.CommandText)), string.Join(Environment.NewLine, rollback.Select(x => x.CommandText)));
+            if (!_allowCreation || _dryRun) throw new InvalidOperationException("目标分表或索引尚未预建。请核查DDL审计，显式启用Persistence:Sharding:WriteRouting:AllowTableCreation并关闭DryRun，或提前执行预建。");
+            // 步骤4：MySQL的DDL独立提交，业务数据事务在建表之后开始。
             foreach (var command in commands) await db.Database.ExecuteSqlRawAsync(command.CommandText, cancellationToken);
             if (!hasCatalog) {
                 db.Add(new ParcelPartitionCatalogEntry { Suffix = period.Suffix, Start = period.Start, End = period.End, CreatedTime = DateTime.Now });

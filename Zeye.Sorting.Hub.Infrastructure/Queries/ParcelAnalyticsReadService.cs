@@ -20,15 +20,12 @@ public sealed class ParcelAnalyticsReadService : IParcelAnalyticsReadService {
     private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
     /// <summary>基础模型上下文工厂。</summary>
     private readonly IDbContextFactory<SortingHubDbContext> _factory;
-    /// <summary>跨历史粒度的物理表目录。</summary>
-    private readonly ParcelPartitionStore _partitions;
     /// <summary>查询时间及返回行数预算。</summary>
     private readonly ReportingQueryBudgetPlanner _budgetPlanner;
 
     /// <summary>组装报表只读服务。</summary>
-    public ParcelAnalyticsReadService(IDbContextFactory<SortingHubDbContext> factory, ParcelPartitionStore partitions, ReportingQueryBudgetPlanner budgetPlanner) {
+    public ParcelAnalyticsReadService(IDbContextFactory<SortingHubDbContext> factory, ReportingQueryBudgetPlanner budgetPlanner) {
         _factory = factory;
-        _partitions = partitions;
         _budgetPlanner = budgetPlanner;
     }
 
@@ -48,10 +45,15 @@ public sealed class ParcelAnalyticsReadService : IParcelAnalyticsReadService {
             throw new ArgumentException(exception.Message, nameof(toLocalDate), exception);
         }
         await using var db = await _factory.CreateDbContextAsync(cancellationToken);
-        var parcels = (await ParcelPartitionQueryBuilder.BuildParcelsByCreatedTimeAsync(db,
-            budget.RangeStartLocal, budget.RangeEndLocal, cancellationToken))
-            .Where(x => x.CreatedTime >= budget.RangeStartLocal && x.CreatedTime < budget.RangeEndLocal
-                && x.SourceParcelId != null && x.DetectedTime != null);
+        // 单次读取目录供全部统计复用；入库总体裁剪周期，完成和事实总体保留全部历史周期。
+        var periods = await db.Set<ParcelPartitionCatalogEntry>().AsNoTracking()
+            .Select(period => new { period.Suffix, period.Start, period.End }).ToListAsync(cancellationToken);
+        var allSuffixes = periods.Select(period => period.Suffix).Append(string.Empty).ToArray();
+        var cohortSuffixes = periods.Where(period => period.Start < budget.RangeEndLocal && period.End > budget.RangeStartLocal)
+            .Select(period => period.Suffix).Append(string.Empty).ToArray();
+        var parcels = ParcelPartitionQueryBuilder.BuildTimeRangeReadModel<Parcel, ParcelAnalyticsSnapshot>(db,
+            cohortSuffixes, nameof(Parcel.CreatedTime), budget.RangeStartLocal, budget.RangeEndLocal)
+            .Where(x => x.SourceParcelId != null && x.DetectedTime != null);
 
         // 步骤1：数据库执行条件计数，空时间窗口没有任何伪造的日数据或零秒平均值。
         var dayRows = await parcels.GroupBy(x => x.CreatedTime.Date).Select(group => new {
@@ -79,13 +81,13 @@ public sealed class ParcelAnalyticsReadService : IParcelAnalyticsReadService {
         }).ToArray();
         var lifecycleSamples = dayRows.Sum(x => x.LifecycleSampleCount);
         var lifecycleMilliseconds = dayRows.Sum(x => x.LifecycleMilliseconds);
-        var creationIntervals = await ParcelCreationIntervalQuery.ReadAsync(db,
+        var creationIntervals = await ParcelCreationIntervalQuery.ReadAsync(db, cohortSuffixes,
             budget.RangeStartLocal, budget.RangeEndLocal, cancellationToken);
 
         // 趋势按实际完成日期计数，包含更早入库、但在窗口内完成的包裹。
-        var completedParcels = (await ParcelPartitionQueryBuilder.BuildAsync<Parcel>(db, _partitions, cancellationToken))
-            .Where(x => x.Status == ParcelStatus.Completed && x.SourceParcelId != null && x.DetectedTime != null
-                && x.CompletedTime >= budget.RangeStartLocal && x.CompletedTime < budget.RangeEndLocal);
+        var completedParcels = ParcelPartitionQueryBuilder.BuildTimeRangeReadModel<Parcel, ParcelCompletionStatisticsRow>(db,
+            allSuffixes, nameof(Parcel.CompletedTime), budget.RangeStartLocal, budget.RangeEndLocal)
+            .Where(x => x.Status == ParcelStatus.Completed && x.SourceParcelId != null && x.DetectedTime != null);
         var sortingDayRows = await completedParcels.GroupBy(x => x.CompletedTime!.Value.Date)
             .Select(group => new { Date = group.Key, SortedCount = group.LongCount() })
             .OrderBy(x => x.Date).ToListAsync(cancellationToken);
@@ -116,14 +118,17 @@ public sealed class ParcelAnalyticsReadService : IParcelAnalyticsReadService {
         }).ToArray();
 
         // 步骤3：处理事实按事件发生时间独立计数；失败尝试和未绑定消息不除以包裹件数。
-        var records = (await ParcelPartitionQueryBuilder.BuildAsync<ParcelProcessingRecord>(db, _partitions, cancellationToken))
-            .Where(x => x.OccurredAt >= budget.RangeStartLocal && x.OccurredAt < budget.RangeEndLocal);
-        var events = await records.GroupBy(_ => 1).Select(group => new {
-            Count = group.LongCount(),
-            Failed = group.LongCount(x => x.IsSuccess == false),
-            UnboundDws = group.LongCount(x => x.ParcelId == null
-                && (x.Stage == ParcelProcessingStage.DwsReceived || x.Stage == ParcelProcessingStage.DwsBound))
-        }).SingleOrDefaultAsync(cancellationToken);
+        // 每个物理表先在覆盖索引上计数，合并的行数由分表数量决定，不物化全部匹配事件。
+        var eventQueries = allSuffixes.Select(suffix =>
+            ParcelPartitionQueryBuilder.BuildTimeRangeReadModel<ParcelProcessingRecord, ParcelProcessingStatisticsRow>(db,
+                [suffix], nameof(ParcelProcessingRecord.OccurredAt), budget.RangeStartLocal, budget.RangeEndLocal)
+            .GroupBy(_ => 1).Select(group => new {
+                Count = group.LongCount(),
+                Failed = group.LongCount(x => x.IsSuccess == false),
+                UnboundDws = group.LongCount(x => x.ParcelId == null
+                    && (x.Stage == ParcelProcessingStage.DwsReceived || x.Stage == ParcelProcessingStage.DwsBound))
+            }));
+        var events = await eventQueries.Aggregate((left, right) => left.Concat(right)).ToListAsync(cancellationToken);
 
         return new ParcelAnalyticsResponse {
             FromDate = fromLocalDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
@@ -146,9 +151,9 @@ public sealed class ParcelAnalyticsReadService : IParcelAnalyticsReadService {
             ExceptionTypes = exceptionTypes,
             Workstations = workstations,
             WorkstationsTruncated = workstationsTruncated,
-            ProcessingEventCount = events?.Count ?? 0,
-            FailedAttemptCount = events?.Failed ?? 0,
-            UnboundDwsEventCount = events?.UnboundDws ?? 0
+            ProcessingEventCount = events.Sum(x => x.Count),
+            FailedAttemptCount = events.Sum(x => x.Failed),
+            UnboundDwsEventCount = events.Sum(x => x.UnboundDws)
         };
     }
 

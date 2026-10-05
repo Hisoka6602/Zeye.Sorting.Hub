@@ -59,6 +59,21 @@ public sealed class FusionIngestionTests {
         Assert.Equal(2, facts.Count); Assert.Contains(facts, x => x.BodyJson == first.BodyJson && x.SourceSequence == first.SourceSequence);
         Assert.Contains(facts, x => x.Kind == "source.counter-run" && x.ProjectionState == "complete");
     }
+    /// <summary>编号与序号指向两条不同原文时仍为冲突；同一条同时命中两索引仍为重复。</summary>
+    [Fact]
+    public async Task ReceiptRejectsMixedUniqueIdentitiesWithoutDuplicatingIdenticalMatches() {
+        await using var env = new FusionIngressTestEnvironment(); await env.InitializeAsync();
+        var lease = await env.Ingress.RegisterAsync("a", "fusion-line-01", FusionIngressTestEnvironment.Hello(), default);
+        var first = FusionIngressTestEnvironment.Fact("parcel.detected", 1);
+        var second = FusionIngressTestEnvironment.Fact("parcel.detected", 2, "4");
+        var stored = await env.Ingress.PublishAsync("a", FusionIngressTestEnvironment.Batch(lease, first, second), default);
+        Assert.All(stored.Records, x => Assert.Equal("stored", x.Status));
+        var mixed = first with { SourceSequence = second.SourceSequence };
+        Assert.Equal("conflict", Assert.Single((await env.Ingress.PublishAsync("a", FusionIngressTestEnvironment.Batch(lease, mixed), default)).Records).Status);
+        Assert.Equal("duplicate", Assert.Single((await env.Ingress.PublishAsync("a", FusionIngressTestEnvironment.Batch(lease, first), default)).Records).Status);
+        Assert.Equal(2, (await env.Ingress.GetFactsAsync("fusion-line-01", null, 20, default)).Count);
+    }
+
     /// <summary>错误摘要、未知类型及内外身份不一致明确拒绝，不冒充成功存储。</summary>
     [Theory]
     [InlineData("hash")]

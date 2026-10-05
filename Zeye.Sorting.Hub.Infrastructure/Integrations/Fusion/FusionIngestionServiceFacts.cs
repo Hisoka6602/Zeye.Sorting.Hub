@@ -39,8 +39,12 @@ public sealed partial class FusionIngestionService {
     private async Task<HubFactReceipt> StoreFactAsync(FusionConnectionLease connection, HubFactEnvelope envelope, CancellationToken cancellationToken) {
         await using var db = await _factory.CreateDbContextAsync(cancellationToken);
         var sequence = FusionProtocol.ValidateEnvelope(envelope);
-        var previous = await db.Set<FusionFactReceipt>().AsNoTracking().Where(x => x.SourceInstanceId == connection.Source.SourceInstanceId
-            && x.JournalId == connection.JournalId && (x.RecordId == envelope.RecordId || x.SourceSequence == sequence)).ToListAsync(cancellationToken);
+        var sourceFacts = db.Set<FusionFactReceipt>().AsNoTracking().Where(x => x.SourceInstanceId == connection.Source.SourceInstanceId
+            && x.JournalId == connection.JournalId);
+        // 分别按编号和来源序号走唯一索引，避免每次写入扫描整个来源日志。
+        // UNION 合并同一记录的双重命中，同时保留两条不同记录的身份冲突。
+        var previous = await sourceFacts.Where(x => x.RecordId == envelope.RecordId)
+            .Union(sourceFacts.Where(x => x.SourceSequence == sequence)).ToListAsync(cancellationToken);
         if (previous.Count > 0) return Receipt(previous, envelope);
         var fact = FusionProtocol.Decode(envelope, connection.Source.SourceInstanceId, connection.JournalId, connection.Source);
         var request = FusionProtocol.Map(fact, connection.Source);
@@ -84,17 +88,27 @@ public sealed partial class FusionIngestionService {
     public async Task<IReadOnlyList<FusionProjectionItem>> ClaimProjectionsAsync(CancellationToken cancellationToken) {
         await using var db = await _factory.CreateDbContextAsync(cancellationToken);
         var now = DateTime.Now;
-        var rows = await db.Set<FusionFactReceipt>().AsNoTracking().Where(x => x.ProjectionState != "complete" && x.NextProjectionAt <= now
+        // 候选排序仅读取覆盖索引中的凭据键，避免原文大字段参与海量排序。
+        var keys = await db.Set<FusionFactReceipt>().AsNoTracking().Where(x => x.ProjectionState != "complete" && x.NextProjectionAt <= now
             && (x.ProjectionClaimUntil == null || x.ProjectionClaimUntil <= now))
-            .OrderBy(x => x.ReceivedAt).ThenBy(x => x.SourceSequence).Take(50).ToListAsync(cancellationToken);
+            .OrderBy(x => x.ReceivedAt).ThenBy(x => x.SourceSequence).ThenBy(x => x.Key)
+            .Select(x => x.Key).Take(50).ToArrayAsync(cancellationToken);
+        if (keys.Length == 0) return [];
+        var claim = Guid.NewGuid().ToString("N");
+        // 一次提交认领有界候选集；条件复核仍在数据库中原子执行。
+        var acquired = await db.Set<FusionFactReceipt>().Where(x => keys.Contains(x.Key) && x.ProjectionState != "complete"
+            && x.NextProjectionAt <= now && (x.ProjectionClaimUntil == null || x.ProjectionClaimUntil <= now))
+            .ExecuteUpdateAsync(p => p.SetProperty(x => x.ProjectionClaimId, claim)
+                .SetProperty(x => x.ProjectionClaimUntil, now.AddMinutes(2))
+                .SetProperty(x => x.ProjectionAttempts, x => x.ProjectionAttempts + 1), cancellationToken);
+        if (acquired == 0) return [];
+        // 原文用例在成功认领后按主键读取，最多50条，并恢复相同队列顺序。
+        var rows = await db.Set<FusionFactReceipt>().AsNoTracking()
+            .Where(x => keys.Contains(x.Key) && x.ProjectionClaimId == claim)
+            .OrderBy(x => x.ReceivedAt).ThenBy(x => x.SourceSequence).ThenBy(x => x.Key)
+            .Select(x => new { x.Key, x.ProjectionJson }).ToListAsync(cancellationToken);
         var items = new List<FusionProjectionItem>();
         foreach (var row in rows) {
-            var claim = Guid.NewGuid().ToString("N");
-            var acquired = await db.Set<FusionFactReceipt>().Where(x => x.Key == row.Key && x.ProjectionState != "complete"
-                && (x.ProjectionClaimUntil == null || x.ProjectionClaimUntil <= now)).ExecuteUpdateAsync(p => p
-                .SetProperty(x => x.ProjectionClaimId, claim).SetProperty(x => x.ProjectionClaimUntil, now.AddMinutes(2))
-                .SetProperty(x => x.ProjectionAttempts, x => x.ProjectionAttempts + 1), cancellationToken);
-            if (acquired == 0) continue;
             var request = JsonSerializer.Deserialize<ParcelProcessingRecordRequest>(row.ProjectionJson!, FusionProtocol.Json);
             if (request is not null) items.Add(new(row.Key, claim, request));
         }

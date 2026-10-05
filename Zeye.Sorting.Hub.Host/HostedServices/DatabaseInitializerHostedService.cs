@@ -376,16 +376,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
                     // 包裹聚合实际路由使用同周期物理表；启动预建与写入建表共用隔离器和DDL审计。
                     if (_createShardingTableOnStarting) {
-                        var partitions = scope.ServiceProvider.GetRequiredService<ParcelPartitionStore>();
-                        var currentPeriod = partitions.Resolve(DateTime.Now);
-                        await partitions.EnsureCreatedAsync(currentPeriod, ct);
-                        var end = DateTime.Now.AddHours(_shardingPrebuildWindowHours);
-                        var period = partitions.Resolve(currentPeriod.End);
-                        do {
-                            ct.ThrowIfCancellationRequested();
-                            await partitions.EnsureCreatedAsync(period, ct);
-                            period = partitions.Resolve(period.End);
-                        } while (period.Start <= end);
+                        var maintenance = scope.ServiceProvider.GetRequiredService<PartitionMaintenanceService>();
+                        await maintenance.ExecuteAsync(ct, _shardingPrebuildWindowHours);
                     }
 
                     foreach (var sql in _dialect.GetOptionalBootstrapSql()) {

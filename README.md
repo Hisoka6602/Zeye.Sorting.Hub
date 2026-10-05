@@ -205,6 +205,9 @@ Fusion 工作台通过独立的 SignalR `/hubs/fusion-ingestion` 注册、上报
 │   │       ├── ParcelListItemResponse.cs（Parcel 列表项响应合同）
 │   │       ├── ParcelListRequest.cs（Parcel 列表查询请求合同）
 │   │       ├── ParcelListResponse.cs（Parcel 列表分页响应合同）
+│   │       ├── Workbench（完整窗口的工作台汇总合同）
+│   │       │   ├── ParcelWorkbenchResponse.cs（窗口与工作台列表汇总）
+│   │       │   └── ParcelWorkstationSummary.cs（单来源工作台状态件数汇总）
 │   │       └── ValueObjects（Parcel 值对象响应合同目录）
 │   │           ├── ApiRequestInfoResponse.cs（外部接口请求记录响应合同）
 │   │           ├── BagInfoResponse.cs（集包信息响应合同）
@@ -1075,6 +1078,11 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 - `ParcelDetailResponse.cs`：Parcel 详情响应合同（继承列表项扁平字段，并包含所有联表值对象内容）。
 - `ParcelAdjacentRequest.cs`：Parcel 邻近查询请求合同。
 - `ParcelAdjacentResponse.cs`：Parcel 邻近查询响应合同。
+
+#### `Zeye.Sorting.Hub.Contracts/Models/Parcels/Workbench/`：完整窗口工作台汇总合同目录
+
+- `ParcelWorkbenchResponse.cs`：滚动本地时间窗口、包裹总数、未归属件数及工作台列表。
+- `ParcelWorkstationSummary.cs`：单个来源实例的名称、各当前状态件数与最近入库时间；与总体响应分文件维护。
 
 #### `Zeye.Sorting.Hub.Contracts/Models/AuditLogs/WebRequests/`：Web 请求审计日志查询合同目录
 - `WebRequestAuditLogListRequest.cs`：Web 请求审计日志列表查询请求合同（分页 + 可选过滤条件）。
@@ -2025,3 +2033,60 @@ Zeye.Sorting.Hub.Web/tests/
 | Zeye.Sorting.Hub.Web/src/data/api | `realtimePolicy.ts` | 前端读取白名单、命名提交映射与实际会话状态 |
 | Zeye.Sorting.Hub.Web/src/data/api | `realtimeTransport.ts` | 官方共享连接、去重订阅、自动重连及一次性提交 |
 | Zeye.Sorting.Hub.Web/tests | `realtimeContract.test.mjs` | JSON 精度、读写入口和真实健康状态合同回归 |
+
+## 各层级与各文件作用说明（逐项）：统计与高频查询性能
+
+```text
+Zeye.Sorting.Hub.Application/Abstractions/Queries/
+  IParcelWorkbenchReadService.cs
+Zeye.Sorting.Hub.Infrastructure/Queries/
+  ParcelAnalyticsSnapshot.cs
+  ParcelCompletionStatisticsRow.cs
+  ParcelProcessingStatisticsRow.cs
+  ParcelWorkbenchSnapshot.cs
+  ParcelWorkbenchReadService.cs
+Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/
+  FusionIngestionServiceProjectionBatch.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/
+  20261005193231_AddAnalyticsCoveringIndexes.cs
+  20261005193231_AddAnalyticsCoveringIndexes.Designer.cs
+  20261006025000_AddFusionProjectionQueryIndexes.cs
+  20261006025000_AddFusionProjectionQueryIndexes.Designer.cs
+Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations/
+  20261005193232_AddAnalyticsCoveringIndexesSqlServer.cs
+  20261005193232_AddAnalyticsCoveringIndexesSqlServer.Designer.cs
+  20261006025001_AddFusionProjectionQueryIndexesSqlServer.cs
+  20261006025001_AddFusionProjectionQueryIndexesSqlServer.Designer.cs
+Zeye.Sorting.Hub.Host/Routing/
+  ParcelWorkbenchApiRouteExtensions.cs
+Zeye.Sorting.Hub.Host.Tests/
+  ParcelStatisticsQueryTests.cs
+  ParcelWorkbenchTests.cs
+  FusionProjectionBatchTests.cs
+  FusionProjectionChunkTests.cs
+```
+
+| 目录 | 文件 | 职责 |
+| --- | --- | --- |
+| Application/Abstractions/Queries | `IParcelWorkbenchReadService.cs` | 完整时间窗口的工作台统计查询抽象 |
+| Infrastructure/Queries | `ParcelAnalyticsSnapshot.cs` | 日报与分布统计所需的包裹标量投影，排除聚合明细 |
+| Infrastructure/Queries | `ParcelCompletionStatisticsRow.cs` | 按完成时间跨历史周期计数的覆盖索引投影 |
+| Infrastructure/Queries | `ParcelProcessingStatisticsRow.cs` | 处理事实统计所需的四个字段，排除原始报文和响应正文 |
+| Infrastructure/Queries | `ParcelWorkbenchSnapshot.cs` | 工作台统计使用的来源、时间和状态投影 |
+| Infrastructure/Queries | `ParcelWorkbenchReadService.cs` | 在数据库内汇总完整窗口的工作台件数，保留大小写来源身份边界 |
+| Infrastructure/Integrations/Fusion | `FusionIngestionServiceProjectionBatch.cs` | 按认领身份分块保存投影结果，减少逐条更新往返 |
+| Infrastructure/Persistence/Migrations | `20261005193231_AddAnalyticsCoveringIndexes.cs` | MySQL 创建时间、完成时间及处理事实统计覆盖索引与回滚 |
+| Infrastructure/Persistence/Migrations | `20261005193231_AddAnalyticsCoveringIndexes.Designer.cs` | MySQL 统计索引迁移的目标模型元数据 |
+| Infrastructure/Persistence/Migrations | `20261006025000_AddFusionProjectionQueryIndexes.cs` | MySQL 后台事实认领与来源进度索引及回滚 |
+| Infrastructure/Persistence/Migrations | `20261006025000_AddFusionProjectionQueryIndexes.Designer.cs` | MySQL 投影队列索引迁移的目标模型元数据 |
+| Infrastructure.SqlServerMigrations/Migrations | `20261005193232_AddAnalyticsCoveringIndexesSqlServer.cs` | SQL Server 统计覆盖索引及回滚 |
+| Infrastructure.SqlServerMigrations/Migrations | `20261005193232_AddAnalyticsCoveringIndexesSqlServer.Designer.cs` | SQL Server 统计索引迁移的目标模型元数据 |
+| Infrastructure.SqlServerMigrations/Migrations | `20261006025001_AddFusionProjectionQueryIndexesSqlServer.cs` | SQL Server 后台事实认领与来源进度索引及回滚 |
+| Infrastructure.SqlServerMigrations/Migrations | `20261006025001_AddFusionProjectionQueryIndexesSqlServer.Designer.cs` | SQL Server 投影队列索引迁移的目标模型元数据 |
+| Host/Routing | `ParcelWorkbenchApiRouteExtensions.cs` | 工作台统计的认证只读 HTTP 入口，复用于实时读取 |
+| Host.Tests | `ParcelStatisticsQueryTests.cs` | 大报文隔离、迟到事实、并发窗口、历史索引修复及 DDL 隔离器回归 |
+| Host.Tests | `ParcelWorkbenchTests.cs` | 完整窗口、不同来源身份、历史周期和来源过滤查询回归 |
+| Host.Tests | `FusionProjectionBatchTests.cs` | 批量投影结果、错误重试和失效认领保护回归 |
+| Host.Tests | `FusionProjectionChunkTests.cs` | SQL Server CASE 层数限制下的有界投影结果更新回归 |
+
+统计查询通过 `ParcelPartitionQueryBuilder.BuildTimeRangeReadModel` 在各物理表内先过滤时间、只投影所需字段；处理事实先按表聚合，再合并少量汇总行。完成日期和迟到事实继续跨历史周期查询，不用入库周期代替事实发生周期。`PartitionMaintenanceService` 在启动和既有预建周期中检查已登记历史分表的索引，遵守建表授权和预演开关；执行前记录 DDL 与索引回滚语句，不改写业务数据。

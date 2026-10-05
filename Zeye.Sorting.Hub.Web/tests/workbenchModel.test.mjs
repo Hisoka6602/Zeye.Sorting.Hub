@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mergeWorkstationSources, observeWorkstations, workstationKey } from '../src/features/parcels/workbenchModel.ts';
+import { mergeWorkstationSources, observeWorkstationSummaries, recentWorkstationPath, observeWorkstations, workstationKey } from '../src/features/parcels/workbenchModel.ts';
 
 test('登记来源无包裹也展示，心跳与包裹统计保持独立且不修改原观察结果', () => {
   const observed = observeWorkstations([parcel('fusion-a', '旧名称')]);
@@ -13,6 +13,28 @@ test('登记来源无包裹也展示，心跳与包裹统计保持独立且不�
   assert.equal(result.workstations[1].parcelCount, 0);
   assert.equal(result.workstations[1].presence.isOnline, true);
   assert.equal(observed.workstations[0].presence, undefined);
+});
+
+test('完整窗口汇总超过200票且多个来源独立，保留空登记工作台', () => {
+  const summary = { parcelCount: 1400, unassignedCount: 8, workstations: [
+    { sourceInstanceId: 'a', workstationName: '同名工作台', parcelCount: 992, pendingCount: 25, completedCount: 967, exceptionCount: 0, otherCount: 0, lastParcelAt: '2026-10-05T22:00:00' },
+    { sourceInstanceId: 'b', workstationName: '同名工作台', parcelCount: 400, pendingCount: 100, completedCount: 200, exceptionCount: 100, otherCount: 0, lastParcelAt: '2026-10-05T21:00:00' },
+  ] };
+  const observations = mergeWorkstationSources(observeWorkstationSummaries(summary), [{ sourceInstanceId: 'c', workstationName: '在线无包裹', isOnline: true }]);
+  assert.equal(observations.workstations.length, 3);
+  assert.equal(observations.workstations[0].parcelCount, 992);
+  assert.equal(observations.workstations[1].exceptionCount, 100);
+  assert.equal(observations.workstations[2].lastParcelAt, null);
+  assert.equal(observations.unassignedCount, 8);
+  assert.notEqual(observations.workstations[0].key, observations.workstations[1].key);
+  assert.equal(summary.workstations[0].key, undefined);
+});
+
+test('最近明细在服务器按实例筛选，不从全局200条截取；历史来源才使用名称', () => {
+  const base = '/api/parcels?pageNumber=1&pageSize=200&includeTotalCount=false';
+  assert.equal(recentWorkstationPath(), base);
+  assert.equal(recentWorkstationPath({ sourceInstanceId: 'fusion-a', name: '同名工作台' }), base + '&sourceInstanceId=fusion-a');
+  assert.equal(recentWorkstationPath({ sourceInstanceId: null, name: '工作台 A&B' }), base + '&workstationName=' + encodeURIComponent('工作台 A&B'));
 });
 
 const parcel = (sourceInstanceId, workstationName, status = 1, createdTime = '2026-10-03T10:00:00') => ({ sourceInstanceId, workstationName, status, createdTime });

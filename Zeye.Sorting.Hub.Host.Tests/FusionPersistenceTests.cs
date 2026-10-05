@@ -249,7 +249,7 @@ public sealed class FusionPersistenceTests {
         var page = await database.Parcels.GetPagedAsync(new ParcelQueryFilter(), new PageRequest { IncludeTotalCount = true }, default);
         Assert.Equal(2, page.TotalCount);
         Assert.Equal(2, (await database.Parcels.GetByIdAsync(original.Value.ParcelId!.Value, default))!.ProcessingRecords.Count);
-        var analytics = new ParcelAnalyticsReadService(database.Factory, weekly,
+        var analytics = new ParcelAnalyticsReadService(database.Factory,
             new ReportingQueryBudgetPlanner(Microsoft.Extensions.Options.Options.Create(new ReadOnlyDatabaseOptions())));
         var report = await analytics.GetAsync(new(2026, 9, 28), new(2026, 9, 28), default);
         Assert.Equal(2, report.DetectedCount);

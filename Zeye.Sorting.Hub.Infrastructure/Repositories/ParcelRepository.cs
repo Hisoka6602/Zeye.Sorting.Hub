@@ -849,6 +849,16 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
             query = query.Where(x => x.WorkstationName == workstationName);
         }
 
+        if (!string.IsNullOrWhiteSpace(filter.SourceInstanceId)) {
+            var source = filter.SourceInstanceId.Trim();
+            if (source.Length > 96) throw new ArgumentException("来源实例编码不能超过96字符。", nameof(filter));
+            query = providerName switch {
+                DbProviderNames.MySql => query.Where(x => EF.Functions.Collate(x.SourceInstanceId!.Trim(), "utf8mb4_bin") == source),
+                DbProviderNames.SqlServer => query.Where(x => EF.Functions.Collate(x.SourceInstanceId!.Trim(), "Latin1_General_100_BIN2") == source),
+                _ => query.Where(x => x.SourceInstanceId != null && x.SourceInstanceId.Trim() == source)
+            };
+        }
+
         if (filter.Status.HasValue) {
             query = query.Where(x => x.Status == filter.Status.Value);
         }

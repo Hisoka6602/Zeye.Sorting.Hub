@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
@@ -11,9 +12,10 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence;
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(SortingHubDbContext))]
-    partial class SortingHubDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261006025000_AddFusionProjectionQueryIndexes")]
+    partial class AddFusionProjectionQueryIndexes
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -696,15 +698,15 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("CreatedTime");
 
-                    b.HasIndex("CreatedTime", "Id", "SourceParcelId", "DetectedTime");
-
-                    b.HasIndex("CompletedTime", "Status", "SourceParcelId", "DetectedTime");
-
                     b.HasIndex("ParcelTimestamp");
 
                     b.HasIndex("ActualChuteId", "DischargeTime");
 
                     b.HasIndex("ScannedTime", "Id");
+
+                    b.HasIndex("CompletedTime", "Status", "SourceParcelId", "DetectedTime");
+
+                    b.HasIndex("CreatedTime", "Id", "SourceParcelId", "DetectedTime");
 
                     b.HasIndex("ActualChuteId", "ScannedTime", "Id");
 
@@ -719,10 +721,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                     b.HasIndex("TargetChuteId", "ScannedTime", "Id");
 
                     b.HasIndex("WorkstationName", "ScannedTime", "Id");
-
-                    b.HasIndex("CompletedTime", "Status", "SourceParcelId", "DetectedTime");
-
-                    b.HasIndex("CreatedTime", "Id", "SourceParcelId", "DetectedTime");
 
                     b.HasIndex("Status", "ExceptionType", "ScannedTime", "Id");
 
@@ -950,15 +948,13 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("OccurredAt");
 
-                    b.HasIndex("MessageIdentity", "ReceivedAt");
-
                     b.HasIndex("OccurredAt", "IsSuccess", "ParcelId", "Stage");
+
+                    b.HasIndex("MessageIdentity", "ReceivedAt");
 
                     b.HasIndex("ParcelId", "OccurredAt");
 
                     b.HasIndex("SourceInstanceId", "SourceRunId", "SourceParcelId");
-
-                    b.HasIndex("OccurredAt", "IsSuccess", "ParcelId", "Stage");
 
                     b.ToTable("Parcel_ProcessingRecords", (string)null);
                 });
@@ -1089,17 +1085,17 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ProjectionState", "NextProjectionAt");
 
+                    b.HasIndex("ProjectionState", "ReceivedAt", "SourceSequence", "NextProjectionAt", "ProjectionClaimUntil")
+                        .HasDatabaseName("IX_FusionFacts_ProjectionQueue");
+
+                    b.HasIndex("SourceInstanceId", "ProjectionState", "ProjectionError")
+                        .HasDatabaseName("IX_FusionFacts_SourceProgress");
+
                     b.HasIndex("SourceInstanceId", "JournalId", "RecordId")
                         .IsUnique();
 
                     b.HasIndex("SourceInstanceId", "JournalId", "SourceSequence")
                         .IsUnique();
-
-                    b.HasIndex("SourceInstanceId", "ProjectionState", "ProjectionError")
-                        .HasDatabaseName("IX_FusionFacts_SourceProgress");
-
-                    b.HasIndex("ProjectionState", "ReceivedAt", "SourceSequence", "NextProjectionAt", "ProjectionClaimUntil")
-                        .HasDatabaseName("IX_FusionFacts_ProjectionQueue");
 
                     b.ToTable("FusionFactReceipts", (string)null);
                 });
