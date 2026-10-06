@@ -1902,12 +1902,15 @@ Zeye.Sorting.Hub.Web/src/features/parcels/
   ParcelImageGallery.tsx
   parcelImages.css
   ParcelImagesDrawer.tsx
+  parcelProcessingTimeline.ts
+  parcelProcessing.css
   sortingThroughputMetric.ts
   workbench.css
   workbenchMetricDays.ts
   WorkbenchMetricTrend.tsx
   workbenchModel.ts
 Zeye.Sorting.Hub.Web/tests/
+  parcelProcessingTimeline.test.mjs
   analyticsModel.test.mjs
   formatNumber.test.mjs
   sectionAccess.test.mjs
@@ -1982,6 +1985,9 @@ Zeye.Sorting.Hub.Web/tests/
 | Zeye.Sorting.Hub.Web/src/features/parcels | `ParcelImageGallery.tsx` | 包裹多图主图、缩略图切换与放大预览 |
 | Zeye.Sorting.Hub.Web/src/features/parcels | `parcelImages.css` | 多图画廊、缩略图与图片状态样式 |
 | Zeye.Sorting.Hub.Web/src/features/parcels | `ParcelImagesDrawer.tsx` | 包裹台账图片抽屉及加载状态 |
+| Zeye.Sorting.Hub.Web/src/features/parcels | `parcelProcessingTimeline.ts` | 处理事实业务名称、调用尝试归组与唯一 HTTP 窗口关联，保留重试和原始记录 |
+| Zeye.Sorting.Hub.Web/src/features/parcels | `parcelProcessing.css` | 调用轨迹摘要、可展开事实列表及响应式时间排版 |
+| Zeye.Sorting.Hub.Web/tests | `parcelProcessingTimeline.test.mjs` | 扫描、格口和落格分类、重试分离、业务接受语义及完整原文保留回归 |
 | Zeye.Sorting.Hub.Web/src/features/parcels | `sortingThroughputMetric.ts` | 实际和理论小时产能的展示值与说明 |
 | Zeye.Sorting.Hub.Web/src/app | `sectionAccess.ts` | 敏感版块的服务端身份判断、菜单与直接路由边界 |
 | Zeye.Sorting.Hub.Web/src/features/parcels | `workbench.css` | 平台健康及多工作台信息展示样式 |

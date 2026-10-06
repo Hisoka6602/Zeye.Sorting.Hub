@@ -52,3 +52,23 @@ test('处理失败及接口异常有详细信息，正常成功记录不会混�
   assert.deepEqual(result.records.map(record => record.recordId), ['failure']);
   assert.deepEqual(result.messages, ['接口超时', '连接失败']);
 });
+
+test('正常调用的 started/completed 诊断元数据即使保存为 errorMessage 也不是包裹异常', () => {
+  const processingRecords = ['started', 'completed'].map(outcome => {
+    const detail = JSON.stringify({ operationId: 'chute', attemptId: 'attempt-1', operation: '目标格口分配', outcome, attemptNumber: 1 });
+    return { ...event, stage: 3, recordId: outcome, exceptionCode: null, isSuccess: null, errorMessage: detail,
+      rawPayload: JSON.stringify({ kind: 'provider-attempt', name: '目标格口分配', outcome, detail }) };
+  });
+  assert.equal(parcelExceptionDetails({ ...normal, status: 1, processingRecords }), null);
+});
+
+test('失败和未知结果仍显示为历史异常，展示业务说明并保留诊断原文', () => {
+  const detail = JSON.stringify({ operationId: 'chute', attemptId: 'attempt-1', operation: '目标格口分配', outcome: 'unknown', attemptNumber: 1 });
+  const record = { ...event, stage: 3, exceptionCode: null, isSuccess: null, errorMessage: detail,
+    rawPayload: JSON.stringify({ kind: 'provider-attempt', name: '目标格口分配', outcome: 'unknown', detail }) };
+  const result = parcelExceptionDetails({ ...normal, status: 1, processingRecords: [record] });
+  assert.deepEqual(result.messages, ['结果未知']);
+  assert.equal(result.recordTitles[record.recordId], '请求格口');
+  assert.equal(result.records[0].errorMessage, detail);
+  assert.equal(result.current, false);
+});

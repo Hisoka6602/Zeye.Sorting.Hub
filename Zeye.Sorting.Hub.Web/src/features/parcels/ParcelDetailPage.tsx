@@ -1,7 +1,7 @@
 import { formatNumber } from '../../data/formatNumber';
 import { PictureOutlined } from '@ant-design/icons';
 import { Button, Collapse, Drawer, Empty, Skeleton, Space, Timeline, Typography } from 'antd';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useParams } from 'react-router';
 import { DataTable } from '../../components/DataTable';
 import { PageIntro } from '../../components/PageIntro';
@@ -9,10 +9,12 @@ import { SectionCard } from '../../components/SectionCard';
 import { StatusTag } from '../../components/StatusTag';
 import { ApiError } from '../../data/api/client';
 import { useApiResource } from '../../data/api/useApiResource';
-import { processingStages, type ParcelDetail, type ParcelProcessingRecord } from '../../data/api/parcelTypes';
+import type { ParcelDetail, ParcelProcessingRecord } from '../../data/api/parcelTypes';
 import { ParcelFacts, parcelFactValue } from './ParcelFacts';
 import { ParcelExceptionPanel } from './ParcelExceptionPanel';
 import { ParcelImagesDrawer } from './ParcelImagesDrawer';
+import { buildParcelProcessingTimeline, type ParcelProcessingEvent } from './parcelProcessingTimeline';
+import './parcelProcessing.css';
 
 /** Every existing value object remains available below the reference-sized summary. */
 const detailGroups = [
@@ -32,9 +34,9 @@ export function ParcelDetailPage() {
   const designPreview = import.meta.env.MODE === 'design-preview';
   const { id } = useParams();
   const { data: parcel, loading, error, refresh } = useApiResource<ParcelDetail>(id ? `/api/parcels/${encodeURIComponent(id)}` : null);
-  const [selectedRecord, setSelectedRecord] = useState<ParcelProcessingRecord | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<ParcelProcessingEvent | null>(null);
   const [imagesOpen, setImagesOpen] = useState(false);
-  const history = [...(parcel?.processingRecords ?? [])].sort((left, right) => right.occurredAt.localeCompare(left.occurredAt) || right.attemptNumber - left.attemptNumber || right.recordId.localeCompare(left.recordId));
+  const history = useMemo(() => buildParcelProcessingTimeline(parcel?.processingRecords ?? []), [parcel?.processingRecords]);
   const notFound = !loading && ((error instanceof ApiError && error.status === 404) || (!error && !parcel));
   const unavailable = !parcel;
   const status = parcel ? parcelFactValue('status', parcel.status) : undefined;
@@ -63,22 +65,29 @@ export function ParcelDetailPage() {
     </SectionCard>
     {!notFound && <div className="two-cols parcel-detail-panels">
       <SectionCard title="处理轨迹">
-        {loading ? <Skeleton active paragraph={{ rows: 6 }} /> : history.length ? <Timeline items={history.map(record => ({
-          color: record.isSuccess === false ? 'red' : 'blue',
-          children: <><b>{previewText(record, 'previewTimelineTitle') ?? processingStages[record.stage] ?? record.stage}</b><span style={{ float: 'right' }} className="text-muted">{parcelFactValue('occurredAt', record.occurredAt)}</span><div className="text-muted">{previewText(record, 'previewDescription') ?? record.errorMessage ?? record.decisionReason ?? record.actualChuteCode ?? record.targetChuteCode ?? record.messageIdentity ?? record.recordId}</div></>,
+        {loading ? <Skeleton active paragraph={{ rows: 6 }} /> : history.items.length ? <Timeline className="parcel-processing-timeline" items={history.items.map(item => ({
+          color: item.color,
+          children: <>
+            <div className="parcel-processing-heading"><b>{previewText(item.events[0].record, 'previewTimelineTitle') ?? item.title}</b><time className="text-muted">{parcelFactValue('occurredAt', item.occurredAt)}</time></div>
+            {(item.state || item.attemptNumber != null) && <div className="parcel-processing-summary">{item.state && <StatusTag value={item.state} tone={item.color} />}{item.attemptNumber != null && <span className="text-muted">第 {item.attemptNumber} 次尝试</span>}</div>}
+            {(designPreview || item.description !== item.state) && <div className="text-muted parcel-processing-description">{previewText(item.events[0].record, 'previewDescription') ?? item.description}</div>}
+            {item.events.length > 1 && <Collapse ghost size="small" items={[{ key: item.key, label: `查看调用记录（${item.events.length}）`, children: item.events.map(event => <div className="parcel-processing-event" key={event.record.recordId}>
+              <time>{parcelFactValue('occurredAt', event.record.occurredAt)}</time><StatusTag value={event.state || event.title} tone={event.color} /><Button type="link" className="table-link" onClick={() => setSelectedEvent(event)}>详情</Button>
+            </div>) }]} />}
+          </>,
         }))} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={error ? '重试后显示处理轨迹' : '暂无处理事实记录'} />}
       </SectionCard>
       <SectionCard title="相关记录">
-        <DataTable<ParcelProcessingRecord> className="parcel-related-records" rowKey="recordId" dataSource={history} loading={loading} tableLayout="fixed" scroll={{ x: 900 }} columns={[
-          { title: '时间', dataIndex: 'occurredAt', width: 230, render: value => parcelFactValue('occurredAt', value) },
-          { title: '类型', dataIndex: 'stage', width: 126, render: (value, record) => <StatusTag value={previewText(record, 'previewType') ?? processingStages[value] ?? String(value)} /> },
-          { title: '关联编号', width: 140, render: (_, record) => previewText(record, 'previewReference') ?? record.actualChuteCode ?? record.targetChuteCode ?? record.sourceParcelId ?? record.recordId },
-          { title: '内容', render: (_, record) => previewText(record, 'previewContent') ?? record.errorMessage ?? record.decisionReason ?? record.messageIdentity ?? record.recordId },
-          { title: '操作', width: 80, render: (_, record) => <Button type="link" className="table-link" onClick={() => setSelectedRecord(record)}>查看</Button> },
+        <DataTable<ParcelProcessingEvent> className="parcel-related-records" rowKey={event => event.record.recordId} dataSource={history.events} loading={loading} tableLayout="fixed" scroll={{ x: 900 }} columns={[
+          { title: '时间', width: 230, render: (_, event) => parcelFactValue('occurredAt', event.record.occurredAt) },
+          { title: '类型', width: 126, render: (_, event) => <StatusTag value={previewText(event.record, 'previewType') ?? event.title} /> },
+          { title: '关联编号', width: 140, render: (_, { record }) => previewText(record, 'previewReference') ?? record.actualChuteCode ?? record.targetChuteCode ?? record.sourceParcelId ?? record.recordId },
+          { title: '内容', render: (_, event) => previewText(event.record, 'previewContent') ?? event.description },
+          { title: '操作', width: 80, render: (_, event) => <Button type="link" className="table-link" onClick={() => setSelectedEvent(event)}>查看</Button> },
         ]} locale={{ emptyText: error ? '重试后显示相关记录' : '暂无处理记录' }} />
       </SectionCard>
     </div>}
-    <ParcelExceptionPanel parcel={parcel} />
+    <ParcelExceptionPanel parcel={parcel} events={history.events} />
     {parcel && <SectionCard title="完整合同字段" className="parcel-detail-complete">
       <ParcelFacts facts={parcel} keys={Object.keys(parcel).filter(key => key !== 'processingRecords' && !detailGroups.some(([group]) => group === key))} />
       <Collapse items={detailGroups.map(([key, title]) => {
@@ -87,8 +96,9 @@ export function ParcelDetailPage() {
         return { key, label: `${title}（${rows.length}）`, children: rows.length ? rows.map((row, index) => <ParcelFacts key={index} facts={row} />) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={`暂无${title}`} /> };
       })} />
     </SectionCard>}
-    <Drawer title="处理记录详情" width="min(960px, 100vw)" open={!!selectedRecord} onClose={() => setSelectedRecord(null)}>
-      {selectedRecord && <ParcelFacts facts={selectedRecord} />}
+    <Drawer title="处理记录详情" width="min(960px, 100vw)" open={!!selectedEvent} onClose={() => setSelectedEvent(null)}>
+      {/* 仅修正展示副本的业务名称与真实尝试数，原始报文及其他合同字段保持完整。 */}
+      {selectedEvent && <ParcelFacts facts={{ ...selectedEvent.record, stage: selectedEvent.title, attemptNumber: selectedEvent.attemptNumber }} />}
     </Drawer>
     {parcel && imagesOpen && <ParcelImagesDrawer key={parcel.id} parcel={parcel} onClose={() => setImagesOpen(false)} />}
   </div>;
