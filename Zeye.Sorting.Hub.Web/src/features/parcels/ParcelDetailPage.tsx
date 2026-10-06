@@ -13,7 +13,7 @@ import type { ParcelDetail, ParcelProcessingRecord } from '../../data/api/parcel
 import { ParcelFacts, parcelFactValue } from './ParcelFacts';
 import { ParcelExceptionPanel } from './ParcelExceptionPanel';
 import { ParcelImagesDrawer } from './ParcelImagesDrawer';
-import { buildParcelProcessingTimeline, type ParcelProcessingEvent } from './parcelProcessingTimeline';
+import { buildParcelProcessingTimeline, parcelProcessingFieldLabels, type ParcelProcessingEvent } from './parcelProcessingTimeline';
 import './parcelProcessing.css';
 
 /** Every existing value object remains available below the reference-sized summary. */
@@ -37,6 +37,7 @@ export function ParcelDetailPage() {
   const [selectedEvent, setSelectedEvent] = useState<ParcelProcessingEvent | null>(null);
   const [imagesOpen, setImagesOpen] = useState(false);
   const history = useMemo(() => buildParcelProcessingTimeline(parcel?.processingRecords ?? []), [parcel?.processingRecords]);
+  const eventsByRecord = useMemo(() => new Map(history.events.map(event => [event.record.recordId, event])), [history.events]);
   const notFound = !loading && ((error instanceof ApiError && error.status === 404) || (!error && !parcel));
   const unavailable = !parcel;
   const status = parcel ? parcelFactValue('status', parcel.status) : undefined;
@@ -93,12 +94,24 @@ export function ParcelDetailPage() {
       <Collapse items={detailGroups.map(([key, title]) => {
         const value = parcel[key];
         const rows = Array.isArray(value) ? value : value ? [value] : [];
-        return { key, label: `${title}（${rows.length}）`, children: rows.length ? rows.map((row, index) => <ParcelFacts key={index} facts={row} />) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={`暂无${title}`} /> };
+        return { key, label: `${title}（${rows.length}）`, children: rows.length ? rows.map((row, index) => {
+          const event = key === 'apiRequests' && typeof row.recordId === 'string' ? eventsByRecord.get(row.recordId) : undefined;
+          return <ParcelFacts key={index} facts={event ? { ...row, apiType: event.title, stage: event.title, attemptNumber: event.attemptNumber } : row} labels={event ? parcelProcessingFieldLabels(event) : undefined} />;
+        }) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={`暂无${title}`} /> };
       })} />
     </SectionCard>}
-    <Drawer title="处理记录详情" width="min(960px, 100vw)" open={!!selectedEvent} onClose={() => setSelectedEvent(null)}>
-      {/* 仅修正展示副本的业务名称与真实尝试数，原始报文及其他合同字段保持完整。 */}
-      {selectedEvent && <ParcelFacts facts={{ ...selectedEvent.record, stage: selectedEvent.title, attemptNumber: selectedEvent.attemptNumber }} />}
+    <Drawer title={selectedEvent ? `${selectedEvent.title} · 处理记录详情` : '处理记录详情'} width="min(960px, 100vw)" open={!!selectedEvent} onClose={() => setSelectedEvent(null)}>
+      {/* 业务类型在摘要和每段报文旁明确展示；所有原文保持完整、可复制。 */}
+      {selectedEvent && <>
+        <Space wrap className="parcel-processing-details-summary">
+          <Typography.Text>业务类型</Typography.Text><StatusTag value={selectedEvent.title} />
+          {selectedEvent.state && <StatusTag value={selectedEvent.state} tone={selectedEvent.color} />}
+          {selectedEvent.provider && <Typography.Text type="secondary">{selectedEvent.provider}</Typography.Text>}
+          <Typography.Text type="secondary">第 {selectedEvent.attemptNumber} 次尝试</Typography.Text>
+          {(selectedEvent.title === 'Provider 交互' || selectedEvent.title === 'Provider 调用') && <Typography.Text type="secondary">来源未提供明确业务类型</Typography.Text>}
+        </Space>
+        <ParcelFacts facts={{ ...selectedEvent.record, stage: selectedEvent.title, attemptNumber: selectedEvent.attemptNumber, provider: selectedEvent.provider || selectedEvent.record.provider }} labels={parcelProcessingFieldLabels(selectedEvent)} />
+      </>}
     </Drawer>
     {parcel && imagesOpen && <ParcelImagesDrawer key={parcel.id} parcel={parcel} onClose={() => setImagesOpen(false)} />}
   </div>;

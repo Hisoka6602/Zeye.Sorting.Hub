@@ -17,11 +17,11 @@ export function parcelFactValue(key: string, value: unknown): string {
 }
 
 /** 按实际容器宽度展示合同字段，长正文独占整行并保留全文复制。 */
-export function ParcelFacts({ facts, keys }: { facts: object; keys?: string[] }) {
+export function ParcelFacts({ facts, keys, labels }: { facts: object; keys?: string[]; labels?: Record<string, string> }) {
   const values = facts as Record<string, unknown>;
   const entries = (keys ?? Object.keys(values)).map(key => [key, values[key]] as const);
   return <dl className="parcel-facts">{entries.map(([key, value]) => <div key={key} className={/Payload|Body|Headers|Json|Data|Message|Exception|Path|Reason/i.test(key) ? 'parcel-fact parcel-fact-full' : 'parcel-fact'}>
-    <dt>{parcelFieldLabels[key] ?? key}</dt>
+    <dt>{labels?.[key] ?? parcelFieldLabels[key] ?? key}</dt>
     <dd><Typography.Text copyable={value !== null && value !== undefined && value !== ''}>{parcelFactValue(key, value)}</Typography.Text></dd>
   </div>)}</dl>;
 }

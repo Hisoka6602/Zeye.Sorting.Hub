@@ -888,7 +888,7 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 - `useApiResource.ts`：查询取消、加载、空结果、错误与刷新状态。
 - `parcelTypes.ts`：完整后端包裹类型、处理阶段与字段中文标签。
 - `ParcelDetectionPage.tsx`：手工登记来源检测，并复用确定性记录身份提交真实写入接口。
-- `ParcelFacts.tsx`：完整合同字段的可复制展示，未知事实与零值明确区分。
+- `ParcelFacts.tsx`：完整合同字段的可复制展示，支持业务上下文字段标签，未知事实与零值明确区分。
 - `AnalyticsPage.tsx`：真实日期筛选、快照与处理事实指标、分布及每日汇总，并显示错误和空数据。
 - `client.test.mjs`：64位编号、本地时间原文、未知值、稳定检测身份与真实错误响应的客户端验证。
 
@@ -2009,7 +2009,7 @@ Zeye.Sorting.Hub.Web/tests/
 | Zeye.Sorting.Hub.Web/src/features/parcels | `ParcelImageGallery.tsx` | 包裹多图主图、缩略图切换与放大预览 |
 | Zeye.Sorting.Hub.Web/src/features/parcels | `parcelImages.css` | 多图画廊、缩略图与图片状态样式 |
 | Zeye.Sorting.Hub.Web/src/features/parcels | `ParcelImagesDrawer.tsx` | 包裹台账图片抽屉及加载状态 |
-| Zeye.Sorting.Hub.Web/src/features/parcels | `parcelProcessingTimeline.ts` | 处理事实业务名称、调用尝试归组与唯一 HTTP 窗口关联，保留重试和原始记录 |
+| Zeye.Sorting.Hub.Web/src/features/parcels | `parcelProcessingTimeline.ts` | 处理事实业务名称、调用尝试归组与唯一 HTTP 窗口关联，统一报文字段业务标签，保留重试和原始记录 |
 | Zeye.Sorting.Hub.Web/src/features/parcels | `parcelProcessing.css` | 调用轨迹摘要、可展开事实列表及响应式时间排版 |
 | Zeye.Sorting.Hub.Web/tests | `parcelProcessingTimeline.test.mjs` | 扫描、格口和落格分类、重试分离、业务接受语义及完整原文保留回归 |
 | Zeye.Sorting.Hub.Web/src/features/parcels | `sortingThroughputMetric.ts` | 实际和理论小时产能的展示值与说明 |

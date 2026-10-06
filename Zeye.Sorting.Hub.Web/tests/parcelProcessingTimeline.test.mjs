@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildParcelProcessingTimeline } from '../src/features/parcels/parcelProcessingTimeline.ts';
+import { buildParcelProcessingTimeline, parcelProcessingFieldLabels } from '../src/features/parcels/parcelProcessingTimeline.ts';
 
 /** 构造来源一致、保留完整原文的最小处理事实。 */
 function fact(id, time, data, override = {}) {
@@ -35,6 +35,8 @@ test('截图中的六条事实显示两次业务调用，扫描上传与请求�
   assert.deepEqual(items.map(item => item.events.length), [3, 3]);
   assert.equal(events.length, 6);
   assert.equal(events.find(event => event.record.recordId === 'chute-http').title, '请求格口');
+  assert.equal(parcelProcessingFieldLabels(events.find(event => event.record.recordId === 'scan-http')).requestBody, '扫描上传 · 请求报文');
+  assert.equal(parcelProcessingFieldLabels(events.find(event => event.record.recordId === 'chute-http')).responseBody, '请求格口 · 响应报文');
   assert.equal(items[0].state, '调用完成');
   assert.deepEqual(records, before);
   for (const event of events) assert.strictEqual(event.record, records.find(record => record.recordId === event.record.recordId));
@@ -86,6 +88,7 @@ test('重叠调用没有明确尝试标识时禁止猜测归组，不把扫描 H
   assert.equal(items.length, 3);
   assert.equal(events.find(event => event.record.recordId === 'http').title, 'Provider 交互');
   assert.equal(items.flatMap(item => item.events).length, 5);
+  assert.equal(parcelProcessingFieldLabels(events.find(event => event.record.recordId === 'http')).rawPayload, '未识别业务 · 原始报文');
 });
 
 test('来源实例、编号会话和包裹不同，即使操作标识相同也不合并', () => {
@@ -139,4 +142,31 @@ test('明确的落格 HTTP 分类不会被相邻的格口请求窗口改写', ()
     http('landing', '200', { category: 'landing' }), attempt('e', '300', '目标格口分配', 'completed')]);
   assert.equal(items.length, 2);
   assert.equal(events.find(event => event.record.recordId === 'landing').title, '落格回传');
+});
+
+test('请求、响应、原始报文统一采用来源明确的业务类型，不依赖接口地址或正文', () => {
+  for (const [operation, expected] of [['ScanUpload', '扫描上传'], ['request_chute', '请求格口'], ['DischargeReport', '落格回传'], ['image-upload', '图片上传']]) {
+    const record = http(operation, '100', { operation, category: 'assignment', url: '/same/endpoint', request: 'same body' });
+    const { events } = buildParcelProcessingTimeline([record]);
+    const event = events[0];
+    assert.equal(event.title, expected);
+    assert.equal(event.provider, 'EverydayChainHub');
+    const labels = parcelProcessingFieldLabels(event);
+    assert.equal(labels.requestBody, `${expected} · 请求报文`);
+    assert.equal(labels.responseBody, `${expected} · 响应报文`);
+    assert.equal(labels.rawPayload, `${expected} · 原始报文`);
+    assert.equal(labels.stage, '业务类型');
+    assert.equal(labels.apiType, '接口业务类型');
+    assert.equal(event.record.rawPayload, record.rawPayload);
+  }
+});
+
+test('旧落格报文的分类不会被统一 Stage 3 误标为扫描上传，缺少类型也不根据 URL 猜测', () => {
+  const { events } = buildParcelProcessingTimeline([
+    http('landing', '100', { category: 'landing' }),
+    http('ambiguous', '200', { url: '/scan-upload', request: '{"operation":"扫描上传"}' }),
+  ]);
+  const landing = events.find(event => event.record.recordId === 'landing');
+  assert.equal(parcelProcessingFieldLabels(landing).responseBody, '落格回传 · 响应报文');
+  assert.equal(events.find(event => event.record.recordId === 'ambiguous').title, 'Provider 交互');
 });

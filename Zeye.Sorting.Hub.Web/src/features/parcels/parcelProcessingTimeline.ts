@@ -9,6 +9,7 @@ export interface ParcelProcessingEvent {
   color: 'blue' | 'green' | 'red' | 'orange';
   attemptNumber: number;
   isIssue: boolean;
+  provider: string;
 }
 
 /** 按一次明确调用尝试归组的轨迹节点，原始事实全部保留。 */
@@ -26,7 +27,6 @@ export interface ParcelProcessingTimelineItem {
 /** 仅用于诊断事实关联的元数据，不改变后端阶段或业务状态。 */
 interface ProviderEvent extends ParcelProcessingEvent {
   scope: string;
-  provider: string;
   operationId: string;
   attemptId: string;
   outcome: string;
@@ -54,10 +54,23 @@ function text(data: Record<string, unknown>, name: string): string {
 
 /** 按明确的操作名称识别业务；裸 assignment 分类无法区分扫描与格口请求。 */
 function operationTitle(operation: string, fallback: string): string {
-  if (/目标格口|请求格口|chute[- ]?assignment/i.test(operation) || operation === 'request-chute') return '请求格口';
-  if (/扫描上传|scan[- ]?upload/i.test(operation)) return '扫描上传';
-  if (/落格|landing/i.test(operation)) return '落格回传';
+  if (/目标格口|请求格口|chute[-_ ]?assignment|request[-_ ]?chute/i.test(operation)) return '请求格口';
+  if (/扫描上传|scan[-_ ]?upload|scan[-_ ]?result/i.test(operation)) return '扫描上传';
+  if (/落格|landing|discharge[-_ ]?report/i.test(operation)) return '落格回传';
+  if (/图片上传|上传图片|image[-_ ]?upload|upload[-_ ]?image/i.test(operation)) return '图片上传';
   return fallback;
+}
+
+/** 请求、响应及原文沿用同一个已关联的业务名称，不按地址或正文猜测类型。 */
+export function parcelProcessingFieldLabels(event: ParcelProcessingEvent): Record<string, string> {
+  const business = event.title === 'Provider 交互' || event.title === 'Provider 调用' ? '未识别业务' : event.title;
+  return {
+    stage: '业务类型', apiType: '接口业务类型', requestStatus: '业务请求状态',
+    rawPayload: `${business} · 原始报文`, rawData: `${business} · 原始报文`,
+    requestUrl: `${business} · 接口地址`, requestHeaders: `${business} · 请求头`, headers: `${business} · 请求头`,
+    requestBody: `${business} · 请求报文`, responseBody: `${business} · 响应报文`,
+    responseStatusCode: `${business} · HTTP 状态码`,
+  };
 }
 
 /** 读取调用状态，HTTP 成功或 completed 只代表调用结束，不推断业务成功。 */
