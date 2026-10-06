@@ -12,5 +12,8 @@ artifacts
 design
 performance/results
 deploy/.env
+deploy/fusion-ingestion.json
+fusion-images
+Zeye.Sorting.Hub.Host/fusion-images
 *.user
 *.log

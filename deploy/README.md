@@ -1,5 +1,9 @@
 # Windows / Linux 部署
 
+Fusion 1.0 的来源登记、专用 SignalR 机器认证、图片持久化、可选发现和追溯入口见 [Fusion接入说明.md](Fusion接入说明.md)。默认未登记工作台，来源不会自动启用。
+
+来源：部署命令及参数依据本仓库 `publish-windows.ps1`、`compose.yaml` 和 Host 入口配置；实时协议及客户端行为参考[微软 SignalR 文档](https://learn.microsoft.com/aspnet/core/signalr/javascript-client)。
+
 ## Windows 前后端一体化发布
 
 在仓库根目录执行一个命令即可构建并发布前后端：
@@ -11,6 +15,10 @@
 构建机需要 .NET 10 SDK 和 Node.js 24/npm。默认输出为 `artifacts/windows-x64`，包含 Windows x64 自包含 Host、前端 `wwwroot`、配置和 `Start-Hub.cmd`。将整个目录一次复制到目标主机，配置数据库后运行 `Start-Hub.cmd` 或 `Zeye.Sorting.Hub.Host.exe`。目标机不需要 Node、Nginx、独立前端服务或另外安装 .NET；数据库继续使用现有 MySQL / SQL Server 连接。
 
 页面、登录、API、包裹图片及健康探针由同一个进程和端口提供，默认入口为 `http://127.0.0.1:5078/`。深层页面刷新也可直接访问。程序从自身目录加载配置和 `wwwroot`，从其他工作目录启动同样有效。默认仅监听 HTTP，无需开发证书；配置服务器证书后可用 `Hosting:Urls` 或 `--urls` 启用 HTTPS。
+
+登录后的包裹列表、概览、报表、规则和平台状态通过同源 `/hubs/sorting` 的 SignalR 通道查询与订阅。处理事实提交与包裹状态更新使用两个明确的实时方法，正文最多 4 KiB，较大请求继续走原 HTTP 入口。成功业务写入会唤醒快照更新；后台状态另有低频检查，前端不再定时发送 HTTP 查询。Windows 内置前端直接连接 Host；Docker Nginx 与 Vite 开发代理均已转发 WebSocket。额外反向代理需同时转发 `/hubs/`、HTTP Upgrade 与 Cookie，并允许长连接。
+
+实时通道复用原接口认证、权限、限流及审计，每次调用重新验证账号；断线自动重连并恢复订阅，JSON 原文保证长编号不失真。写入只发送一次，断线或超时未收到结果时先检查业务记录，不能自动重放。账号、上传、下载、清理和其余管理写入继续使用现有 HTTP 安全流程。融合服务尚未上报的设备在线状态仍显示待接入，不能由浏览器实时连接推断设备在线。客户端参考：[微软 SignalR JavaScript 文档](https://learn.microsoft.com/aspnet/core/signalr/javascript-client)。
 
 原生部署使用已有环境变量或独立的 `appsettings.Production.json` 配置数据库及认证。例如在 PowerShell 中设置实际连接和不同的初始化、设备密钥后启动：
 
@@ -30,19 +38,82 @@ $env:Persistence__Sharding__Prebuild__DryRun = 'false'
 
 首次运行仍需通过页面创建首个管理员，完成后才启用内置超级用户。仅剩内置账号、没有普通成员时，登录页重新提示创建管理员，仍需部署初始化密钥；已有普通成员时不能重复初始化。内置账号不显示在成员列表中，也不计入角色成员数。接口权限和清理密码确认流程保持生效。配置、账号及数据库不放在公开的 `wwwroot` 中；升级时先发布到新的输出目录，再保留目标机部署配置、日志、备份及数据库。
 
-脚本可用 `-OutputDirectory 'D:\Publish\SortingHub'` 改变输出目录；已安装正确前端依赖时可用 `-SkipDependencyRestore` 跳过 `npm ci`，前端构建仍会执行。Visual Studio 可选择 `Windows-x64` 文件夹发布配置，CLI 等价命令如下：
+脚本可用 `-OutputDirectory 'D:\Publish\SortingHub'` 改变输出目录。原生发布默认按内容增量处理：依赖声明、锁文件、npm 配置或 Node 平台变化时才恢复依赖；源码、静态资源、TypeScript/Vite 配置、构建脚本或 `VITE_*` 环境变化时才重建前端。输入与全部输出的 SHA-256 均匹配时复用构建，每次仍将完整前端纳入发布包，并再次完整复制到 `wwwroot`，修复与源文件大小和时间戳相同的内容损坏。构建目录缺失或损坏的资源自动重建，失败的构建不能被缓存。缓存元数据保存在 `artifacts/web-publish`，不会进入公开的 `wwwroot`；并发发布共用锁，避免同时重装依赖。
+
+依赖恢复优先使用 `artifacts/npm-publish-cache` 的离线缓存；缓存不足时尝试官方源，失败后使用备用源（默认 `https://registry.npmmirror.com/`）。版本与完整性仍按原锁文件校验，不修改锁文件、系统 DNS 或全局 npm 配置，不关闭 HTTPS 证书校验。联网请求超时 15 秒、无重复请求，每轮安装最多 90 秒，构建最多 180 秒，每 15 秒输出阶段进度。
+
+`-ForceWebUiBuild` 可强制构建；`-ForceWebDependencyRestore` 可强制恢复依赖并构建。`-WebNpmRegistry` / `-WebNpmFallbackRegistry` 可指定 HTTPS 主源和备用源，备用源设为 `none` 可关闭。`-SkipDependencyRestore` 禁止自动安装；需要重建时必须已安装与锁文件匹配的完整依赖，否则明确失败。Visual Studio 可选择 `Windows-x64` 文件夹发布配置，CLI 等价命令如下：
 
 ```powershell
 dotnet publish Zeye.Sorting.Hub.Host/Zeye.Sorting.Hub.Host.csproj -p:PublishProfile=Windows-x64 -o artifacts/windows-x64
 ```
 
+直接使用 `dotnet publish` 时，对应参数为 `-p:ForceWebUiBuild=true`、`-p:ForceWebDependencyRestore=true`、`-p:WebNpmRegistry=https://...`、`-p:WebNpmFallbackRegistry=https://...`（或 `none`），以及 `-p:RestoreWebDependencies=false`。
+
 Linux 同样默认打包前端：`dotnet publish Zeye.Sorting.Hub.Host -c Release -r linux-x64 --self-contained true -o artifacts/linux-x64`，部署目录完整复制后执行 `chmod +x Zeye.Sorting.Hub.Host`，再运行 `./Zeye.Sorting.Hub.Host`。目标机仍需操作系统要求的原生依赖和可用数据库；运行用户应对发布目录拥有写入权限，以保存日志、会话密钥和治理文件。普通 `dotnet build` / `dotnet test` 不触发 npm；仅发布时构建前端。显式 `-p:BundleWebUi=false` 可保留纯 API 发布能力。
+
+## Windows / Linux 服务安装与卸载
+
+服务脚本随完整发布包交付，在发布目录使用；源码目录不能直接安装服务。前端 `wwwroot` 与后端 Host 由同一个服务提供，不需要另行注册前端。安装前先配置可用数据库、初始化密钥及现有建表策略，部署目录应置于目标账号能够访问的位置，Linux 建议 `/opt/zeye/sorting-hub`。
+
+Windows 发布仍执行 `./deploy/publish-windows.ps1`，在目标机的管理员终端运行：
+
+```bat
+install.bat
+uninstall.bat
+```
+
+`install.bat` 注册延迟自动启动服务，使用专用虚拟账号 `NT SERVICE\Zeye.Sorting.Hub.Host`，授权其读写本发布目录，启动后验证服务保持运行。重复安装先停止再更新并启动服务。PowerShell 当前进程中显式设置的 `*__*` 配置变量以及 `ASPNETCORE_*` / `DOTNET_*` 会保存到该服务的注册表 `Environment`，已有配置继续保留；变量值不输出到安装日志。也可直接维护发布目录的 `appsettings.Production.json`。不需要配置管理员密码或默认使用 LocalSystem。
+
+Linux 发布和安装：
+
+```sh
+dotnet publish Zeye.Sorting.Hub.Host -c Release -r linux-x64 --self-contained true -o artifacts/linux-x64
+# 将整个目录复制到目标主机，并先配置 appsettings.Production.json。
+cd /opt/zeye/sorting-hub
+sudo bash install.sh
+sudo bash uninstall.sh
+```
+
+`install.sh` 创建专用 `zeye-hub` 用户与组，发布目录及文件归该账号所有，安装 `/etc/systemd/system/Zeye.Sorting.Hub.Host.service` 并启用开机启动。服务使用 `Type=notify` 等待 Host 就绪，工作目录固定为发布目录，并在意外退出后自动重启。目标系统需要运行 systemd、具备 `useradd` / `groupadd` 等标准管理工具及 .NET 所需原生依赖。自定义到发布目录之外的备份、图片等存储路径，需要事先授权服务账号写入。
+
+发布目录支持中文、空格、美元及百分号；systemd 不支持可执行文件路径中的引号和反斜线，安装预检会提前拒绝这类目录。运行 `bash deploy/test-systemd-unit.sh` 可使用真实 systemd 解析器复验生成的 unit，测试不注册服务。
+
+Linux 的持久化环境变量文件默认 `/etc/default/Zeye.Sorting.Hub.Host`，首次安装自动创建，权限为 `600`；填入实际配置后重新执行安装或重启服务。Linux 不自动复制当前 shell 环境到服务，环境文件格式为 `配置名="值"`，也可使用 `appsettings.Production.json`。安装保留既有环境文件。正常服务管理与诊断示例：
+
+```sh
+sudo systemctl status Zeye.Sorting.Hub.Host
+sudo systemctl restart Zeye.Sorting.Hub.Host
+sudo journalctl -u Zeye.Sorting.Hub.Host -n 100 --no-pager
+```
+
+两个卸载脚本先等待服务停止，再移除服务注册或 unit；停止失败不会继续删除注册。卸载保留发布文件、环境配置、专用账号、日志、图片、备份和数据库，不执行业务数据清理。重复卸载返回成功。同名服务若属于不同发布目录，脚本拒绝覆盖或卸载；升级到新目录应先从旧目录卸载，再从新目录安装。
+
+Linux 的自有 unit 即使配置损坏，只要确认处于未运行状态且没有宿主进程，也可停止卸载或修正后重新安装。
+
+可用 `install.bat --dry-run`、`uninstall.bat --dry-run` 或 `bash install.sh --dry-run`、`bash uninstall.sh --dry-run` 无副作用预演，预演不注册账号或服务，也不启动程序。安装过程失败返回非零退出码，不显示成功；已创建的本项目注册保留，便于修正配置后重新安装。
+
+| 环境变量 | 范围与默认值 |
+| --- | --- |
+| `ZEYE_SERVICE_NAME` | 1～80 个字母、数字、点、下划线或连字符，首字符为字母或数字；默认 `Zeye.Sorting.Hub.Host`，安装及卸载需一致 |
+| `ZEYE_SERVICE_DISPLAY_NAME` | Windows 显示名称，默认 `Zeye Sorting Hub` |
+| `ZEYE_SERVICE_TIMEOUT_SECONDS` | 30～900 的整数秒数，默认 180，用于等待启动、停止或就绪 |
+| `ZEYE_SERVICE_DRY_RUN` | `1` / `true` / `yes` / `on` 启用预演，默认关闭 |
+| `ZEYE_SERVICE_HEALTH_URL` | 可选 HTTP / HTTPS 就绪地址，如 `http://127.0.0.1:5078/health/ready`；填写后安装须等到响应 200，未填写则仅检查原生服务启动状态 |
+| `ZEYE_SERVICE_USER` / `ZEYE_SERVICE_GROUP` | Linux 本地账号与组名，默认 `zeye-hub`；允许 1～32 个小写字母、数字、下划线或连字符，首字符为小写字母或下划线 |
+| `ZEYE_SERVICE_ENV_FILE` | Linux 环境文件绝对路径，默认 `/etc/default/Zeye.Sorting.Hub.Host`，不能使用符号链接 |
+
+多实例需要不同服务名、独立发布目录与监听端口；数据库及 Fusion 来源配置继续按业务部署规划设置。脚本不会更改已有账号初始化、密码确认、接口权限或数据库危险操作规则。
+
+构建机可执行 `./deploy/test-service-scripts.ps1` 验证安装脚本语法、预演及错误输入，不操作真实服务。Windows 默认使用 Git Bash，可用 `-BashExecutable '完整 Bash 路径'` 指定环境。
 
 ## Docker 部署
 
 Host 镜像同样内置前端，可直接从 Host 端口访问页面；已有 Compose 的 Web 入口继续兼容。
 
 此 Compose 项目使用独立的 MySQL 数据卷，构建 `zeye-sorting-hub-host:local` 和 `zeye-sorting-hub-web:local`，并把 Web 与 API 仅绑定到本机回环地址。运营页面连接真实 API，接口失败时显示错误；备份、分区、系统配置页面展示服务器实际状态及能力边界。MinIO 功能在此本机部署中关闭。
+
+MySQL 默认使用 1 GiB InnoDB 数据页缓存和 3 GiB 容器内存上限，避免默认 128 MiB 缓存在持续写入、大范围事实统计时反复读盘。`ZEYE_MYSQL_BUFFER_POOL_SIZE` 接受 MySQL 大小单位，例如 `256M`、`512M`、`1G`；建议使用 128 MiB 的整数倍，不超过本服务内存预算的一半。`ZEYE_MYSQL_MEMORY_LIMIT` 接受 Compose 内存单位，例如 `1g`、`2g`、`3g`，至少为缓存大小的两倍，并为连接、排序、Host 和其他容器留出空间。低内存机器可使用 `512M` / `2g`。缓存只复用数据库数据页，报表仍由 EF Core 查询实际已提交记录，不缓存业务统计结果；Windows Docker Desktop 和 Linux Docker Engine 使用同一配置。原生 Windows 或 Linux 服务连接外部数据库时，由数据库部署配置同等资源预算。
 
 本机 Host 允许首次写入时创建当前包裹分表；此设置仅在 `deploy/compose.yaml` 的隔离数据库中生效，仓库默认配置仍保持 DDL 预演保护。
 
@@ -69,7 +140,13 @@ Host 镜像同样内置前端，可直接从 Host 端口访问页面；已有 Co
 
 账号、角色和规则保存在 MySQL 的 `ManagedDocuments` 中。Cookie 使用 HttpOnly，登录有频率限制，密码使用随机盐散列；密码重置、角色变更和停用账号会撤销会话。密钥文件保存在原有 `host_logs` 卷中，容器重建后会话仍可验证。前端通过同源 Nginx 转发 API。生产对外发布时由入口代理提供 HTTPS。
 
-设备或 Fusion 客户端提交 `/api/admin/parcels/processing-records` 时，需在 `X-Sorting-Api-Key` 请求头中提供 `ZEYE_MACHINE_API_KEY`。该密钥仅授权这一处理事实接口，不能维护账号或规则。未配置此请求头的旧客户端在权限保护模式下返回 401；部署切换前应完成客户端配置。关闭 `ZEYE_AUTH_ENABLED` 会关闭全平台接口权限保护，只适用于受控联调环境；账号管理仍要求管理员登录。
+设备或 Fusion 客户端提交 `/api/admin/parcels/processing-records` 时，需在 `X-Sorting-Api-Key` 请求头中提供 `ZEYE_MACHINE_API_KEY`。该密钥仅授权这一处理事实接口，不能读取或维护三个敏感版块、账号或规则。未配置此请求头的匿名客户端返回 401；部署切换前应完成客户端配置。
+
+包裹清理历史仅永久保存操作人、清理条件、开始与结束时间、实际删除数和结果；每批保存少量事务提交凭据，不复制逐票编号、条码、图片或业务报文。旧版逐票清单在 Host 启动时自动转换，执行中的操作和数量校验不一致的记录保持原样并记录日志。历史转换复用 `Persistence:RepositoryDangerousActions:ParcelRemoveExpired:Isolator` 的守卫、允许执行和演练开关，阻断或演练均不修改记录。转换前生成 `.rollback.sql.gz`；默认目录为 `governance-artifacts/cleanup-audit-rollback`，Docker 位于 `host_governance` 卷，Windows 位于运行目录。可通过 `Persistence:RepositoryDangerousActions:ParcelRemoveExpired:AuditCompaction:RollbackDirectory` 指定可写目录。历史恢复时先关闭执行或开启演练，再在停服状态解压并执行对应数据库方言的 SQL，避免重新转换或覆盖后续修改。
+
+独立来源身份与处理事实仍按原策略保留，清理汇总不是包裹备份。删除和载荷精简释放的数据库空间可供后续写入复用；本升级不执行需要重建业务表的磁盘压缩操作。
+
+测试数据、数据治理及可观测性必须由固定超级管理员角色或内置超级用户访问。普通自定义角色即使拥有全部单项权限也不能进入这些版块；关闭 `ZEYE_AUTH_ENABLED` 仍保留此限制和超级管理员账号维护保护。`/health/live`、`/health/ready` 保持公开供容器探针使用，`/health/deep` 需要超级管理员身份。HTTP 与 SignalR 共用权限判断，已有登录会话在下一次请求重新验证，无需重建账号。
 
 系统配置中的自动备份、备份间隔和包裹预建窗口可在线保存，重启后保留，后台在一分钟内加载；修改需要账号管理权限。其余部署参数通过服务器配置维护。备份页支持 MySQL 事务表结构及数据快照、受认证下载和隔离恢复核验，文件持久化在 `host_backups` 卷中；恢复只新建 `zeye_restore_` 前缀的数据库，逐表核对行数，不覆盖或切换当前业务库。分区页可实际预建当前及窗口内的包裹主表、关联表并登记目录，重复执行自动跳过。审计日表规划不由包裹预建执行。包裹规则和异常规则均可保存、发布并参与实际记录处理；包裹规则只标记包裹类型，物理格口控制由 Fusion 链路执行。
 

@@ -154,6 +154,8 @@ dotnet-counters monitor --name Zeye.Sorting.Hub.Host --counters Zeye.Sorting.Hub
 
 `ParcelAnalyticsBenchmark`直接调用生产使用的`ParcelProcessingRepository`、`ParcelAnalyticsReadService`和`ParcelRepository`，建立跨周期、失败尝试、未绑定DWS及迟到事实的确定性样本。它测量稳态写入、1/7/31天报表、包裹列表/游标/详情、并发游标读取及可选的混合读写P50/P95/P99，逐次核对报表与查询结果，并采集实际参数化报表SQL的MySQL `EXPLAIN ANALYZE`或SQL Server `STATISTICS XML`执行计划。建表耗时单独记录，不计入稳态写入。样本规模可调，未提供设备峰值和保留时长时，不将样本结果称为目标规模达标。
 
+`ZEYE_BENCH_PAYLOAD_BYTES`允许填`0`至`262144`，默认`0`；设置为`32768`可复现大报文数据页的统计成本，结果中的`Input.PayloadBytes`记录该参数。比较优化前后结果时必须使用同一数据、日期窗口和报文大小。
+
 工具强制`ZEYE_BENCH_ISOLATED=1`和`zeye_bench_`库名前缀。MySQL只允许本机非3306端口；SQL Server只允许`(localdb)\ZeyeQueryBench...`专用实例与集成认证。工具拒绝未迁移或已有事实的数据库，建表调用现有分表DDL隔离器。先创建专用隔离库；用同一连接串生成并审核迁移脚本，再执行迁移与基准。MySQL示例：
 
 ```powershell

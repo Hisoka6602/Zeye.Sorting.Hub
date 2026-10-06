@@ -6,6 +6,7 @@ const apiTarget = process.env.ZEYE_API_PROXY ?? 'http://127.0.0.1:5078';
 const apiProxy = {
   '/api': { target: apiTarget, changeOrigin: true },
   '/health': { target: apiTarget, changeOrigin: true },
+  '/hubs': { target: apiTarget, ws: true, changeOrigin: false },
 };
 
 export default defineConfig({

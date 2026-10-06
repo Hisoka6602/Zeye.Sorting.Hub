@@ -11,12 +11,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Queries;
 /// <summary>在数据库内计算全部成功入库包裹的相邻创建间隔中位数与最小值，避免下载或截断大批明细。</summary>
 internal static class ParcelCreationIntervalQuery {
     /// <summary>合并窗口内分表与历史基础表；按创建时间排序求正间隔，再计算中位数和总体最小值。</summary>
-    internal static async Task<CreationIntervalStatistics> ReadAsync(SortingHubDbContext db,
+    internal static async Task<CreationIntervalStatistics> ReadAsync(SortingHubDbContext db, IReadOnlyList<string> suffixes,
         DateTime fromLocal, DateTime toLocalExclusive, CancellationToken cancellationToken) {
-        var suffixes = await db.Set<ParcelPartitionCatalogEntry>().AsNoTracking()
-            .Where(period => period.Start < toLocalExclusive && period.End > fromLocal)
-            .Select(period => period.Suffix).ToListAsync(cancellationToken);
-        suffixes.Add(string.Empty);
         var entity = db.Model.FindEntityType(typeof(Parcel))!;
         var tableName = entity.GetTableName()!;
         var storeObject = StoreObjectIdentifier.Table(tableName, entity.GetSchema());

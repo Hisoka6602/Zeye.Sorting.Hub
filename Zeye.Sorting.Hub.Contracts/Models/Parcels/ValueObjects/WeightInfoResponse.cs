@@ -20,9 +20,9 @@ public sealed record WeightInfoResponse {
     public required decimal FormattedWeight { get; init; }
 
     /// <summary>
-    /// 称重时间。
+    /// 设备称重时间；来源未上报时为空。
     /// </summary>
-    public required DateTime WeighingTime { get; init; }
+    public required DateTime? WeighingTime { get; init; }
 
     /// <summary>
     /// 调整后的重量（单位：kg）。

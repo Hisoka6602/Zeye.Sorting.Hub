@@ -1,4 +1,3 @@
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Configuration;
@@ -22,12 +21,15 @@ public sealed class RelationalParcelTestDatabase : IAsyncDisposable {
     public ParcelRepository Parcels { get; }
     /// <summary>可控事务提交失败注入。</summary>
     public ParcelCommitFailureInterceptor Failure { get; } = new();
+    /// <summary>真实元数据查询计数，验证预热之后不在热处理链路加载配置。</summary>
+    public ParcelMetadataIoInterceptor MetadataIo { get; } = new();
 
     /// <summary>配置测试专用数据库和允许执行的DDL隔离器。</summary>
     public RelationalParcelTestDatabase(string? granularity = null) {
         // 与生产工厂保持一致，验证写仓储显式启用跟踪或执行数据库更新。
-        var options = new DbContextOptionsBuilder<SortingHubDbContext>().UseSqlite("Data Source=" + _path)
-            .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking).AddInterceptors(Failure).Options;
+        // 每个测试使用独立原生连接，不清空其他并发测试使用的全进程 SQLite 连接池。
+        var options = new DbContextOptionsBuilder<SortingHubDbContext>().UseSqlite("Data Source=" + _path + ";Pooling=False")
+            .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking).AddInterceptors(Failure, MetadataIo).Options;
         Factory = new PooledDbContextFactory<SortingHubDbContext>(options);
         var settings = new Dictionary<string, string?> {
             ["Persistence:Sharding:WriteRouting:AllowTableCreation"] = "true",
@@ -53,9 +55,8 @@ public sealed class RelationalParcelTestDatabase : IAsyncDisposable {
         return await db.Database.SqlQueryRaw<long>("SELECT COUNT(*) AS Value FROM \"" + table + "\"").SingleAsync();
     }
 
-    /// <summary>释放连接池并删除测试生成的单个数据库文件。</summary>
+    /// <summary>删除当前测试生成的单个数据库文件，不干扰其他测试的连接池。</summary>
     public ValueTask DisposeAsync() {
-        SqliteConnection.ClearAllPools();
         File.Delete(_path);
         return ValueTask.CompletedTask;
     }

@@ -1,4 +1,5 @@
 import type { ParcelDetail, ParcelProcessingRecord } from '../../data/api/parcelTypes.ts';
+import { buildParcelProcessingTimeline, type ParcelProcessingEvent } from './parcelProcessingTimeline.ts';
 
 const exceptionLabels: Record<number, string> = {
   0: '未知异常', 1: '接口响应异常', 2: '等待DWS数据超时', 3: '等待目标格口超时',
@@ -17,10 +18,10 @@ const sourceRules: Record<string, { type: number; name: string }> = {
 type ExceptionParcel = Pick<ParcelDetail, 'status' | 'exceptionType' | 'sourceExceptionCode' | 'processingRecords' | 'apiRequests'>;
 
 /** Describe saved facts only; a browser draft is not evidence of the rule that classified a parcel. */
-export function parcelExceptionDetails(parcel: ExceptionParcel | undefined) {
+export function parcelExceptionDetails(parcel: ExceptionParcel | undefined, events?: readonly ParcelProcessingEvent[]) {
   if (!parcel) return null;
-  const records = parcel.processingRecords.filter(record => record.stage === 7 || record.isSuccess === false || Boolean(record.errorMessage?.trim()))
-    .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt) || right.attemptNumber - left.attemptNumber || right.recordId.localeCompare(left.recordId));
+  const issues = (events ?? buildParcelProcessingTimeline(parcel.processingRecords).events).filter(event => event.isIssue);
+  const records = issues.map(event => event.record);
   const interfaceErrors = parcel.apiRequests.filter(request => typeof request.exception === 'string' && request.exception.trim());
   const current = parcel.status === 2 || parcel.exceptionType != null;
   if (!current && !records.length && !interfaceErrors.length && !parcel.sourceExceptionCode?.trim()) return null;
@@ -36,7 +37,8 @@ export function parcelExceptionDetails(parcel: ExceptionParcel | undefined) {
       ? `${sourceRule.name}：来源异常代码等于 ${sourceCode}。`
       : '未提供异常判定规则';
   const messages = [...new Set([
-    ...records.flatMap(record => [record.errorMessage, record.decisionReason]).filter((value): value is string => Boolean(value?.trim())),
+    ...issues.flatMap(event => event.record.stage === 3 || event.record.stage === 8 ? [event.description]
+      : [event.record.errorMessage, event.record.decisionReason]).filter((value): value is string => Boolean(value?.trim())),
     ...interfaceErrors.map(request => String(request.exception)),
   ])];
   return {
@@ -46,6 +48,7 @@ export function parcelExceptionDetails(parcel: ExceptionParcel | undefined) {
     sourceCode,
     messages,
     records,
+    recordTitles: Object.fromEntries(issues.map(event => [event.record.recordId, event.title])),
     interfaceErrors,
   };
 }

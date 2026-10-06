@@ -95,7 +95,7 @@ public sealed class WebRequestAuditLogMiddleware {
         var requestSizeBytes = context.Request.ContentLength ?? 0L;
 
         // 账号维护载荷可能包含密码或初始化密钥，任何采样策略都不采集其正文。
-        if (isSampled && _options.IncludeRequestBody && !context.Request.Path.StartsWithSegments("/api/access")
+        if (isSampled && _options.IncludeRequestBody && !context.Request.Path.StartsWithSegments("/api/access") && !context.Request.Path.StartsWithSegments("/api/operations/configuration/fusion")
             && !string.Equals(context.Request.Path.Value?.TrimEnd('/'), "/api/admin/parcels/cleanup-expired", StringComparison.OrdinalIgnoreCase)) {
             try {
                 requestBodyCapture = await CaptureRequestBodyAsync(context.Request, _options.MaxRequestBodyLength);
@@ -109,6 +109,7 @@ public sealed class WebRequestAuditLogMiddleware {
 
         var originalResponseBody = context.Response.Body;
         var responseCaptureStream = isSampled && _options.IncludeResponseBody
+            && !context.Request.Path.StartsWithSegments("/api/operations/configuration/fusion")
             ? new ResponseCaptureTeeStream(originalResponseBody, _options.MaxResponseBodyLength)
             : null;
         if (responseCaptureStream is not null) {

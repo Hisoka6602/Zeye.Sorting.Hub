@@ -11,6 +11,10 @@
 		<!-- 发布默认包含同源前端；仅 API 镜像可显式设为 false。 -->
 		<BundleWebUi Condition="'$(BundleWebUi)' == ''">true</BundleWebUi>
 		<RestoreWebDependencies Condition="'$(RestoreWebDependencies)' == ''">true</RestoreWebDependencies>
+		<ForceWebUiBuild Condition="'$(ForceWebUiBuild)' == ''">false</ForceWebUiBuild>
+		<ForceWebDependencyRestore Condition="'$(ForceWebDependencyRestore)' == ''">false</ForceWebDependencyRestore>
+		<WebNpmRegistry Condition="'$(WebNpmRegistry)' == ''">https://registry.npmjs.org/</WebNpmRegistry>
+		<WebNpmFallbackRegistry Condition="'$(WebNpmFallbackRegistry)' == ''">https://registry.npmmirror.com/</WebNpmFallbackRegistry>
 		<WebUiRoot>$(MSBuildProjectDirectory)/../Zeye.Sorting.Hub.Web</WebUiRoot>
 	</PropertyGroup>
 
@@ -21,6 +25,8 @@
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
 		<PackageReference Include="NLog" Version="6.1.1" />
+		<PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.12" />
+		<PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="10.0.12" />
 		<PackageReference Include="NLog.Extensions.Logging" Version="6.1.2" />
 		<PackageReference Include="Polly" Version="8.6.5" />
 		<PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
@@ -31,6 +37,8 @@
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</Content>
 		<Content Include="Start-Hub.cmd" CopyToPublishDirectory="PreserveNewest" />
+		<!-- 安装与卸载入口随 Windows / Linux 的一体化发布包一起交付。 -->
+		<Content Include="install.bat;uninstall.bat;install.sh;uninstall.sh;service.ps1;service.sh" CopyToPublishDirectory="PreserveNewest" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -48,10 +56,10 @@
 		</AssemblyAttribute>
 	</ItemGroup>
 
-	<!-- 前端先完整构建，随后纳入标准发布清单；目标机只运行 Host。 -->
+	<!-- 前端按内容增量构建，完整产物纳入标准发布清单；目标机只运行 Host。 -->
 	<Target Name="PublishBundledWebUi" AfterTargets="ComputeFilesToPublish" Condition="'$(BundleWebUi)' == 'true'">
-		<Exec WorkingDirectory="$(WebUiRoot)" Command="npm ci --include=optional --no-audit --no-fund" Condition="'$(RestoreWebDependencies)' == 'true'" />
-		<Exec WorkingDirectory="$(WebUiRoot)" Command="npm run build" />
+		<Exec WorkingDirectory="$(WebUiRoot)"
+			Command="node scripts/publish-web-ui.mjs --restore-dependencies &quot;$(RestoreWebDependencies)&quot; --force-build &quot;$(ForceWebUiBuild)&quot; --force-restore &quot;$(ForceWebDependencyRestore)&quot; --registry &quot;$(WebNpmRegistry)&quot; --fallback-registry &quot;$(WebNpmFallbackRegistry)&quot;" />
 		<Error Condition="!Exists('$(WebUiRoot)/dist/index.html')" Text="前端构建未生成 index.html，不能发布不完整的前后端程序。" />
 		<ItemGroup>
 			<_BundledWebFile Include="$(WebUiRoot)/dist/**/*" />
@@ -61,5 +69,9 @@
 				<ExcludeFromSingleFile>true</ExcludeFromSingleFile>
 			</ResolvedFileToPublish>
 		</ItemGroup>
+	</Target>
+	<!-- SDK 按时间和大小跳过复制；此步骤确保同大小、同时间戳的损坏资源也被修复。 -->
+	<Target Name="CopyBundledWebUiToPublishDirectory" AfterTargets="Publish" Condition="'$(BundleWebUi)' == 'true'">
+		<Copy SourceFiles="@(_BundledWebFile)" DestinationFiles="@(_BundledWebFile->'$(PublishDir)wwwroot/%(RecursiveDir)%(Filename)%(Extension)')" />
 	</Target>
 </Project>

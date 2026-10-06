@@ -23,7 +23,8 @@ public static class ProfileApiRouteExtensions {
             var (profile, revision) = await service.ReadProfileAsync(user.Id, ct);
             context.Response.Headers.CacheControl = "private, no-store";
             return Results.Ok(Snapshot(user, directory.Roles.Single(x => x.Id == user.RoleId), profile, revision, directoryRevision));
-        });
+        }).WithSummary("读取当前用户个人资料")
+            .WithDescription("返回当前登录用户的姓名、联系方式、简介、头像地址及资料版本，用于个人中心；只能读取自己的资料。");
         group.MapPut("", async (JsonElement body, AccessDirectoryService service, HttpContext context, CancellationToken ct) => {
             if (body.ValueKind != JsonValueKind.Object || body.EnumerateObject().Any(x => x.Name is not ("name" or "email" or "phone" or "bio" or "avatarDataUrl" or "expectedRevision" or "directoryRevision")))
                 return Results.Problem(statusCode: 400, detail: "请求包含不支持的个人资料字段。");
@@ -55,14 +56,16 @@ public static class ProfileApiRouteExtensions {
             if (!await service.SaveProfileAsync(updatedDirectory, directoryRevision, user.Id, updatedProfile, revision, ct))
                 return Results.Problem(statusCode: 409, detail: "资料或账号目录已更新，请重新加载资料后再保存。");
             return Results.Ok(Snapshot(updatedUser, directory.Roles.Single(x => x.Id == user.RoleId), updatedProfile, revision + 1, directoryRevision + 1));
-        });
+        }).WithSummary("保存当前用户个人资料")
+            .WithDescription("按资料和目录版本保存当前用户的姓名、邮箱、电话、简介及头像，头像限有效 PNG 或 JPEG；不修改账号密码或角色，版本冲突返回冲突响应。");
         group.MapGet("/avatar", async (AccessDirectoryService service, HttpContext context, CancellationToken ct) => {
             var (profile, _) = await service.ReadProfileAsync(context.User.FindFirstValue(ClaimTypes.NameIdentifier)!, ct);
             if (!PersonalProfile.TryDecodeAvatar(profile.AvatarDataUrl, out var bytes, out var contentType)) return Results.NotFound();
             context.Response.Headers.CacheControl = "private, no-cache";
             context.Response.Headers["X-Content-Type-Options"] = "nosniff";
             return Results.File(bytes, contentType);
-        });
+        }).WithSummary("读取当前用户头像")
+            .WithDescription("返回当前登录用户的 PNG 或 JPEG 头像内容，用于个人中心和账号菜单；没有头像时返回未找到，不读取其他用户头像。");
         return routes;
     }
 }

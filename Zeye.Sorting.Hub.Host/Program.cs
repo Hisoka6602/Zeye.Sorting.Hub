@@ -1,5 +1,8 @@
 using NLog;
 using NLog.Extensions.Logging;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Options;
+using Zeye.Sorting.Hub.Host.Logging;
 using Microsoft.OpenApi.Models;
 using Microsoft.AspNetCore.Mvc;
 using Zeye.Sorting.Hub.Host.Options;
@@ -43,9 +46,14 @@ using Zeye.Sorting.Hub.Host.Serialization;
 // 启动期引导日志：在 DI 容器就绪之前捕获启动异常
 // ──────────────────────────────────────────────────────────
 var logger = LogManager.GetCurrentClassLogger();
+ExceptionLoggingLifetime? loggingLifetime = null;
 const string UrlsConfigKey = "urls";
 
 try {
+    // 先加载发布目录中的落盘配置，覆盖 WebApplication 构建之前的启动异常。
+    LogManager.Configuration = new NLog.Config.XmlLoggingConfiguration(
+        Path.Combine(AppContext.BaseDirectory, "nlog.config"), LogManager.LogFactory);
+    loggingLifetime = new ExceptionLoggingLifetime(LogManager.LogFactory);
     var startupLogger = LogManager.GetLogger($"{nameof(Program)}.Startup");
     var verifyLatestBackup = args.Contains("--verify-latest-backup", StringComparer.Ordinal);
     // 发布程序始终从自身目录读取配置和前端，不依赖启动时的工作目录。
@@ -53,6 +61,7 @@ try {
         Args = args.Where(arg => arg != "--verify-latest-backup").ToArray(),
         ContentRootPath = AppContext.BaseDirectory
     });
+    builder.AddNativeServiceLifetime();
     builder.WebHost.ConfigureKestrel(static options => {
         // 请求体硬上限用于在 JSON 反序列化前阻断异常大批次。
         options.Limits.MaxRequestBodySize = 8L * 1024L * 1024L;
@@ -69,11 +78,8 @@ try {
     }
 
     // ──────────────────────────────────────────────────────
-    // NLog：替换默认日志提供器，双路落盘（详见 nlog.config）
-    //   - logs/app-<日期>.log      全量应用日志（按天归档，保留 30 天）
-    //   - logs/database-<日期>.log 数据库专属日志（按天归档，保留 30 天）
-    //
-    // 低开销设计：异步队列（targets async="true"）+ keepFileOpen + optimizeBufferReuse
+    // NLog：应用、数据库与异常独立落盘，异步批量写入且队列不丢弃日志。
+    // 完整堆栈写入 logs/exceptions-<日期>.log；保留窗口由轮转及清理配置决定。
     // ──────────────────────────────────────────────────────
     builder.Logging.ClearProviders();
     builder.Logging.AddNLog(new NLogProviderOptions {
@@ -83,6 +89,10 @@ try {
     if (!enableQuerySqlLogging) {
         builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", Microsoft.Extensions.Logging.LogLevel.Warning);
     }
+    builder.Services.AddSingleton<IPostConfigureOptions<LoggerFilterOptions>, ExceptionLoggingFilter>();
+    builder.Services.AddSingleton(LogManager.LogFactory);
+    builder.Services.AddSingleton<ExceptionLoggingHubFilter>();
+    builder.Services.Configure<HubOptions>(static options => options.AddFilter<ExceptionLoggingHubFilter>());
 
     builder.Services.Configure<LogCleanupSettings>(
         builder.Configuration.GetSection("LogCleanup"));
@@ -114,6 +124,7 @@ try {
     // 数据库启动链路严格按“迁移治理 -> 初始化 -> 预热/后台任务”顺序注册，避免后台查询抢跑迁移。
     builder.Services.AddHostedService<DatabaseInitializerHostedService>();
     builder.Services.AddHostedService<BuiltInAccountHostedService>();
+    builder.Services.AddHostedService<Zeye.Sorting.Hub.Infrastructure.Persistence.ReadModels.PersistenceReadSnapshotRefreshService>();
     builder.Services.AddHostedService<DatabaseConnectionWarmupHostedService>();
     builder.Services.AddHostedService<ParcelBatchWriteFlushHostedService>();
     builder.Services.AddHostedService<ShardingPrebuildHostedService>();
@@ -204,6 +215,8 @@ try {
         .AddScheme<AuthenticationSchemeOptions, GuardedAuthenticationHandler>(GuardedAuthenticationHandler.SchemeName, static _ => { });
     builder.Services.AddAuthorization();
     builder.Services.AddSortingHubAccess(builder.Environment.ContentRootPath);
+    builder.Services.AddSortingRealtime();
+    builder.Services.AddFusionIngestion(builder.Configuration, builder.Environment.ContentRootPath);
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSwaggerGen(options => {
         var documentName = hostingOptions.GetSwaggerDocumentName();
@@ -314,6 +327,7 @@ try {
     }
     app.UseBundledWebUi();
     app.UseRouting();
+    app.UseSortingRealtime();
     // 路由解析后再进入审计，使中间件可以按端点元数据和路径排除探针流量。
     app.UseWebRequestAuditLogging();
     app.UseRequestTimeouts();
@@ -382,6 +396,7 @@ try {
     // Parcel 只读查询端点：统一走 Application 查询服务，不直接暴露领域模型。
     app.MapParcelReadOnlyApis();
     app.MapParcelAnalyticsApis();
+    app.MapParcelWorkbenchApis();
     app.MapParcelProcessingApis();
     // Parcel 管理端写接口：普通写操作 + 危险治理接口（cleanup-expired）分开治理。
     app.MapParcelAdminApis();
@@ -399,6 +414,10 @@ try {
     app.MapOperationalReadApis();
     app.MapRuleManagementApis();
     app.MapAccessApis();
+    app.MapFusionIngestion();
+    app.MapFusionConfiguration();
+    // 实时读取分发固定正式路由数据源，必须在所有接口组注册完成后初始化。
+    app.MapSortingRealtime();
 
     app.Run();
 }
@@ -408,6 +427,8 @@ catch (Exception ex) {
     throw;
 }
 finally {
-    // 强制刷新所有 NLog 缓冲，确保所有日志写入磁盘
+    // 退出前刷新异步队列，再释放文件句柄；初始化失败也执行刷新。
+    if (loggingLifetime is null) LogManager.Flush(TimeSpan.FromSeconds(10));
+    else loggingLifetime.Dispose();
     LogManager.Shutdown();
 }

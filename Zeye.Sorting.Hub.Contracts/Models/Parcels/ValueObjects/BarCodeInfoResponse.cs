@@ -10,12 +10,15 @@ public sealed record BarCodeInfoResponse {
     public required string BarCode { get; init; }
 
     /// <summary>
-    /// 条码类型（枚举数值）。
+    /// 条码类型（枚举数值）；来源未上报时为空。
     /// </summary>
-    public required int BarCodeType { get; init; }
+    public required int? BarCodeType { get; init; }
 
     /// <summary>
     /// 采集时间。
     /// </summary>
     public required DateTime? CapturedTime { get; init; }
+
+    /// <summary>来源处理记录标识；仅有主表摘要时为空。</summary>
+    public string? RecordId { get; init; }
 }

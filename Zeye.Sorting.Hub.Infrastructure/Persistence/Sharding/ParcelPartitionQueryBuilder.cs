@@ -17,28 +17,23 @@ public static class ParcelPartitionQueryBuilder {
         return BuildFromSuffixes<TEntity>(db, suffixes);
     }
 
-    /// <summary>按目录中的单个物理周期构建查询，供有界分表读取使用。</summary>
-    public static IQueryable<TEntity> BuildSingle<TEntity>(SortingHubDbContext db, string suffix) where TEntity : class =>
-        BuildFromSuffixes<TEntity>(db, [suffix]);
-
     /// <summary>包裹的首次入库时间等于分表锚点，仅合并与半开日期窗口重叠的物理周期及历史基础表。</summary>
     public static async Task<IQueryable<Parcel>> BuildParcelsByCreatedTimeAsync(
-        SortingHubDbContext db, DateTime fromLocal, DateTime toLocalExclusive, CancellationToken cancellationToken) {
+        SortingHubDbContext db, ParcelPartitionStore partitions, DateTime fromLocal, DateTime toLocalExclusive, CancellationToken cancellationToken) {
         if (fromLocal == default || toLocalExclusive <= fromLocal
             || fromLocal.Kind is not (DateTimeKind.Local or DateTimeKind.Unspecified)
             || toLocalExclusive.Kind is not (DateTimeKind.Local or DateTimeKind.Unspecified))
             throw new ArgumentException("包裹入库时间范围必须是有效的本地半开区间。");
-        var suffixes = await db.Set<ParcelPartitionCatalogEntry>().AsNoTracking()
-            .Where(period => period.Start < toLocalExclusive && period.End > fromLocal)
-            .OrderByDescending(period => period.Start).Select(period => period.Suffix)
-            .ToListAsync(cancellationToken);
-        suffixes.Add(string.Empty);
+        var catalog = await partitions.GetReadCatalogAsync(cancellationToken);
+        var suffixes = catalog.Periods.Where(period => period.Start < toLocalExclusive && period.End > fromLocal)
+            .Select(period => period.Suffix).Append(string.Empty).ToArray();
         return BuildFromSuffixes<Parcel>(db, suffixes);
     }
 
     /// <summary>由模型表名与校验过的后缀构建可组合的跨表只读查询。</summary>
     public static IQueryable<TEntity> BuildFromSuffixes<TEntity>(SortingHubDbContext db, IReadOnlyList<string> suffixes) where TEntity : class {
         if (suffixes.Count == 0) throw new ArgumentException("至少提供一个包裹物理表。", nameof(suffixes));
+        if (suffixes.Count == 1 && suffixes[0] == db.ParcelPartitionSuffix) return db.Set<TEntity>().AsNoTracking();
         var entity = db.Model.FindEntityType(typeof(TEntity))
             ?? throw new InvalidOperationException($"未配置 {typeof(TEntity).Name} 的持久化实体。");
         var tableName = entity.GetTableName()
@@ -60,4 +55,5 @@ public static class ParcelPartitionQueryBuilder {
         });
         return db.Set<TEntity>().FromSqlRaw(string.Join(" UNION ALL ", branches)).AsNoTracking();
     }
+
 }

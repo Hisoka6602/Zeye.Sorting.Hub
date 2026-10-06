@@ -4,7 +4,4 @@
 .cleanup-history-toolbar{gap:16px;flex-wrap:wrap}
 .cleanup-history .data-table{margin-top:16px}
 .cleanup-detail-summary{margin-bottom:20px}
-.cleanup-deleted-heading{margin:28px 0 16px}
-.cleanup-deleted-heading h3{font-size:var(--hub-font-section);font-weight:var(--hub-weight-semibold);color:var(--hub-text-heading);margin:0 0 8px}
-.cleanup-history-search{width:360px;max-width:100%;margin-bottom:16px}
 .cleanup-result .stat-divider .ant-btn-link{padding-left:0;margin-top:12px;white-space:normal;height:auto;text-align:left}

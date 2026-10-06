@@ -11,6 +11,9 @@ x-bounded-logging: &bounded-logging
 services:
   mysql:
     image: mysql:8.4
+    # 持续写入与统计共用数据页缓存，避免默认 128 MiB 在大事实表上反复换页。
+    command: ["--innodb-buffer-pool-size=${ZEYE_MYSQL_BUFFER_POOL_SIZE:-1G}"]
+    mem_limit: ${ZEYE_MYSQL_MEMORY_LIMIT:-3g}
     restart: unless-stopped
     logging: *bounded-logging
     environment:
@@ -49,6 +52,8 @@ services:
       Access__EnforceAuthorization: ${ZEYE_AUTH_ENABLED:-true}
       Access__BootstrapKey: ${ZEYE_BOOTSTRAP_KEY:-}
       Access__MachineApiKey: ${ZEYE_MACHINE_API_KEY:-}
+      FusionIngestion__HubId: ${ZEYE_FUSION_HUB_ID:-sorting-hub}
+      FusionIngestion__ImageDirectory: /app/fusion-images
       ConnectionStrings__MySql: server=mysql;port=3306;database=zeye_sorting_hub;uid=sorting_hub;pwd=${MYSQL_PASSWORD};SslMode=None;AllowPublicKeyRetrieval=True;MinimumPoolSize=1;MaximumPoolSize=32;ConnectionTimeout=10;DefaultCommandTimeout=30;
       Persistence__Migration__FailureStrategy__NonProduction: FailFast
       Persistence__MigrationGovernance__DryRun: "false"
@@ -69,10 +74,13 @@ services:
       ObjectStorage__Minio__IsEnabled: "false"
     ports:
       - "127.0.0.1:${ZEYE_API_PORT:-5087}:5078"
+      # 在线配置只控制监听；发布端口需保持与页面设置一致。
+      - "${ZEYE_FUSION_UDP_BIND:-127.0.0.1}:${ZEYE_FUSION_UDP_PORT:-47651}:${ZEYE_FUSION_UDP_PORT:-47651}/udp"
     volumes:
       - host_logs:/app/logs
       - host_backups:/app/backup-artifacts
       - host_governance:/app/governance-artifacts
+      - host_fusion_images:/app/fusion-images
 
   web:
     image: zeye-sorting-hub-web:local
@@ -98,3 +106,4 @@ volumes:
   host_logs:
   host_backups:
   host_governance:
+  host_fusion_images:

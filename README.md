@@ -2,6 +2,12 @@
 
 本项目负责接收、持久化和分析包裹相关内容，不向 WMS 等外部业务系统投递消息。
 
+Fusion 工作台通过独立的 SignalR `/hubs/fusion-ingestion` 注册、上报不可变事实、心跳及续传图片；接收原文和恢复任务耐久提交后逐条确认，复用现有包裹业务用例与自动分表。默认来源目录为空，配置及实际语义见 [Fusion 接入说明](deploy/Fusion接入说明.md)。
+
+登录后的高频读取、包裹处理事实提交及状态更新使用同源 SignalR `/hubs/sorting`，多个组件共享连接和订阅；认证、文件与清理等管理入口保留 HTTP 安全流程。实时入口复用原接口权限、限流和审计，写入断线不自动重放。Windows 一体部署、Docker 及 Vite 的代理配置共同支持长连接，详见 `deploy/README.md`。
+
+测试数据、数据治理与可观测性仅向固定的超级管理员角色和内置超级用户开放，菜单、直接地址、HTTP 和 SignalR 均验证此边界。自定义角色即使获得全部单项权限也不能开放这些版块或自行晋升；关闭通用鉴权仍保留限制。公开存活与就绪探针继续用于部署检查，自动包裹上报使用独立机器密钥。
+
 ## 仓库文件结构（当前）
 
 > 说明：以下基础结构与“Fusion处理事实与实际物理分表”中的新增文件结构共同组成当前清单（不含 `.git`、`bin/`、`obj/` 等构建产物）。
@@ -36,6 +42,8 @@
 │   ├── .env.example（数据库密码与本机端口的配置模板）
 │   ├── start.ps1（部署、就绪验证、默认浏览器打开与收藏提醒）
 │   ├── publish-windows.ps1（一次发布 Windows 自包含 Host 与内置前端）
+│   ├── test-service-scripts.ps1（服务脚本语法、预演、参数边界和发布包缺失检查）
+│   ├── test-systemd-unit.sh（使用真实 systemd 解析器验证路径与生成的服务配置）
 │   ├── start.sh（Linux 部署与前端、API 就绪验证）
 │   ├── compose.yaml（独立 MySQL、Host、Web 服务及数据卷）
 │   └── README.md（启动、验证与停止说明）
@@ -142,6 +150,7 @@
 │   │       ├── GetParcelPagedQueryService.cs（Parcel 分页查询应用服务）
 │   │       ├── GetParcelCursorPagedQueryService.cs（Parcel 游标分页查询应用服务）
 │   │       ├── ParcelContractMapper.cs（Parcel 领域模型到 Contracts 模型映射器）
+│   │       ├── ParcelFactDetailMapper.cs（从已加载的来源事实与主表摘要补齐缺失详情，不新增持久化明细）
 │   │       ├── ParcelQueryRequestMapper.cs（Parcel 查询请求映射器：统一默认时间窗口与过滤模型构建）
 │   │       └── UpdateParcelStatusCommandService.cs（管理端更新包裹状态应用服务（仅支持领域允许的状态转换））
 │   ├── Utilities（应用层内部共享工具目录）
@@ -199,6 +208,9 @@
 │   │       ├── ParcelListItemResponse.cs（Parcel 列表项响应合同）
 │   │       ├── ParcelListRequest.cs（Parcel 列表查询请求合同）
 │   │       ├── ParcelListResponse.cs（Parcel 列表分页响应合同）
+│   │       ├── Workbench（完整窗口的工作台汇总合同）
+│   │       │   ├── ParcelWorkbenchResponse.cs（窗口与工作台列表汇总）
+│   │       │   └── ParcelWorkstationSummary.cs（单来源工作台状态件数汇总）
 │   │       └── ValueObjects（Parcel 值对象响应合同目录）
 │   │           ├── ApiRequestInfoResponse.cs（外部接口请求记录响应合同）
 │   │           ├── BagInfoResponse.cs（集包信息响应合同）
@@ -317,8 +329,15 @@
 ├── Zeye.Sorting.Hub.Host（宿主层）
 │   ├── Dockerfile（Node 前端与 .NET Host 一体化镜像构建）
 │   ├── Start-Hub.cmd（从发布目录启动 Windows 前后端程序）
+│   ├── install.bat（安装并启动 Windows 自动启动服务）
+│   ├── uninstall.bat（停止并卸载 Windows 服务，保留数据）
+│   ├── install.sh（安装并启动 Linux systemd 服务）
+│   ├── uninstall.sh（停止并卸载 Linux 服务，保留数据）
+│   ├── service.ps1（Windows 安装、更新、归属验证和停止卸载共用实现）
+│   ├── service.sh（Linux 专用账号、unit 生成、归属验证和停止卸载共用实现）
 │   ├── Extensions
-│   │   └── BundledWebApplicationExtensions.cs（同源静态前端与受限单页路由回退）
+│   │   ├── BundledWebApplicationExtensions.cs（同源静态前端与受限单页路由回退）
+│   │   └── NativeServiceHostingExtensions.cs（Windows SCM 与 Linux systemd 宿主生命周期）
 │   ├── Enums（宿主层枚举目录）
 │   │   └── MigrationFailureMode.cs（数据库迁移失败策略枚举：FailFast/Degraded，含 Description）
 │   ├── HostedServices（托管服务目录）
@@ -652,6 +671,118 @@
 
 ## 各层级与各文件作用说明（逐项）
 
+### Fusion 1.0 耐久接收与工作台接入
+
+新增结构与逐文件职责如下；配置中的机器凭据独立于网页账号，生产来源默认尚未登记。
+
+```text
+Zeye.Sorting.Hub.Application/Abstractions/Integrations/IFusionDiscoveryService.cs
+Zeye.Sorting.Hub.Application/Abstractions/Integrations/IFusionIngestionGateway.cs
+Zeye.Sorting.Hub.Application/Services/Fusion/FusionProjectionService.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/FusionDiscoveryPacket.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/FusionFactInspection.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/FusionHeartbeat.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/FusionHello.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/FusionProjectionItem.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/FusionRegistration.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/FusionSourceStatus.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/HubBatchReceipt.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/HubFactBatch.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/HubFactBody.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/HubFactEnvelope.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/HubFactReceipt.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/HubHeartbeatReceipt.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/HubImageBeginReceipt.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/HubImageChunk.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/HubImageChunkReceipt.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/HubImageComplete.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/HubImageDescriptor.cs
+Zeye.Sorting.Hub.Contracts/Models/Fusion/HubImageStoredReceipt.cs
+Zeye.Sorting.Hub.Host.Tests/FusionApiTests.cs
+Zeye.Sorting.Hub.Host.Tests/FusionDiscoveryTests.cs
+Zeye.Sorting.Hub.Host.Tests/FusionImageIngestionTests.cs
+Zeye.Sorting.Hub.Host.Tests/FusionIngestionTests.cs
+Zeye.Sorting.Hub.Host.Tests/FusionIngressTestEnvironment.cs
+Zeye.Sorting.Hub.Host/Authentication/FusionMachineAuthenticationHandler.cs
+Zeye.Sorting.Hub.Host/Extensions/FusionIngestionExtensions.cs
+Zeye.Sorting.Hub.Host/HostedServices/FusionDiscoveryHostedService.cs
+Zeye.Sorting.Hub.Host/HostedServices/FusionProjectionHostedService.cs
+Zeye.Sorting.Hub.Host/Hubs/FusionIngestionHub.cs
+Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations/20261005034152_AddFusionIngestionSqlServer.Designer.cs
+Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations/20261005034152_AddFusionIngestionSqlServer.cs
+Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/FusionEntityTypeConfiguration.cs
+Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionConnectionLease.cs
+Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionDiscoveryService.cs
+Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionIngestionOptions.cs
+Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionIngestionServiceFacts.cs
+Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionIngestionServiceImages.cs
+Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionIngestionService.cs
+Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionProtocol.cs
+Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionSourceOptions.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Fusion/FusionFactReceipt.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Fusion/FusionImageUpload.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Fusion/FusionJournalHeartbeat.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Fusion/FusionSourceLease.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/20261005033908_AddFusionIngestion.Designer.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/20261005033908_AddFusionIngestion.cs
+deploy/Fusion接入说明.md
+deploy/compose.fusion.yaml
+deploy/fusion-ingestion.example.json
+```
+
+- `IFusionDiscoveryService.cs`（`Zeye.Sorting.Hub.Application/Abstractions/Integrations/IFusionDiscoveryService.cs`）：经过来源凭据认证的设备发现生命周期。
+- `IFusionIngestionGateway.cs`（`Zeye.Sorting.Hub.Application/Abstractions/Integrations/IFusionIngestionGateway.cs`）：融合来源的耐久接收、图片存储及待投影事实协作边界。
+- `FusionProjectionService.cs`（`Zeye.Sorting.Hub.Application/Services/Fusion/FusionProjectionService.cs`）：复用现有包裹处理用例，将耐久接收簿投影到业务聚合。
+- `FusionDiscoveryPacket.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/FusionDiscoveryPacket.cs`）：经过认证的有界 UDP 发现报文。
+- `FusionFactInspection.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/FusionFactInspection.cs`）：原始事实与投影结果的追溯视图。
+- `FusionHeartbeat.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/FusionHeartbeat.cs`）：来源心跳及发送缓存舍弃指标。
+- `FusionHello.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/FusionHello.cs`）：工作台注册消息。
+- `FusionProjectionItem.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/FusionProjectionItem.cs`）：已经耐久提交且被当前投影工作者认领的包裹用例。
+- `FusionRegistration.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/FusionRegistration.cs`）：耐久注册租约及传输限额。
+- `FusionSourceStatus.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/FusionSourceStatus.cs`）：不含机器凭据的多工作台状态。
+- `HubBatchReceipt.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/HubBatchReceipt.cs`）：不使用高水位替代确认的批次结果。
+- `HubFactBatch.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/HubFactBatch.cs`）：具有来源租约的事实批次。
+- `HubFactBody.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/HubFactBody.cs`）：保留原文的不可变来源事实。
+- `HubFactEnvelope.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/HubFactEnvelope.cs`）：原始字符串及校验摘要。
+- `HubFactReceipt.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/HubFactReceipt.cs`）：事务提交后的逐条确认。
+- `HubHeartbeatReceipt.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/HubHeartbeatReceipt.cs`）：心跳持久化确认。
+- `HubImageBeginReceipt.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/HubImageBeginReceipt.cs`）：图片恢复偏移与已完成确认。
+- `HubImageChunk.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/HubImageChunk.cs`）：图片顺序分块。
+- `HubImageChunkReceipt.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/HubImageChunkReceipt.cs`）：文件落盘后的分块确认。
+- `HubImageComplete.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/HubImageComplete.cs`）：完整文件校验请求。
+- `HubImageDescriptor.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/HubImageDescriptor.cs`）：不可变图片描述，文件名不参与路径解析。
+- `HubImageStoredReceipt.cs`（`Zeye.Sorting.Hub.Contracts/Models/Fusion/HubImageStoredReceipt.cs`）：对象存在后的耐久存储凭据。
+- `FusionApiTests.cs`（`Zeye.Sorting.Hub.Host.Tests/FusionApiTests.cs`）：通过官方 SignalR 客户端验证生产认证、完整协议方法和受保护的读取路径。
+- `FusionDiscoveryTests.cs`（`Zeye.Sorting.Hub.Host.Tests/FusionDiscoveryTests.cs`）：验证协议签名兼容、过期、来源边界及可达地址。
+- `FusionImageIngestionTests.cs`（`Zeye.Sorting.Hub.Host.Tests/FusionImageIngestionTests.cs`）：测试图片字节耐久性、身份隔离、断点续传及关联先后顺序。
+- `FusionIngestionTests.cs`（`Zeye.Sorting.Hub.Host.Tests/FusionIngestionTests.cs`）：使用实际关系持久化验证认证、租约、逐条确认、乱序与恢复。
+- `FusionIngressTestEnvironment.cs`（`Zeye.Sorting.Hub.Host.Tests/FusionIngressTestEnvironment.cs`）：独立数据库、临时图片根目录与固定协议身份，不连接生产来源。
+- `FusionMachineAuthenticationHandler.cs`（`Zeye.Sorting.Hub.Host/Authentication/FusionMachineAuthenticationHandler.cs`）：只认证已登记来源的 Bearer 机器凭据，网页 Cookie 不能授权设备入口。
+- `FusionIngestionExtensions.cs`（`Zeye.Sorting.Hub.Host/Extensions/FusionIngestionExtensions.cs`）：组装融合来源入口与恢复服务，网页实时通道保持原有独立限额。
+- `FusionDiscoveryHostedService.cs`（`Zeye.Sorting.Hub.Host/HostedServices/FusionDiscoveryHostedService.cs`）：独立 UDP 设备发现的宿主生命周期入口。
+- `FusionProjectionHostedService.cs`（`Zeye.Sorting.Hub.Host/HostedServices/FusionProjectionHostedService.cs`）：承载耐久事实投影生命周期，具体包裹处理仍由应用用例负责。
+- `FusionIngestionHub.cs`（`Zeye.Sorting.Hub.Host/Hubs/FusionIngestionHub.cs`）：Fusion 1.0 的六个独立机器调用入口，不接受网页账号权限作为机器凭据。
+- `20261005034152_AddFusionIngestionSqlServer.Designer.cs`（`Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations/20261005034152_AddFusionIngestionSqlServer.Designer.cs`）：本次新增接收表的提供器目标模型，配合自动结构升级。
+- `20261005034152_AddFusionIngestionSqlServer.cs`（`Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations/20261005034152_AddFusionIngestionSqlServer.cs`）：提供器独立的四张接收表、索引和二进制身份排序规则迁移。
+- `FusionEntityTypeConfiguration.cs`（`Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/FusionEntityTypeConfiguration.cs`）：全局接收凭据、连接租约和图片断点的提供器无关映射。
+- `FusionConnectionLease.cs`（`Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionConnectionLease.cs`）：当前连接独立的来源租约缓存。
+- `FusionDiscoveryService.cs`（`Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionDiscoveryService.cs`）：有界、签名认证的独立 UDP 发现，不在 UDP 上传输业务内容或凭据。
+- `FusionIngestionOptions.cs`（`Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionIngestionOptions.cs`）：融合接收端的独立配置，不复用网页账号或全局旧机器密钥。
+- `FusionIngestionServiceFacts.cs`（`Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionIngestionServiceFacts.cs`）：原文接收、独立编号去重与可恢复投影任务。
+- `FusionIngestionServiceImages.cs`（`Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionIngestionServiceImages.cs`）：来源图片的耐久分块、重放校验和完整对象确认。
+- `FusionIngestionService.cs`（`Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionIngestionService.cs`）：独立设备协议接入，实现认证、耐久接收与图片存储协作。
+- `FusionProtocol.cs`（`Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionProtocol.cs`）：验证原始协议边界并映射既有处理用例，业务时间统一为登记来源的本地时间。
+- `FusionSourceOptions.cs`（`Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionSourceOptions.cs`）：由 Hub 登记的单个工作台身份及业务归属。
+- `FusionFactReceipt.cs`（`Zeye.Sorting.Hub.Infrastructure/Persistence/Fusion/FusionFactReceipt.cs`）：不可变原始接收簿及同事务待投影任务。
+- `FusionImageUpload.cs`（`Zeye.Sorting.Hub.Infrastructure/Persistence/Fusion/FusionImageUpload.cs`）：不可变图片描述、耐久偏移及明确关联身份。
+- `FusionJournalHeartbeat.cs`（`Zeye.Sorting.Hub.Infrastructure/Persistence/Fusion/FusionJournalHeartbeat.cs`）：按发送数据库保留的心跳及累计数据舍弃证据。
+- `FusionSourceLease.cs`（`Zeye.Sorting.Hub.Infrastructure/Persistence/Fusion/FusionSourceLease.cs`）：跨服务进程的单来源连接租约。
+- `20261005033908_AddFusionIngestion.Designer.cs`（`Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/20261005033908_AddFusionIngestion.Designer.cs`）：本次新增接收表的提供器目标模型，配合自动结构升级。
+- `20261005033908_AddFusionIngestion.cs`（`Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/20261005033908_AddFusionIngestion.cs`）：提供器独立的四张接收表、索引和二进制身份排序规则迁移。
+- `Fusion接入说明.md`（`deploy/Fusion接入说明.md`）：协议对应关系、Windows/Linux 配置、耐久确认、图片与追溯边界说明。
+- `compose.fusion.yaml`（`deploy/compose.fusion.yaml`）：可选机器接入配置挂载和独立 UDP 端口映射，基础部署仍可单独运行。
+- `fusion-ingestion.example.json`（`deploy/fusion-ingestion.example.json`）：来源身份、独立机器密钥与可达地址的部署占位示例。
+
 ### Fusion处理事实与实际物理分表
 
 ```text
@@ -695,6 +826,7 @@ Zeye.Sorting.Hub.Host.Tests/
   RelationalParcelTestDatabase.cs
   ParcelCommitFailureInterceptor.cs
   FusionPersistenceTests.cs
+  ParcelFactDetailTests.cs
   FusionApiTestHost.cs
   FusionProcessingApiTests.cs
   ParcelAnalyticsTests.cs
@@ -747,6 +879,7 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 - `RelationalParcelTestDatabase.cs`：独立SQLite关系数据库测试环境。
 - `ParcelCommitFailureInterceptor.cs`：真实SQL执行后、提交前的故障注入。
 - `FusionPersistenceTests.cs`：来源身份、真实分表、去重、迟到、事务回滚及跨表查询验收。
+- `ParcelFactDetailTests.cs`：历史包裹明细补齐、量测单位、未知字段、重试保留、来源隔离及查询无写入验收。
 - `FusionApiTestHost.cs`：复用生产路由与真实关系仓储的隔离测试宿主。
 - `FusionProcessingApiTests.cs`：全部处理阶段、并发去重、HTTP冲突及无效合同验收。
 - `ParcelAnalyticsTests.cs`：真实关系分表上的日报、不同总体、晚到事实、入库周期裁剪和查询预算验收。
@@ -769,9 +902,9 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 - `.gitignore`：Git 忽略规则（如 `bin/`、`obj/`、IDE 临时文件）。
 - `.dockerignore`：排除编译产物、前端依赖和验收截图，缩小 Host 镜像构建上下文。
 - `README.md`：仓库总览、结构清单与维护规范文档。
-- `deploy/.env.example`：本机部署所需的独立数据库密码和端口模板；实际 `deploy/.env` 不提交。
+- `deploy/.env.example`：本机部署所需的独立数据库密码、端口、MySQL 数据页缓存及容器内存预算模板；实际 `deploy/.env` 不提交。
 - `deploy/start.ps1`：部署并等待 Web/API 就绪，打开系统默认浏览器；根据用户确认显示或跳过收藏提醒。
-- `deploy/compose.yaml`：构建并启动独立的 MySQL、Host、Web 容器与持久化数据卷。
+- `deploy/compose.yaml`：构建并启动独立的 MySQL、Host、Web 容器与持久化数据卷；MySQL 默认使用可配置的 1 GiB 数据页缓存和 3 GiB 内存上限。
 - `deploy/README.md`：本机 Docker 部署、健康检查与停止命令。
 - `业务模块接入规范.md`：业务模块接入规范，约束新增模块的目录结构、分层边界、查询/写入治理与统一错误处理。
 - `Copilot-业务模块新增模板.md`：Copilot 业务模块新增模板，沉淀新增业务模块时应直接复用的任务模板与检查清单。
@@ -929,6 +1062,7 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 - `GetParcelCursorPagedQueryService.cs`：游标分页查询 Parcel 列表应用服务（游标解码、请求校验、默认最近 24 小时时间窗口、游标结果映射）。
 - `GetAdjacentParcelsQueryService.cs`：按包裹 Id 查询邻近 Parcel 应用服务（数量归一化至 `IParcelRepository.MaxAdjacentCountPerSide`、响应映射；锚点不存在抛 KeyNotFoundException 供 Host 映射 404）。
 - `ParcelContractMapper.cs`：Parcel 领域模型/读模型到 Contracts 模型的统一映射器，避免 Host 层重复映射。
+- `ParcelFactDetailMapper.cs`：利用已加载处理记录与摘要填充缺失的条码、称重、体积、格口、接口、指令、图片和来源工作台分组；保留已有值对象，支持历史记录，无新增数据库查询或明细副本。
 - `ParcelQueryRequestMapper.cs`：Parcel 查询请求映射器，统一普通分页与游标分页的过滤条件构建和默认最近 24 小时时间窗口。
 - `CreateParcelCommandService.cs`：管理端新增包裹应用服务（复用 `ParcelCreateRequestMapper` 构建聚合，并通过 `IdempotencyGuardService` 协调幂等记录、重复请求回放、稳定错误码映射与真实写入）。
 - `UpdateParcelStatusCommandService.cs`：管理端更新包裹状态应用服务（仅支持 MarkCompleted/MarkSortingException/UpdateRequestStatus 三种领域方法，不允许任意字段修改）。
@@ -957,6 +1091,11 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 - `ParcelDetailResponse.cs`：Parcel 详情响应合同（继承列表项扁平字段，并包含所有联表值对象内容）。
 - `ParcelAdjacentRequest.cs`：Parcel 邻近查询请求合同。
 - `ParcelAdjacentResponse.cs`：Parcel 邻近查询响应合同。
+
+#### `Zeye.Sorting.Hub.Contracts/Models/Parcels/Workbench/`：完整窗口工作台汇总合同目录
+
+- `ParcelWorkbenchResponse.cs`：滚动本地时间窗口、包裹总数、未归属件数及工作台列表。
+- `ParcelWorkstationSummary.cs`：单个来源实例的名称、各当前状态件数与最近入库时间；与总体响应分文件维护。
 
 #### `Zeye.Sorting.Hub.Contracts/Models/AuditLogs/WebRequests/`：Web 请求审计日志查询合同目录
 - `WebRequestAuditLogListRequest.cs`：Web 请求审计日志列表查询请求合同（分页 + 可选过滤条件）。
@@ -1482,6 +1621,7 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 
 ## 本次更新内容
 
+- 统一三个敏感版块的固定角色限制，收紧页面、快捷入口、实时接口及超级管理员账号维护的权限边界。
 - 将 SQL Server 对象存储迁移的旧图片物理分表与含对象定位数据的回退限制写入迁移，并在独立库验证升级、阻断、完整回退和重升；CI 回退脚本覆盖两条 SQL Server 迁移。
 - 修正代码与门禁中对 NLog、迁移文件和凭据形态的误判，归档双 Provider 隔离演练及既有库只读盘点结果。
 - 为SQL Server建立独立EF迁移程序集与空库基线，按Provider选择迁移链；增加历史事实分表索引回填预演和双Provider迁移门禁，并在隔离LocalDB验证迁移、守卫及真实分表索引。
@@ -1534,7 +1674,8 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 | 接口 | 路径 | 开放条件 |
 |------|------|---------|
 | 过期清理 | `POST /api/admin/parcels/cleanup-expired` | 当前登录用户 + 数据治理权限 + 再次验证密码 |
-| 清理历史 | `GET /api/admin/parcels/cleanup-history` | 数据治理或审计读取权限，支持分页 |
+| 清理历史 | `GET /api/admin/parcels/cleanup-history` | 仅超级管理员及内置超级用户可查看，支持分页 |
+| 清理操作汇总 | `GET /api/admin/parcels/cleanup-history/{id}` | 永久保留操作人、条件、时间、数量和结果，不返回逐票包裹清单 |
 | 已删除清单 | `GET /api/admin/parcels/cleanup-history/{id}` | 同上，支持分页及编号、条码、工作台检索 |
 
 - **当前状态**：默认真实执行，保留隔离守卫；部署可显式设置禁止执行或演练。即使通用鉴权关闭，清理入口仍强制验证会话、治理权限、来源标识及当前用户密码，并限制密码尝试频率。
@@ -1660,12 +1801,23 @@ Zeye.Sorting.Hub.Host.Tests/
 
 执行 `./deploy/publish-windows.ps1` 即可在 `artifacts/windows-x64` 得到自包含前后端程序，完整目录复制到目标机并配置数据库、初始化密钥后运行 `Start-Hub.cmd`。页面与 API 共用默认 `5078` 端口，首次仍创建管理员，内置用户在初始化后启用。详细操作见 [部署说明](deploy/README.md)。
 
+完整发布包同时包含 `install.bat` / `uninstall.bat` 和 `install.sh` / `uninstall.sh`。Windows 使用管理员终端，Linux 使用 `sudo bash install.sh`；安装自动注册、启用并启动前后端一体化服务，重复安装更新当前服务。卸载先等待服务停止，再移除服务注册，保留配置、日志、图片和数据库。两种平台默认服务名均为 `Zeye.Sorting.Hub.Host`，支持 `--dry-run` 无副作用预演。
+
 ## 各层级与各文件作用说明（逐项）：一体化发布
 
 | 目录 | 文件 | 职责 |
 | --- | --- | --- |
 | deploy | `publish-windows.ps1` | 单次构建前端与 Windows 自包含 Host，并校验完整发布包 |
+| deploy | `test-service-scripts.ps1` | 在临时发布目录验证脚本语法、预演、错误参数及缺失前端，不修改真实服务 |
+| deploy | `test-systemd-unit.sh` | 在临时目录复用安装模板验证真实 systemd 解析及路径边界，不注册或启动服务 |
 | Zeye.Sorting.Hub.Host | `Start-Hub.cmd` | 从部署目录启动 Windows 前后端同源程序 |
+| Zeye.Sorting.Hub.Host | `install.bat` | 从当前发布包安装、更新并启动 Windows 服务 |
+| Zeye.Sorting.Hub.Host | `uninstall.bat` | 等待 Windows 服务停止后卸载注册，保留部署与业务数据 |
+| Zeye.Sorting.Hub.Host | `install.sh` | 从当前 Linux 发布包调用 systemd 安装入口 |
+| Zeye.Sorting.Hub.Host | `uninstall.sh` | 调用 Linux 服务停止及卸载入口，保留部署与业务数据 |
+| Zeye.Sorting.Hub.Host | `service.ps1` | Windows 服务归属校验、虚拟账号授权、环境持久化与受控启停共用实现 |
+| Zeye.Sorting.Hub.Host | `service.sh` | Linux 服务归属校验、专用账号、环境文件及 systemd unit 的共用实现 |
+| Zeye.Sorting.Hub.Host/Extensions | `NativeServiceHostingExtensions.cs` | 按运行平台注册服务生命周期，Windows 服务从发布目录保存相对路径文件 |
 | Zeye.Sorting.Hub.Host/Properties/PublishProfiles | `Windows-x64.pubxml` | Visual Studio / CLI 共用的 Windows x64 自包含文件夹发布配置 |
 | Zeye.Sorting.Hub.Host/Extensions | `BundledWebApplicationExtensions.cs` | 静态资源和前端深层路由回退，服务及配置文件路径保留真实响应 |
 | Zeye.Sorting.Hub.Host.Tests | `BundledWebUiTests.cs` | 页面、资源、服务端点优先级和配置文件隔离回归 |
@@ -1710,6 +1862,7 @@ Zeye.Sorting.Hub.Host.Tests/
   BuiltInSuperUserTests.cs
   MessageStorageRemovalTests.cs
   ParcelCleanupAuditTests.cs
+  ParcelCleanupCompactionTests.cs
   ParcelCleanupSecurityTests.cs
   ParcelImageApiTests.cs
 Zeye.Sorting.Hub.Host/HostedServices/
@@ -1727,7 +1880,9 @@ Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations/
   20261002180129_RemoveRetiredMessageStorageSqlServer.Designer.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/Management/
   ParcelCleanupAudit.cs
-  ParcelCleanupDeletedItem.cs
+  ParcelCleanupAuditCompactor.cs
+  ParcelCleanupBatchAudit.cs
+  ParcelCleanupIsolationPolicy.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/
   20261002180106_RemoveRetiredMessageStorage.cs
   20261002180106_RemoveRetiredMessageStorage.Designer.cs
@@ -1742,6 +1897,7 @@ Zeye.Sorting.Hub.Web/public/demo/
   parcel-multi-top.svg
   parcel-sample.svg
 Zeye.Sorting.Hub.Web/src/app/
+  sectionAccess.ts
   typography.css
   typography.ts
 Zeye.Sorting.Hub.Web/src/components/
@@ -1770,16 +1926,18 @@ Zeye.Sorting.Hub.Web/src/features/parcels/
   ParcelImageGallery.tsx
   parcelImages.css
   ParcelImagesDrawer.tsx
+  parcelProcessingTimeline.ts
+  parcelProcessing.css
   sortingThroughputMetric.ts
-  testAccess.ts
   workbench.css
   workbenchMetricDays.ts
   WorkbenchMetricTrend.tsx
   workbenchModel.ts
 Zeye.Sorting.Hub.Web/tests/
+  parcelProcessingTimeline.test.mjs
   analyticsModel.test.mjs
   formatNumber.test.mjs
-  parcelTestAccess.test.mjs
+  sectionAccess.test.mjs
   requestDescriptions.test.mjs
   sortingThroughputMetric.test.mjs
   workbenchMetricDays.test.mjs
@@ -1804,12 +1962,13 @@ Zeye.Sorting.Hub.Web/tests/
 | Zeye.Sorting.Hub.Host.Tests | `AuditPartitionMaintenanceTests.cs` | 审计分表自动创建、维护及故障恢复回归 |
 | Zeye.Sorting.Hub.Host.Tests | `BuiltInSuperUserTests.cs` | 内置用户权限、保留账号及管理员创建入口回归 |
 | Zeye.Sorting.Hub.Host.Tests | `MessageStorageRemovalTests.cs` | 退役消息存储及迁移清理一致性回归 |
-| Zeye.Sorting.Hub.Host.Tests | `ParcelCleanupAuditTests.cs` | 清理历史、删除明细和事务一致性回归 |
+| Zeye.Sorting.Hub.Host.Tests | `ParcelCleanupAuditTests.cs` | 清理汇总存储上限、跨分表删除和事务一致性回归 |
+| Zeye.Sorting.Hub.Host.Tests | `ParcelCleanupCompactionTests.cs` | 旧清单精简、隔离决策、失败回滚与压缩恢复脚本回归 |
 | Zeye.Sorting.Hub.Host.Tests | `ParcelCleanupSecurityTests.cs` | 清理登录密码确认与操作权限回归 |
 | Zeye.Sorting.Hub.Host.Tests | `ParcelImageApiTests.cs` | 图片集合查询、去重及受控访问回归 |
 | Zeye.Sorting.Hub.Host/HostedServices | `BuiltInAccountHostedService.cs` | 启动时恢复固定内置身份并处理保留账号冲突 |
 | Zeye.Sorting.Hub.Host/Queries | `BuiltInSuperUser.cs` | 内置身份、固定口令散列与保留账号定义 |
-| Zeye.Sorting.Hub.Host/Queries | `ParcelCleanupHistoryService.cs` | 读取永久保留的清理历史和删除明细 |
+| Zeye.Sorting.Hub.Host/Queries | `ParcelCleanupHistoryService.cs` | 只读取永久清理历史及操作汇总，避免加载逐票清单 |
 | Zeye.Sorting.Hub.Host/Queries | `ParcelImageCatalog.cs` | 汇总包裹图片来源、规范化地址并去重 |
 | Zeye.Sorting.Hub.Host/Queries | `PersonalProfile.cs` | 用户个人资料和头像文档模型 |
 | Zeye.Sorting.Hub.Host/Routing | `ParcelImageApiRouteExtensions.cs` | 同源图片集合与受控图片访问接口 |
@@ -1817,7 +1976,9 @@ Zeye.Sorting.Hub.Web/tests/
 | Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations | `20261002180129_RemoveRetiredMessageStorageSqlServer.cs` | SQL Server 退役消息存储结构清理迁移 |
 | Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations | `20261002180129_RemoveRetiredMessageStorageSqlServer.Designer.cs` | SQL Server 退役消息存储迁移模型元数据 |
 | Zeye.Sorting.Hub.Infrastructure/Persistence/Management | `ParcelCleanupAudit.cs` | 永久保存的包裹清理操作记录 |
-| Zeye.Sorting.Hub.Infrastructure/Persistence/Management | `ParcelCleanupDeletedItem.cs` | 关联清理记录的被删除包裹追溯明细 |
+| Zeye.Sorting.Hub.Infrastructure/Persistence/Management | `ParcelCleanupAuditCompactor.cs` | 按隔离决策将旧清单转换为汇总，转换前保存压缩回滚脚本 |
+| Zeye.Sorting.Hub.Infrastructure/Persistence/Management | `ParcelCleanupBatchAudit.cs` | 与删除同事务提交的批次数量凭据，不复制逐票身份和业务载荷 |
+| Zeye.Sorting.Hub.Infrastructure/Persistence/Management | `ParcelCleanupIsolationPolicy.cs` | 清理和历史精简共用的守卫、执行及演练配置 |
 | Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations | `20261002180106_RemoveRetiredMessageStorage.cs` | MySQL 退役消息存储结构清理迁移 |
 | Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations | `20261002180106_RemoveRetiredMessageStorage.Designer.cs` | MySQL 退役消息存储迁移模型元数据 |
 | Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding | `AuditPartitionMaintenanceService.cs` | 请求审计分表自动建表、索引与窗口维护 |
@@ -1844,20 +2005,250 @@ Zeye.Sorting.Hub.Web/tests/
 | Zeye.Sorting.Hub.Web/src/features/operations | `AnalyticsCharts.tsx` | 运营报表趋势与分布图表 |
 | Zeye.Sorting.Hub.Web/src/features/operations | `analyticsModel.ts` | 真实报表数据到展示指标的映射 |
 | Zeye.Sorting.Hub.Web/src/features/parcels | `parcelCleanup.css` | 清理表单、结果及历史列表样式 |
-| Zeye.Sorting.Hub.Web/src/features/parcels | `ParcelCleanupHistory.tsx` | 永久清理记录列表及删除明细展示 |
+| Zeye.Sorting.Hub.Web/src/features/parcels | `ParcelCleanupHistory.tsx` | 永久清理记录列表及操作人、条件、数量和结果汇总 |
 | Zeye.Sorting.Hub.Web/src/features/parcels | `ParcelImageGallery.tsx` | 包裹多图主图、缩略图切换与放大预览 |
 | Zeye.Sorting.Hub.Web/src/features/parcels | `parcelImages.css` | 多图画廊、缩略图与图片状态样式 |
 | Zeye.Sorting.Hub.Web/src/features/parcels | `ParcelImagesDrawer.tsx` | 包裹台账图片抽屉及加载状态 |
+| Zeye.Sorting.Hub.Web/src/features/parcels | `parcelProcessingTimeline.ts` | 处理事实业务名称、调用尝试归组与唯一 HTTP 窗口关联，保留重试和原始记录 |
+| Zeye.Sorting.Hub.Web/src/features/parcels | `parcelProcessing.css` | 调用轨迹摘要、可展开事实列表及响应式时间排版 |
+| Zeye.Sorting.Hub.Web/tests | `parcelProcessingTimeline.test.mjs` | 扫描、格口和落格分类、重试分离、业务接受语义及完整原文保留回归 |
 | Zeye.Sorting.Hub.Web/src/features/parcels | `sortingThroughputMetric.ts` | 实际和理论小时产能的展示值与说明 |
-| Zeye.Sorting.Hub.Web/src/features/parcels | `testAccess.ts` | 包裹测试页面的机器凭据与权限辅助逻辑 |
+| Zeye.Sorting.Hub.Web/src/app | `sectionAccess.ts` | 敏感版块的服务端身份判断、菜单与直接路由边界 |
 | Zeye.Sorting.Hub.Web/src/features/parcels | `workbench.css` | 平台健康及多工作台信息展示样式 |
 | Zeye.Sorting.Hub.Web/src/features/parcels | `workbenchMetricDays.ts` | 时间范围内每日工作台指标补齐与汇总 |
 | Zeye.Sorting.Hub.Web/src/features/parcels | `WorkbenchMetricTrend.tsx` | 工作台指标卡片的轻量趋势与占比图表 |
 | Zeye.Sorting.Hub.Web/src/features/parcels | `workbenchModel.ts` | 来源工作台分组、筛选及处理情况汇总 |
 | Zeye.Sorting.Hub.Web/tests | `analyticsModel.test.mjs` | 报表模型映射与空数据场景回归 |
 | Zeye.Sorting.Hub.Web/tests | `formatNumber.test.mjs` | 数字、精度及单位展示回归 |
-| Zeye.Sorting.Hub.Web/tests | `parcelTestAccess.test.mjs` | 包裹测试接口的权限与凭据处理回归 |
+| Zeye.Sorting.Hub.Web/tests | `sectionAccess.test.mjs` | 三个敏感版块、编码路径与固定身份限制回归 |
 | Zeye.Sorting.Hub.Web/tests | `requestDescriptions.test.mjs` | 审计请求说明映射回归 |
 | Zeye.Sorting.Hub.Web/tests | `sortingThroughputMetric.test.mjs` | 实际和理论产能展示语义回归 |
 | Zeye.Sorting.Hub.Web/tests | `workbenchMetricDays.test.mjs` | 每日指标补齐与统计范围回归 |
 | Zeye.Sorting.Hub.Web/tests | `workbenchModel.test.mjs` | 多个工作台的分组、筛选和汇总回归 |
+
+## 各层级与各文件作用说明（逐项）：SignalR 实时通道
+
+```text
+Zeye.Sorting.Hub.Contracts/Models/Realtime/
+  RealtimeResponse.cs
+Zeye.Sorting.Hub.Host/Hubs/
+  RealtimeEndpointDispatcher.cs
+  RealtimeReadPolicy.cs
+  RealtimeRequestBodyFeature.cs
+  RealtimeResourceSignal.cs
+  SortingRealtimeHub.cs
+Zeye.Sorting.Hub.Host/Extensions/
+  RealtimeApplicationExtensions.cs
+Zeye.Sorting.Hub.Host.Tests/
+  RealtimeApiTests.cs
+Zeye.Sorting.Hub.Web/src/data/api/
+  apiResponse.ts
+  realtimePolicy.ts
+  realtimeTransport.ts
+Zeye.Sorting.Hub.Web/tests/
+  realtimeContract.test.mjs
+```
+
+| 目录 | 文件 | 职责 |
+| --- | --- | --- |
+| Zeye.Sorting.Hub.Contracts/Models/Realtime | `RealtimeResponse.cs` | 保留原状态码与 JSON 原文的实时响应合同 |
+| Zeye.Sorting.Hub.Host/Hubs | `RealtimeEndpointDispatcher.cs` | 固定用例复用原业务端点的作用域、认证、权限、限流和审计 |
+| Zeye.Sorting.Hub.Host/Hubs | `RealtimeReadPolicy.cs` | 实时读取资源白名单和路径规范校验 |
+| Zeye.Sorting.Hub.Host/Hubs | `RealtimeRequestBodyFeature.cs` | 使正式 JSON 端点识别命名实时提交的正文 |
+| Zeye.Sorting.Hub.Host/Hubs | `RealtimeResourceSignal.cs` | 合并写入通知及限制连接订阅数量 |
+| Zeye.Sorting.Hub.Host/Hubs | `SortingRealtimeHub.cs` | 认证的快照查询、持续订阅与包裹命名提交入口 |
+| Zeye.Sorting.Hub.Host/Extensions | `RealtimeApplicationExtensions.cs` | 实时依赖注册、来源校验、握手限流及路由组装 |
+| Zeye.Sorting.Hub.Host.Tests | `RealtimeApiTests.cs` | 正式客户端读取、推送、命令边界及会话权限撤销回归 |
+| Zeye.Sorting.Hub.Web/src/data/api | `apiResponse.ts` | HTTP 与实时响应共用的长编号、状态码和健康报告解析 |
+| Zeye.Sorting.Hub.Web/src/data/api | `realtimePolicy.ts` | 前端读取白名单、命名提交映射与实际会话状态 |
+| Zeye.Sorting.Hub.Web/src/data/api | `realtimeTransport.ts` | 官方共享连接、去重订阅、自动重连及一次性提交 |
+| Zeye.Sorting.Hub.Web/tests | `realtimeContract.test.mjs` | JSON 精度、读写入口和真实健康状态合同回归 |
+
+## 各层级与各文件作用说明（逐项）：统计与高频查询性能
+
+```text
+Zeye.Sorting.Hub.Application/Abstractions/Queries/
+  IParcelWorkbenchReadService.cs
+Zeye.Sorting.Hub.Infrastructure/Queries/
+  ParcelAnalyticsSnapshot.cs
+  ParcelCompletionStatisticsRow.cs
+  ParcelProcessingStatisticsRow.cs
+  ParcelWorkbenchSnapshot.cs
+  ParcelWorkbenchReadService.cs
+Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/
+  FusionIngestionServiceProjectionBatch.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/
+  20261005193231_AddAnalyticsCoveringIndexes.cs
+  20261005193231_AddAnalyticsCoveringIndexes.Designer.cs
+  20261006025000_AddFusionProjectionQueryIndexes.cs
+  20261006025000_AddFusionProjectionQueryIndexes.Designer.cs
+Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations/
+  20261005193232_AddAnalyticsCoveringIndexesSqlServer.cs
+  20261005193232_AddAnalyticsCoveringIndexesSqlServer.Designer.cs
+  20261006025001_AddFusionProjectionQueryIndexesSqlServer.cs
+  20261006025001_AddFusionProjectionQueryIndexesSqlServer.Designer.cs
+Zeye.Sorting.Hub.Host/Routing/
+  ParcelWorkbenchApiRouteExtensions.cs
+Zeye.Sorting.Hub.Host.Tests/
+  ParcelStatisticsQueryTests.cs
+  ParcelWorkbenchTests.cs
+  FusionProjectionBatchTests.cs
+  FusionProjectionChunkTests.cs
+```
+
+| 目录 | 文件 | 职责 |
+| --- | --- | --- |
+| Application/Abstractions/Queries | `IParcelWorkbenchReadService.cs` | 完整时间窗口的工作台统计查询抽象 |
+| Infrastructure/Queries | `ParcelAnalyticsSnapshot.cs` | 日报与分布统计所需的包裹标量投影，排除聚合明细 |
+| Infrastructure/Queries | `ParcelCompletionStatisticsRow.cs` | 按完成时间跨历史周期计数的覆盖索引投影 |
+| Infrastructure/Queries | `ParcelProcessingStatisticsRow.cs` | 处理事实统计所需的四个字段，排除原始报文和响应正文 |
+| Infrastructure/Queries | `ParcelWorkbenchSnapshot.cs` | 工作台统计使用的来源、时间和状态投影 |
+| Infrastructure/Queries | `ParcelWorkbenchReadService.cs` | 在数据库内汇总完整窗口的工作台件数，保留大小写来源身份边界 |
+| Infrastructure/Integrations/Fusion | `FusionIngestionServiceProjectionBatch.cs` | 按认领身份分块保存投影结果，减少逐条更新往返 |
+| Infrastructure/Persistence/Migrations | `20261005193231_AddAnalyticsCoveringIndexes.cs` | MySQL 创建时间、完成时间及处理事实统计覆盖索引与回滚 |
+| Infrastructure/Persistence/Migrations | `20261005193231_AddAnalyticsCoveringIndexes.Designer.cs` | MySQL 统计索引迁移的目标模型元数据 |
+| Infrastructure/Persistence/Migrations | `20261006025000_AddFusionProjectionQueryIndexes.cs` | MySQL 后台事实认领与来源进度索引及回滚 |
+| Infrastructure/Persistence/Migrations | `20261006025000_AddFusionProjectionQueryIndexes.Designer.cs` | MySQL 投影队列索引迁移的目标模型元数据 |
+| Infrastructure.SqlServerMigrations/Migrations | `20261005193232_AddAnalyticsCoveringIndexesSqlServer.cs` | SQL Server 统计覆盖索引及回滚 |
+| Infrastructure.SqlServerMigrations/Migrations | `20261005193232_AddAnalyticsCoveringIndexesSqlServer.Designer.cs` | SQL Server 统计索引迁移的目标模型元数据 |
+| Infrastructure.SqlServerMigrations/Migrations | `20261006025001_AddFusionProjectionQueryIndexesSqlServer.cs` | SQL Server 后台事实认领与来源进度索引及回滚 |
+| Infrastructure.SqlServerMigrations/Migrations | `20261006025001_AddFusionProjectionQueryIndexesSqlServer.Designer.cs` | SQL Server 投影队列索引迁移的目标模型元数据 |
+| Host/Routing | `ParcelWorkbenchApiRouteExtensions.cs` | 工作台统计的认证只读 HTTP 入口，复用于实时读取 |
+| Host.Tests | `ParcelStatisticsQueryTests.cs` | 大报文隔离、迟到事实、并发窗口、历史索引修复及 DDL 隔离器回归 |
+| Host.Tests | `ParcelWorkbenchTests.cs` | 完整窗口、不同来源身份、历史周期和来源过滤查询回归 |
+| Host.Tests | `FusionProjectionBatchTests.cs` | 批量投影结果、错误重试和失效认领保护回归 |
+| Host.Tests | `FusionProjectionChunkTests.cs` | SQL Server CASE 层数限制下的有界投影结果更新回归 |
+
+统计查询通过 `ParcelPartitionReadContext` 的 EF Core 只读映射及 LINQ，在各物理表内先过滤时间、只投影所需字段；处理事实先按表聚合，再合并少量汇总行。完成日期和迟到事实继续跨历史周期查询，不用入库周期代替事实发生周期。`PartitionMaintenanceService` 在启动和既有预建周期中检查已登记历史分表的索引，遵守建表授权和预演开关；执行前记录 DDL 与索引回滚语句，不改写业务数据。
+
+## 各层级与各文件作用说明（逐项）：异常日志落盘
+
+```text
+Zeye.Sorting.Hub.Host/Logging/
+  ExceptionLoggingFilter.cs
+  ExceptionLoggingHubFilter.cs
+  ExceptionLoggingLifetime.cs
+Zeye.Sorting.Hub.Host.Tests/
+  ExceptionLoggingTests.cs
+  ExceptionLoggingTestHub.cs
+```
+
+| 目录 | 文件 | 职责 |
+| --- | --- | --- |
+| Host/Logging | `ExceptionLoggingFilter.cs` | 保留普通日志与成功 SQL 的过滤策略，确保框架故障和 SignalR 流异常进入 NLog |
+| Host/Logging | `ExceptionLoggingHubFilter.cs` | 统一记录 Hub 调用与连接生命周期异常，保留连接编号和请求追踪，不记录方法参数 |
+| Host/Logging | `ExceptionLoggingLifetime.cs` | 启动校验实际日志目录可写，记录进程与未观察任务异常，退出前刷新队列 |
+| Host.Tests | `ExceptionLoggingTests.cs` | 生产日志配置的等级、数据库分类、队列增长、轮转、框架过滤与真实 SignalR 异常回归 |
+| Host.Tests | `ExceptionLoggingTestHub.cs` | 在普通调用和返回首个流元素后制造受控异常，供隔离测试验证日志 |
+
+异常文件位于程序所在目录的 `logs/exceptions-yyyy-MM-dd.log`；Docker 对应 `/app/logs/exceptions-yyyy-MM-dd.log`，由既有 `host_logs` 持久卷保留。应用与数据库日志继续写入同目录的 `app-*` 和 `database-*` 文件。携带异常的日志不受普通 Info 级规则限制，完整记录内部异常与堆栈；异步队列使用 Grow，突发写入不按队列容量丢弃记录。日志保持每日及 10 MiB 轮转，归档最多 30 个；同时受 `LogCleanup:RetentionDays` 清理策略约束，当前默认 2 天，可按排查窗口调整。日志目录不可写时拒绝静默启动，NLog 自身配置及写入错误输出到标准错误流。
+
+## 各层级与各文件作用说明（逐项）：EF Core 查询与热路径元数据
+
+```text
+Zeye.Sorting.Hub.Infrastructure/Persistence/
+  Management/ClassificationRuleSnapshotCache.cs
+  ReadModels/PersistenceReadSnapshotRefreshService.cs
+  Sharding/ParcelPartitionCatalogSnapshot.cs
+  Sharding/IParcelPartitionReadModelContext.cs
+  Sharding/ParcelPartitionReadContext.cs
+  Sharding/ParcelPartitionReadModelCacheKeyFactory.cs
+Zeye.Sorting.Hub.Host.Tests/
+  ParcelMetadataIoInterceptor.cs
+  ParcelReadSnapshotTests.cs
+```
+
+| 目录 | 文件 | 职责 |
+| --- | --- | --- |
+| Infrastructure/Persistence/Management | `ClassificationRuleSnapshotCache.cs` | 按数据库工厂隔离的不可变规则快照，耐久保存后即时发布及版本保护 |
+| Infrastructure/Persistence/ReadModels | `PersistenceReadSnapshotRefreshService.cs` | 数据库初始化之后预热分表目录与分类规则，每分钟后台同步其他 Hub 实例的变更 |
+| Infrastructure/Persistence/Sharding | `ParcelPartitionCatalogSnapshot.cs` | 不可变周期及后缀集合，服务请求复用同一份目录 |
+| Infrastructure/Persistence/Sharding | `IParcelPartitionReadModelContext.cs` | 只读映射的内部缓存键契约，避免业务层依赖 EF 元数据 |
+| Infrastructure/Persistence/Sharding | `ParcelPartitionReadContext.cs` | 复用已有提供器和列映射，使用共享只读实体及 LINQ 合并窄字段统计查询 |
+| Infrastructure/Persistence/Sharding | `ParcelPartitionReadModelCacheKeyFactory.cs` | 按来源实体、读模型和物理分表集合隔离 EF 模型缓存，日期保持查询参数 |
+| Host.Tests | `ParcelMetadataIoInterceptor.cs` | 记录真实 EF 命令中的配置与目录读取次数 |
+| Host.Tests | `ParcelReadSnapshotTests.cs` | 预热后零配置读取、并发冷加载、保存即时生效、跨实例刷新与失败隔离回归 |
+
+业务查询与写入优先使用 EF Core 的 LINQ、`SaveChangesAsync`、`ExecuteUpdateAsync` 和 `ExecuteDeleteAsync`。报表及工作台统计不再手写跨表窄字段 SELECT；独立分表的列表查询直接使用对应 EF 模型。尚需原生语句的范围限于数据库维护、跨实体物理分表路由和精确创建间隔窗口统计，集中在基础设施实现并复用提供器映射与参数化，禁止把语句散落到页面、应用用例或高频收包逻辑。
+
+热处理不逐票读取管理配置或反复检查已预建的分表；本实例保存规则及完成建表后立即更新内存，其他实例的元数据变更由后台每分钟同步。快照仅缓存规则和目录，不缓存包裹统计结果。接收事实的确认仍在 EF Core 事务提交之后，图片存储确认仍在完整落盘及摘要校验之后；这些耐久边界不能改为提前返回成功。请求审计和业务投影继续由既有有界后台链路处理。
+
+## 各层级与各文件作用说明（逐项）：Fusion 在线配置、批量持久化与增量发布
+
+```text
+Zeye.Sorting.Hub.Application/Services/Parcels/ParcelProcessingApplicationServiceBatch.cs
+Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/
+  FusionIngestionServiceBatch.cs
+  FusionRuntimeSnapshot.cs
+  IFusionRuntimeConfiguration.cs
+Zeye.Sorting.Hub.Infrastructure/Repositories/ParcelProcessingRepositoryBatch.cs
+Zeye.Sorting.Hub.Host/HostedServices/FusionConfigurationHostedService.cs
+Zeye.Sorting.Hub.Host/Queries/
+  FusionConfigurationCheck.cs
+  FusionConfigurationProbe.cs
+  FusionConfigurationService.cs
+  FusionConfigurationView.cs
+  FusionKeyRotation.cs
+  FusionPairing.cs
+  FusionPairingResult.cs
+  FusionSettings.cs
+  FusionSettingsWrite.cs
+  FusionSourceChange.cs
+  FusionSourceView.cs
+  FusionSourceWrite.cs
+Zeye.Sorting.Hub.Host/Routing/FusionConfigurationApi.cs
+Zeye.Sorting.Hub.Host.Tests/
+  FusionBatchPersistenceTests.cs
+  FusionConfigurationTests.cs
+  FusionLegacyIdentityCollisionTests.cs
+  FusionOverlappingProjectionRepository.cs
+  FusionParcelBatchPersistenceTests.cs
+  FusionParcelBatchRecoveryTests.cs
+  FusionProjectionConcurrencyTests.cs
+  FusionTransactionGuardStrategy.cs
+Zeye.Sorting.Hub.Web/
+  scripts/publish-web-ui.mjs
+  src/data/api/fusionTypes.ts
+  src/features/access/FusionSettingsPage.tsx
+  src/features/access/fusion-settings.css
+  tests/publish-web-ui.test.mjs
+docs/Fusion在线接入配置.md
+```
+
+| 目录 | 文件 | 职责 |
+| --- | --- | --- |
+| Application/Services/Parcels | `ParcelProcessingApplicationServiceBatch.cs` | 批量处理事实的用例编排及结果映射 |
+| Infrastructure/Integrations/Fusion | `FusionIngestionServiceBatch.cs` | 同事务批量接收、去重及提交后的逐条确认 |
+| Infrastructure/Integrations/Fusion | `FusionRuntimeSnapshot.cs` | 已生效来源身份、凭据和传输限额的不可变快照 |
+| Infrastructure/Integrations/Fusion | `IFusionRuntimeConfiguration.cs` | 基础设施内部运行目录与配置快照契约 |
+| Infrastructure/Repositories | `ParcelProcessingRepositoryBatch.cs` | 批量包裹事实事务、来源身份校验及失败恢复 |
+| Host/HostedServices | `FusionConfigurationHostedService.cs` | 启动加载与后台刷新在线接入配置 |
+| Host/Queries | `FusionConfigurationCheck.cs` | 连接前身份及目录一致性检查合同 |
+| Host/Queries | `FusionConfigurationProbe.cs` | 无租约配置探测和匹配结果 |
+| Host/Queries | `FusionConfigurationService.cs` | 配置版本、工作台目录及加密凭据的管理接口 |
+| Host/Queries | `FusionConfigurationView.cs` | 不包含机器密钥的公开配置视图 |
+| Host/Queries | `FusionKeyRotation.cs` | 携带预期版本的机器密钥轮换请求 |
+| Host/Queries | `FusionPairing.cs` | 一次性工作台配对信息合同 |
+| Host/Queries | `FusionPairingResult.cs` | 配对信息与已提交配置版本结果 |
+| Host/Queries | `FusionSettings.cs` | 接入开关、发现及传输额度合同 |
+| Host/Queries | `FusionSettingsWrite.cs` | 携带预期版本的接入设置保存请求 |
+| Host/Queries | `FusionSourceChange.cs` | 携带预期版本的工作台变更请求 |
+| Host/Queries | `FusionSourceView.cs` | 不包含凭据的来源工作台视图 |
+| Host/Queries | `FusionSourceWrite.cs` | 工作台登记与编辑字段合同 |
+| Host/Routing | `FusionConfigurationApi.cs` | 带权限、版本校验及中文说明的在线接入管理路由 |
+| Host.Tests | `FusionBatchPersistenceTests.cs` | 批次确认、重放、事务故障和图片归属回归 |
+| Host.Tests | `FusionConfigurationTests.cs` | 加密凭据、配置重启、轮换、停用和版本冲突回归 |
+| Host.Tests | `FusionLegacyIdentityCollisionTests.cs` | 旧编号身份碰撞与输入隔离回归 |
+| Host.Tests | `FusionOverlappingProjectionRepository.cs` | 并发投影窗口及受控重叠的测试仓储 |
+| Host.Tests | `FusionParcelBatchPersistenceTests.cs` | 批量包裹处理和多周期持久化回归 |
+| Host.Tests | `FusionParcelBatchRecoveryTests.cs` | 提交故障后的精确确认与批次恢复回归 |
+| Host.Tests | `FusionProjectionConcurrencyTests.cs` | 投影并发度、批次认领及有界处理回归 |
+| Host.Tests | `FusionTransactionGuardStrategy.cs` | 真实事务边界和提交失败的测试执行策略 |
+| Web/scripts | `publish-web-ui.mjs` | 按内容校验依赖与产物，增量构建及损坏修复 |
+| Web/src/data/api | `fusionTypes.ts` | 在线配置、来源状态与配对的前端合同 |
+| Web/src/features/access | `FusionSettingsPage.tsx` | 工作台登记、配对、停用及轮换的配置页面 |
+| Web/src/features/access | `fusion-settings.css` | 在线接入表单、工作台列表与窄屏布局样式 |
+| Web/tests | `publish-web-ui.test.mjs` | 内容变化、损坏资源、依赖恢复和增量发布回归 |
+| docs | `Fusion在线接入配置.md` | 多工作台接入、配对、网络及凭据备份说明 |
+
+在线接入操作说明见 [Fusion 在线接入配置](docs/Fusion在线接入配置.md)。前端增量发布仍检查完整资源指纹，源码或产物变化会重建；首次构建需要 Node/npm，目标服务器只运行发布后的 Host。

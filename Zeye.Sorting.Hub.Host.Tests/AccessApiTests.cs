@@ -16,6 +16,76 @@ using Zeye.Sorting.Hub.Host.Routing;
 namespace Zeye.Sorting.Hub.Host.Tests;
 /// <summary>真实密码认证、权限保护、会话失效及账号目录持久化的回归测试。</summary>
 public sealed class AccessApiTests {
+    /// <summary>普通角色即使拥有全部权限或同名角色，也不能访问三个敏感版块。</summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task SensitiveSectionsRequireTheFixedSuperAdministratorRole(bool enforceAuthorization) {
+        string[] readPaths = ["/api/audit/web-requests", "/api/audit/web-requests/123", "/api/diagnostics/slow-queries",
+            "/api/diagnostics/slow-queries/test", "/api/diagnostics/fusion/facts", "/api/data-governance/archive-tasks", "/api/operations/partitions",
+            "/api/admin/parcels/cleanup-history", "/api/admin/parcels/cleanup-history/test", "/health/deep"];
+        string[] writePaths = ["/api/data-governance/archive-tasks", "/api/data-governance/archive-tasks/123/retry",
+            "/api/operations/partitions/prebuild", "/api/admin/parcels/cleanup-expired"];
+        await using var db = new RelationalParcelTestDatabase(); await db.InitializeAsync();
+        await using var app = await CreateAsync(db, enforceAuthorization, configureRoutes: routes => {
+            foreach (var path in readPaths) routes.MapGet(path, () => Results.Ok());
+            foreach (var path in writePaths) routes.MapPost(path, () => Results.Ok());
+            routes.MapGet("/health/live", () => Results.Ok());
+        });
+        using var admin = app.GetTestClient(); using var ordinary = app.GetTestClient(); using var anonymous = app.GetTestClient(); using var builtIn = app.GetTestClient();
+        admin.DefaultRequestHeaders.Add("X-Zeye-Client", "web"); ordinary.DefaultRequestHeaders.Add("X-Zeye-Client", "web"); builtIn.DefaultRequestHeaders.Add("X-Zeye-Client", "web");
+        UseCookie(admin, await admin.PostAsJsonAsync("/api/access/bootstrap", new { username = "admin", name = "管理员", password = "test-admin-password", bootstrapKey = "test-bootstrap-key" }));
+        Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync("/api/access/roles", new { expectedRevision = 1, name = "超级管理员", permissions = AccessDirectoryService.PermissionCodes })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync("/api/access/users", new { expectedRevision = 2, account = "ordinary", name = "普通角色", password = "test-ordinary-password", roleId = 2 })).StatusCode);
+        UseCookie(ordinary, await ordinary.PostAsJsonAsync("/api/access/login", new { username = "ordinary", password = "test-ordinary-password" }));
+        UseCookie(builtIn, await builtIn.PostAsJsonAsync("/api/access/login", new { username = "hisoka", password = "15876396602" }));
+        Assert.True((await admin.GetFromJsonAsync<JsonElement>("/api/access/session")).GetProperty("isSuperAdministrator").GetBoolean());
+        Assert.True((await builtIn.GetFromJsonAsync<JsonElement>("/api/access/session")).GetProperty("isSuperAdministrator").GetBoolean());
+        Assert.False((await ordinary.GetFromJsonAsync<JsonElement>("/api/access/session")).GetProperty("isSuperAdministrator").GetBoolean());
+        Assert.False((await anonymous.GetFromJsonAsync<JsonElement>("/api/access/session")).GetProperty("isSuperAdministrator").GetBoolean());
+        foreach (var path in readPaths) {
+            Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync(path)).StatusCode);
+            Assert.Equal(HttpStatusCode.Forbidden, (await ordinary.GetAsync(path)).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync(path)).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await builtIn.GetAsync(path)).StatusCode);
+        }
+        foreach (var path in writePaths.Concat(["/api/admin/parcels", "/api/admin/parcels/batch-buffer", "/api/admin/parcels/processing-records"])) {
+            Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.PostAsJsonAsync(path, new { })).StatusCode);
+            Assert.Equal(HttpStatusCode.Forbidden, (await ordinary.PostAsJsonAsync(path, new { })).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync(path, new { })).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await builtIn.PostAsJsonAsync(path, new { })).StatusCode);
+        }
+        Assert.Equal(HttpStatusCode.Forbidden, (await ordinary.GetAsync("/API/AUDIT/WEB-REQUESTS/")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await ordinary.GetAsync("/api/parcels/test")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await anonymous.GetAsync("/health/live")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await anonymous.GetAsync("/health/ready")).StatusCode);
+    }
+    /// <summary>账号管理权限不能自行晋升或接管超级管理员，但仍可维护普通成员。</summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task DelegatedAccountManagerCannotPromoteOrTakeOverSuperAdministrators(bool enforceAuthorization) {
+        await using var db = new RelationalParcelTestDatabase(); await db.InitializeAsync();
+        await using var app = await CreateAsync(db, enforceAuthorization); using var admin = app.GetTestClient(); using var manager = app.GetTestClient();
+        admin.DefaultRequestHeaders.Add("X-Zeye-Client", "web"); manager.DefaultRequestHeaders.Add("X-Zeye-Client", "web");
+        UseCookie(admin, await admin.PostAsJsonAsync("/api/access/bootstrap", new { username = "admin", name = "管理员", password = "test-admin-password", bootstrapKey = "test-bootstrap-key" }));
+        await admin.PostAsJsonAsync("/api/access/roles", new { expectedRevision = 1, name = "账号维护", permissions = AccessDirectoryService.PermissionCodes });
+        await admin.PostAsJsonAsync("/api/access/users", new { expectedRevision = 2, account = "manager", name = "账号维护员", password = "test-manager-password", roleId = 2 });
+        UseCookie(manager, await manager.PostAsJsonAsync("/api/access/login", new { username = "manager", password = "test-manager-password" }));
+        var directory = await manager.GetFromJsonAsync<JsonElement>("/api/access");
+        var revision = directory.GetProperty("revision").GetInt32();
+        var managerId = directory.GetProperty("users").EnumerateArray().Single(x => x.GetProperty("account").GetString() == "manager").GetProperty("id").GetString();
+        var adminId = directory.GetProperty("users").EnumerateArray().Single(x => x.GetProperty("account").GetString() == "admin").GetProperty("id").GetString();
+        Assert.Equal(HttpStatusCode.Forbidden, (await manager.PostAsJsonAsync("/api/access/users", new { id = managerId, expectedRevision = revision, account = "manager", name = "自行晋升", roleId = 1 })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await manager.PostAsJsonAsync("/api/access/users", new { expectedRevision = revision, account = "promoted", name = "越权创建", roleId = 1, password = "test-promoted-password" })).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await manager.PostAsJsonAsync("/api/access/users", new { id = adminId, expectedRevision = revision, account = "admin", name = "接管管理员", roleId = 2, password = "test-takeover-password" })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await manager.PostAsJsonAsync("/api/access/users", new { expectedRevision = revision, account = "normal", name = "普通成员", roleId = 2, password = "test-normal-password" })).StatusCode);
+        directory = await admin.GetFromJsonAsync<JsonElement>("/api/access");
+        Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync("/api/access/users", new { id = managerId, expectedRevision = directory.GetProperty("revision").GetInt32(), account = "manager", name = "授权管理员", roleId = 1 })).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await manager.GetAsync("/api/diagnostics/slow-queries")).StatusCode);
+        UseCookie(manager, await manager.PostAsJsonAsync("/api/access/login", new { username = "manager", password = "test-manager-password" }));
+        Assert.True((await manager.GetFromJsonAsync<JsonElement>("/api/access/session")).GetProperty("isSuperAdministrator").GetBoolean());
+    }
     /// <summary>手工新增和批量入队始终仅供管理员测试，来源处理接口继续允许机器身份。</summary>
     [Theory]
     [InlineData(true)]
@@ -188,20 +258,23 @@ public sealed class AccessApiTests {
     /// <summary>从响应提取测试会话，模拟浏览器的 HttpOnly Cookie 发送。</summary>
     internal static void UseCookie(HttpClient client, HttpResponseMessage response) {
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        client.DefaultRequestHeaders.Remove("Cookie"); client.DefaultRequestHeaders.Add("Cookie", response.Headers.GetValues("Set-Cookie").Single().Split(';')[0]);
+        client.DefaultRequestHeaders.Remove("Cookie"); client.DefaultRequestHeaders.Add("Cookie", response.Headers.GetValues("Set-Cookie").Last(value => value.StartsWith("Zeye.Sorting.Session=", StringComparison.Ordinal)).Split(';')[0]);
     }
     /// <summary>使用同一生产认证管线及数据库的隔离宿主。</summary>
-    internal static async Task<WebApplication> CreateAsync(RelationalParcelTestDatabase db, bool enforceAuthorization = true) {
+    internal static async Task<WebApplication> CreateAsync(RelationalParcelTestDatabase db, bool enforceAuthorization = true,
+        Action<WebApplicationBuilder>? configureServices = null, Action<WebApplication>? configureRoutes = null) {
         var builder = WebApplication.CreateBuilder(); builder.WebHost.UseTestServer(); builder.Logging.ClearProviders();
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["Access:EnforceAuthorization"] = enforceAuthorization.ToString(), ["Access:BootstrapKey"] = "test-bootstrap-key", ["Access:MachineApiKey"] = "test-machine-key" });
         builder.Services.AddSingleton(db.Factory); builder.Services.AddScoped<ManagedDocumentService>();
         builder.Services.AddSortingHubAccess(Path.Combine(Path.GetTempPath(), "zeye-access-tests")); builder.Services.AddDataProtection().UseEphemeralDataProtectionProvider();
         builder.Services.AddAuthorization(); builder.Services.AddRateLimiter(o => o.AddFixedWindowLimiter("account-login", x => { x.PermitLimit = 100; x.Window = TimeSpan.FromMinutes(1); }));
+        configureServices?.Invoke(builder);
         var app = builder.Build(); app.UseRouting(); app.UseRateLimiter(); app.UseAuthentication(); app.UseAuthorization(); app.UseSortingHubAccess();
         app.MapAccessApis(); app.MapRuleManagementApis(); app.MapGet("/api/parcels/test", () => Results.Ok()); app.MapPost("/api/admin/parcels/processing-records", () => Results.Ok());
         app.MapPost("/api/admin/parcels", () => Results.Ok()); app.MapPost("/api/admin/parcels/batch-buffer", () => Results.Ok());
         app.MapGet("/api/parcels/{id:long}/images", () => Results.Ok());
         app.MapGet("/health/ready", () => Results.Ok(new { status = "Healthy" }));
+        configureRoutes?.Invoke(app);
         await app.StartAsync(); return app;
     }
 }

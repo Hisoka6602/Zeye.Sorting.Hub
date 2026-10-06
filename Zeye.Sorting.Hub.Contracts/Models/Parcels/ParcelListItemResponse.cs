@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Zeye.Sorting.Hub.Contracts.Models.Parcels;
 
 /// <summary>
@@ -9,6 +11,7 @@ public record ParcelListItemResponse {
     /// <summary>来源编号会话，设备编号重置后更换。</summary>
     public string? SourceRunId { get; init; }
     /// <summary>来源设备包裹编号。</summary>
+    [JsonNumberHandling(JsonNumberHandling.WriteAsString)]
     public long? SourceParcelId { get; init; }
     /// <summary>首次分拣机检测本地时间。</summary>
     public DateTime? DetectedTime { get; init; }

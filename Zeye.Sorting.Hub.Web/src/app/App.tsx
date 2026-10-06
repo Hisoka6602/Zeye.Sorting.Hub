@@ -26,6 +26,7 @@ const AccessPage = lazy(() => import('../features/access/AccessPage').then(modul
 const ProfilePage = lazy(() => import('../features/access/ProfilePage').then(module => ({ default: module.ProfilePage })));
 const LoginPage = lazy(() => import('../features/access/LoginPage').then(module => ({ default: module.LoginPage })));
 const SettingsPage = lazy(() => import('../features/access/SettingsPage').then(module => ({ default: module.SettingsPage })));
+const FusionSettingsPage = lazy(() => import('../features/access/FusionSettingsPage').then(module => ({ default: module.FusionSettingsPage })));
 const HelpPage = lazy(() => import('../features/help').then(module => ({ default: module.HelpPage })));
 
 function RouteLoading() { return <div className="route-loading" role="status" aria-label="页面加载中"><Spin size="large" /></div>; }
@@ -61,6 +62,7 @@ export default function App() {
       <Route path="/governance/backup" element={<BackupPage />} />
       <Route path="/governance/sharding" element={<PartitionPage />} />
       <Route path="/settings" element={<SettingsPage />} />
+      <Route path="/settings/fusion" element={<FusionSettingsPage />} />
       <Route path="*" element={<NotFound />} />
     </Route>
   </Routes>;

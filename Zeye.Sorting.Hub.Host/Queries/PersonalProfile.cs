@@ -2,6 +2,8 @@ using System.Buffers.Binary;
 namespace Zeye.Sorting.Hub.Host.Queries;
 /// <summary>每个用户独立保存的个人资料，头像不进入账号目录或认证 Cookie。</summary>
 public sealed record PersonalProfile {
+    /// <summary>头像格式校验异常日志器，不记录头像正文。</summary>
+    private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
     /// <summary>邮箱。</summary>
     public string Email { get; init; } = string.Empty;
     /// <summary>手机或联系电话。</summary>
@@ -22,7 +24,7 @@ public sealed record PersonalProfile {
         var jpeg = value.StartsWith("data:image/jpeg;base64,", StringComparison.Ordinal);
         if (!png && !jpeg) return false;
         try { bytes = Convert.FromBase64String(value[(value.IndexOf(',') + 1)..]); }
-        catch (FormatException) { return false; }
+        catch (FormatException exception) { Logger.Debug(exception, "头像 Base64 编码无效。"); return false; }
         if (bytes.Length is < 24 or > 98304) return false;
         if (png) {
             if (!bytes.AsSpan(0, 8).SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }) || !bytes.AsSpan(12, 4).SequenceEqual("IHDR"u8)

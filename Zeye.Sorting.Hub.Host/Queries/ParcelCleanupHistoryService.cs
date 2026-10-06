@@ -17,18 +17,12 @@ public sealed class ParcelCleanupHistoryService(IDbContextFactory<SortingHubDbCo
         var documents = await query.OrderByDescending(x => x.ModifiedAt).ThenByDescending(x => x.Key).Skip((pageNumber - 1) * pageSize).Take(pageSize).ToListAsync(ct);
         return new { items = documents.Select(x => JsonSerializer.Deserialize<ParcelCleanupAudit>(x.Json, Options)!), totalCount, pageNumber, pageSize };
     }
-    /// <summary>读取执行结果和已提交批次中的包裹清单，详情筛选保持有界。</summary>
-    public async Task<object?> DetailAsync(string id, int pageNumber, int pageSize, string search, CancellationToken ct) {
+    /// <summary>只读取固定大小的操作汇总，避免加载历史逐票清单或业务载荷。</summary>
+    public async Task<object?> DetailAsync(string id, CancellationToken ct) {
         await using var db = await factory.CreateDbContextAsync(ct);
         var document = await db.Set<ManagedDocument>().AsNoTracking().SingleOrDefaultAsync(x => x.Key == ParcelCleanupAudit.Prefix + id, ct);
         if (document is null) return null;
         var record = JsonSerializer.Deserialize<ParcelCleanupAudit>(document.Json, Options)!;
-        var prefix = ParcelCleanupAudit.BatchPrefix(id);
-        var batches = await db.Set<ManagedDocument>().AsNoTracking().Where(x => x.Key.StartsWith(prefix)).OrderBy(x => x.Key).Select(x => x.Json).ToListAsync(ct);
-        var items = batches.SelectMany(x => JsonSerializer.Deserialize<ParcelCleanupDeletedItem[]>(x, Options)!).Where(x =>
-            search.Length == 0 || x.Id.ToString(System.Globalization.CultureInfo.InvariantCulture).Contains(search, StringComparison.OrdinalIgnoreCase)
-            || (x.BarCodes?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false)
-            || (x.WorkstationName?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false)).ToArray();
-        return new { record, items = items.Skip((pageNumber - 1) * pageSize).Take(pageSize), totalCount = items.Length, pageNumber, pageSize };
+        return new { record };
     }
 }

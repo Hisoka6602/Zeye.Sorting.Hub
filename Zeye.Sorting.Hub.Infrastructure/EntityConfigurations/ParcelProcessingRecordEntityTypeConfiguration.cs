@@ -13,6 +13,8 @@ public sealed class ParcelProcessingRecordEntityTypeConfiguration : IEntityTypeC
         builder.Property(x => x.Key).ValueGeneratedNever();
         builder.HasIndex(x => new { x.ParcelId, x.OccurredAt });
         builder.HasIndex(x => x.OccurredAt);
+        // 报表只读时间、结果、包裹归属和阶段，覆盖索引避免扫描原始报文所在的数据页。
+        builder.HasIndex(x => new { x.OccurredAt, x.IsSuccess, x.ParcelId, x.Stage });
         builder.HasIndex(x => new { x.SourceInstanceId, x.SourceRunId, x.SourceParcelId });
         builder.HasIndex(x => new { x.MessageIdentity, x.ReceivedAt });
         foreach (var property in builder.Metadata.GetProperties().Where(x => x.ClrType == typeof(decimal?))) { property.SetPrecision(18); property.SetScale(3); }

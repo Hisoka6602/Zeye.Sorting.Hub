@@ -97,7 +97,7 @@ public sealed class ParcelAnalyticsTests {
         await SaveAsync(database, Fact("prune-a", 100, first));
         await SaveAsync(database, Fact("prune-b", 101, second));
         await using var db = await database.Factory.CreateDbContextAsync();
-        var query = await ParcelPartitionQueryBuilder.BuildParcelsByCreatedTimeAsync(db, first.Date, first.Date.AddDays(1), default);
+        var query = await ParcelPartitionQueryBuilder.BuildParcelsByCreatedTimeAsync(db, database.Partitions, first.Date, first.Date.AddDays(1), default);
         var sql = query.ToQueryString();
         Assert.Contains("Parcels_20260928", sql, StringComparison.Ordinal);
         Assert.DoesNotContain("Parcels_20260929", sql, StringComparison.Ordinal);
@@ -267,8 +267,7 @@ public sealed class ParcelAnalyticsTests {
     /// <summary>构造报表服务，复用仓库现有查询预算规划器。</summary>
     private static ParcelAnalyticsReadService Reader(RelationalParcelTestDatabase database, int maxDays = 31, int maxRows = 100000) => new(
         database.Factory,
-        database.Partitions,
-        new ReportingQueryBudgetPlanner(Microsoft.Extensions.Options.Options.Create(new ReadOnlyDatabaseOptions { MaxReportTimeRangeDays = maxDays, MaxReportRows = maxRows })));
+        new ReportingQueryBudgetPlanner(Microsoft.Extensions.Options.Options.Create(new ReadOnlyDatabaseOptions { MaxReportTimeRangeDays = maxDays, MaxReportRows = maxRows })), database.Partitions);
 
     /// <summary>构造稳定来源身份的本地处理事实。</summary>
     private static ParcelProcessingRecord Fact(string recordId, long? sourceParcelId, DateTime time) => new() {

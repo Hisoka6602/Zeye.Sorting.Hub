@@ -1,0 +1,28 @@
+{
+  // 中文说明：复制为环境配置后登记真实来源；所有凭据示例仅为替换占位符。
+  "FusionIngestion": {
+    // 稳定中心编码，须与 Fusion 发送端一致。
+    "HubId": "sorting-hub",
+    // 正式接入使用 HTTPS，本地受控测试才允许 HTTP。
+    "AllowInsecureHttp": false,
+    // 仅登记来源且地址可达时开启认证发现。
+    "DiscoveryEnabled": false,
+    // 面向 Fusion 工作台的可达接收地址。
+    "AdvertisedEndpoint": "https://hub.example.com/hubs/fusion-ingestion",
+    "Sources": [
+      {
+        // 来源、产线、站点、设备、时区须与注册报文一致。
+        "SourceInstanceId": "fusion-line-01",
+        // 至少 32 字符的独立高熵密钥，禁止共用和提交实际密钥。
+        "MachineApiKey": "REPLACE_WITH_A_UNIQUE_RANDOM_SECRET_OF_AT_LEAST_32_CHARACTERS",
+        "WorkstationName": "分拣工作台 1",
+        "TenantId": "def",
+        "StoragePartitionId": "default",
+        "LineId": "line-01",
+        "SiteCode": "site-01",
+        "DeviceCode": "sorter-01",
+        "TimeZoneId": "Asia/Shanghai"
+      }
+    ]
+  }
+}

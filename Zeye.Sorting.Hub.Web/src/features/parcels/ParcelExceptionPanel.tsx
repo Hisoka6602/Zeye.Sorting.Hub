@@ -1,13 +1,13 @@
 import { Collapse, Descriptions, Tag, Typography } from 'antd';
 import { SectionCard } from '../../components/SectionCard';
 import type { ParcelDetail } from '../../data/api/parcelTypes';
-import { processingStages } from '../../data/api/parcelTypes';
+import type { ParcelProcessingEvent } from './parcelProcessingTimeline';
 import { ParcelFacts, parcelFactValue } from './ParcelFacts';
 import { exceptionRecordKeys, parcelExceptionDetails } from './parcelExceptionDetails';
 import './parcelException.css';
 
-export function ParcelExceptionPanel({ parcel }: { parcel: ParcelDetail | undefined }) {
-  const exception = parcelExceptionDetails(parcel);
+export function ParcelExceptionPanel({ parcel, events }: { parcel: ParcelDetail | undefined; events?: readonly ParcelProcessingEvent[] }) {
+  const exception = parcelExceptionDetails(parcel, events);
   if (!exception) return null;
 
   return <SectionCard title="包裹异常" className="parcel-exception-panel" extra={<Tag color={exception.current ? 'error' : 'default'}>{exception.current ? '当前异常' : '异常记录'}</Tag>}>
@@ -22,7 +22,7 @@ export function ParcelExceptionPanel({ parcel }: { parcel: ParcelDetail | undefi
     {exception.records.length || exception.interfaceErrors.length ? <Collapse className="parcel-exception-records" items={[
       ...exception.records.map(record => ({
         key: record.recordId,
-        label: `${parcelFactValue('occurredAt', record.occurredAt)} · ${processingStages[record.stage] ?? record.stage}`,
+        label: `${parcelFactValue('occurredAt', record.occurredAt)} · ${exception.recordTitles[record.recordId]}`,
         children: <ParcelFacts facts={record} keys={exceptionRecordKeys(record)} />,
       })),
       ...exception.interfaceErrors.map((request, index) => ({ key: `interface-${index}`, label: `外部接口异常 ${index + 1}`, children: <ParcelFacts facts={request} /> })),

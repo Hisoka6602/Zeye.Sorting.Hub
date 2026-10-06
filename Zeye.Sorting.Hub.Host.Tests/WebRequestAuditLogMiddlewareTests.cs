@@ -28,6 +28,8 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 public sealed class WebRequestAuditLogMiddlewareTests {
     /// <summary>即使开启完整采样，账号载荷也不进入审计正文或重放命令。</summary>
     [Theory]
+    [InlineData("/api/operations/configuration/fusion/sources/test/rotate-key")]
+    [InlineData("/API/OPERATIONS/CONFIGURATION/FUSION/SOURCES/test/rotate-key")]
     [InlineData("bootstrap")]
     [InlineData("login")]
     [InlineData("users")]
@@ -47,6 +49,7 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         await WaitForWriteCountAsync(repository, 1, 20, 50);
         var log = Assert.Single(repository.Logs);
         Assert.Empty(log.Detail!.RequestBody);
+        if (operation.Contains("FUSION", StringComparison.OrdinalIgnoreCase)) Assert.Empty(log.Detail.ResponseBody);
         Assert.DoesNotContain("private-", log.Detail.CurlCommand, StringComparison.Ordinal);
         Assert.DoesNotContain("private-machine-test-key", log.Detail.RequestHeadersJson, StringComparison.Ordinal);
         Assert.Contains("[REDACTED]", log.Detail.RequestHeadersJson, StringComparison.Ordinal);
@@ -524,6 +527,7 @@ public sealed class WebRequestAuditLogMiddlewareTests {
     /// <param name="app">应用对象。</param>
     private static void ConfigureEndpoints(WebApplication app) {
         app.MapGet("/ok", () => Results.Text("pong", "text/plain"));
+        app.MapPost("/api/operations/configuration/fusion/sources/{**path}", () => Results.Text("private-response-machine-key"));
         app.MapPost("/api/access/{operation}", () => Results.Text("ok"));
         app.MapPost("/api/admin/parcels/cleanup-expired", () => Results.Text("ok"));
         app.MapPost("/echo", async context => {

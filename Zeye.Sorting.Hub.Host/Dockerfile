@@ -26,7 +26,7 @@ RUN if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then sed -i 's/^Components
     && apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out .
-RUN mkdir -p logs migration-scripts backup-artifacts backup-runbooks drill-records monthly-reports governance-artifacts \
+RUN mkdir -p logs migration-scripts backup-artifacts backup-runbooks drill-records monthly-reports governance-artifacts fusion-images \
     && chown -R app:app /app
 USER app
 EXPOSE 5078

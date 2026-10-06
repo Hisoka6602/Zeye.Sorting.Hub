@@ -20,6 +20,7 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.MigrationGovernance;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Management;
 
 namespace Zeye.Sorting.Hub.Host.HostedServices {
 
@@ -370,19 +371,13 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     }
 
                     await AssertMigrationConsistencyAsync(db, ct);
+                    // 旧清理清单仅升级为少量汇总；共用危险动作隔离器并先保存压缩回滚脚本。
+                    await ParcelCleanupAuditCompactor.CompactAsync(db, _configuration, ct);
 
                     // 包裹聚合实际路由使用同周期物理表；启动预建与写入建表共用隔离器和DDL审计。
                     if (_createShardingTableOnStarting) {
-                        var partitions = scope.ServiceProvider.GetRequiredService<ParcelPartitionStore>();
-                        var currentPeriod = partitions.Resolve(DateTime.Now);
-                        await partitions.EnsureCreatedAsync(currentPeriod, ct);
-                        var end = DateTime.Now.AddHours(_shardingPrebuildWindowHours);
-                        var period = partitions.Resolve(currentPeriod.End);
-                        do {
-                            ct.ThrowIfCancellationRequested();
-                            await partitions.EnsureCreatedAsync(period, ct);
-                            period = partitions.Resolve(period.End);
-                        } while (period.Start <= end);
+                        var maintenance = scope.ServiceProvider.GetRequiredService<PartitionMaintenanceService>();
+                        await maintenance.ExecuteAsync(ct, _shardingPrebuildWindowHours);
                     }
 
                     foreach (var sql in _dialect.GetOptionalBootstrapSql()) {

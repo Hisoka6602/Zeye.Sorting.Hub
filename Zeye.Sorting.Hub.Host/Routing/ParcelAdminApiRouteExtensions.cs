@@ -103,15 +103,12 @@ public static class ParcelAdminApiRouteExtensions {
             if (!TryCleanupPage(context, out var page, out var size)) return Results.Problem(statusCode: 400, detail: "分页参数无效。");
             context.Response.Headers.CacheControl = "private, no-store";
             return Results.Ok(await history.ListAsync(page, size, ct));
-        });
+        }).WithSummary("分页查询永久清理操作记录").WithDescription("仅超级管理员及内置超级用户可查询；支持有界 pageNumber 和 pageSize，操作人及执行汇总永久保留。");
         group.MapGet("/cleanup-history/{id:guid}", async (Guid id, HttpContext context, [FromServices] ParcelCleanupHistoryService history, CancellationToken ct) => {
             if (CleanupHistoryAccessProblem(context) is { } denied) return denied;
-            if (!TryCleanupPage(context, out var page, out var size)) return Results.Problem(statusCode: 400, detail: "分页参数无效。");
-            var search = context.Request.Query["search"].ToString().Trim();
-            if (search.Length > 128) return Results.Problem(statusCode: 400, detail: "检索内容不能超过 128 字。");
             context.Response.Headers.CacheControl = "private, no-store";
-            return await history.DetailAsync(id.ToString("N"), page, size, search, ct) is { } detail ? Results.Ok(detail) : Results.NotFound();
-        });
+            return await history.DetailAsync(id.ToString("N"), ct) is { } detail ? Results.Ok(detail) : Results.NotFound();
+        }).WithSummary("按操作编号查询清理汇总").WithDescription("id 为清理操作 GUID；仅返回操作人、清理条件、时间和执行结果，不加载逐票包裹数据。");
 
         return routeBuilder;
     }

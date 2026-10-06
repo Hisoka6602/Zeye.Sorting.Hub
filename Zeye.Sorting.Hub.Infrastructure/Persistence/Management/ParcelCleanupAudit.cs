@@ -6,7 +6,13 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Management;
 public sealed record ParcelCleanupAudit {
     /// <summary>记录键前缀；不纳入任何过期清理策略。</summary>
     public const string Prefix = "parcel-cleanup:";
-    /// <summary>每批删除快照的键前缀。</summary>
+    /// <summary>汇总存储格式，不保存逐票包裹快照。</summary>
+    public const string SummaryStorageFormat = "operation-summary";
+    /// <summary>汇总审计的清理范围，独立处理事实仍按原有策略保留。</summary>
+    public const string SummaryScope = "包裹主数据及聚合附属数据；保留来源身份和处理事实，清理历史仅保存操作汇总。";
+    /// <summary>物理删除恢复边界，汇总记录不承担包裹备份功能。</summary>
+    public const string SummaryCompensationBoundary = "物理删除不支持自动回滚；清理历史仅永久保留操作汇总，不保存逐票包裹快照。恢复包裹需要使用备份。";
+    /// <summary>每批事务提交凭据的键前缀。</summary>
     public static string BatchPrefix(string id) => "parcel-cleanup-batch:" + id + ":";
     /// <summary>操作编号。</summary>
     public required string Id { get; init; }
@@ -28,8 +34,10 @@ public sealed record ParcelCleanupAudit {
     public int ExecutedCount { get; init; }
     /// <summary>已提交的批次数量。</summary>
     public int BatchCount { get; init; }
+    /// <summary>记录存储格式；空值表示仍含逐票清单的旧版记录。</summary>
+    public string? StorageFormat { get; init; }
     /// <summary>清理范围、保留对象与恢复边界。</summary>
-    public string Scope { get; init; } = "包裹主数据及聚合附属数据；保留来源身份、处理事实及清理操作记录。";
+    public string Scope { get; init; } = SummaryScope;
     /// <summary>物理删除的补偿边界。</summary>
     public required string CompensationBoundary { get; init; }
     /// <summary>失败原因，不记录口令或数据库连接信息。</summary>

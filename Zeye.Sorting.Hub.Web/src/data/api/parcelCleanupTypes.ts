@@ -9,16 +9,13 @@ export interface ParcelCleanupRecord {
   plannedCount: number;
   executedCount: number;
   batchCount: number;
+  storageFormat?: string;
   scope: string;
   compensationBoundary: string;
   errorMessage?: string;
 }
 export interface ParcelCleanupResponse { cleanupRecordId?: string; decision: string; plannedCount: number; executedCount: number; compensationBoundary: string }
-export interface ParcelCleanupDeletedItem {
-  id: string; barCodes?: string; workstationName?: string; sourceInstanceId?: string; sourceRunId?: string; sourceParcelId?: string;
-  createdTime: string; scannedTime: string; status: number;
-}
-export interface ParcelCleanupDetail { record: ParcelCleanupRecord; items: ParcelCleanupDeletedItem[]; totalCount: number }
+export interface ParcelCleanupDetail { record: ParcelCleanupRecord }
 export const cleanupDecisionLabels: Record<string, string> = { blocked: '已阻止', 'dry-run': '仅演练', execute: '已执行' };
 export function cleanupStatusLabel(record: ParcelCleanupRecord) {
   if (record.status === 'completed') return cleanupDecisionLabels[record.decision] ?? '已完成';

@@ -352,7 +352,7 @@ check_readme_changed_when_files_added_or_deleted() {
   ensure_pr_diff_ready
 
   local added_or_deleted
-  added_or_deleted="$(echo "$PR_DIFF_NAME_STATUS" | awk '$1 == "A" || $1 == "D" { print $0 }')"
+  added_or_deleted="$(get_pr_added_or_deleted_files)"
 
   if [[ -z "$added_or_deleted" ]]; then
     log_step "未检测到新增/删除文件，规则 3 通过"
@@ -480,7 +480,7 @@ check_exception_logging() {
       [[ -z "$line_no" ]] && continue
       local block
       block="$(extract_brace_block "$file_path" "$line_no")"
-      if ! echo "$block" | grep -q -E '(^|[[:space:]])(Log|Logger|_?logger|NLogLogger)\.(Error|Warn|Info|Debug|Fatal|Trace)\('; then
+      if ! echo "$block" | grep -q -E '(^|[[:space:]])(Log|Logger|_?logger|NLogLogger)\.(Error|Warn|Info|Debug|Fatal|Trace|Log)\('; then
         record_failure "catch 块缺少日志输出，违反规则 12：${file_path}:${line_no}"
       fi
     done <<< "$catch_lines"
@@ -535,6 +535,11 @@ check_nlog_only() {
     [[ -z "$file_path" ]] && continue
     [[ -f "$file_path" ]] || continue
     # 命名空间导入可用于清除默认 Provider 或接入 NLog；检测实际的非 NLog 记录器与 Provider。
+    # 框架到 NLog 的桥接回归必须构造框架 LoggerFactory；仅测试目录且显式注册 NLogProvider 时允许，其他 Provider 仍禁止。
+    if [[ "$file_path" == Zeye.Sorting.Hub.Host.Tests/* ]] && grep -q -E 'new NLogLoggerProvider[[:space:]]*\(' "$file_path" \
+      && ! grep -q -E '\.Add(Console|Debug|EventLog|EventSourceLogger|JsonConsole|SimpleConsole)[[:space:]]*\(' "$file_path"; then
+      continue
+    fi
     if grep -q -E 'ILogger[[:space:]]*<|ILoggerFactory|Microsoft\.Extensions\.Logging\.ILogger([^A-Za-z0-9_]|$)|LoggerFactory\.Create[[:space:]]*\(|\.Add(Console|Debug|EventLog|EventSourceLogger|JsonConsole|SimpleConsole)[[:space:]]*\(|\.Log(Trace|Debug|Information|Warning|Error|Critical)[[:space:]]*\(' "$file_path"; then
       record_failure "检测到非 NLog 日志用法，违反规则 15：$file_path"
     fi

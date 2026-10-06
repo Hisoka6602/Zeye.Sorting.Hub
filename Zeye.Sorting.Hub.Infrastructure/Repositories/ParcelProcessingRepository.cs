@@ -13,16 +13,19 @@ using Zeye.Sorting.Hub.Domain.Enums.Parcels;
 using Zeye.Sorting.Hub.Domain.Repositories;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.Results;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Management;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Repositories;
 
 /// <summary>处理记录追加、全局去重与包裹快照的事务仓储。</summary>
-public sealed class ParcelProcessingRepository : IParcelProcessingRepository {
+public sealed partial class ParcelProcessingRepository : IParcelProcessingRepository {
     /// <summary>基础表上下文工厂。</summary>
     private readonly IDbContextFactory<SortingHubDbContext> _factory;
     /// <summary>实际分表路由与预建。</summary>
     private readonly ParcelPartitionStore _partitions;
+    /// <summary>已提交的内存分类配置，处理事务不读取管理文档表。</summary>
+    private readonly ClassificationRuleSnapshotCache _rules;
     /// <summary>有界进程内锁，数据库串行化事务提供跨进程保护。</summary>
     private static readonly SemaphoreSlim[] WriteGates = Enumerable.Range(0, 256).Select(static _ => new SemaphoreSlim(1, 1)).ToArray();
     /// <summary>持久化失败与冲突审计日志。</summary>
@@ -31,6 +34,7 @@ public sealed class ParcelProcessingRepository : IParcelProcessingRepository {
     /// <summary>组装处理记录仓储。</summary>
     public ParcelProcessingRepository(IDbContextFactory<SortingHubDbContext> factory, ParcelPartitionStore partitions) {
         _factory = factory; _partitions = partitions;
+        _rules = ClassificationRuleSnapshotCache.For(factory);
     }
 
     /// <summary>重试整个事务，原子保存凭据、记录、定位索引与包裹快照。</summary>
@@ -41,6 +45,7 @@ public sealed class ParcelProcessingRepository : IParcelProcessingRepository {
         await gate.WaitAsync(cancellationToken);
         try {
             record.Validate();
+            var rules = await _rules.GetAsync(cancellationToken);
             await using var template = await _factory.CreateDbContextAsync(cancellationToken);
             var strategy = template.Database.CreateExecutionStrategy();
             var isSqlServer = template.Database.IsSqlServer();
@@ -56,6 +61,11 @@ public sealed class ParcelProcessingRepository : IParcelProcessingRepository {
                 var period = _partitions.Resolve(record.RecordedAt);
                 var suffix = location?.Suffix ?? period.Suffix;
                 if (location is null) await _partitions.EnsureCreatedAsync(period, cancellationToken);
+                var newParcelId = BinaryPrimitives.ReadInt64BigEndian(Convert.FromHexString(sourceKey)) & long.MaxValue;
+                if (newParcelId == 0) newParcelId = 1;
+                // 兼容基础表的碰撞检查在占用分表事务连接前完成，避免满池并行任务互等第二条连接。
+                var baseIdCollision = location is null && record.SourceParcelId.HasValue
+                    && await lookup.Set<Parcel>().AnyAsync(x => x.Id == newParcelId, cancellationToken);
                 await using var db = await _partitions.CreateContextAsync(suffix, cancellationToken);
                 // SQL Server 的 SERIALIZABLE 缺失键范围锁会使不同包裹的并发插入互相死锁；
                 // 主键与 SourceKey 唯一索引负责跨实例冲突检测，冲突后重试整个事务。
@@ -68,10 +78,9 @@ public sealed class ParcelProcessingRepository : IParcelProcessingRepository {
                 if (record.SourceParcelId.HasValue) {
                     location = await db.Set<ParcelLocation>().SingleOrDefaultAsync(x => x.SourceKey == sourceKey, cancellationToken);
                     if (location is null) {
-                        var id = BinaryPrimitives.ReadInt64BigEndian(Convert.FromHexString(sourceKey)) & long.MaxValue;
-                        if (id == 0) id = 1;
+                        var id = newParcelId;
                         // 步骤3：碰撞显式失败，禁止覆盖其他来源或历史基础表的同编号包裹。
-                        if (await lookup.Set<Parcel>().AnyAsync(x => x.Id == id, cancellationToken) || await db.Set<ParcelLocation>().AnyAsync(x => x.Id == id, cancellationToken))
+                        if (baseIdCollision || await db.Set<ParcelLocation>().AnyAsync(x => x.Id == id, cancellationToken))
                             return RepositoryResult<ParcelProcessingWriteResult>.Fail("包裹来源身份与现有中心编号冲突。", "ParcelSourceConflict");
                         parcel = Parcel.CreateDetected(id, record, record.RecordedAt);
                         location = new ParcelLocation { Id = id, SourceKey = sourceKey, Suffix = suffix, CreatedTime = record.RecordedAt };
@@ -97,11 +106,6 @@ public sealed class ParcelProcessingRepository : IParcelProcessingRepository {
                 if (parcel is not null) {
                     var history = await db.Set<ParcelProcessingRecord>().AsNoTracking().Where(x => x.ParcelId == parcel.Id).ToListAsync(cancellationToken);
                     history.Add(storedRecord);
-                    var documents = await db.Set<Persistence.Management.ManagedDocument>().AsNoTracking().Where(x => x.Key == "rules-exception" || x.Key == "rules-parcel").ToListAsync(cancellationToken);
-                    var ruleJson = documents.SingleOrDefault(x => x.Key == "rules-exception")?.Json;
-                    var exceptionRules = ruleJson is null ? ClassificationRuleDefaults.Create() : JsonSerializer.Deserialize<ClassificationRule[]>(ruleJson, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
-                    var parcelJson = documents.SingleOrDefault(x => x.Key == "rules-parcel")?.Json;
-                    var rules = parcelJson is null ? exceptionRules : exceptionRules.Concat(JsonSerializer.Deserialize<ClassificationRule[]>(parcelJson, new JsonSerializerOptions(JsonSerializerDefaults.Web))!).ToArray();
                     parcel.ApplyProcessingRecords(history, rules);
                 }
                 await db.SaveChangesAsync(cancellationToken);
