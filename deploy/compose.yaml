@@ -74,6 +74,8 @@ services:
       ObjectStorage__Minio__IsEnabled: "false"
     ports:
       - "127.0.0.1:${ZEYE_API_PORT:-5087}:5078"
+      # 在线配置只控制监听；发布端口需保持与页面设置一致。
+      - "${ZEYE_FUSION_UDP_BIND:-127.0.0.1}:${ZEYE_FUSION_UDP_PORT:-47651}:${ZEYE_FUSION_UDP_PORT:-47651}/udp"
     volumes:
       - host_logs:/app/logs
       - host_backups:/app/backup-artifacts

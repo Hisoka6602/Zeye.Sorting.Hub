@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.Http.Metadata;
@@ -15,9 +16,12 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Zeye.Sorting.Hub.Application.Abstractions.Integrations;
 using Zeye.Sorting.Hub.Contracts.Models.Fusion;
+using Zeye.Sorting.Hub.Contracts.Models.Realtime;
 using Zeye.Sorting.Hub.Host.Extensions;
 using Zeye.Sorting.Hub.Host.Hubs;
+using Zeye.Sorting.Hub.Host.Middleware;
 using Zeye.Sorting.Hub.Host.Queries;
+using Zeye.Sorting.Hub.Host.Routing;
 using Zeye.Sorting.Hub.Infrastructure.Integrations.Fusion;
 
 namespace Zeye.Sorting.Hub.Host.Tests;
@@ -163,15 +167,100 @@ public sealed class FusionApiTests {
             await Task.Delay(20, deadline.Token);
     }
 
+
+    /// <summary>管理员在线登记与密钥轮换通过生产路由，公共读取和无租约探测不泄露密钥。</summary>
+    [Fact]
+    public async Task OnlineDirectoryUsesProtectedRoutesAndProbeDoesNotTakeLease() {
+        await using var env = new FusionIngressTestEnvironment(); await env.InitializeAsync();
+        await using var app = await CreateAsync(env);
+        using var client = app.GetTestClient();
+        const string path = "/api/operations/configuration/fusion";
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync(path)).StatusCode);
+        client.DefaultRequestHeaders.Add("X-Zeye-Client", "web");
+        AccessApiTests.UseCookie(client, await client.PostAsJsonAsync("/api/access/bootstrap", new { username = "admin", name = "管理员", password = "test-admin-password", bootstrapKey = "test-bootstrap-key" }));
+        var view = (await client.GetFromJsonAsync<FusionConfigurationView>(path))!;
+        var created = await client.PostAsJsonAsync(path + "/sources", new FusionSourceChange(view.Revision, new("fusion-ui-02", "第二工作台", true, "default", "default", "line-01", "", "", "Asia/Shanghai")));
+        created.EnsureSuccessStatusCode();
+        Assert.Contains("no-store", created.Headers.CacheControl!.ToString());
+        var pairing = (await created.Content.ReadFromJsonAsync<FusionPairingResult>())!;
+        var publicJson = await client.GetStringAsync(path);
+        Assert.DoesNotContain(pairing.Pairing.MachineApiKey, publicJson);
+        Assert.DoesNotContain("machineApiKey", publicJson);
+        var stale = await client.PostAsJsonAsync(path + "/sources/fusion-ui-02/rotate-key", new FusionKeyRotation(view.Revision));
+        Assert.Equal(HttpStatusCode.Conflict, stale.StatusCode);
+        await using var machine = Connection(app, HttpTransportType.LongPolling);
+        await machine.StartAsync();
+        var check = await machine.InvokeAsync<FusionConfigurationCheck>("CheckFusionConfiguration", new FusionConfigurationProbe("fusion-line-01", "sorting-hub", "line-01", "Asia/Shanghai", "", ""));
+        Assert.True(check.Matched);
+        var directory = (await client.GetFromJsonAsync<FusionConfigurationView>(path))!;
+        Assert.False(directory.Sources.Single(x => x.SourceInstanceId == "fusion-line-01").IdentityLocked);
+        var registration = await machine.InvokeAsync<FusionRegistration>("RegisterFusion", FusionIngressTestEnvironment.Hello() with { SiteCode = "", DeviceCode = "" });
+        Assert.NotEmpty(registration.LeaseId);
+        await machine.StopAsync();
+        await WaitForDisconnectAsync(env.Ingress);
+    }
+
+    /// <summary>正式配置组在实时通道初始化前注册，流式读取复用权限并及时返回无密钥的在线修改。</summary>
+    [Theory]
+    [InlineData(true, HttpTransportType.WebSockets)]
+    [InlineData(false, HttpTransportType.LongPolling)]
+    public async Task OnlineDirectorySupportsAuthenticatedRealtimeReadAndWatch(bool enforceAuthorization, HttpTransportType transport) {
+        await using var env = new FusionIngressTestEnvironment(); await env.InitializeAsync();
+        await using var app = await CreateAsync(env, enforceAuthorization);
+        using var admin = app.GetTestClient(); admin.DefaultRequestHeaders.Add("X-Zeye-Client", "web");
+        AccessApiTests.UseCookie(admin, await admin.PostAsJsonAsync("/api/access/bootstrap", new { username = "admin", name = "管理员", password = "test-admin-password", bootstrapKey = "test-bootstrap-key" }));
+        await admin.PostAsJsonAsync("/api/access/roles", new { expectedRevision = 1, name = "配置查询员", permissions = new[] { "parcels.read", "settings.read" } });
+        await admin.PostAsJsonAsync("/api/access/users", new { expectedRevision = 2, account = "viewer", name = "查询员", password = "test-viewer-password", roleId = 2 });
+        using var viewer = app.GetTestClient(); viewer.DefaultRequestHeaders.Add("X-Zeye-Client", "web");
+        AccessApiTests.UseCookie(viewer, await viewer.PostAsJsonAsync("/api/access/login", new { username = "viewer", password = "test-viewer-password" }));
+        const string path = "/api/operations/configuration/fusion";
+        await using var denied = SortingConnection(app, viewer, transport); await denied.StartAsync();
+        Assert.Equal(403, (await denied.InvokeAsync<RealtimeResponse>("Read", path)).StatusCode);
+        await using var realtime = SortingConnection(app, admin, transport); await realtime.StartAsync();
+        var result = await realtime.InvokeAsync<RealtimeResponse>("Read", path);
+        Assert.Equal(200, result.StatusCode); Assert.Equal(await admin.GetStringAsync(path), result.Json);
+        Assert.DoesNotContain("machineApiKey", result.Json); Assert.DoesNotContain(FusionIngressTestEnvironment.FirstKey, result.Json);
+        Assert.Equal(200, (await realtime.InvokeAsync<RealtimeResponse>("Read", "/api/parcels/fusion/sources")).StatusCode);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await using var stream = realtime.StreamAsync<RealtimeResponse>("Watch", path, cancellation.Token).GetAsyncEnumerator(cancellation.Token);
+        Assert.True(await stream.MoveNextAsync()); Assert.Equal(200, stream.Current.StatusCode);
+        var view = JsonSerializer.Deserialize<FusionConfigurationView>(stream.Current.Json, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        var response = await admin.PostAsJsonAsync(path + "/sources", new FusionSourceChange(view.Revision,
+            new("fusion-realtime-03", "第三工作台", true, "default", "default", "line-03", "", "", "Asia/Shanghai")));
+        response.EnsureSuccessStatusCode(); var created = (await response.Content.ReadFromJsonAsync<FusionPairingResult>())!;
+        Assert.True(await stream.MoveNextAsync()); Assert.Equal(200, stream.Current.StatusCode);
+        Assert.Contains("fusion-realtime-03", stream.Current.Json); Assert.DoesNotContain(created.Pairing.MachineApiKey, stream.Current.Json);
+        await cancellation.CancelAsync();
+    }
+
+    /// <summary>浏览器实时查询使用正式 Cookie 和端点分发，机器专用通道不参与配置管理。</summary>
+    private static HubConnection SortingConnection(WebApplication app, HttpClient client, HttpTransportType transport) => new HubConnectionBuilder()
+        .WithUrl("http://localhost/hubs/sorting", options => {
+            var cookie = client.DefaultRequestHeaders.GetValues("Cookie").Single();
+            options.Transports = transport; options.Headers["Cookie"] = cookie;
+            options.HttpMessageHandlerFactory = _ => app.GetTestServer().CreateHandler();
+            options.WebSocketFactory = async (context, token) => {
+                var socket = app.GetTestServer().CreateWebSocketClient(); socket.ConfigureRequest = request => request.Headers.Cookie = cookie;
+                return await socket.ConnectAsync(context.Uri, token);
+            };
+        }).Build();
+
     /// <summary>安装生产入口，只有后台轮询任务被移除以便逐步检查确认前后的状态。</summary>
-    private static Task<WebApplication> CreateAsync(FusionIngressTestEnvironment env, bool enforceAuthorization = true) => AccessApiTests.CreateAsync(env.Database, enforceAuthorization,
+    private static async Task<WebApplication> CreateAsync(FusionIngressTestEnvironment env, bool enforceAuthorization = true) {
+        var app = await AccessApiTests.CreateAsync(env.Database, enforceAuthorization,
         configureServices: builder => {
             builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["FusionIngestion:AllowInsecureHttp"] = "true" });
             builder.Services.AddSortingRealtime();
+            builder.Services.Configure<WebRequestAuditLogOptions>(options => options.Enabled = false);
+            builder.Services.AddSingleton(new WebRequestAuditBackgroundQueue(32, TimeSpan.FromSeconds(30)));
             builder.Services.AddFusionIngestion(builder.Configuration, env.Root);
+            builder.Services.AddSingleton<IOptions<FusionIngestionOptions>>(Microsoft.Extensions.Options.Options.Create(env.Options));
             builder.Services.RemoveAll<IHostedService>();
             builder.Services.AddSingleton<IFusionIngestionGateway>(env.Ingress);
-        }, configureRoutes: app => app.MapFusionIngestion());
+        }, configureRoutes: app => { app.UseSortingRealtime(); app.MapFusionIngestion(); app.MapFusionConfiguration(); app.MapSortingRealtime(); });
+        await app.Services.GetRequiredService<FusionConfigurationService>().InitializeAsync(default);
+        return app;
+    }
 
     /// <summary>机器请求头同时传入 HTTP 协商与真实 WebSocket，不借用浏览器 Cookie。</summary>
     private static HubConnection Connection(WebApplication app, HttpTransportType transport) => new HubConnectionBuilder()

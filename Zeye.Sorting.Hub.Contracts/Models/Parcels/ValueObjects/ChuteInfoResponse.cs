@@ -20,7 +20,13 @@ public sealed record ChuteInfoResponse {
     public required long? BackupChuteId { get; init; }
 
     /// <summary>
-    /// 落格时间。
+    /// 落格时间；尚未确认落格时为空。
     /// </summary>
-    public required DateTime LandedTime { get; init; }
+    public required DateTime? LandedTime { get; init; }
+
+    /// <summary>原始目标格口编码，保留前导零及非数字编码。</summary>
+    public string? TargetChuteCode { get; init; }
+
+    /// <summary>原始实际落格编码，保留前导零及非数字编码。</summary>
+    public string? ActualChuteCode { get; init; }
 }

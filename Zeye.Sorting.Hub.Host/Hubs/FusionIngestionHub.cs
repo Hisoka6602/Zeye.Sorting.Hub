@@ -9,7 +9,7 @@ namespace Zeye.Sorting.Hub.Host.Hubs;
 
 /// <summary>Fusion 1.0 的六个独立机器调用入口，不接受网页账号权限作为机器凭据。</summary>
 [Authorize(AuthenticationSchemes = FusionMachineAuthenticationHandler.SchemeName)]
-public sealed class FusionIngestionHub(IFusionIngestionGateway ingress, RealtimeResourceSignal changes) : Microsoft.AspNetCore.SignalR.Hub {
+public sealed class FusionIngestionHub(IFusionIngestionGateway ingress, RealtimeResourceSignal changes, Zeye.Sorting.Hub.Host.Queries.FusionConfigurationService configuration) : Microsoft.AspNetCore.SignalR.Hub {
     /// <summary>入口异常日志，错误返回不暴露异常详情或机器凭据。</summary>
     private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
     /// <summary>允许返回给机器客户端的稳定错误编码。</summary>
@@ -28,6 +28,10 @@ public sealed class FusionIngestionHub(IFusionIngestionGateway ingress, Realtime
         }
     }
     /// <summary>验证当前机器身份与登记信息，返回租约和限额。</summary>
+    public Zeye.Sorting.Hub.Host.Queries.FusionConfigurationCheck CheckFusionConfiguration(Zeye.Sorting.Hub.Host.Queries.FusionConfigurationProbe probe) =>
+        configuration.Check(Context.User!.FindFirstValue(FusionMachineAuthenticationHandler.SourceClaim)!, probe);
+
+    /// <summary>验证机器登记身份并创建正式投递租约。</summary>
     public Task<FusionRegistration> RegisterFusion(FusionHello hello) => InvokeAsync(() =>
         ingress.RegisterAsync(Context.ConnectionId, Context.User!.FindFirstValue(FusionMachineAuthenticationHandler.SourceClaim)!,
             hello ?? throw new ArgumentException("RegistrationMismatch"), Context.ConnectionAborted));

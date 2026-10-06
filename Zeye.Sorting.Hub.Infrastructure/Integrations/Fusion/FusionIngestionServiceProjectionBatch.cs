@@ -8,10 +8,12 @@ namespace Zeye.Sorting.Hub.Infrastructure.Integrations.Fusion;
 
 /// <summary>有界提交投影状态，减少逐条落盘；包裹用例已独立耐久保存。</summary>
 public sealed partial class FusionIngestionService {
+    /// <summary>使独立包裹并行有效的有界领取规模，同时低于 SQL Server 参数上限。</summary>
+    private const int ProjectionBatchSize = 512;
     /// <summary>同一认领中的成功结果一次提交；失败结果保留独立错误与重试计划。</summary>
     public async Task FinishProjectionsAsync(
         IReadOnlyList<(FusionProjectionItem Item, string? ParcelId, string? Error)> results, CancellationToken cancellationToken) {
-        if (results.Count > 50) throw new ArgumentException("投影结果批次不能超过50条。", nameof(results));
+        if (results.Count > ProjectionBatchSize) throw new ArgumentException("投影结果批次不能超过512条。", nameof(results));
         if (results.Select(result => result.Item.Key).Distinct(StringComparer.Ordinal).Count() != results.Count)
             throw new ArgumentException("投影结果不能包含重复凭据。", nameof(results));
         foreach (var group in results.GroupBy(result => result.Item.ClaimId, StringComparer.Ordinal)) {

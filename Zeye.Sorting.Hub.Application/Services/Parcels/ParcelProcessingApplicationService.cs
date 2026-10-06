@@ -6,7 +6,7 @@ using Zeye.Sorting.Hub.Domain.Repositories.Models.Results;
 namespace Zeye.Sorting.Hub.Application.Services.Parcels;
 
 /// <summary>处理事实追加与未绑定事实检索应用服务。</summary>
-public sealed class ParcelProcessingApplicationService {
+public sealed partial class ParcelProcessingApplicationService {
     /// <summary>原子处理记录仓储。</summary>
     private readonly IParcelProcessingRepository _repository;
     /// <summary>输入验证与应用异常日志。</summary>

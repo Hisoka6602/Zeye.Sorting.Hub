@@ -5,9 +5,9 @@ namespace Zeye.Sorting.Hub.Contracts.Models.Parcels.ValueObjects;
 /// </summary>
 public sealed record CommandInfoResponse {
     /// <summary>
-    /// 通信方式（枚举数值）。
+    /// 设备通信方式（枚举数值）；来源未上报时为空。
     /// </summary>
-    public required int ProtocolType { get; init; }
+    public required int? ProtocolType { get; init; }
 
     /// <summary>
     /// 协议名称。
@@ -30,9 +30,9 @@ public sealed record CommandInfoResponse {
     public required DateTime GeneratedTime { get; init; }
 
     /// <summary>
-    /// 指令作用类型（枚举数值）。
+    /// 指令作用类型（枚举数值）；来源未上报时为空。
     /// </summary>
-    public required int ActionType { get; init; }
+    public required int? ActionType { get; init; }
 
     /// <summary>
     /// 格式化说明。
@@ -43,4 +43,16 @@ public sealed record CommandInfoResponse {
     /// 指令方向（枚举数值）。
     /// </summary>
     public required int Direction { get; init; }
+
+    /// <summary>来源处理记录标识。</summary>
+    public string? RecordId { get; init; }
+
+    /// <summary>实际下发格口编码。</summary>
+    public string? DispatchedChuteCode { get; init; }
+
+    /// <summary>本次指令下发结果，未知时为空。</summary>
+    public bool? IsSuccess { get; init; }
+
+    /// <summary>本次指令执行失败说明。</summary>
+    public string? ErrorMessage { get; init; }
 }

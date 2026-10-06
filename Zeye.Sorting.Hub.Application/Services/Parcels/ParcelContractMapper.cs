@@ -26,7 +26,7 @@ internal static class ParcelContractMapper {
     /// <returns>详情合同。</returns>
     public static ParcelDetailResponse ToDetail(Parcel parcel) {
         var listItem = CreateParcelListItemResponse(BuildFrom(parcel));
-        return new ParcelDetailResponse(
+        var detail = new ParcelDetailResponse(
             listItem,
             barCodeInfos: parcel.BarCodeInfos.Select(x => new BarCodeInfoResponse {
                 BarCode = x.BarCode,
@@ -74,6 +74,8 @@ internal static class ParcelContractMapper {
                 TargetChuteId = parcel.ChuteInfo.TargetChuteId,
                 ActualChuteId = parcel.ChuteInfo.ActualChuteId,
                 BackupChuteId = parcel.ChuteInfo.BackupChuteId,
+                TargetChuteCode = parcel.TargetChuteCode,
+                ActualChuteCode = parcel.ActualChuteCode,
                 LandedTime = parcel.ChuteInfo.LandedTime
             },
             commandInfos: parcel.CommandInfos.Select(x => new CommandInfoResponse {
@@ -152,6 +154,7 @@ internal static class ParcelContractMapper {
                 BackgroundY2 = parcel.ParcelPositionInfo.BackgroundY2
             }
         ) { ProcessingRecords = parcel.ProcessingRecords.Select(ParcelProcessingContractMapper.ToResponse).ToArray() };
+        return ParcelFactDetailMapper.Complete(detail, parcel);
     }
 
     /// <summary>

@@ -20,9 +20,9 @@ public sealed record ImageInfoResponse {
     public required string CameraSerialNumber { get; init; }
 
     /// <summary>
-    /// 图片类型（枚举数值）。
+    /// 图片类型（枚举数值）；来源未上报时为空。
     /// </summary>
-    public required int ImageType { get; init; }
+    public required int? ImageType { get; init; }
 
     /// <summary>
     /// 图片相对路径。
@@ -75,7 +75,7 @@ public sealed record ImageInfoResponse {
     public string? OriginalFileName { get; init; }
 
     /// <summary>
-    /// 图片获取方式（枚举数值）。
+    /// 图片获取方式（枚举数值）；来源未上报时为空。
     /// </summary>
-    public required int CaptureType { get; init; }
+    public required int? CaptureType { get; init; }
 }

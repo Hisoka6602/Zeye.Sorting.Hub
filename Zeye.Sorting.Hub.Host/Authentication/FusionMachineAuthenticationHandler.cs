@@ -10,7 +10,7 @@ namespace Zeye.Sorting.Hub.Host.Authentication;
 /// <summary>只认证已登记来源的 Bearer 机器凭据，网页 Cookie 不能授权设备入口。</summary>
 public sealed class FusionMachineAuthenticationHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options, UrlEncoder encoder,
-    IFusionIngestionGateway ingress, IOptions<FusionIngestionOptions> fusion) : AuthenticationHandler<AuthenticationSchemeOptions>(options, Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance, encoder) {
+    IFusionIngestionGateway ingress, IOptions<FusionIngestionOptions> fusion, IFusionRuntimeConfiguration? runtime = null) : AuthenticationHandler<AuthenticationSchemeOptions>(options, Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance, encoder) {
     /// <summary>认证基类关闭默认记录器，应用仅使用 NLog 输出不含凭据的认证诊断。</summary>
     private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
     /// <summary>独立机器认证方案。</summary>
@@ -21,7 +21,7 @@ public sealed class FusionMachineAuthenticationHandler(
     protected override Task<AuthenticateResult> HandleAuthenticateAsync() {
         var source = Request.Headers["X-Fusion-SourceId"];
         var authorization = Request.Headers.Authorization;
-        if (!fusion.Value.AllowInsecureHttp && !Request.IsHttps || source.Count != 1 || authorization.Count != 1
+        if (!(runtime?.Snapshot.Options.AllowInsecureHttp ?? fusion.Value.AllowInsecureHttp) && !Request.IsHttps || source.Count != 1 || authorization.Count != 1
             || source.ToString().Length > 96 || !authorization.ToString().StartsWith("Bearer ", StringComparison.Ordinal)
             || !ingress.Authenticate(source.ToString(), authorization.ToString().Substring(7))) {
             Logger.Debug("Fusion 来源认证失败：身份无效或传输未允许。");

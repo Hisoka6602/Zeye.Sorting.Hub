@@ -42,6 +42,8 @@ Fusion 工作台通过独立的 SignalR `/hubs/fusion-ingestion` 注册、上报
 │   ├── .env.example（数据库密码与本机端口的配置模板）
 │   ├── start.ps1（部署、就绪验证、默认浏览器打开与收藏提醒）
 │   ├── publish-windows.ps1（一次发布 Windows 自包含 Host 与内置前端）
+│   ├── test-service-scripts.ps1（服务脚本语法、预演、参数边界和发布包缺失检查）
+│   ├── test-systemd-unit.sh（使用真实 systemd 解析器验证路径与生成的服务配置）
 │   ├── start.sh（Linux 部署与前端、API 就绪验证）
 │   ├── compose.yaml（独立 MySQL、Host、Web 服务及数据卷）
 │   └── README.md（启动、验证与停止说明）
@@ -148,6 +150,7 @@ Fusion 工作台通过独立的 SignalR `/hubs/fusion-ingestion` 注册、上报
 │   │       ├── GetParcelPagedQueryService.cs（Parcel 分页查询应用服务）
 │   │       ├── GetParcelCursorPagedQueryService.cs（Parcel 游标分页查询应用服务）
 │   │       ├── ParcelContractMapper.cs（Parcel 领域模型到 Contracts 模型映射器）
+│   │       ├── ParcelFactDetailMapper.cs（从已加载的来源事实与主表摘要补齐缺失详情，不新增持久化明细）
 │   │       ├── ParcelQueryRequestMapper.cs（Parcel 查询请求映射器：统一默认时间窗口与过滤模型构建）
 │   │       └── UpdateParcelStatusCommandService.cs（管理端更新包裹状态应用服务（仅支持领域允许的状态转换））
 │   ├── Utilities（应用层内部共享工具目录）
@@ -326,8 +329,15 @@ Fusion 工作台通过独立的 SignalR `/hubs/fusion-ingestion` 注册、上报
 ├── Zeye.Sorting.Hub.Host（宿主层）
 │   ├── Dockerfile（Node 前端与 .NET Host 一体化镜像构建）
 │   ├── Start-Hub.cmd（从发布目录启动 Windows 前后端程序）
+│   ├── install.bat（安装并启动 Windows 自动启动服务）
+│   ├── uninstall.bat（停止并卸载 Windows 服务，保留数据）
+│   ├── install.sh（安装并启动 Linux systemd 服务）
+│   ├── uninstall.sh（停止并卸载 Linux 服务，保留数据）
+│   ├── service.ps1（Windows 安装、更新、归属验证和停止卸载共用实现）
+│   ├── service.sh（Linux 专用账号、unit 生成、归属验证和停止卸载共用实现）
 │   ├── Extensions
-│   │   └── BundledWebApplicationExtensions.cs（同源静态前端与受限单页路由回退）
+│   │   ├── BundledWebApplicationExtensions.cs（同源静态前端与受限单页路由回退）
+│   │   └── NativeServiceHostingExtensions.cs（Windows SCM 与 Linux systemd 宿主生命周期）
 │   ├── Enums（宿主层枚举目录）
 │   │   └── MigrationFailureMode.cs（数据库迁移失败策略枚举：FailFast/Degraded，含 Description）
 │   ├── HostedServices（托管服务目录）
@@ -816,6 +826,7 @@ Zeye.Sorting.Hub.Host.Tests/
   RelationalParcelTestDatabase.cs
   ParcelCommitFailureInterceptor.cs
   FusionPersistenceTests.cs
+  ParcelFactDetailTests.cs
   FusionApiTestHost.cs
   FusionProcessingApiTests.cs
   ParcelAnalyticsTests.cs
@@ -868,6 +879,7 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 - `RelationalParcelTestDatabase.cs`：独立SQLite关系数据库测试环境。
 - `ParcelCommitFailureInterceptor.cs`：真实SQL执行后、提交前的故障注入。
 - `FusionPersistenceTests.cs`：来源身份、真实分表、去重、迟到、事务回滚及跨表查询验收。
+- `ParcelFactDetailTests.cs`：历史包裹明细补齐、量测单位、未知字段、重试保留、来源隔离及查询无写入验收。
 - `FusionApiTestHost.cs`：复用生产路由与真实关系仓储的隔离测试宿主。
 - `FusionProcessingApiTests.cs`：全部处理阶段、并发去重、HTTP冲突及无效合同验收。
 - `ParcelAnalyticsTests.cs`：真实关系分表上的日报、不同总体、晚到事实、入库周期裁剪和查询预算验收。
@@ -1050,6 +1062,7 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 - `GetParcelCursorPagedQueryService.cs`：游标分页查询 Parcel 列表应用服务（游标解码、请求校验、默认最近 24 小时时间窗口、游标结果映射）。
 - `GetAdjacentParcelsQueryService.cs`：按包裹 Id 查询邻近 Parcel 应用服务（数量归一化至 `IParcelRepository.MaxAdjacentCountPerSide`、响应映射；锚点不存在抛 KeyNotFoundException 供 Host 映射 404）。
 - `ParcelContractMapper.cs`：Parcel 领域模型/读模型到 Contracts 模型的统一映射器，避免 Host 层重复映射。
+- `ParcelFactDetailMapper.cs`：利用已加载处理记录与摘要填充缺失的条码、称重、体积、格口、接口、指令、图片和来源工作台分组；保留已有值对象，支持历史记录，无新增数据库查询或明细副本。
 - `ParcelQueryRequestMapper.cs`：Parcel 查询请求映射器，统一普通分页与游标分页的过滤条件构建和默认最近 24 小时时间窗口。
 - `CreateParcelCommandService.cs`：管理端新增包裹应用服务（复用 `ParcelCreateRequestMapper` 构建聚合，并通过 `IdempotencyGuardService` 协调幂等记录、重复请求回放、稳定错误码映射与真实写入）。
 - `UpdateParcelStatusCommandService.cs`：管理端更新包裹状态应用服务（仅支持 MarkCompleted/MarkSortingException/UpdateRequestStatus 三种领域方法，不允许任意字段修改）。
@@ -1788,12 +1801,23 @@ Zeye.Sorting.Hub.Host.Tests/
 
 执行 `./deploy/publish-windows.ps1` 即可在 `artifacts/windows-x64` 得到自包含前后端程序，完整目录复制到目标机并配置数据库、初始化密钥后运行 `Start-Hub.cmd`。页面与 API 共用默认 `5078` 端口，首次仍创建管理员，内置用户在初始化后启用。详细操作见 [部署说明](deploy/README.md)。
 
+完整发布包同时包含 `install.bat` / `uninstall.bat` 和 `install.sh` / `uninstall.sh`。Windows 使用管理员终端，Linux 使用 `sudo bash install.sh`；安装自动注册、启用并启动前后端一体化服务，重复安装更新当前服务。卸载先等待服务停止，再移除服务注册，保留配置、日志、图片和数据库。两种平台默认服务名均为 `Zeye.Sorting.Hub.Host`，支持 `--dry-run` 无副作用预演。
+
 ## 各层级与各文件作用说明（逐项）：一体化发布
 
 | 目录 | 文件 | 职责 |
 | --- | --- | --- |
 | deploy | `publish-windows.ps1` | 单次构建前端与 Windows 自包含 Host，并校验完整发布包 |
+| deploy | `test-service-scripts.ps1` | 在临时发布目录验证脚本语法、预演、错误参数及缺失前端，不修改真实服务 |
+| deploy | `test-systemd-unit.sh` | 在临时目录复用安装模板验证真实 systemd 解析及路径边界，不注册或启动服务 |
 | Zeye.Sorting.Hub.Host | `Start-Hub.cmd` | 从部署目录启动 Windows 前后端同源程序 |
+| Zeye.Sorting.Hub.Host | `install.bat` | 从当前发布包安装、更新并启动 Windows 服务 |
+| Zeye.Sorting.Hub.Host | `uninstall.bat` | 等待 Windows 服务停止后卸载注册，保留部署与业务数据 |
+| Zeye.Sorting.Hub.Host | `install.sh` | 从当前 Linux 发布包调用 systemd 安装入口 |
+| Zeye.Sorting.Hub.Host | `uninstall.sh` | 调用 Linux 服务停止及卸载入口，保留部署与业务数据 |
+| Zeye.Sorting.Hub.Host | `service.ps1` | Windows 服务归属校验、虚拟账号授权、环境持久化与受控启停共用实现 |
+| Zeye.Sorting.Hub.Host | `service.sh` | Linux 服务归属校验、专用账号、环境文件及 systemd unit 的共用实现 |
+| Zeye.Sorting.Hub.Host/Extensions | `NativeServiceHostingExtensions.cs` | 按运行平台注册服务生命周期，Windows 服务从发布目录保存相对路径文件 |
 | Zeye.Sorting.Hub.Host/Properties/PublishProfiles | `Windows-x64.pubxml` | Visual Studio / CLI 共用的 Windows x64 自包含文件夹发布配置 |
 | Zeye.Sorting.Hub.Host/Extensions | `BundledWebApplicationExtensions.cs` | 静态资源和前端深层路由回退，服务及配置文件路径保留真实响应 |
 | Zeye.Sorting.Hub.Host.Tests | `BundledWebUiTests.cs` | 页面、资源、服务端点优先级和配置文件隔离回归 |
@@ -2097,6 +2121,28 @@ Zeye.Sorting.Hub.Host.Tests/
 
 统计查询通过 `ParcelPartitionReadContext` 的 EF Core 只读映射及 LINQ，在各物理表内先过滤时间、只投影所需字段；处理事实先按表聚合，再合并少量汇总行。完成日期和迟到事实继续跨历史周期查询，不用入库周期代替事实发生周期。`PartitionMaintenanceService` 在启动和既有预建周期中检查已登记历史分表的索引，遵守建表授权和预演开关；执行前记录 DDL 与索引回滚语句，不改写业务数据。
 
+## 各层级与各文件作用说明（逐项）：异常日志落盘
+
+```text
+Zeye.Sorting.Hub.Host/Logging/
+  ExceptionLoggingFilter.cs
+  ExceptionLoggingHubFilter.cs
+  ExceptionLoggingLifetime.cs
+Zeye.Sorting.Hub.Host.Tests/
+  ExceptionLoggingTests.cs
+  ExceptionLoggingTestHub.cs
+```
+
+| 目录 | 文件 | 职责 |
+| --- | --- | --- |
+| Host/Logging | `ExceptionLoggingFilter.cs` | 保留普通日志与成功 SQL 的过滤策略，确保框架故障和 SignalR 流异常进入 NLog |
+| Host/Logging | `ExceptionLoggingHubFilter.cs` | 统一记录 Hub 调用与连接生命周期异常，保留连接编号和请求追踪，不记录方法参数 |
+| Host/Logging | `ExceptionLoggingLifetime.cs` | 启动校验实际日志目录可写，记录进程与未观察任务异常，退出前刷新队列 |
+| Host.Tests | `ExceptionLoggingTests.cs` | 生产日志配置的等级、数据库分类、队列增长、轮转、框架过滤与真实 SignalR 异常回归 |
+| Host.Tests | `ExceptionLoggingTestHub.cs` | 在普通调用和返回首个流元素后制造受控异常，供隔离测试验证日志 |
+
+异常文件位于程序所在目录的 `logs/exceptions-yyyy-MM-dd.log`；Docker 对应 `/app/logs/exceptions-yyyy-MM-dd.log`，由既有 `host_logs` 持久卷保留。应用与数据库日志继续写入同目录的 `app-*` 和 `database-*` 文件。携带异常的日志不受普通 Info 级规则限制，完整记录内部异常与堆栈；异步队列使用 Grow，突发写入不按队列容量丢弃记录。日志保持每日及 10 MiB 轮转，归档最多 30 个；同时受 `LogCleanup:RetentionDays` 清理策略约束，当前默认 2 天，可按排查窗口调整。日志目录不可写时拒绝静默启动，NLog 自身配置及写入错误输出到标准错误流。
+
 ## 各层级与各文件作用说明（逐项）：EF Core 查询与热路径元数据
 
 ```text
@@ -2126,3 +2172,83 @@ Zeye.Sorting.Hub.Host.Tests/
 业务查询与写入优先使用 EF Core 的 LINQ、`SaveChangesAsync`、`ExecuteUpdateAsync` 和 `ExecuteDeleteAsync`。报表及工作台统计不再手写跨表窄字段 SELECT；独立分表的列表查询直接使用对应 EF 模型。尚需原生语句的范围限于数据库维护、跨实体物理分表路由和精确创建间隔窗口统计，集中在基础设施实现并复用提供器映射与参数化，禁止把语句散落到页面、应用用例或高频收包逻辑。
 
 热处理不逐票读取管理配置或反复检查已预建的分表；本实例保存规则及完成建表后立即更新内存，其他实例的元数据变更由后台每分钟同步。快照仅缓存规则和目录，不缓存包裹统计结果。接收事实的确认仍在 EF Core 事务提交之后，图片存储确认仍在完整落盘及摘要校验之后；这些耐久边界不能改为提前返回成功。请求审计和业务投影继续由既有有界后台链路处理。
+
+## 各层级与各文件作用说明（逐项）：Fusion 在线配置、批量持久化与增量发布
+
+```text
+Zeye.Sorting.Hub.Application/Services/Parcels/ParcelProcessingApplicationServiceBatch.cs
+Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/
+  FusionIngestionServiceBatch.cs
+  FusionRuntimeSnapshot.cs
+  IFusionRuntimeConfiguration.cs
+Zeye.Sorting.Hub.Infrastructure/Repositories/ParcelProcessingRepositoryBatch.cs
+Zeye.Sorting.Hub.Host/HostedServices/FusionConfigurationHostedService.cs
+Zeye.Sorting.Hub.Host/Queries/
+  FusionConfigurationCheck.cs
+  FusionConfigurationProbe.cs
+  FusionConfigurationService.cs
+  FusionConfigurationView.cs
+  FusionKeyRotation.cs
+  FusionPairing.cs
+  FusionPairingResult.cs
+  FusionSettings.cs
+  FusionSettingsWrite.cs
+  FusionSourceChange.cs
+  FusionSourceView.cs
+  FusionSourceWrite.cs
+Zeye.Sorting.Hub.Host/Routing/FusionConfigurationApi.cs
+Zeye.Sorting.Hub.Host.Tests/
+  FusionBatchPersistenceTests.cs
+  FusionConfigurationTests.cs
+  FusionLegacyIdentityCollisionTests.cs
+  FusionOverlappingProjectionRepository.cs
+  FusionParcelBatchPersistenceTests.cs
+  FusionParcelBatchRecoveryTests.cs
+  FusionProjectionConcurrencyTests.cs
+  FusionTransactionGuardStrategy.cs
+Zeye.Sorting.Hub.Web/
+  scripts/publish-web-ui.mjs
+  src/data/api/fusionTypes.ts
+  src/features/access/FusionSettingsPage.tsx
+  src/features/access/fusion-settings.css
+  tests/publish-web-ui.test.mjs
+docs/Fusion在线接入配置.md
+```
+
+| 目录 | 文件 | 职责 |
+| --- | --- | --- |
+| Application/Services/Parcels | `ParcelProcessingApplicationServiceBatch.cs` | 批量处理事实的用例编排及结果映射 |
+| Infrastructure/Integrations/Fusion | `FusionIngestionServiceBatch.cs` | 同事务批量接收、去重及提交后的逐条确认 |
+| Infrastructure/Integrations/Fusion | `FusionRuntimeSnapshot.cs` | 已生效来源身份、凭据和传输限额的不可变快照 |
+| Infrastructure/Integrations/Fusion | `IFusionRuntimeConfiguration.cs` | 基础设施内部运行目录与配置快照契约 |
+| Infrastructure/Repositories | `ParcelProcessingRepositoryBatch.cs` | 批量包裹事实事务、来源身份校验及失败恢复 |
+| Host/HostedServices | `FusionConfigurationHostedService.cs` | 启动加载与后台刷新在线接入配置 |
+| Host/Queries | `FusionConfigurationCheck.cs` | 连接前身份及目录一致性检查合同 |
+| Host/Queries | `FusionConfigurationProbe.cs` | 无租约配置探测和匹配结果 |
+| Host/Queries | `FusionConfigurationService.cs` | 配置版本、工作台目录及加密凭据的管理接口 |
+| Host/Queries | `FusionConfigurationView.cs` | 不包含机器密钥的公开配置视图 |
+| Host/Queries | `FusionKeyRotation.cs` | 携带预期版本的机器密钥轮换请求 |
+| Host/Queries | `FusionPairing.cs` | 一次性工作台配对信息合同 |
+| Host/Queries | `FusionPairingResult.cs` | 配对信息与已提交配置版本结果 |
+| Host/Queries | `FusionSettings.cs` | 接入开关、发现及传输额度合同 |
+| Host/Queries | `FusionSettingsWrite.cs` | 携带预期版本的接入设置保存请求 |
+| Host/Queries | `FusionSourceChange.cs` | 携带预期版本的工作台变更请求 |
+| Host/Queries | `FusionSourceView.cs` | 不包含凭据的来源工作台视图 |
+| Host/Queries | `FusionSourceWrite.cs` | 工作台登记与编辑字段合同 |
+| Host/Routing | `FusionConfigurationApi.cs` | 带权限、版本校验及中文说明的在线接入管理路由 |
+| Host.Tests | `FusionBatchPersistenceTests.cs` | 批次确认、重放、事务故障和图片归属回归 |
+| Host.Tests | `FusionConfigurationTests.cs` | 加密凭据、配置重启、轮换、停用和版本冲突回归 |
+| Host.Tests | `FusionLegacyIdentityCollisionTests.cs` | 旧编号身份碰撞与输入隔离回归 |
+| Host.Tests | `FusionOverlappingProjectionRepository.cs` | 并发投影窗口及受控重叠的测试仓储 |
+| Host.Tests | `FusionParcelBatchPersistenceTests.cs` | 批量包裹处理和多周期持久化回归 |
+| Host.Tests | `FusionParcelBatchRecoveryTests.cs` | 提交故障后的精确确认与批次恢复回归 |
+| Host.Tests | `FusionProjectionConcurrencyTests.cs` | 投影并发度、批次认领及有界处理回归 |
+| Host.Tests | `FusionTransactionGuardStrategy.cs` | 真实事务边界和提交失败的测试执行策略 |
+| Web/scripts | `publish-web-ui.mjs` | 按内容校验依赖与产物，增量构建及损坏修复 |
+| Web/src/data/api | `fusionTypes.ts` | 在线配置、来源状态与配对的前端合同 |
+| Web/src/features/access | `FusionSettingsPage.tsx` | 工作台登记、配对、停用及轮换的配置页面 |
+| Web/src/features/access | `fusion-settings.css` | 在线接入表单、工作台列表与窄屏布局样式 |
+| Web/tests | `publish-web-ui.test.mjs` | 内容变化、损坏资源、依赖恢复和增量发布回归 |
+| docs | `Fusion在线接入配置.md` | 多工作台接入、配对、网络及凭据备份说明 |
+
+在线接入操作说明见 [Fusion 在线接入配置](docs/Fusion在线接入配置.md)。前端增量发布仍检查完整资源指纹，源码或产物变化会重建；首次构建需要 Node/npm，目标服务器只运行发布后的 Host。

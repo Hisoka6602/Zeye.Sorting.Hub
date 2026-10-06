@@ -30,19 +30,21 @@ public sealed class FusionProjectionChunkTests {
         }
     }
 
-    /// <summary>最多认领50条，其他工作者可取得剩余事实且不会重复取得已认领键。</summary>
+    /// <summary>最多认领512条，其他工作者可取得剩余事实且不会重复取得已认领键。</summary>
     [Fact]
     public async Task ClaimLimitLeavesRemainingKeysAvailable() {
         await using var env = new FusionIngressTestEnvironment(); await env.InitializeAsync();
         var lease = await env.Ingress.RegisterAsync("a", "fusion-line-01", FusionIngressTestEnvironment.Hello(), default);
-        var fifty = Enumerable.Range(1, 50).Select(index => FusionIngressTestEnvironment.Fact("dws.received", index, null)).ToArray();
-        await env.Ingress.PublishAsync("a", FusionIngressTestEnvironment.Batch(lease, fifty), default);
-        await env.Ingress.PublishAsync("a", FusionIngressTestEnvironment.Batch(lease, FusionIngressTestEnvironment.Fact("dws.received", 51, null)), default);
+        var facts = Enumerable.Range(1, 513).Select(index => FusionIngressTestEnvironment.Fact("dws.received", index, null)).ToArray();
+        foreach (var chunk in facts.Chunk(50))
+            await env.Ingress.PublishAsync("a", FusionIngressTestEnvironment.Batch(lease, chunk), default);
         var first = await env.Ingress.ClaimProjectionsAsync(default);
         var second = await env.NewIngress().ClaimProjectionsAsync(default);
-        Assert.Equal(50, first.Count); Assert.Single(second);
-        Assert.Equal(51, first.Concat(second).Select(item => item.Key).Distinct().Count());
+        Assert.Equal(512, first.Count); Assert.Single(second);
+        Assert.Equal(513, first.Concat(second).Select(item => item.Key).Distinct().Count());
         Assert.Empty(await env.NewIngress().ClaimProjectionsAsync(default));
+        await Assert.ThrowsAsync<ArgumentException>(() => env.Ingress.FinishProjectionsAsync(
+            first.Concat(second).Select(item => (item, (string?)null, (string?)null)).ToArray(), default));
         await env.Ingress.FinishProjectionsAsync(first.Select(item => (item, (string?)null, (string?)null)).ToArray(), default);
         await env.Ingress.FinishProjectionsAsync(second.Select(item => (item, (string?)null, (string?)null)).ToArray(), default);
         await using var db = await env.Database.Factory.CreateDbContextAsync();

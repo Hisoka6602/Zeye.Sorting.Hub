@@ -38,13 +38,74 @@ $env:Persistence__Sharding__Prebuild__DryRun = 'false'
 
 首次运行仍需通过页面创建首个管理员，完成后才启用内置超级用户。仅剩内置账号、没有普通成员时，登录页重新提示创建管理员，仍需部署初始化密钥；已有普通成员时不能重复初始化。内置账号不显示在成员列表中，也不计入角色成员数。接口权限和清理密码确认流程保持生效。配置、账号及数据库不放在公开的 `wwwroot` 中；升级时先发布到新的输出目录，再保留目标机部署配置、日志、备份及数据库。
 
-脚本可用 `-OutputDirectory 'D:\Publish\SortingHub'` 改变输出目录；已安装正确前端依赖时可用 `-SkipDependencyRestore` 跳过 `npm ci`，前端构建仍会执行。Visual Studio 可选择 `Windows-x64` 文件夹发布配置，CLI 等价命令如下：
+脚本可用 `-OutputDirectory 'D:\Publish\SortingHub'` 改变输出目录。原生发布默认按内容增量处理：依赖声明、锁文件、npm 配置或 Node 平台变化时才恢复依赖；源码、静态资源、TypeScript/Vite 配置、构建脚本或 `VITE_*` 环境变化时才重建前端。输入与全部输出的 SHA-256 均匹配时复用构建，每次仍将完整前端纳入发布包，并再次完整复制到 `wwwroot`，修复与源文件大小和时间戳相同的内容损坏。构建目录缺失或损坏的资源自动重建，失败的构建不能被缓存。缓存元数据保存在 `artifacts/web-publish`，不会进入公开的 `wwwroot`；并发发布共用锁，避免同时重装依赖。
+
+依赖恢复优先使用 `artifacts/npm-publish-cache` 的离线缓存；缓存不足时尝试官方源，失败后使用备用源（默认 `https://registry.npmmirror.com/`）。版本与完整性仍按原锁文件校验，不修改锁文件、系统 DNS 或全局 npm 配置，不关闭 HTTPS 证书校验。联网请求超时 15 秒、无重复请求，每轮安装最多 90 秒，构建最多 180 秒，每 15 秒输出阶段进度。
+
+`-ForceWebUiBuild` 可强制构建；`-ForceWebDependencyRestore` 可强制恢复依赖并构建。`-WebNpmRegistry` / `-WebNpmFallbackRegistry` 可指定 HTTPS 主源和备用源，备用源设为 `none` 可关闭。`-SkipDependencyRestore` 禁止自动安装；需要重建时必须已安装与锁文件匹配的完整依赖，否则明确失败。Visual Studio 可选择 `Windows-x64` 文件夹发布配置，CLI 等价命令如下：
 
 ```powershell
 dotnet publish Zeye.Sorting.Hub.Host/Zeye.Sorting.Hub.Host.csproj -p:PublishProfile=Windows-x64 -o artifacts/windows-x64
 ```
 
+直接使用 `dotnet publish` 时，对应参数为 `-p:ForceWebUiBuild=true`、`-p:ForceWebDependencyRestore=true`、`-p:WebNpmRegistry=https://...`、`-p:WebNpmFallbackRegistry=https://...`（或 `none`），以及 `-p:RestoreWebDependencies=false`。
+
 Linux 同样默认打包前端：`dotnet publish Zeye.Sorting.Hub.Host -c Release -r linux-x64 --self-contained true -o artifacts/linux-x64`，部署目录完整复制后执行 `chmod +x Zeye.Sorting.Hub.Host`，再运行 `./Zeye.Sorting.Hub.Host`。目标机仍需操作系统要求的原生依赖和可用数据库；运行用户应对发布目录拥有写入权限，以保存日志、会话密钥和治理文件。普通 `dotnet build` / `dotnet test` 不触发 npm；仅发布时构建前端。显式 `-p:BundleWebUi=false` 可保留纯 API 发布能力。
+
+## Windows / Linux 服务安装与卸载
+
+服务脚本随完整发布包交付，在发布目录使用；源码目录不能直接安装服务。前端 `wwwroot` 与后端 Host 由同一个服务提供，不需要另行注册前端。安装前先配置可用数据库、初始化密钥及现有建表策略，部署目录应置于目标账号能够访问的位置，Linux 建议 `/opt/zeye/sorting-hub`。
+
+Windows 发布仍执行 `./deploy/publish-windows.ps1`，在目标机的管理员终端运行：
+
+```bat
+install.bat
+uninstall.bat
+```
+
+`install.bat` 注册延迟自动启动服务，使用专用虚拟账号 `NT SERVICE\Zeye.Sorting.Hub.Host`，授权其读写本发布目录，启动后验证服务保持运行。重复安装先停止再更新并启动服务。PowerShell 当前进程中显式设置的 `*__*` 配置变量以及 `ASPNETCORE_*` / `DOTNET_*` 会保存到该服务的注册表 `Environment`，已有配置继续保留；变量值不输出到安装日志。也可直接维护发布目录的 `appsettings.Production.json`。不需要配置管理员密码或默认使用 LocalSystem。
+
+Linux 发布和安装：
+
+```sh
+dotnet publish Zeye.Sorting.Hub.Host -c Release -r linux-x64 --self-contained true -o artifacts/linux-x64
+# 将整个目录复制到目标主机，并先配置 appsettings.Production.json。
+cd /opt/zeye/sorting-hub
+sudo bash install.sh
+sudo bash uninstall.sh
+```
+
+`install.sh` 创建专用 `zeye-hub` 用户与组，发布目录及文件归该账号所有，安装 `/etc/systemd/system/Zeye.Sorting.Hub.Host.service` 并启用开机启动。服务使用 `Type=notify` 等待 Host 就绪，工作目录固定为发布目录，并在意外退出后自动重启。目标系统需要运行 systemd、具备 `useradd` / `groupadd` 等标准管理工具及 .NET 所需原生依赖。自定义到发布目录之外的备份、图片等存储路径，需要事先授权服务账号写入。
+
+发布目录支持中文、空格、美元及百分号；systemd 不支持可执行文件路径中的引号和反斜线，安装预检会提前拒绝这类目录。运行 `bash deploy/test-systemd-unit.sh` 可使用真实 systemd 解析器复验生成的 unit，测试不注册服务。
+
+Linux 的持久化环境变量文件默认 `/etc/default/Zeye.Sorting.Hub.Host`，首次安装自动创建，权限为 `600`；填入实际配置后重新执行安装或重启服务。Linux 不自动复制当前 shell 环境到服务，环境文件格式为 `配置名="值"`，也可使用 `appsettings.Production.json`。安装保留既有环境文件。正常服务管理与诊断示例：
+
+```sh
+sudo systemctl status Zeye.Sorting.Hub.Host
+sudo systemctl restart Zeye.Sorting.Hub.Host
+sudo journalctl -u Zeye.Sorting.Hub.Host -n 100 --no-pager
+```
+
+两个卸载脚本先等待服务停止，再移除服务注册或 unit；停止失败不会继续删除注册。卸载保留发布文件、环境配置、专用账号、日志、图片、备份和数据库，不执行业务数据清理。重复卸载返回成功。同名服务若属于不同发布目录，脚本拒绝覆盖或卸载；升级到新目录应先从旧目录卸载，再从新目录安装。
+
+Linux 的自有 unit 即使配置损坏，只要确认处于未运行状态且没有宿主进程，也可停止卸载或修正后重新安装。
+
+可用 `install.bat --dry-run`、`uninstall.bat --dry-run` 或 `bash install.sh --dry-run`、`bash uninstall.sh --dry-run` 无副作用预演，预演不注册账号或服务，也不启动程序。安装过程失败返回非零退出码，不显示成功；已创建的本项目注册保留，便于修正配置后重新安装。
+
+| 环境变量 | 范围与默认值 |
+| --- | --- |
+| `ZEYE_SERVICE_NAME` | 1～80 个字母、数字、点、下划线或连字符，首字符为字母或数字；默认 `Zeye.Sorting.Hub.Host`，安装及卸载需一致 |
+| `ZEYE_SERVICE_DISPLAY_NAME` | Windows 显示名称，默认 `Zeye Sorting Hub` |
+| `ZEYE_SERVICE_TIMEOUT_SECONDS` | 30～900 的整数秒数，默认 180，用于等待启动、停止或就绪 |
+| `ZEYE_SERVICE_DRY_RUN` | `1` / `true` / `yes` / `on` 启用预演，默认关闭 |
+| `ZEYE_SERVICE_HEALTH_URL` | 可选 HTTP / HTTPS 就绪地址，如 `http://127.0.0.1:5078/health/ready`；填写后安装须等到响应 200，未填写则仅检查原生服务启动状态 |
+| `ZEYE_SERVICE_USER` / `ZEYE_SERVICE_GROUP` | Linux 本地账号与组名，默认 `zeye-hub`；允许 1～32 个小写字母、数字、下划线或连字符，首字符为小写字母或下划线 |
+| `ZEYE_SERVICE_ENV_FILE` | Linux 环境文件绝对路径，默认 `/etc/default/Zeye.Sorting.Hub.Host`，不能使用符号链接 |
+
+多实例需要不同服务名、独立发布目录与监听端口；数据库及 Fusion 来源配置继续按业务部署规划设置。脚本不会更改已有账号初始化、密码确认、接口权限或数据库危险操作规则。
+
+构建机可执行 `./deploy/test-service-scripts.ps1` 验证安装脚本语法、预演及错误输入，不操作真实服务。Windows 默认使用 Git Bash，可用 `-BashExecutable '完整 Bash 路径'` 指定环境。
 
 ## Docker 部署
 

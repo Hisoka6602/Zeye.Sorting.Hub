@@ -26,7 +26,7 @@ export const navigationItems: NavItem[] = [
   { key: '/rules', className: 'nav-root-rules', icon: icon('rules'), label: '规则管理' },
   { key: '/analytics', className: 'nav-root-analytics', icon: icon('analytics'), label: '分析报表' },
   { key: 'system', className: 'nav-root-system', icon: icon('system'), label: '系统管理', children: [
-    { key: '/access', label: '账号与权限' }, { key: '/governance/backup', label: '备份与恢复' }, { key: '/settings', label: '系统配置' },
+    { key: '/access', label: '账号与权限' }, { key: '/governance/backup', label: '备份与恢复' }, { key: '/settings', label: '系统配置' }, { key: '/settings/fusion', label: 'Fusion 接入' },
   ] },
   { key: '/help', className: 'nav-root-help', icon: icon('guide'), label: '操作指南' },
 ];
@@ -53,6 +53,7 @@ const crumbMap: Record<string, [string, string, string]> = {
   '/help': ['操作指南', '/help', '使用帮助'],
   '/access': ['系统管理', '/access', '账号与权限'],
   '/settings': ['系统管理', '/access', '系统配置'],
+  '/settings/fusion': ['系统管理', '/settings', 'Fusion 接入'],
   '/operations/live': ['运行态势', '/operations/live', '实时运行'],
   '/rules': ['规则管理', '/rules', '规则列表'],
   '/analytics': ['分析报表', '/analytics', '运营概览'],

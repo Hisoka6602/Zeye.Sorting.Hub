@@ -19,9 +19,12 @@ public static class FusionIngestionExtensions {
     /// <summary>注册机器认证、耐久接收实现及有界投影任务。</summary>
     public static IServiceCollection AddFusionIngestion(this IServiceCollection services, IConfiguration configuration, string contentRoot) {
         services.Configure<FusionIngestionOptions>(configuration.GetSection("FusionIngestion"));
+        services.AddSingleton<Zeye.Sorting.Hub.Host.Queries.FusionConfigurationService>();
+        services.AddSingleton<IFusionRuntimeConfiguration>(p => p.GetRequiredService<Zeye.Sorting.Hub.Host.Queries.FusionConfigurationService>());
+        services.AddHostedService<FusionConfigurationHostedService>();
         services.AddSingleton<IFusionIngestionGateway>(provider => new FusionIngestionService(
             provider.GetRequiredService<IDbContextFactory<SortingHubDbContext>>(),
-            provider.GetRequiredService<IOptions<FusionIngestionOptions>>(), contentRoot));
+            provider.GetRequiredService<IOptions<FusionIngestionOptions>>(), contentRoot, provider.GetRequiredService<IFusionRuntimeConfiguration>()));
         services.AddSingleton<IFusionDiscoveryService, FusionDiscoveryService>();
         services.AddScoped<FusionProjectionService>();
         services.AddAuthentication().AddScheme<AuthenticationSchemeOptions, FusionMachineAuthenticationHandler>(FusionMachineAuthenticationHandler.SchemeName, _ => { });

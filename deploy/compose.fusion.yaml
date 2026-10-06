@@ -9,5 +9,4 @@ services:
         read_only: true
         bind:
           create_host_path: false
-    ports:
-      - "${ZEYE_FUSION_UDP_BIND:-127.0.0.1}:47651:47651/udp"
+    # 主 Compose 已发布独立发现端口；本覆盖文件仅供首次导入部署目录。

@@ -8,7 +8,7 @@ internal static partial class RealtimeReadPolicy {
     private static readonly HashSet<string> Paths = new(StringComparer.Ordinal) {
         "/api/parcels", "/api/parcels/cursor", "/api/parcels/analytics", "/api/parcels/adjacent", "/api/parcels/processing-records/unbound",
         "/api/data-governance/archive-tasks", "/api/diagnostics/slow-queries", "/api/audit/web-requests",
-        "/api/operations/partitions", "/api/operations/configuration", "/api/operations/configuration/policy",
+        "/api/operations/partitions", "/api/operations/configuration", "/api/operations/configuration/policy", "/api/operations/configuration/fusion",
         "/api/operations/rules/parcel", "/api/operations/rules/exception", "/api/operations/backup", "/api/operations/backup/artifacts",
         "/health/live", "/health/ready", "/health/deep", "/api/parcels/fusion/sources", "/api/parcels/workbench"
     };

@@ -16,9 +16,15 @@ public sealed partial class FusionIngestionService : IFusionIngestionGateway {
     /// <summary>数据库上下文工厂。</summary>
     private readonly IDbContextFactory<SortingHubDbContext> _factory;
     /// <summary>启动时验证的接收参数。</summary>
-    private readonly FusionIngestionOptions _options;
+    private readonly FusionIngestionOptions _startupOptions;
+    /// <summary>运行时在线接入目录的快照来源。</summary>
+    private readonly IFusionRuntimeConfiguration? _runtime;
+    /// <summary>获取当前有效的接入限额和服务开关。</summary>
+    private FusionIngestionOptions _options => _runtime?.Snapshot.Options ?? _startupOptions;
     /// <summary>不可由来源覆盖的登记目录。</summary>
-    private readonly IReadOnlyDictionary<string, FusionSourceOptions> _sources;
+    private readonly IReadOnlyDictionary<string, FusionSourceOptions> _startupSources;
+    /// <summary>获取当前启停及凭据版本一致的工作台目录。</summary>
+    private IReadOnlyDictionary<string, FusionSourceOptions> _sources => _runtime?.Snapshot.Sources ?? _startupSources;
     /// <summary>当前进程身份，租约只能由持有者释放。</summary>
     private readonly string _serverId = Guid.NewGuid().ToString("N");
     /// <summary>机器连接的有界身份缓存。</summary>
@@ -33,8 +39,8 @@ public sealed partial class FusionIngestionService : IFusionIngestionGateway {
     private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
 
     /// <summary>验证有界参数及独立机器身份，文件目录只由部署配置确定。</summary>
-    public FusionIngestionService(IDbContextFactory<SortingHubDbContext> factory, IOptions<FusionIngestionOptions> options, string contentRoot) {
-        _factory = factory; _options = options.Value;
+    public FusionIngestionService(IDbContextFactory<SortingHubDbContext> factory, IOptions<FusionIngestionOptions> options, string contentRoot, IFusionRuntimeConfiguration? runtime = null) {
+        _factory = factory; _startupOptions = options.Value; _runtime = runtime;
         if (!FusionProtocol.IsIdentity(_options.HubId) || _options.MaxBatchRecords is < 1 or > 100
             || _options.MaxBatchBytes is < 16384 or > 524288 || _options.MaxImageChunkBytes is < 1024 or > 65536
             || _options.MaxImageBytes is < 1 or > 134217728 || _options.MaxPendingImagesPerSource is < 1 or > 1000
@@ -54,21 +60,27 @@ public sealed partial class FusionIngestionService : IFusionIngestionGateway {
                 throw new ArgumentException("InvalidFusionSourceConfiguration");
             TimeZoneInfo.FindSystemTimeZoneById(source.TimeZoneId);
         }
-        _sources = sources.ToDictionary(s => s.SourceInstanceId, StringComparer.Ordinal);
+        _startupSources = sources.ToDictionary(s => s.SourceInstanceId, StringComparer.Ordinal);
         _imageDirectory = Path.GetFullPath(_options.ImageDirectory, contentRoot);
         if (_imageDirectory.Equals(Path.Combine(contentRoot, "logs"), StringComparison.OrdinalIgnoreCase)
             || _imageDirectory.StartsWith(Path.Combine(contentRoot, "logs") + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
             throw new ArgumentException("ImageDirectoryCannotUseLogDirectory");
     }
 
-    /// <summary>哈希后固定时间比较登记来源的独立密钥；未登记来源永不回退网页认证。</summary>
+    /// <summary>统一协议可选编码的空字符串与空值。</summary>
+    private static string? NullOptional(string? value) => string.IsNullOrEmpty(value) ? null : value;
+
+    /// <summary>按当前来源目录和独立密钥进行固定时间认证。</summary>
     public bool Authenticate(string sourceInstanceId, string credential) => _options.IsEnabled && credential.Length is >= 32 and <= 256
-        && _sources.TryGetValue(sourceInstanceId, out var source)
+        && _sources.TryGetValue(sourceInstanceId, out var source) && source.Enabled
         && CryptographicOperations.FixedTimeEquals(SHA256.HashData(Encoding.UTF8.GetBytes(credential)), SHA256.HashData(Encoding.UTF8.GetBytes(source.MachineApiKey)));
 
     /// <summary>从当前连接读取租约，所有业务方法及上传身份共享同一来源边界。</summary>
     private FusionConnectionLease Connection(string connectionId, string? source = null, string? journal = null, string? leaseId = null) {
-        if (!_connections.TryGetValue(connectionId, out var connection) || connection.ExpiresAt <= DateTime.Now
+        if (!_connections.TryGetValue(connectionId, out var connection) || !_options.IsEnabled
+            || !_sources.TryGetValue(connection.Source.SourceInstanceId, out var currentSource) || !currentSource.Enabled
+            || currentSource.SecurityStamp != connection.Source.SecurityStamp || currentSource.MachineApiKey != connection.Source.MachineApiKey
+            || connection.ExpiresAt <= DateTime.Now
             || source is not null && source != connection.Source.SourceInstanceId
             || journal is not null && journal != connection.JournalId || leaseId is not null && leaseId != connection.LeaseId)
             throw new InvalidOperationException("InvalidLease");
@@ -86,12 +98,12 @@ public sealed partial class FusionIngestionService : IFusionIngestionGateway {
     /// <summary>注册来源元数据，数据库唯一来源主键和并发版本共同防止克隆部署。</summary>
     public Task<FusionRegistration> RegisterAsync(string connectionId, string authenticatedSource, FusionHello hello, CancellationToken cancellationToken) =>
         LockedAsync(authenticatedSource, async () => {
-            if (!_options.IsEnabled || !_sources.TryGetValue(authenticatedSource, out var source) || hello.SourceInstanceId != authenticatedSource
+            if (!_options.IsEnabled || !_sources.TryGetValue(authenticatedSource, out var source) || !source.Enabled || hello.SourceInstanceId != authenticatedSource
                 || hello.ProtocolVersion != "1.0" || hello.HubId != _options.HubId || !FusionProtocol.IsHex(hello.JournalId, 32)
                 || !FusionProtocol.IsHex(hello.SourceRunId, 32) || !FusionProtocol.IsHex(hello.ProducerSessionId, 32)
                 || string.IsNullOrEmpty(hello.ProducerVersion) || hello.ProducerVersion.Length > 256
                 || hello.TimeZoneId != source.TimeZoneId || hello.LineId != source.LineId
-                || hello.SiteCode != source.SiteCode || hello.DeviceCode != source.DeviceCode) throw new ArgumentException("RegistrationMismatch");
+                || NullOptional(hello.SiteCode) != NullOptional(source.SiteCode) || NullOptional(hello.DeviceCode) != NullOptional(source.DeviceCode)) throw new ArgumentException("RegistrationMismatch");
             if (_connections.TryGetValue(connectionId, out var already)) {
                 if (already.Source.SourceInstanceId != authenticatedSource || already.JournalId != hello.JournalId) throw new InvalidOperationException("InvalidLease");
                 Connection(connectionId);
@@ -161,7 +173,7 @@ public sealed partial class FusionIngestionService : IFusionIngestionGateway {
             leases.TryGetValue(source.SourceInstanceId, out var lease); current.TryGetValue(source.SourceInstanceId, out var report);
             return new FusionSourceStatus(source.SourceInstanceId, source.WorkstationName.Length > 0 ? source.WorkstationName : source.SourceInstanceId,
                 _options.HubId, source.TenantId, source.StoragePartitionId, source.LineId, source.SiteCode, source.DeviceCode, lease?.JournalId,
-                _options.IsEnabled && lease is { ConnectionId.Length: > 0 } && lease.ExpiresAt > DateTime.Now, lease?.LastSeenAt,
+                _options.IsEnabled && source.Enabled && lease is { ConnectionId.Length: > 0 } && lease.ExpiresAt > DateTime.Now, lease?.LastSeenAt,
                 report?.PendingFacts ?? 0, report?.RejectedFacts ?? 0, report?.PendingImages ?? 0,
                 report?.DroppedUnacknowledgedFacts ?? 0, report?.DroppedUnacknowledgedImages ?? 0,
                 report?.ProtectUnacknowledgedData ?? false, report?.RetainedBytes ?? 0);

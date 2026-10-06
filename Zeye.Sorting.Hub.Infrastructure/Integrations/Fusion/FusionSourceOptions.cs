@@ -2,6 +2,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.Integrations.Fusion;
 
 /// <summary>由 Hub 登记的单个工作台身份及业务归属。</summary>
 public sealed class FusionSourceOptions {
+    /// <summary>停用来源立即拒绝认证和既有租约。</summary>
+    public bool Enabled { get; set; } = true;
+    /// <summary>加密目录中的凭据代数，不出现在公开快照。</summary>
+    public string SecurityStamp { get; set; } = "";
     /// <summary>稳定来源编码；1至96个字母、数字、点、下划线或短横线，区分大小写。</summary>
     public string SourceInstanceId { get; set; } = "";
     /// <summary>独立高熵机器密钥；32至256个字符，不返回给前端。</summary>

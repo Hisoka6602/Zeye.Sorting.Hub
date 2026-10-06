@@ -17,22 +17,7 @@ public sealed partial class FusionIngestionService {
                 || batch.Records.Count is < 1 || batch.Records.Count > _options.MaxBatchRecords
                 || JsonSerializer.SerializeToUtf8Bytes(batch, FusionProtocol.Json).Length > _options.MaxBatchBytes)
                 throw new ArgumentException("InvalidBatchLimits");
-            var receipts = new List<HubFactReceipt>(batch.Records.Count);
-            foreach (var envelope in batch.Records) {
-                try {
-                    if (envelope is null) throw new ArgumentException("InvalidEnvelope");
-                    receipts.Add(await StoreFactAsync(connection, envelope, cancellationToken));
-                }
-                catch (Exception exception) when (exception is ArgumentException or JsonException or FormatException or OverflowException) {
-                    Logger.Warn(exception, "Fusion 事实输入被拒绝，Source={Source}", batch.SourceInstanceId);
-                    receipts.Add(new(envelope?.RecordId ?? "", envelope?.SourceSequence ?? "", envelope?.BodySha256 ?? "", "rejected", "InvalidFact"));
-                }
-                catch (Exception exception) when (exception is not OperationCanceledException) {
-                    Logger.Error(exception, "Fusion 事实尚未完成耐久确认，Source={Source}", batch.SourceInstanceId);
-                    receipts.Add(new(envelope?.RecordId ?? "", envelope?.SourceSequence ?? "", envelope?.BodySha256 ?? "", "retryable", "PersistenceUnavailable"));
-                }
-            }
-            return new HubBatchReceipt(_options.HubId, batch.SourceInstanceId, batch.JournalId, batch.BatchId, receipts);
+            return await StoreFactBatchAsync(connection, batch, cancellationToken);
         }, cancellationToken);
 
     /// <summary>独立事实和序号唯一键，接收原文与投影任务在同一事务提交。</summary>
@@ -92,7 +77,7 @@ public sealed partial class FusionIngestionService {
         var keys = await db.Set<FusionFactReceipt>().AsNoTracking().Where(x => x.ProjectionState != "complete" && x.NextProjectionAt <= now
             && (x.ProjectionClaimUntil == null || x.ProjectionClaimUntil <= now))
             .OrderBy(x => x.ReceivedAt).ThenBy(x => x.SourceSequence).ThenBy(x => x.Key)
-            .Select(x => x.Key).Take(50).ToArrayAsync(cancellationToken);
+            .Select(x => x.Key).Take(ProjectionBatchSize).ToArrayAsync(cancellationToken);
         if (keys.Length == 0) return [];
         var claim = Guid.NewGuid().ToString("N");
         // 一次提交认领有界候选集；条件复核仍在数据库中原子执行。
@@ -102,7 +87,7 @@ public sealed partial class FusionIngestionService {
                 .SetProperty(x => x.ProjectionClaimUntil, now.AddMinutes(2))
                 .SetProperty(x => x.ProjectionAttempts, x => x.ProjectionAttempts + 1), cancellationToken);
         if (acquired == 0) return [];
-        // 原文用例在成功认领后按主键读取，最多50条，并恢复相同队列顺序。
+        // 原文用例在成功认领后按主键读取，最多512条，并恢复相同队列顺序。
         var rows = await db.Set<FusionFactReceipt>().AsNoTracking()
             .Where(x => keys.Contains(x.Key) && x.ProjectionClaimId == claim)
             .OrderBy(x => x.ReceivedAt).ThenBy(x => x.SourceSequence).ThenBy(x => x.Key)

@@ -32,7 +32,9 @@ public static class ParcelImageCatalog {
                         if (url is null) reason = "对象存储未返回可访问的图片地址。";
                     }
                     catch (Exception exception) when (exception is not OperationCanceledException) {
-                        Logger.Warn("图片访问地址获取失败，ErrorType={ErrorType}", exception.GetType().Name);
+                        // 签名器异常消息可能带访问凭据，保留类型和堆栈用于排查，不记录消息正文。
+                        Logger.Warn("图片访问地址获取失败，ErrorType={ErrorType}, StackTrace={StackTrace}",
+                            exception.GetType().FullName, exception.StackTrace);
                         reason = "暂时无法获取图片访问地址，请重试。";
                     }
                 }

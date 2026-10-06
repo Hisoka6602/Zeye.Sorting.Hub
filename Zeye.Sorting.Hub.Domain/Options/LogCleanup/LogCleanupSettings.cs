@@ -14,7 +14,7 @@
         /// <summary>检查间隔（小时，正整数，默认 1 小时）。可填写值:大于 0 的整数；若配置 0 或负数，服务将截断至最小值 1 小时。</summary>
         public int CheckIntervalHours { get; init; } = 1;
 
-        /// <summary>日志文件所在目录路径（相对于程序工作目录，默认 "logs"）。</summary>
+        /// <summary>日志文件所在目录，可填写绝对路径或相对于程序所在目录的路径，默认 "logs"。</summary>
         public string LogDirectory { get; init; } = "logs";
     }
 }

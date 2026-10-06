@@ -21,7 +21,8 @@ public sealed class FusionProjectionHostedService(IServiceScopeFactory scopes, I
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { Logger.Debug("Fusion 事实投影已取消。"); break; }
             catch (Exception exception) { Logger.Error(exception, "Fusion 耐久事实投影或图片维护失败，将继续恢复。"); }
-            await Task.Delay(TimeSpan.FromMilliseconds(changed > 0 ? 250 : 2000), stoppingToken);
+            if (changed > 0) await Task.Yield();
+            else await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken);
         }
     }
 }

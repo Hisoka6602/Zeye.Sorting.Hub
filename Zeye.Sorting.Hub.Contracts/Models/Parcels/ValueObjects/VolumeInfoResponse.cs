@@ -5,9 +5,9 @@ namespace Zeye.Sorting.Hub.Contracts.Models.Parcels.ValueObjects;
 /// </summary>
 public sealed record VolumeInfoResponse {
     /// <summary>
-    /// 体积来源类型（枚举数值）。
+    /// 体积来源类型（枚举数值）；来源未上报时为空。
     /// </summary>
-    public required int SourceType { get; init; }
+    public required int? SourceType { get; init; }
 
     /// <summary>
     /// 原始体积字符串。
@@ -22,22 +22,22 @@ public sealed record VolumeInfoResponse {
     /// <summary>
     /// 格式化后的长度（单位：毫米）。
     /// </summary>
-    public required decimal FormattedLength { get; init; }
+    public required decimal? FormattedLength { get; init; }
 
     /// <summary>
     /// 格式化后的宽度（单位：毫米）。
     /// </summary>
-    public required decimal FormattedWidth { get; init; }
+    public required decimal? FormattedWidth { get; init; }
 
     /// <summary>
     /// 格式化后的高度（单位：毫米）。
     /// </summary>
-    public required decimal FormattedHeight { get; init; }
+    public required decimal? FormattedHeight { get; init; }
 
     /// <summary>
     /// 格式化后的体积（单位：立方厘米）。
     /// </summary>
-    public required decimal FormattedVolume { get; init; }
+    public required decimal? FormattedVolume { get; init; }
 
     /// <summary>
     /// 长度调整值（单位：毫米）。
@@ -60,9 +60,9 @@ public sealed record VolumeInfoResponse {
     public required decimal? AdjustedVolume { get; init; }
 
     /// <summary>
-    /// 测量时间。
+    /// 设备测量时间；来源未上报时为空。
     /// </summary>
-    public required DateTime MeasurementTime { get; init; }
+    public required DateTime? MeasurementTime { get; init; }
 
     /// <summary>
     /// 体积绑定时间。
