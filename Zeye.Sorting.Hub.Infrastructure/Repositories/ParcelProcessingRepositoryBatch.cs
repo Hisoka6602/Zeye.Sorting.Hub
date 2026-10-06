@@ -110,7 +110,10 @@ public sealed partial class ParcelProcessingRepository {
                 }
             }
         }
-        catch (OperationCanceledException) { throw; }
+        catch (OperationCanceledException) {
+            Logger.Debug("包裹批次写入已取消，Source={Source}, Parcel={Parcel}", first.SourceInstanceId, first.SourceParcelId);
+            throw;
+        }
         catch (Exception exception) {
             Logger.Error(exception, "包裹批次原子写入失败，Source={Source}, Parcel={Parcel}", first.SourceInstanceId, first.SourceParcelId);
             return records.Select(_ => RepositoryResult<ParcelProcessingWriteResult>.Fail("处理记录批次写入失败。", "ParcelProcessingWriteFailed")).ToArray();

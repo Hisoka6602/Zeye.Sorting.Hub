@@ -237,6 +237,7 @@ public sealed class FusionConfigurationService : IFusionRuntimeConfiguration {
                 throw new ArgumentException("工作台身份无效：编码为 1～96 位字母、数字、点、下划线或连字符。");
             try { TimeZoneInfo.FindSystemTimeZoneById(source.TimeZoneId); }
             catch (Exception exception) when (exception is TimeZoneNotFoundException or InvalidTimeZoneException or ArgumentException) {
+                Logger.Warn(exception, "Fusion 工作台的业务时区无效，Source={Source}", source.SourceInstanceId);
                 throw new ArgumentException("业务时区无效。", exception);
             }
         }

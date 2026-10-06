@@ -74,7 +74,11 @@ public sealed class FusionDiscoveryService(IOptions<FusionIngestionOptions> opti
                 receive.CancelAfter(1000);
                 UdpReceiveResult packet;
                 try { packet = await udp.ReceiveAsync(receive.Token); }
-                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { continue; }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) {
+                    // 正常轮询超时不携带异常堆栈，关闭 Trace 时不会产生周期性落盘。
+                    Logger.Trace("Fusion 发现轮询到期，重新检查运行配置。");
+                    continue;
+                }
                 var now = DateTime.Now;
                 if (now - window >= TimeSpan.FromSeconds(1)) { window = now; packets = 0; }
                 if (++packets > 100 || packet.Buffer.Length > 4096) continue;

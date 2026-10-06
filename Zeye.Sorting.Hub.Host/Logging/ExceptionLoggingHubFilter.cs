@@ -13,7 +13,7 @@ public sealed class ExceptionLoggingHubFilter(LogFactory factory) : IHubFilter {
         Func<HubInvocationContext, ValueTask<object?>> next) {
         try { return await next(invocation); }
         catch (Exception exception) {
-            Log(exception, invocation.Context, invocation.Hub.GetType().Name, invocation.HubMethodName);
+            _logger.Log(CreateFailure(exception, invocation.Context, invocation.Hub.GetType().Name, invocation.HubMethodName));
             throw;
         }
     }
@@ -22,7 +22,7 @@ public sealed class ExceptionLoggingHubFilter(LogFactory factory) : IHubFilter {
     public async Task OnConnectedAsync(HubLifetimeContext context, Func<HubLifetimeContext, Task> next) {
         try { await next(context); }
         catch (Exception exception) {
-            Log(exception, context.Context, context.Hub.GetType().Name, nameof(OnConnectedAsync));
+            _logger.Log(CreateFailure(exception, context.Context, context.Hub.GetType().Name, nameof(OnConnectedAsync)));
             throw;
         }
     }
@@ -30,21 +30,21 @@ public sealed class ExceptionLoggingHubFilter(LogFactory factory) : IHubFilter {
     /// <summary>记录断开原因及连接清理失败，正常断开不产生故障日志。</summary>
     public async Task OnDisconnectedAsync(HubLifetimeContext context, Exception? exception,
         Func<HubLifetimeContext, Exception?, Task> next) {
-        if (exception is not null) Log(exception, context.Context, context.Hub.GetType().Name, nameof(OnDisconnectedAsync));
+        if (exception is not null) _logger.Log(CreateFailure(exception, context.Context, context.Hub.GetType().Name, nameof(OnDisconnectedAsync)));
         try { await next(context, exception); }
         catch (Exception failure) {
-            Log(failure, context.Context, context.Hub.GetType().Name, nameof(OnDisconnectedAsync));
+            _logger.Log(CreateFailure(failure, context.Context, context.Hub.GetType().Name, nameof(OnDisconnectedAsync)));
             throw;
         }
     }
 
-    /// <summary>只记录调用身份与完整异常堆栈，参数正文由业务审计控制。</summary>
-    private void Log(Exception exception, HubCallerContext caller, string hub, string method) {
+    /// <summary>构建调用身份与完整异常堆栈，参数正文由业务审计控制。</summary>
+    private LogEventInfo CreateFailure(Exception exception, HubCallerContext caller, string hub, string method) {
         var entry = new LogEventInfo(NLog.LogLevel.Error, _logger.Name,
             $"SignalR 调用失败，Hub={hub}，Method={method}。") { Exception = exception };
         entry.Properties["ConnectionId"] = caller.ConnectionId;
         entry.Properties["Method"] = method;
         entry.Properties["TraceId"] = caller.GetHttpContext()?.TraceIdentifier;
-        _logger.Log(entry);
+        return entry;
     }
 }

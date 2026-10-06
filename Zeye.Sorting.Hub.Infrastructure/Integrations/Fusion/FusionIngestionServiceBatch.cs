@@ -19,6 +19,7 @@ public sealed partial class FusionIngestionService {
                 valid.Add((index, envelope, FusionProtocol.ValidateEnvelope(envelope)));
             }
             catch (Exception exception) when (exception is ArgumentException or JsonException or FormatException or OverflowException) {
+                Logger.Warn(exception, "Fusion 批次信封无效，Source={Source}, Record={Record}", batch.SourceInstanceId, envelope?.RecordId);
                 receipts[index] = new(envelope?.RecordId ?? "", envelope?.SourceSequence ?? "", envelope?.BodySha256 ?? "", "rejected", "InvalidFact");
             }
         }
@@ -78,6 +79,7 @@ public sealed partial class FusionIngestionService {
                         receipts[index] = new(envelope.RecordId, envelope.SourceSequence, envelope.BodySha256, "stored");
                     }
                     catch (Exception exception) when (exception is ArgumentException or JsonException or FormatException or OverflowException) {
+                        Logger.Warn(exception, "Fusion 批次事实无效，Source={Source}, Record={Record}", batch.SourceInstanceId, envelope.RecordId);
                         receipts[index] = new(envelope.RecordId, envelope.SourceSequence, envelope.BodySha256, "rejected", "InvalidFact");
                     }
                 }

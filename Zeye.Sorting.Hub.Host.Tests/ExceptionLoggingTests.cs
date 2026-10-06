@@ -36,7 +36,7 @@ public sealed class ExceptionLoggingTests : IDisposable {
     [InlineData("Zeye.Sorting.Hub.Host.HostedServices.DatabaseInitializerHostedService", "Error")]
     public void ExceptionLogsPersistAcrossLevelsAndCategories(string category, string level) {
         using var factory = CreateFactory();
-        var entry = new LogEventInfo(NLog.LogLevel.FromString(level), category, "exception-context") { Exception = CaptureFailure() };
+        var entry = new LogEventInfo(NLog.LogLevel.FromString(level), category, "exception-context") { Exception = CaptureFailure(factory) };
         entry.Properties["TraceId"] = "trace-logging-test";
         entry.Properties["ConnectionId"] = "connection-logging-test";
         factory.GetLogger(category).Log(entry);
@@ -132,7 +132,7 @@ public sealed class ExceptionLoggingTests : IDisposable {
     public void ProcessExceptionHandlersAndShutdownFlushPersistFinalRecords() {
         using var factory = CreateFactory();
         using (var lifetime = new ExceptionLoggingLifetime(factory)) {
-            lifetime.OnUnhandledException(null, new UnhandledExceptionEventArgs(CaptureFailure(), true));
+            lifetime.OnUnhandledException(null, new UnhandledExceptionEventArgs(CaptureFailure(factory), true));
             var unobserved = new UnobservedTaskExceptionEventArgs(new AggregateException(new IOException("task-failure-marker")));
             lifetime.OnUnobservedTaskException(null, unobserved);
             Assert.False(unobserved.Observed);
@@ -219,9 +219,13 @@ public sealed class ExceptionLoggingTests : IDisposable {
     }
 
     /// <summary>制造真实抛出过的异常，确保断言覆盖完整堆栈而非仅错误文本。</summary>
-    private static Exception CaptureFailure() {
+    private static Exception CaptureFailure(LogFactory factory) {
         try { throw new InvalidOperationException("outer-logging-failure", new IOException("inner-logging-failure")); }
-        catch (InvalidOperationException exception) { return exception; }
+        catch (InvalidOperationException exception) {
+            var logger = factory.GetLogger(nameof(ExceptionLoggingTests));
+            logger.Trace(exception, "生成异常日志回归样本。");
+            return exception;
+        }
     }
 
     /// <summary>读取当前异常日志及所有轮转归档。</summary>
