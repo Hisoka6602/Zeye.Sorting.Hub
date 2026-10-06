@@ -1,6 +1,6 @@
 # Fusion 在线接入管理
 
-来源：本仓库的 FusionConfigurationService、FusionIngestionHub、FusionIngestionOptions 及 `deploy/docker-compose.mysql.yml` 的实际实现和配置约定。
+来源：本仓库的 FusionConfigurationService、FusionIngestionHub、FusionIngestionOptions 及 `deploy/compose.yaml` 的实际实现和配置约定。
 
 Hub 前端的“系统管理 → Fusion 接入”支持接入开关、对外 SignalR 地址、开发 HTTP、UDP 发现、传输限额及多个工作台的在线登记、停用和密钥轮换。管理员账号需拥有 access.manage 权限。目录保存到 ManagedDocuments，不需手工维护部署 JSON；启动时首次导入静态目录，后续数据库为准。
 
