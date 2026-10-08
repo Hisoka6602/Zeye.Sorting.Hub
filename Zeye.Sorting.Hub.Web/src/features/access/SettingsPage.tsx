@@ -1,6 +1,8 @@
-import { App, Button, Empty, Form, Modal, Skeleton, Switch, Tabs } from 'antd';
+import { Alert, App, Button, Empty, Form, Input, Modal, Skeleton, Switch, Tabs } from 'antd';
 import { ApiOutlined, ClockCircleOutlined, CloudUploadOutlined, DatabaseOutlined, DeploymentUnitOutlined, FileSearchOutlined, InfoCircleOutlined, LockOutlined, ReloadOutlined, SaveOutlined, UndoOutlined } from '@ant-design/icons';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router';
+import type { DatabaseStartupStatus } from '../../data/api/configurationTypes';
 import { ApiFeedback } from '../../components/ApiFeedback';
 import { PageIntro } from '../../components/PageIntro';
 import { SectionCard } from '../../components/SectionCard';
@@ -22,6 +24,39 @@ const categories = [
   { name: '保留', description: '备份新鲜度要求', icon: <ClockCircleOutlined /> },
   { name: '诊断', description: '后台治理与预热', icon: <ApiOutlined /> },
 ] as const;
+
+/** 数据库未就绪时复用现有配置表单，不请求业务账号、策略或变更历史。 */
+export function DatabaseSetupPage({ status, onRefresh }: { status: DatabaseStartupStatus; onRefresh: () => void }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [key, setKey] = useState(() => new URLSearchParams(location.hash.slice(1)).get('setup') ?? '');
+  const [acceptedKey, setAcceptedKey] = useState(key);
+  const [dirty, setDirty] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const onDraftStateChange = useCallback((changed: boolean, saving: boolean) => { setDirty(changed); setBusy(saving); }, []);
+  // 访问码只从片段读取，立即移除，防止后续导航和复制地址携带访问码。
+  useEffect(() => {
+    if (new URLSearchParams(location.hash.slice(1)).has('setup')) navigate({ pathname: location.pathname, search: location.search, hash: '' }, { replace: true });
+  }, [location.hash, location.pathname, location.search, navigate]);
+  useEffect(() => {
+    const guard = (event: BeforeUnloadEvent) => { if (dirty || busy) { event.preventDefault(); event.returnValue = ''; } };
+    window.addEventListener('beforeunload', guard); return () => window.removeEventListener('beforeunload', guard);
+  }, [dirty, busy]);
+  return <main className="system-settings" style={{ maxWidth: 1400, margin: '0 auto', padding: 24 }}>
+    <PageIntro title="数据库配置" description="网页已启动。完成数据库连接配置后，重启服务即可进入登录和业务页面。" />
+    <Alert type="warning" showIcon message="业务数据库尚未就绪" description="当前仅提供本机数据库配置，业务读写暂不可用。保存后重新运行 install.bat 或重启服务；直接运行的程序请关闭后重新启动。" action={<Button onClick={onRefresh} disabled={dirty || busy}>检查启动状态</Button>} />
+    {status.localSetupAllowed ? <>
+      <SectionCard title="本机配置访问码">
+        <p>安装程序会自动打开带访问码的配置入口。手动打开时，请从服务器本机读取访问码文件：{status.setupKeyPath}</p>
+        <Form layout="inline" onFinish={() => setAcceptedKey(key.trim())}>
+          <Form.Item label="访问码"><Input.Password autoComplete="off" aria-label="本机配置访问码" value={key} onChange={event => setKey(event.target.value)} disabled={busy} /></Form.Item>
+          <Button type="primary" htmlType="submit" disabled={!key.trim() || busy}>打开配置</Button>
+        </Form>
+      </SectionCard>
+      {acceptedKey && <RuntimeConfigurationPanel key={acceptedKey} allowed authenticated active refreshToken={0} setupKey={acceptedKey} onDraftStateChange={onDraftStateChange} />}
+    </> : <Alert type="info" showIcon message="请在服务器本机打开此页面" description="数据库配置入口不接受远程访问。数据库就绪后会恢复正常登录和业务入口。" />}
+  </main>;
+}
 
 const parameterHelp: Record<string, string> = {
   '环境': '当前服务使用的运行环境。',

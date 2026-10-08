@@ -29,6 +29,9 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
     /// </summary>
     public sealed class DatabaseInitializerHostedService : IHostedService {
 
+        /// <summary>初始化全部完成后才能启动依赖业务数据库的托管服务。</summary>
+        public bool IsInitialized { get; private set; }
+
         /// <summary>配置项缺失时用于占位展示的默认文本（与中文日志语境保持一致）。</summary>
         private const string NotConfiguredPlaceholder = "未配置";
 
@@ -330,6 +333,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
         /// <summary>服务启动入口：依序执行数据库迁移、方言初始化、分表预建等引导流程。</summary>
         public async Task StartAsync(CancellationToken cancellationToken) {
+            IsInitialized = false;
             try {
                 AuditShardingGovernance();
 
@@ -347,6 +351,10 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                             _environmentName,
                             migrationExecutionRecord.Status,
                             migrationExecutionRecord.SkipReason ?? migrationExecutionRecord.Summary);
+                        // 已有库没有待执行迁移时仍可运行；待迁移库不能越过治理限制接受业务。
+                        await using var guardedScope = _serviceProvider.CreateAsyncScope();
+                        var guardedDatabase = guardedScope.ServiceProvider.GetRequiredService<SortingHubDbContext>();
+                        IsInitialized = !(await guardedDatabase.Database.GetPendingMigrationsAsync(ct)).Any();
                         return;
                     }
 
@@ -394,6 +402,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                                 _dialect.ProviderName, sql);
                         }
                     }
+                    IsInitialized = true;
                 }, cancellationToken);
             }
             catch (OperationCanceledException) {

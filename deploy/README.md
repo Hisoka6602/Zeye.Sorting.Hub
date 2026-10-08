@@ -56,9 +56,9 @@ Linux 同样默认打包前端：`dotnet publish Zeye.Sorting.Hub.Host -c Releas
 
 ## Windows / Linux 服务安装与卸载
 
-服务脚本随完整发布包交付，在发布目录使用；源码目录不能直接安装服务。前端 `wwwroot` 与后端 Host 由同一个服务提供，不需要另行注册前端。安装前先配置可用数据库、初始化密钥及现有建表策略，部署目录应置于目标账号能够访问的位置，Linux 建议 `/opt/zeye/sorting-hub`。
+服务脚本随完整发布包交付，在发布目录使用；源码目录不能直接安装服务。前端 `wwwroot` 与后端 Host 由同一个服务提供，不需要另行注册前端。数据库尚未配置或初始化失败时，服务先提供网页和本机数据库配置入口，业务请求及业务后台任务保持关闭。部署目录应置于目标账号能够访问的位置，Linux 建议 `/opt/zeye/sorting-hub`。
 
-Windows 发布仍执行 `./deploy/publish-windows.ps1`，在目标机的管理员终端运行：
+Windows 发布仍执行 `./deploy/publish-windows.ps1`，在目标机双击安装或卸载脚本，或在终端运行：
 
 ```bat
 install.bat
@@ -66,6 +66,16 @@ uninstall.bat
 ```
 
 `install.bat` 注册延迟自动启动服务，使用专用虚拟账号 `NT SERVICE\Zeye.Sorting.Hub.Host`，授权其读写本发布目录，启动后验证服务保持运行。重复安装先停止再更新并启动服务。PowerShell 当前进程中显式设置的 `*__*` 配置变量以及 `ASPNETCORE_*` / `DOTNET_*` 会保存到该服务的注册表 `Environment`，已有配置继续保留；变量值不输出到安装日志。运行配置通常从“系统配置”页面维护，`appsettings.Production.json` 仅用于首次导入或启动引导参数。不需要配置管理员密码或默认使用 LocalSystem。
+
+Windows 脚本在权限不足时自动请求 UAC 管理员授权；选择“是”后继续安装或卸载。操作结束后保留窗口和真实退出码，按任意键关闭。安装及卸载的最近一次执行记录分别保存到发布目录的 `logs/service-install.log` 和 `logs/service-uninstall.log`；取消授权返回失败，不操作服务。`--dry-run` 不请求授权、不生成执行日志，也不等待按键。自动化实际安装可直接调用 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File service.ps1 -Action Install`，卸载使用 `-Action Uninstall`。
+
+首次安装自动创建缺失的 `Environment` 注册表项（`REG_MULTI_SZ`），默认运行环境为 `Production`。重复安装保留已有配置，并用本次显式传入的环境变量覆盖对应项；配置值中的等号保持完整。
+
+Windows 安装成功前会等待服务进程开始监听端口；显式设置 `ZEYE_SERVICE_HEALTH_URL` 时使用 HTTP 就绪探针，或确认已进入可用的数据库配置模式。配置模式显示“网页已启动，等待数据库配置”，不会声称业务就绪；进程退出、未开始监听或超过启动时限仍返回失败。
+
+首次启动可先双击 `install.bat`：数据库未就绪时会自动打开带本机访问码的配置页面。入口沿用现有数据库配置表单，将数据库类型和连接字符串保存到 LiteDB，并记录独立的配置变更历史。保存后重新运行 `install.bat` 或重启服务；直接运行 `Start-Hub.cmd` 的程序需要关闭后重新启动。连接正常且初始化完成后，页面恢复登录和业务功能。启动参数不会在当前进程中提前切换。
+
+配置入口只接受服务器本机回环地址、正确来源标识和本次启动访问码，不依赖业务账号数据库。访问码保存在配置库同目录的 `database-setup.key`，Windows 仅运行账号和管理员可读，Linux 仅文件所有者可读；不写入日志、不通过 URL 查询参数发送，业务恢复后立即失效。手动打开页面时可从该文件复制访问码；远程访问只能看到等待本机配置的提示。接口只允许数据库类型与连接字符串，不能修改账号权限、设备密钥或读取原值历史。`/health/live` 在配置模式返回正常，`/health/ready` 和业务接口返回 503，避免流量或设备将配置模式误认为业务可用。
 
 Linux 发布和安装：
 
@@ -101,7 +111,7 @@ Linux 的自有 unit 即使配置损坏，只要确认处于未运行状态且�
 | `ZEYE_SERVICE_DISPLAY_NAME` | Windows 显示名称，默认 `Zeye Sorting Hub` |
 | `ZEYE_SERVICE_TIMEOUT_SECONDS` | 30～900 的整数秒数，默认 180，用于等待启动、停止或就绪 |
 | `ZEYE_SERVICE_DRY_RUN` | `1` / `true` / `yes` / `on` 启用预演，默认关闭 |
-| `ZEYE_SERVICE_HEALTH_URL` | 可选 HTTP / HTTPS 就绪地址，如 `http://127.0.0.1:5078/health/ready`；填写后安装须等到响应 200，未填写则仅检查原生服务启动状态 |
+| `ZEYE_SERVICE_HEALTH_URL` | 可选 HTTP / HTTPS 就绪地址，如 `http://127.0.0.1:5078/health/ready`；填写后安装须等到响应 200，未填写则等待服务进程开始监听端口 |
 | `ZEYE_SERVICE_USER` / `ZEYE_SERVICE_GROUP` | Linux 本地账号与组名，默认 `zeye-hub`；允许 1～32 个小写字母、数字、下划线或连字符，首字符为小写字母或下划线 |
 | `ZEYE_SERVICE_ENV_FILE` | Linux 环境文件绝对路径，默认 `/etc/default/Zeye.Sorting.Hub.Host`，不能使用符号链接 |
 

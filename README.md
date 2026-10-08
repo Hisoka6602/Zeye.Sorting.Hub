@@ -702,14 +702,18 @@ Docker 使用 `host_configuration` 和 `host_configuration_history` 两个持久
 | Zeye.Sorting.Hub.Infrastructure/Configuration | `ConfigurationHistoryStore.cs` | SQLite 配置原值历史、自动建表和提交状态恢复 |
 | Zeye.Sorting.Hub.Infrastructure/Configuration | `ConfigurationHistoryEntry.cs` | 耐久变更历史查询合同 |
 | Zeye.Sorting.Hub.Host/Configuration | `ConfigurationBootstrapper.cs` | 宿主绑定前建立唯一 LiteDB 配置源及启动参数覆盖 |
+| Zeye.Sorting.Hub.Host/Configuration | `DatabaseStartupState.cs` | 区分网页与业务就绪，生成受本机账号权限保护的数据库配置访问码 |
 | Zeye.Sorting.Hub.Host/Configuration | `HostConfigurationValidator.cs` | 发布前复用配置类型和业务范围校验 |
 | Zeye.Sorting.Hub.Host/Configuration | `ReloadableOptions.cs` | 为现有按 Value 读取的组件提供最新 options |
 | Zeye.Sorting.Hub.Host/HostedServices | `ConfigurationReloadHostedService.cs` | 周期检测同一 LiteDB 文件的外部修改 |
+| Zeye.Sorting.Hub.Host/HostedServices | `DatabaseStartupHostedService.cs` | 验证数据库并依序管理业务任务，失败时保留配置网页 |
+| Zeye.Sorting.Hub.Host/Middleware | `DatabaseSetupMiddleware.cs` | 本机访问码授权的数据库配置、版本保存及未就绪业务隔离 |
 | Zeye.Sorting.Hub.Host/HostedServices | `LegacyConfigurationMigrationHostedService.cs` | 业务库初始化后导入旧配置白名单并绑定规则快照 |
 | Zeye.Sorting.Hub.Host/Routing | `RuntimeConfigurationApi.cs` | 超级管理员读取、版本化保存和历史查询接口 |
 | Zeye.Sorting.Hub.Host/Routing | `RuntimeConfigurationUpdate.cs` | 带版本的 JSON 局部更新合同 |
 | Zeye.Sorting.Hub.Host.Tests | `ConfigurationTestStorage.cs` | 独立 LiteDB 和 SQLite 文件测试环境 |
 | Zeye.Sorting.Hub.Host.Tests | `RuntimeConfigurationTests.cs` | 自动建库、旧配置兼容、热更新、并发、原值快照和接口权限测试 |
+| Zeye.Sorting.Hub.Host.Tests | `DatabaseSetupTests.cs` | 无数据库启动、业务生命周期隔离、配置保存与本机访问限制回归 |
 | Zeye.Sorting.Hub.Host.Tests | `LiteDbManagedConfigurationTests.cs` | 加密目录迁移、租约撤销、运维策略和只读工具验证 |
 | Zeye.Sorting.Hub.Web/src/data/api | `configurationTypes.ts` | 运行配置、能力清单和配置历史的前后端合同 |
 | Zeye.Sorting.Hub.Web/src/features/access | `RuntimeConfigurationPanel.tsx` | 分类编辑、版本冲突保护、保存和生效状态展示 |

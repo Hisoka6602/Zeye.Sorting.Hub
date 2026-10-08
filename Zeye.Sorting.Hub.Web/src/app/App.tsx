@@ -3,6 +3,9 @@ import { lazy, Suspense } from 'react';
 import { Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router';
 import { AppShell, LoginShell } from './Shell';
 import { PageErrorBoundary } from './PageErrorBoundary';
+import { useApiResource } from '../data/api/useApiResource';
+import { requestHttpApi } from '../data/api/client';
+import type { DatabaseStartupStatus } from '../data/api/configurationTypes';
 
 const OverviewPage = lazy(() => import('../features/parcels/OverviewPage').then(module => ({ default: module.OverviewPage })));
 const DataOverviewPage = lazy(() => import('../features/parcels/DataOverviewPage').then(module => ({ default: module.DataOverviewPage })));
@@ -33,6 +36,7 @@ const AccessPage = lazy(() => import('../features/access/AccessPage').then(modul
 const ProfilePage = lazy(() => import('../features/access/ProfilePage').then(module => ({ default: module.ProfilePage })));
 const LoginPage = lazy(() => import('../features/access/LoginPage').then(module => ({ default: module.LoginPage })));
 const SettingsPage = lazy(() => import('../features/access/SettingsPage').then(module => ({ default: module.SettingsPage })));
+const DatabaseSetupPage = lazy(() => import('../features/access/SettingsPage').then(module => ({ default: module.DatabaseSetupPage })));
 const FusionSettingsPage = lazy(() => import('../features/access/FusionSettingsPage').then(module => ({ default: module.FusionSettingsPage })));
 const HelpPage = lazy(() => import('../features/help').then(module => ({ default: module.HelpPage })));
 
@@ -49,6 +53,9 @@ function NotFound() { const navigate = useNavigate(); return <Result status="404
 
 /** 保留页面按需加载和现有访问控制。 */
 export default function App() {
+  const startup = useApiResource<DatabaseStartupStatus>(import.meta.env?.MODE === 'design-preview' ? null : '/api/setup/status', requestHttpApi, false);
+  if (startup.loading && !startup.data) return <RouteLoading />;
+  if (startup.data?.requiresConfiguration) return <PageErrorBoundary resetKey="database-setup"><Suspense fallback={<RouteLoading />}><DatabaseSetupPage status={startup.data} onRefresh={startup.refresh} /></Suspense></PageErrorBoundary>;
   return <Routes>
     <Route path="/" element={<Navigate to="/data-overview" replace />} />
     <Route element={<LoginLayout />}><Route path="/access/login" element={<LoginPage />} /></Route>

@@ -275,6 +275,8 @@ try {
     builder.Services.AddScoped<InboxMessageGuardService>();
     builder.Services.AddWebRequestAuditLogging(builder.Configuration);
 
+    // 网页和本机配置入口不依赖业务数据库；业务任务由统一启动链进行就绪隔离。
+    DatabaseStartupHostedService.Register(builder.Services);
     var app = builder.Build();
     app.Services.GetRequiredService<Zeye.Sorting.Hub.Infrastructure.Configuration.ConfigurationHistoryStore>()
         .AttachQueryDiagnostics(app.Services.GetRequiredService<SlowQueryAutoTuningPipeline>());
@@ -338,6 +340,8 @@ try {
     }
     app.UseBundledWebUi();
     app.UseRouting();
+    // 必须位于业务认证、审计和实时接口之前，避免配置入口再次依赖账号数据库。
+    app.UseMiddleware<DatabaseSetupMiddleware>();
     app.UseSortingRealtime();
     // 路由解析后再进入审计，使中间件可以按端点元数据和路径排除探针流量。
     app.UseWebRequestAuditLogging();

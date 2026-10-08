@@ -33,6 +33,8 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<!-- dotnet 工具清单仅用于开发，禁止作为运行配置复制到构建或发布目录。 -->
+		<Content Update="dotnet-tools.json" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />
 		<Content Update="nlog.config">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</Content>

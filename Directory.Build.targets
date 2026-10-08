@@ -52,6 +52,8 @@
     <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory).git\**" />
     <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory).vs\**" />
     <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory).config\**" />
+    <!-- 中文说明：dotnet 工具清单属于 SDK 管理的开发工具元数据，不要求添加运行配置注释。 -->
+    <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory)**\dotnet-tools.json" />
     <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory).codex-artifacts\**" />
     <!-- 浏览器快照和验收结果属于生成证据，不是后端运行配置。 -->
     <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory).playwright-cli\**" />

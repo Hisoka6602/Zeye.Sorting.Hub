@@ -5,7 +5,7 @@ import pickerLocale from 'antd/es/date-picker/locale/zh_CN';
 import { CheckCircleOutlined, DatabaseOutlined, HistoryOutlined, ReloadOutlined, SaveOutlined, SearchOutlined, ThunderboltOutlined, UndoOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
-import { requestApi, ApiError } from '../../data/api/client';
+import { requestApi, requestHttpApi, ApiError } from '../../data/api/client';
 import type { RuntimeConfigurationSaved, RuntimeConfigurationSnapshot } from '../../data/api/configurationTypes';
 import { localDateTimeFormat } from '../../data/api/operationalTypes';
 import { SectionCard } from '../../components/SectionCard';
@@ -67,10 +67,12 @@ function StringListEditor({ fieldKey, values, suggestions, disabled, onChange }:
 }
 
 /** 保留草稿和提交版本，轮询仅更新最新快照；旧读取不能覆盖刚保存的结果。 */
-export function RuntimeConfigurationPanel({ allowed, authenticated, active, refreshToken, onDraftStateChange }: { allowed: boolean; authenticated: boolean; active: boolean; refreshToken: number; onDraftStateChange: (dirty: boolean, saving: boolean) => void }) {
+export function RuntimeConfigurationPanel({ allowed, authenticated, active, refreshToken, onDraftStateChange, setupKey }: { allowed: boolean; authenticated: boolean; active: boolean; refreshToken: number; onDraftStateChange: (dirty: boolean, saving: boolean) => void; setupKey?: string }) {
   const { message } = App.useApp();
   const [state, setState] = useState<EditorState>({ draft: {}, loading: allowed, busy: false });
-  const [category, setCategory] = useState<ConfigurationCategory>('online');
+  const [category, setCategory] = useState<ConfigurationCategory>(setupKey ? 'database' : 'online');
+  const apiPath = setupKey ? '/api/setup/database/runtime' : '/api/operations/configuration/runtime';
+  const requester = setupKey ? requestHttpApi : requestApi;
   const [search, setSearch] = useState('');
   const sequence = useRef(0);
   const reading = useRef<AbortController | null>(null);
@@ -83,16 +85,16 @@ export function RuntimeConfigurationPanel({ allowed, authenticated, active, refr
     const current = ++sequence.current;
     setState(previous => ({ ...previous, loading: !previous.latest }));
     try {
-      const snapshot = await requestApi<RuntimeConfigurationSnapshot>('/api/operations/configuration/runtime', controller.signal);
+      const snapshot = await requester<RuntimeConfigurationSnapshot>(apiPath, controller.signal, setupKey ? { headers: { 'X-Zeye-Setup-Key': setupKey } } : undefined);
       if (controller.signal.aborted || !mounted.current || current !== sequence.current) return;
       setState(previous => ({ ...previous, latest: snapshot, loading: false, error: undefined,
         ...(!hasDraft(previous) ? { base: snapshot, draft: configurationDraft(snapshot.configuration) } : {}) }));
     } catch (error) {
       if (controller.signal.aborted || !mounted.current || current !== sequence.current) return;
-      if (error instanceof ApiError && (error.status === 401 || error.status === 403)) window.dispatchEvent(new Event('zeye-session-changed'));
+      if (!setupKey && error instanceof ApiError && (error.status === 401 || error.status === 403)) window.dispatchEvent(new Event('zeye-session-changed'));
       setState(previous => ({ ...previous, loading: false, error: error instanceof Error ? error : new Error(String(error)) }));
     }
-  }, [allowed]);
+  }, [allowed, apiPath, requester, setupKey]);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; sequence.current++; reading.current?.abort(); }; }, []);
   useEffect(() => { if (!allowed) setState({ draft: {}, loading: false, busy: false }); }, [allowed]);
   useEffect(() => {
@@ -119,15 +121,16 @@ export function RuntimeConfigurationPanel({ allowed, authenticated, active, refr
     setState(previous => ({ ...previous, busy: true, error: undefined, saved: undefined }));
     let conflict = false;
     try {
-      const response = await requestApi<RuntimeConfigurationSaved>('/api/operations/configuration/runtime', undefined, {
+      const response = await requester<RuntimeConfigurationSaved>(apiPath, undefined, {
         method: 'PUT', body: JSON.stringify({ revision: state.base.revision, changes: prepared.changes }),
+        ...(setupKey ? { headers: { 'X-Zeye-Setup-Key': setupKey } } : {}),
       });
       if (!mounted.current) return;
       setState({ latest: response.snapshot, base: response.snapshot, draft: configurationDraft(response.snapshot.configuration), loading: false, busy: false, saved: response.result });
       message.success(response.snapshot.restartRequiredKeys.length ? '配置已保存，部分参数将在重启后生效' : response.snapshot.overriddenKeys.length ? '配置已保存，部署覆盖项仍使用环境值' : '配置已保存，在线参数已生效');
     } catch (error) {
       if (!mounted.current) return;
-      if (error instanceof ApiError && (error.status === 401 || error.status === 403)) window.dispatchEvent(new Event('zeye-session-changed'));
+      if (!setupKey && error instanceof ApiError && (error.status === 401 || error.status === 403)) window.dispatchEvent(new Event('zeye-session-changed'));
       conflict = error instanceof ApiError && error.status === 409;
       setState(previous => ({ ...previous, error: error instanceof Error ? error : new Error(String(error)) }));
     } finally {
@@ -159,7 +162,7 @@ export function RuntimeConfigurationPanel({ allowed, authenticated, active, refr
     {state.saved && <Alert type="success" showIcon message="配置已保存" description={`${state.saved.changedKeys.length} 个字段已提交，并已通知在线参数加载${state.saved.restartRequiredKeys.length ? `；其中 ${state.saved.restartRequiredKeys.length} 个字段需要重启` : ''}${snapshot.overriddenKeys.length ? '；部署覆盖项继续使用环境值' : ''}。`} />}
     <div className="settings-layout">
       <SectionCard className="settings-navigation runtime-navigation" title="配置分类">
-        <nav className="settings-category-list" aria-label="运行配置分类">{configurationCategories.map(item => {
+        <nav className="settings-category-list" aria-label="运行配置分类">{configurationCategories.filter(item => !setupKey || item.key === 'database').map(item => {
           const count = fields.filter(field => item.key === 'online' ? isHotConfigurationField(field, state.base!) : field.category === item.key).length;
           return <button type="button" key={item.key} className={`settings-category${category === item.key ? ' selected' : ''}`} aria-pressed={category === item.key} onClick={() => { setCategory(item.key); setSearch(''); }}>
             <span className="settings-category-copy"><span>{item.name}</span><small>{item.description}</small></span><span className="settings-category-count">{count}</span>

@@ -1,4 +1,4 @@
-<# 中文说明：一次发布 Windows x64 自包含程序及前端，构建机需要 .NET 10 SDK 和 Node/npm。 #>
+﻿<# 中文说明：一次发布 Windows x64 自包含程序及前端，构建机需要 .NET 10 SDK 和 Node/npm。 #>
 [CmdletBinding()]
 param(
     [string]$OutputDirectory = (Join-Path $PSScriptRoot '../artifacts/windows-x64'),
