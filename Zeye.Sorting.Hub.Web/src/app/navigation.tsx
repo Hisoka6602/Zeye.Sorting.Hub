@@ -9,7 +9,14 @@ export const navigationItems: NavItem[] = [
   { key: '/data-overview', className: 'nav-root-data-overview', icon: icon('analytics'), label: '数据概览' },
   { key: '/overview', className: 'nav-root-home', icon: icon('home'), label: '工作台' },
   { key: 'parcels', className: 'nav-root-parcels', icon: icon('parcels'), label: '包裹中心', children: [
+    { key: '/parcels/statistics', label: '包裹统计' },
     { key: '/parcels', label: '包裹台账' },
+    { key: '/parcels/exceptions', label: '异常分析' },
+    { key: '/parcels/duration', label: '耗时分析' },
+    { key: '/parcels/dws-consistency', label: 'DWS 一致性' },
+    { key: '/parcels/chutes', label: '格口分析' },
+    { key: '/parcels/timing', label: '包裹时序' },
+    { key: '/parcels/compare', label: '包裹对比' },
   ] },
   { key: 'test-data', className: 'nav-root-test-data', icon: icon('testData'), label: '测试数据', children: [
     { key: '/parcels/new', label: '新建包裹' }, { key: '/parcels/batch', label: '批量入队' },
@@ -34,7 +41,7 @@ export const navigationItems: NavItem[] = [
 export const defaultOpenKeys = () => ['parcels', 'test-data', 'governance', 'observability', 'system'];
 export const getSelected = (pathname: string) => {
   if (pathname === '/parcels/detection/new') return '/parcels/new';
-  if (pathname.startsWith('/parcels/') && !['/parcels/new', '/parcels/batch'].includes(pathname)) return '/parcels';
+  if (pathname.startsWith('/parcels/') && !['/parcels/new', '/parcels/batch', '/parcels/timing', '/parcels/compare', '/parcels/statistics', '/parcels/exceptions', '/parcels/duration', '/parcels/chutes', '/parcels/dws-consistency'].includes(pathname)) return '/parcels';
   if (pathname.startsWith('/audit/requests/')) return '/audit/requests';
   if (pathname.startsWith('/diagnostics/slow-queries/')) return '/diagnostics/slow-queries';
   return pathname;
@@ -43,6 +50,13 @@ export const getSelected = (pathname: string) => {
 export interface NavigationCrumb { title: string; href?: string }
 const crumbMap: Record<string, [string, string, string]> = {
   '/parcels': ['包裹中心', '/parcels', '包裹台账'],
+  '/parcels/timing': ['包裹中心', '/parcels', '包裹时序'],
+  '/parcels/compare': ['包裹中心', '/parcels', '包裹对比'],
+  '/parcels/statistics': ['包裹中心', '/parcels/statistics', '包裹统计'],
+  '/parcels/exceptions': ['包裹中心', '/parcels/statistics', '异常分析'],
+  '/parcels/duration': ['包裹中心', '/parcels/statistics', '耗时分析'],
+  '/parcels/dws-consistency': ['包裹中心', '/parcels/statistics', 'DWS 一致性'],
+  '/parcels/chutes': ['包裹中心', '/parcels/statistics', '格口分析'],
   '/parcels/new': ['测试数据', '/parcels/new', '新建包裹'],
   '/parcels/detection/new': ['测试数据', '/parcels/new', '来源检测登记'],
   '/governance/parcel-cleanup': ['数据治理', '/governance/archive-tasks', '过期包裹清理'],
@@ -70,7 +84,7 @@ export function crumbsForPath(pathname: string): NavigationCrumb[] {
   if (pathname === '/parcels/new') return [home, { title: '测试数据', href: '/parcels/new' }, { title: '新建包裹' }];
   if (pathname === '/parcels/batch') return [home, { title: '测试数据', href: '/parcels/new' }, { title: '批量入队' }];
   if (pathname === '/parcels/detection/new') return [home, { title: '测试数据', href: '/parcels/new' }, { title: '来源检测登记' }];
-  if (pathname.startsWith('/parcels/') && !['/parcels/new', '/parcels/batch'].includes(pathname)) {
+  if (pathname.startsWith('/parcels/') && !['/parcels/new', '/parcels/batch', '/parcels/timing', '/parcels/compare', '/parcels/statistics', '/parcels/exceptions', '/parcels/duration', '/parcels/chutes', '/parcels/dws-consistency'].includes(pathname)) {
     return [{ title: '包裹中心', href: '/parcels' }, { title: '包裹台账', href: '/parcels' }, { title: '包裹详情' }];
   }
   if (pathname.startsWith('/audit/requests/')) return [{ title: '可观测性', href: '/audit/requests' }, { title: '请求审计', href: '/audit/requests' }, { title: '审计详情' }];

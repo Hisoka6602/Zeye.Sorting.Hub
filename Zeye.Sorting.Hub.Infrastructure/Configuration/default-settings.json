@@ -1,0 +1,813 @@
+{
+  "Access": {
+    "EnforceAuthorization": false,
+    "BootstrapKey": "",
+    "MachineApiKey": ""
+  },
+  // Host 运行地址与 Swagger 暴露配置（主配置来源）。
+  "Hosting": {
+    // 默认使用 HTTP 直接部署；配置证书后可通过 Hosting:Urls 或 urls 显式增加 HTTPS 地址。
+    "Urls": "http://0.0.0.0:5078",
+    // 是否启用 HTTPS 重定向（反向代理终止 TLS 场景可按需关闭）。
+    "EnableHttpsRedirection": false,
+    "Swagger": {
+      // 是否启用 Swagger（当前仅 Development 环境生效）。
+      "Enabled": true,
+      // Swagger UI 路由前缀；为空表示挂载到根路径。
+      "RoutePrefix": "swagger",
+      // Swagger 页面标题。
+      "DocumentTitle": "Zeye.Sorting.Hub 接口文档",
+      // Swagger 文档名称（同时作为 OpenAPI 版本标识）。
+      "DocumentName": "v1",
+      // Swagger JSON 端点模板（支持 {documentName} 占位符）。
+      "JsonEndpoint": "/swagger/{documentName}/swagger.json"
+    },
+    "BrowserAutoOpen": {
+      // 是否在 Development 启动后自动打开默认浏览器。
+      "Enabled": true,
+      // 为空时自动按 Hosting:Urls + Swagger:RoutePrefix 组合地址。
+      "Url": ""
+    }
+  },
+  // Fusion 1.0 独立机器入口。未登记任何来源时不接受机器连接，配置不影响首次创建管理员。
+  "FusionIngestion": {
+    "IsEnabled": true,
+    "HubId": "sorting-hub",
+    // 生产机器凭据通过 HTTPS 传送；仅受控本地联调可开启 HTTP。
+    "AllowInsecureHttp": false,
+    "MaxBatchRecords": 50,
+    "MaxBatchBytes": 524288,
+    "MaxImageChunkBytes": 32768,
+    "MaxImageBytes": 134217728,
+    "MaxPendingImagesPerSource": 100,
+    "LeaseSeconds": 120,
+    "UploadRetentionHours": 24,
+    // 必须持久化且可写；完整图片不随临时分块回收。
+    "ImageDirectory": "fusion-images",
+    "DiscoveryEnabled": false,
+    "DiscoveryPort": 47651,
+    "AdvertisedEndpoint": "",
+    // 每个来源独立 SourceInstanceId、LineId 和至少 32 字符的密钥；实例不得共用密钥。
+    "Sources": []
+  },
+  "WebRequestAuditLog": {
+    // Web 请求审计日志中间件开关（默认开启）
+    "Enabled": true,
+    // 常规成功请求采样率（0~1）；失败与慢请求由独立策略兜底。
+    "SampleRate": 0.1,
+    // 是否始终审计失败请求。
+    "AlwaysAuditFailedRequests": true,
+    // 慢请求强制审计阈值（毫秒，0 表示关闭）。
+    "SlowRequestThresholdMs": 1000,
+    // 不参与审计的路径前缀，避免探针和文档流量产生无意义写入。
+    "ExcludedPathPrefixes": [ "/health", "/swagger", "/favicon.ico" ],
+    // 是否采集命中常规采样请求的请求体；生产默认关闭以降低内存复制。
+    "IncludeRequestBody": false,
+    // 是否采集命中常规采样请求的响应体；生产默认关闭以降低热路径开销。
+    "IncludeResponseBody": false,
+    // 请求体最大采集长度（字符，超出截断）
+    "MaxRequestBodyLength": 4096,
+    // 响应体最大采集长度（字符，超出截断）
+    "MaxResponseBodyLength": 4096,
+    // 后台审计队列容量（超限触发丢弃保护，避免阻塞主请求）
+    "BackgroundQueueCapacity": 4096,
+    // 后台单次批量写入最大数量。
+    "BackgroundBatchSize": 64,
+    // 为合并小批次等待的毫秒数。
+    "BackgroundBatchDelayMs": 20,
+    // 队列丢弃日志聚合输出间隔（秒）。
+    "DropLogIntervalSeconds": 30
+  },
+  "AuditReadOnlyApi": {
+    // 是否启用审计只读 API（/api/audit/web-requests、/api/audit/web-requests/{id}）
+    // 设为 false 时不映射上述端点，请求将返回 404。
+    "Enabled": true,
+    // 是否要求审计只读 API 授权（未接入真实认证方案时建议保持 false 以便联调）
+    "RequireAuthorization": false
+  },
+  "ObjectStorage": {
+    // 对象存储提供器。
+    // 可填写范围：Minio。
+    "Provider": "Minio",
+    "Minio": {
+      // 是否启用 MinIO。
+      // 可填写范围：true / false。
+      "IsEnabled": true,
+      // MinIO 访问端点。
+      // 可填写范围：主机名或主机名:端口，禁止包含协议前缀。
+      "Endpoint": "minio.internal.local:9000",
+      // 是否启用 HTTPS。
+      // 可填写范围：true / false。
+      "UseSsl": false,
+      // AccessKey 占位符。
+      // 可填写范围：仅允许 ${变量名} 形式占位符。
+      "AccessKey": "${MINIO_ACCESS_KEY}",
+      // SecretKey 占位符。
+      // 可填写范围：仅允许 ${变量名} 形式占位符。
+      "SecretKey": "${MINIO_SECRET_KEY}",
+      // Region。
+      // 可填写范围：空字符串或合法 S3 Region 标识，如 us-east-1。
+      "Region": "us-east-1",
+      // Parcel 图片 Bucket 名称。
+      // 可填写范围：3~63 位小写字母、数字、点或中划线。
+      "ParcelImagesBucket": "sorting-hub-parcel-images",
+      // 通用文件 Bucket 名称。
+      // 可填写范围：3~63 位小写字母、数字、点或中划线。
+      "GenericFilesBucket": "sorting-hub-files",
+      // 单对象上传预签名有效期（秒）。
+      // 可填写范围：60~604800。
+      "PresignedUploadExpireSeconds": 900,
+      // 对象读取预签名有效期（秒）。
+      // 可填写范围：60~604800。
+      "PresignedReadExpireSeconds": 300,
+      // Multipart 分片上传预签名有效期（秒）。
+      // 可填写范围：60~604800。
+      "MultipartPartExpireSeconds": 900,
+      "Bootstrap": {
+        // 是否在启动阶段检查并准备 Bucket。
+        // 可填写范围：true / false。
+        "EnsureBucketsExist": false,
+        // 是否仅执行 dry-run。
+        // 可填写范围：true / false。
+        "DryRun": true,
+        // 是否启用危险动作守卫。
+        // 可填写范围：true / false。
+        "EnableGuard": true,
+        // 是否允许执行真实危险动作。
+        // 可填写范围：true / false。
+        "AllowDangerousActionExecution": false
+      }
+    }
+  },
+  // 日志清理策略（按目录、保留天数与巡检周期执行）。
+  "LogCleanup": {
+    // 是否启用日志清理任务。
+    "Enabled": true,
+    // 日志保留天数（超过该天数的日志会被清理）。
+    "RetentionDays": 2,
+    // 清理巡检间隔（小时）。
+    "CheckIntervalHours": 1,
+    // 日志目录，可填写绝对路径或相对程序所在目录的路径；默认 logs。
+    "LogDirectory": "logs"
+  },
+  // 持久化总配置（数据库提供器、分表起始时间、性能参数、自动调优参数）
+  "Persistence": {
+    // 数据库提供器：MySql 或 SqlServer
+    "Provider": "MySql",
+    "MySql": {
+      // 显式数据库版本，避免 DbContext 配置阶段执行 ServerVersion.AutoDetect。
+      "ServerVersion": "8.0.0"
+    },
+    // 迁移启动策略
+    "Migration": {
+      // 统一迁移失败策略（可选：FailFast / Degraded）
+      // - Production：生产环境默认建议 FailFast
+      // - NonProduction：非生产默认建议 Degraded
+      "FailureStrategy": {
+        "Production": "FailFast",
+        "NonProduction": "Degraded"
+      },
+      // 兼容历史开关（保留向后兼容；推荐改用 FailureStrategy）
+      "FailStartupOnError": false
+    },
+    "MigrationGovernance": {
+      // 是否启用迁移治理预演。
+      // 可填写范围：true / false。
+      "IsEnabled": true,
+      // 是否仅执行 dry-run（仅预演、归档、不执行真实迁移）。
+      // 可填写范围：true / false。
+      "DryRun": true,
+      // 迁移脚本与回滚参考脚本归档目录（相对内容根目录或绝对路径）。
+      // 可填写范围：任意合法目录路径。
+      "ArchiveDirectory": "migration-scripts",
+      // 生产环境检测到危险迁移时是否阻断自动执行。
+      // 可填写范围：true / false。
+      "BlockDangerousMigrationInProduction": true
+    },
+    "BaselineData": {
+      // 是否启用基线数据与配置一致性校验。
+      // 可填写范围：true / false。
+      "IsValidationEnabled": true,
+      // 是否启用可选幂等种子入口（当前版本默认仅校验，不执行持久化写入）。
+      // 可填写范围：true / false。
+      "IsSeedEnabled": false,
+      // 基线校验失败模式。
+      // 可填写范围：Degraded / FailFast。
+      "FailureMode": "Degraded"
+    },
+    "Backup": {
+      // 是否启用备份治理。
+      // 可填写范围：true / false。
+      "IsEnabled": true,
+      // 是否仅执行 dry-run。
+      // 可填写范围：true / false。
+      "DryRun": true,
+      // 后台轮询间隔（分钟）。
+      // 可填写范围：1~1440。
+      "PollIntervalMinutes": 60,
+      // 最新备份文件最大允许年龄（小时）。
+      // 可填写范围：1~8760。
+      "MaxAllowedBackupAgeHours": 24,
+      // 备份文件根目录（相对内容根目录或绝对路径）。
+      // 可填写范围：任意合法目录路径。
+      "BackupDirectory": "backup-artifacts",
+      // 备份文件名前缀。
+      // 可填写范围：任意合法文件名前缀。
+      "BackupFilePrefix": "sorting-hub",
+      // 恢复 Runbook 输出目录（相对内容根目录或绝对路径）。
+      // 可填写范围：任意合法目录路径。
+      "RestoreRunbookDirectory": "backup-runbooks",
+      // 恢复演练记录输出目录（相对内容根目录或绝对路径）。
+      // 可填写范围：任意合法目录路径。
+      "DrillRecordDirectory": "drill-records",
+      // 备份与隔离恢复整体执行预算，1~1440 分钟。
+      "OperationTimeoutMinutes": 30,
+      // 流式导出文本上限，1~1024 GiB；数据库业务存储容量不受此项限制。
+      "MaxExportGiB": 32,
+      // 只维护本服务生成的完整备份，true/false；DryRun=true 时仅输出轮转审计。
+      "ArtifactRetentionEnabled": true,
+      // 保留窗口，1~3650 天；份数或容量先触达上限时提前轮转最旧文件。
+      "ArtifactRetentionDays": 30,
+      // 最低安全份数，2~100；无论容量如何，最新最低份数始终保留。
+      "MinimumRetainedArtifacts": 3,
+      // 最大保留份数，最低安全份数~5000；744 可覆盖每小时一份的 31 天窗口。
+      "MaxRetainedArtifacts": 744,
+      // 完整备份目标容量，1~4096 GiB；不足最低安全份数时保留备份并告警。
+      "MaxRetainedGiB": 32
+    },
+    "ReadOnlyDatabase": {
+      // 是否启用报表查询只读数据库路由。
+      // 可填写范围：true / false。
+      "IsEnabled": false,
+      // 只读数据库不可用或未配置时是否回退主库。
+      // 可填写范围：true / false。
+      "FallbackToPrimaryWhenUnavailable": false,
+      // 报表查询允许的最大时间范围（天）。
+      // 可填写范围：1~366。
+      "MaxReportTimeRangeDays": 31,
+      // 报表查询允许的最大返回行数。
+      // 可填写范围：1~100000。
+      "MaxReportRows": 10000
+    },
+    "Retention": {
+      // 是否启用数据保留治理。
+      // 可填写范围：true / false。
+      "IsEnabled": true,
+      // 是否启用危险动作守卫。
+      // 可填写范围：true / false。
+      "EnableGuard": true,
+      // 是否允许执行真实清理。
+      // 可填写范围：true / false。
+      "AllowDangerousActionExecution": false,
+      // 是否仅执行 dry-run。
+      // 可填写范围：true / false。
+      "DryRun": true,
+      // 单个策略单轮最大处理数量。
+      // 可填写范围：1~5000。
+      "BatchSize": 1000,
+      // 后台轮询间隔（分钟）。
+      // 可填写范围：1~1440。
+      "PollIntervalMinutes": 60,
+      // 数据保留策略清单。
+      "Policies": [
+        {
+          // 策略名称。
+          // 可填写范围：WebRequestAuditLog / InboxMessage / IdempotencyRecord / ArchiveTask / DeadLetterWriteEntry / SlowQueryProfile。
+          "Name": "WebRequestAuditLog",
+          // 保留天数。
+          // 可填写范围：1~3650。
+          "RetentionDays": 30
+        },
+        {
+          // 策略名称。
+          // 可填写范围：WebRequestAuditLog / InboxMessage / IdempotencyRecord / ArchiveTask / DeadLetterWriteEntry / SlowQueryProfile。
+          "Name": "InboxMessage",
+          // 保留天数。
+          // 可填写范围：1~3650。
+          "RetentionDays": 30
+        },
+        {
+          // 策略名称。
+          // 可填写范围：WebRequestAuditLog / InboxMessage / IdempotencyRecord / ArchiveTask / DeadLetterWriteEntry / SlowQueryProfile。
+          "Name": "IdempotencyRecord",
+          // 保留天数。
+          // 可填写范围：1~3650。
+          "RetentionDays": 30
+        },
+        {
+          // 策略名称。
+          // 可填写范围：WebRequestAuditLog / InboxMessage / IdempotencyRecord / ArchiveTask / DeadLetterWriteEntry / SlowQueryProfile。
+          "Name": "ArchiveTask",
+          // 保留天数。
+          // 可填写范围：1~3650。
+          "RetentionDays": 90
+        },
+        {
+          // 策略名称。
+          // 可填写范围：WebRequestAuditLog / InboxMessage / IdempotencyRecord / ArchiveTask / DeadLetterWriteEntry / SlowQueryProfile。
+          "Name": "DeadLetterWriteEntry",
+          // 保留天数。
+          // 可填写范围：1~3650。
+          "RetentionDays": 14
+        },
+        {
+          // 策略名称。
+          // 可填写范围：WebRequestAuditLog / InboxMessage / IdempotencyRecord / ArchiveTask / DeadLetterWriteEntry / SlowQueryProfile。
+          "Name": "SlowQueryProfile",
+          // 保留天数。
+          // 可填写范围：1~3650。
+          "RetentionDays": 7
+        }
+      ]
+    },
+    // 启动期数据库引导（自动建库）
+    "DatabaseBootstrap": {
+      "EnsureDatabaseExists": {
+        // 是否启用“启动时检查并自动建库”
+        "Enabled": true,
+        "Isolator": {
+          // 启用危险动作守卫（开启且未放开执行时将阻断真实建库）
+          "EnableGuard": true,
+          // 是否允许执行真实建库（默认 false）
+          "AllowDangerousActionExecution": true,
+          // DryRun：仅审计不执行建库（仅在未被守卫阻断时生效）
+          "DryRun": false
+        }
+      }
+    },
+    // 分片/分表参数配置
+    "Sharding": {
+      // 启动时是否自动创建分表（默认 false，降低启动期风险，生产建议配合预建流程）
+      "CreateShardingTableOnStarting": false,
+      // 物理包裹分表DDL隔离器：两个开关范围均为true/false，默认只审计；审查DDL后方可显式放开
+      "WriteRouting": { "AllowTableCreation": false, "DryRun": true },
+      // Parcel 分表起始时间（本地时间语义，不允许 Z 或时区偏移）
+      "ParcelStartTime": "2026-01-01T00:00:00",
+      // Parcel 关联属性表哈希分片模数（默认 16）
+      "ParcelRelatedHashShardingMod": 16,
+      // Parcel 主表分表双策略配置（保持 CreatedTime 作为主时间依据）
+      "Strategy": {
+        // 分表模式：Time / Volume / Hybrid
+        "Mode": "Hybrid",
+        // 时间策略（按月/按周/按天）
+        "Time": {
+          // 时间粒度范围：PerMonth / PerWeek / PerDay；默认PerMonth，周从本地周一零点开始
+          "Granularity": "PerMonth"
+        },
+        // 容量策略（阈值治理）
+        "Volume": {
+          // 单分表最大行数阈值（命中后按 ActionOnThreshold 决策）
+          "MaxRowsPerShard": 10000000,
+          // 热点阈值比例（0~1）
+          "HotThresholdRatio": 0.8,
+          // 结构化观测输入入口（建议未来接数据库统计/监控采集）
+          "Observation": {
+            // 观测来源标识（例如 config-static / db-metrics / observability-pipeline）
+            "Source": "config-static",
+            // 当前观测单分表估算行数（用于阈值决策；留空表示未知；示例 0 仅演示格式）
+            "EstimatedRowsPerShard": 0,
+            // 当前观测热点比例（0~1；留空表示未知；示例 0 仅演示格式）
+            "ObservedHotRatio": 0
+          },
+          // legacy 观测字段（兼容保留，建议迁移到 Observation）
+          "CurrentEstimatedRowsPerShard": 0,
+          "CurrentObservedHotRatio": 0,
+          // 阈值动作：AlertOnly / SwitchToPerDay
+          "ActionOnThreshold": "SwitchToPerDay",
+          // PerDay 仍超大时的下一层粒度扩展规划（仅设计与治理层，不执行在线迁移）
+          "FinerGranularity": {
+            // 下一层建议模式：PerHour / BucketedPerDay / None
+            "ModeWhenPerDayStillHot": "PerHour",
+            // 生命周期：PlanOnly / AlertOnly / FutureExecutable
+            "Lifecycle": "PlanOnly",
+            // 是否要求治理守卫继续执行预建约束
+            "RequirePrebuildGuard": true,
+            // Bucket 细分参数（仅 ModeWhenPerDayStillHot=BucketedPerDay 时生效）
+            "Bucket": {
+            }
+          }
+        }
+      },
+      // 哈希分片扩容治理（示例：16 -> 32 的触发与迁移计划）
+      "HashSharding": {
+        // 当分片热点倾斜或容量利用率超过阈值时触发扩容演练（0~1）
+        "ExpansionTriggerRatio": 0.8,
+        // 扩容迁移计划（结构化方案）
+        "ExpansionPlan": {
+          // 当前模数
+          "CurrentMod": 16,
+          // 目标模数
+          "TargetMod": 32,
+          // 扩容步骤（有序执行）
+          "Stages": [
+            "warmup",
+            "dual-write",
+            "verification",
+            "cutover"
+          ]
+        }
+      },
+      // 分表治理制度化配置（预建窗口 / Runbook）
+      "Governance": {
+        // 新周期分表预建窗口（小时）
+        "PrebuildWindowHours": 72,
+        // WebRequestAuditLog 独立 PerDay 治理守卫开关（与 Parcel 决策解耦）
+        "WebRequestAuditLog": {
+          // 是否启用 WebRequestAuditLog（热表+详情表）PerDay 预建/物理表/索引守卫
+          "EnablePerDayGuard": true,
+          // 历史分表保留治理（仅决策与审计，默认保守阻断 + dry-run）
+          "Retention": {
+            // 是否启用历史分表保留治理审计
+            "Enabled": true,
+            // 每个逻辑表保留最近 N 个分表
+            "KeepRecentShardCount": 7,
+            "Isolator": {
+              // 启用守卫（默认开启且未放开危险动作时阻断）
+              "EnableGuard": true,
+              // 是否允许执行危险动作（默认 false）
+              "AllowDangerousActionExecution": false,
+              // DryRun：仅审计候选数量，不执行真实删除
+              "DryRun": true
+            }
+          }
+        },
+        // 分表治理与扩容演练 Runbook 标识（文档路径或链接）
+        "Runbook": "docs/internal/sharding-governance-runbook"
+      },
+      "RuntimeInspection": {
+        // 是否启用运行期分表巡检。
+        // 可填写范围：true / false。
+        "IsEnabled": true,
+        // 巡检间隔（分钟）。
+        // 可填写范围：1~1440。
+        "InspectionIntervalMinutes": 30,
+        // 是否检查关键索引。
+        // 可填写范围：true / false。
+        "ShouldCheckIndexes": true,
+        // 是否检查下一周期物理分表。
+        // 可填写范围：true / false。
+        "ShouldCheckNextPeriodTables": true,
+        // 是否检查容量与热点风险。
+        // 可填写范围：true / false。
+        "ShouldCheckCapacity": true
+      },
+      "Prebuild": {
+        // 是否启用分表预建计划。
+        // 可填写范围：true / false。
+        "IsEnabled": true,
+        // 是否仅输出 dry-run 计划。
+        // 可填写范围：true（当前版本强制）；真实预建执行需接入危险动作隔离器后开放。
+        "DryRun": true,
+        // 向前规划预建窗口（小时）。
+        // 可填写范围：1~8760。
+        "PrebuildAheadHours": 72
+      }
+    },
+    // 数据库执行性能与瞬时故障重试参数
+    "PerformanceTuning": {
+      // 数据库命令超时时间（秒）
+      "CommandTimeoutSeconds": 30,
+      // 池化 DbContext 工厂容量，应与实例并发和数据库连接池共同调优。
+      "DbContextPoolSize": 128,
+      // 识别慢命令的最小耗时阈值（毫秒）
+      "MinCommandElapsedMilliseconds": 50,
+      // 瞬时故障最大重试次数
+      "MaxRetryCount": 5,
+      // 单次重试最大退避延迟（秒）
+      "MaxRetryDelaySeconds": 10
+    },
+    "SqlLogging": {
+      // 是否记录 EF 查询 SQL 到日志（默认关闭，避免日志噪音与敏感信息暴露风险）
+      "EnableQuerySqlLogging": false
+    },
+    "Diagnostics": {
+      // 是否启用数据库连接预热。
+      // 可填写范围：true / false。
+      "IsWarmupEnabled": true,
+      // 启动时预热的连接数。
+      // 可填写范围：1~64。
+      "WarmupConnectionCount": 4,
+      // 单次数据库连接探测超时时间（毫秒）。
+      // 可填写范围：100~60000。
+      "ProbeTimeoutMilliseconds": 3000,
+      // 探测结果复用窗口（毫秒），用于合并高频健康探针。
+      "ProbeCacheMilliseconds": 5000,
+      // 进入 Unhealthy 所需的连续失败次数。
+      // 可填写范围：1~20。
+      "FailureThreshold": 3,
+      // 从恢复观察期回到 Healthy 所需的连续成功次数。
+      // 可填写范围：1~20。
+      "RecoveryThreshold": 2
+    },
+    "WriteBuffering": {
+      // 是否启用 Parcel 批量缓冲写入。
+      // 可填写范围：true / false。
+      "IsEnabled": true,
+      // 有界通道容量上限。
+      // 可填写范围：1~100000。
+      "ChannelCapacity": 10000,
+      // 单次刷新最大批量条数。
+      // 可填写范围：1~5000。
+      "BatchSize": 500,
+      // 后台刷新间隔（毫秒）。
+      // 可填写范围：10~60000。
+      "FlushIntervalMilliseconds": 200,
+      // 单条记录最大重试次数。
+      // 可填写范围：0~10。
+      "MaxRetryCount": 3,
+      // 首次重试基础延迟（毫秒），后续按指数退避。
+      "RetryBaseDelayMilliseconds": 250,
+      // 单次重试最大延迟（毫秒）。
+      "MaxRetryDelayMilliseconds": 5000,
+      // 重试随机抖动上限（毫秒）。
+      "RetryJitterMilliseconds": 200,
+      // 触发背压拒绝的队列深度阈值。
+      // 可填写范围：1~ChannelCapacity。
+      "BackpressureRejectThreshold": 9000,
+      // 死信容量上限。
+      // 可填写范围：1~100000。
+      "DeadLetterCapacity": 10000,
+      // 停止接收后排空缓冲的秒数，1~20，小于宿主 30 秒停止预算。
+      "ShutdownDrainTimeoutSeconds": 15
+    },
+    "Archiving": {
+      // 是否启用归档 dry-run 后台 Worker。
+      // 可填写范围：true / false。
+      "IsEnabled": true,
+      // Worker 轮询间隔（秒）。
+      // 可填写范围：1~3600。
+      "WorkerPollIntervalSeconds": 30,
+      // dry-run 摘要中保留的样本条数。
+      // 可填写范围：1~100。
+      "SampleItemLimit": 5,
+      // 单次归档 dry-run 执行预算，5~3600 秒。
+      "ExecutionTimeoutSeconds": 120,
+      // 超时遗留 Running 任务的恢复窗口，5~1440 分钟，必须大于单次执行预算。
+      "AbandonedTaskTimeoutMinutes": 15,
+      // 遗留任务自动重新入队上限，0~10，耗尽后保持 Failed 可诊断状态。
+      "MaxAutomaticRecoveryAttempts": 3,
+      // 单轮最多恢复遗留任务数，1~100。
+      "AutomaticRecoveryBatchSize": 20
+    },
+    // 清理默认允许执行，HTTP 入口强制验证当前登录用户密码并永久记录操作。
+    "RepositoryDangerousActions": {
+      // ParcelRepository.RemoveExpiredAsync 危险清理隔离器
+      "ParcelRemoveExpired": {
+        "Isolator": {
+          // 启用守卫（开启时且未显式放开危险动作将直接阻断执行，优先于 DryRun 处理）
+          "EnableGuard": true,
+          // 允许密码确认后的真实清理；可由部署明确关闭。
+          "AllowDangerousActionExecution": true,
+          // DryRun：仅统计与审计，不执行真实删除（仅在未被 Guard 阻断时进入）
+          "DryRun": false
+        }
+      }
+    },
+    // 慢查询采集、分析与告警基线参数（由闭环自治策略驱动自动执行、验证与回退）
+    "AutoTuning": {
+      // 进入自动调优分析的慢查询阈值（毫秒）
+      "SlowQueryThresholdMilliseconds": 500,
+      // 每轮分析的慢查询样本批次大小
+      "AnalysisBatchSize": 200,
+      // 同类慢查询触发分析结论所需最小出现次数
+      "TriggerCount": 3,
+      // 每个分析周期可生成的建议动作上限
+      "MaxActionsPerCycle": 3,
+      // 慢查询采集队列最大长度（超限后按策略丢弃）
+      "MaxQueueSize": 1000,
+      // 后台自动分析执行间隔（秒）
+      "AnalyzeIntervalSeconds": 30,
+      // 聚合输出 TopN 慢查询指纹数量
+      "AggregationTopN": 10,
+      "SlowQueryProfile": {
+        // 是否启用慢查询画像快照。
+        // 可填写范围：true / false。
+        "IsEnabled": true,
+        // 画像保留窗口（分钟）。
+        // 可填写范围：1~1440。
+        "WindowMinutes": 30,
+        // 旧版兼容配置；诊断列表现在返回容量范围内全部指纹，不再按排名隐藏。
+        "TopN": 50,
+        // 进程内允许追踪的最大指纹数量。
+        // 可填写范围：1~5000。
+        "MaxFingerprintCount": 1000,
+        // 单个慢查询指纹在窗口内最多保留的样本数量。
+        // 可填写范围：1~4096。
+        "MaxSampleCountPerFingerprint": 256,
+        // 后台批量归档慢样本，重启后恢复有效窗口。热路径只写有界内存队列。
+        "ArchiveEnabled": true,
+        // 相对宿主内容根目录，Docker 已挂载 governance-artifacts 持久化目录。
+        "ArchiveDirectory": "governance-artifacts/slow-queries",
+        // 归档最多保留天数，可填写范围：1~365。
+        "ArchiveRetentionDays": 7,
+        // 归档样本总量上限，可填写范围：100~500000。
+        "ArchiveMaximumSamples": 50000
+      },
+      "QueryGovernance": {
+        // 查询治理报告输出间隔（小时）。
+        // 可填写范围：1~24。
+        "ReportIntervalHours": 4,
+        // 输出只读索引建议所需的最小 P99 阈值（毫秒）。
+        // 可填写范围：1~600000。
+        "RecommendationP99Milliseconds": 500,
+        // 输出只读索引建议所需的最小调用次数。
+        // 可填写范围：1~100000。
+        "MinimumCallCount": 3
+      },
+      // 告警基础防抖：同一 SQL 指纹最小调用次数（低于该值不触发阈值告警）
+      "AlertDebounceMinCallCount": 3,
+      // P99 延迟告警阈值（毫秒）
+      "AlertP99Milliseconds": 500,
+      // 超时率告警阈值（百分比）
+      "AlertTimeoutRatePercent": 1,
+      // 死锁告警阈值（周期内最小次数）
+      "AlertDeadlockCount": 1,
+      // 告警去重窗口（秒），同一指纹同类告警在窗口内只通知一次
+      "AlertDebounceWindowSeconds": 600,
+      // 连续 N 个分析窗口满足阈值后才触发告警
+      "AlertConsecutiveWindows": 1,
+      // 连续 N 个分析窗口恢复正常后发送恢复通知
+      "AlertRecoveryConsecutiveWindows": 1,
+      // 日报生成时间（本地时间，建议使用 HH:mm:ss 形式）
+      "DailyReportLocalTime": "02:30:00",
+      // 月度巡检报告输出的每月日期（1~28），在该日的 DailyReportLocalTime 时点同步输出月报
+      // 可填写范围：1~28（避免2月末无效日期），默认值 1（即每月1日）
+      "MonthlyReportDay": 1,
+      // 月度巡检报告归档目录路径（相对路径基于应用目录，绝对路径原样使用）。
+      // 非空时每次月报输出后将内容写入 {MonthlyReportArchivePath}/monthly-report-{yyyy-MM}.txt 文件，
+      // 供季度/年度复盘使用。为空则仅输出日志，不归档文件。
+      // 可填写范围：合法目录路径字符串，如 "monthly-reports"（相对）或 "/var/log/sorting-hub/reports"（绝对）
+      "MonthlyReportArchivePath": "monthly-reports",
+      // 年度运行看板输出月份（1~12），每年该月 1 日与 DailyReportLocalTime 同时输出年度看板。
+      // 可填写范围：1~12，默认值 1（即每年 1 月 1 日）
+      "AnnualDashboardMonth": 1,
+      // 年度运行看板归档目录路径（相对路径基于应用目录，绝对路径原样使用）。
+      // 非空时每次年度看板输出后将内容写入 {AnnualDashboardArchivePath}/annual-dashboard-{yyyy}.txt 文件。
+      // 可填写范围：合法目录路径字符串，如 "annual-dashboards"（相对）或 "/var/log/sorting-hub/annual"（绝对）
+      "AnnualDashboardArchivePath": "annual-dashboards",
+      // 分表治理策略切换 sharding hit rate 门禁阈值（0.0~1.0）。
+      // 大于 0 时：若当前分析窗口的 sharding hit rate 低于此值，则阻断分表相关候选的自动动作。
+      // 0.0 = 不启用门禁（默认）；推荐值 0.3（命中率低于 30% 时阻断）。
+      // 可填写范围：0.0~1.0，0.0 = 不启用，默认值 0.0
+      "ShardingGovernanceHitRateThreshold": 0.0,
+      // 基线命令超时时间（秒），用于审计 PerformanceTuning 配置是否偏离推荐值
+      "BaselineCommandTimeoutSeconds": 30,
+      // 基线最大重试次数，用于审计 PerformanceTuning 配置是否偏离推荐值
+      "BaselineMaxRetryCount": 5,
+      // 基线最大重试延迟（秒），用于审计 PerformanceTuning 配置是否偏离推荐值
+      "BaselineMaxRetryDelaySeconds": 10,
+      // 闭环自治策略（监测 -> 诊断 -> 执行 -> 验证 -> 回退）
+      "Autonomous": {
+        // 启用后，自动按闭环自治策略执行
+        "EnableFullAutomation": true,
+        // 策略引擎：根据业务时段、表热度、风险评分决定动作
+        "Policy": {
+          // 进入自动动作的最小表热度（按调用量衰减累计）
+          "MinTableHeatCalls": 10,
+          // 非高峰风险阈值（0~1）
+          "MaxRiskScore": 0.85,
+          // 高峰风险阈值（0~1，高峰更保守）
+          "PeakMaxRiskScore": 0.45,
+          // 高峰可执行的最大表热度（超过则仅监测，不自动动作）
+          "PeakMaxTableHeatCalls": 50
+        },
+        // 执行控制（全自动执行窗口与速率限制）
+        "Execution": {
+          // 每个分析周期最多执行动作条数（防止集中变更）
+          "MaxExecuteActionsPerCycle": 2,
+          // 自动动作执行超时（秒）
+          "ActionExecutionTimeoutSeconds": 60,
+          // 高峰时段是否禁止变更（高峰仅采集分析，不执行动作）
+          "SkipExecutionDuringPeak": true,
+          // 高峰起始时间（本地时间）
+          "PeakStartLocalTime": "08:00:00",
+          // 高峰结束时间（本地时间）
+          "PeakEndLocalTime": "21:00:00",
+          // 允许自动动作的白名单表（支持 table 或 schema.table；为空表示阻断全部表）
+          "WhitelistedTables": [
+            "parcels",
+            "dbo.parcels",
+            "webrequestauditlogs",
+            "dbo.webrequestauditlogs",
+            "webrequestauditlogdetails",
+            "dbo.webrequestauditlogdetails"
+          ],
+          // 危险动作隔离器配置（统一入口治理）
+          "Isolator": {
+            // 启用危险动作隔离器（关闭后仅保留日志与审计）
+            "EnableGuard": true,
+            // 是否允许执行高风险动作（如 DDL）；默认禁止
+            "AllowDangerousActionExecution": false,
+            // Dry-run 模式：只审计不执行 SQL（回滚 SQL 仍可执行）
+            "DryRun": false,
+            // 灰度切换 dry-run 保护周期数：大于 0 时，策略初始化后先执行 N 个分析周期的 dry-run，
+            // 保护期满后自动晋升为真实执行模式并输出可观测性事件。
+            // 可填写范围：0~100，0 表示不启用灰度保护（直接按 DryRun 配置决定）。
+            "GradualSwitchDryRunCycles": 0
+          }
+        },
+        // 自动验证与自动回退阈值
+        "Validation": {
+          // 是否启用动作后自动验证
+          "EnableAutoValidation": true,
+          // 是否允许在自动验证失败后执行回滚脚本
+          "EnableAutoRollback": true,
+          // 动作后延迟 N 个分析周期再验证
+          "DelayCycles": 1,
+          // P95 退化阈值（百分比）
+          "P95IncreasePercent": 5,
+          // P99 退化阈值（百分比）
+          "P99IncreasePercent": 10,
+          // 异常率退化阈值（百分比）
+          "ErrorRateIncreasePercent": 0.5,
+          // 超时率退化阈值（百分比）
+          "TimeoutRateIncreasePercent": 0.5,
+          // 死锁次数退化阈值（最小增量）
+          "DeadlockIncreaseCount": 1,
+          // 触发回归后暂停后续动作的分析周期数（分级动作之一）
+          "PauseActionCyclesOnRegression": 2,
+          // 严重回归阈值（分级动作之一：立即回滚）
+          "SevereRollback": {
+            // P99 增幅达到该值视为严重回归，触发立即回滚
+            "P99IncreasePercent": 25,
+            // 超时率增幅达到该值视为严重回归，触发立即回滚
+            "TimeoutRateIncreasePercent": 2
+          },
+          // 执行计划回归探针：开关与采样率（0~1，1 表示每次验证都采样）
+          "PlanProbe": {
+            // 是否启用执行计划回归探针（关闭时统一标记 unavailable: plan-probe-disabled）
+            "Enable": true,
+            // 探针采样率（推荐默认 1；生产保守值可设 0.2）
+            "SampleRate": 1
+          }
+        },
+        // 容量趋势预测（基于本地观测窗口）
+        "CapacityPrediction": {
+          // 是否启用容量趋势预测
+          "EnableCapacityPrediction": true,
+          // 预测窗口（天）
+          "ProjectionDays": 7,
+          // 预测窗口（N 天）累计查询影响行数阈值（查询体量代理指标）达到该值触发趋势告警
+          "GrowthAlertRows": 50000,
+          // 预测窗口（N 天）累计查询影响行数阈值达到该值给出冷热分层建议
+          "HotLayeringRows": 200000
+        }
+      }
+    }
+  },
+  // 数据库连接字符串配置（仓库内仅保留脱敏示例，真实凭据通过安全配置注入）
+  "ConnectionStrings": {
+    // MySQL 连接字符串（本地开发默认配置，生产环境必须启用 SSL/TLS）
+    "MySql": "server=127.0.0.1;port=3306;database=zeye_sorting_hub;uid=root;pwd=******;SslMode=None;MinimumPoolSize=8;MaximumPoolSize=128;ConnectionTimeout=5;DefaultCommandTimeout=30;ConnectionIdleTimeout=180;ConnectionLifeTime=300;",
+    // MySQL 只读副本连接字符串（可填写范围：空字符串，或任意合法 MySQL 只读连接字符串）。
+    "MySqlReadOnly": "",
+    // SQL Server 连接字符串（本地开发默认配置，生产环境必须启用 SSL/TLS）
+    "SqlServer": "Server=127.0.0.1,1433;Database=zeye_sorting_hub;User Id=sa;Password=******;TrustServerCertificate=True;Encrypt=False;Min Pool Size=8;Max Pool Size=128;Connect Timeout=5;Load Balance Timeout=300;MultipleActiveResultSets=False;Application Name=Zeye.Sorting.Hub;",
+    // SQL Server 只读副本连接字符串（可填写范围：空字符串，或任意合法 SQL Server 只读连接字符串）。
+    "SqlServerReadOnly": "",
+    // Oracle 业务连接，范围：合法的 ODP.NET 连接字符串，Data Source 指向现有 PDB 服务。
+    "Oracle": "User Id=ZEYE_SORTING_HUB;Password=******;Data Source=127.0.0.1:1521/FREEPDB1;Pooling=true;Min Pool Size=1;Max Pool Size=128;Connection Timeout=15;",
+    // Oracle 初始化管理连接，范围：空字符串或目标 PDB 管理连接；仅首次自动创建业务用户时必填。
+    "OracleAdministration": "",
+    // Oracle 只读连接，范围：空字符串或合法的只读账户连接字符串。
+    "OracleReadOnly": "",
+    // SQLite 业务库文件，范围：合法文件路径，不允许 :memory:；首次启动自动建立目录与文件。
+    "SQLite": "Data Source=data/business/sorting-hub.db;Default Timeout=30;Foreign Keys=True;",
+    // SQLite 只读连接，范围：空字符串或同一业务文件的 Mode=ReadOnly 连接。
+    "SQLiteReadOnly": ""
+  },
+  // 日志配置（NLog — 详见 nlog.config）
+  // 日志落盘策略：
+  //   - logs/app-<日期>.log      全量应用日志，按天归档，保留 30 天
+  //   - logs/database-<日期>.log 数据库专属日志（EF Core 迁移、DatabaseInitializerHostedService
+  //                              、DatabaseAutoTuningHostedService、Persistence 层），按天归档，保留 30 天
+  // 任何数据库异常均会记录到 database-*.log，不影响程序运行。
+  "Logging": {
+    // 按日志分类配置最低输出级别（NLog 以 nlog.config 中的 rules 为准，此处为兼容层配置）
+    "LogLevel": {
+      // 应用默认日志级别
+      "Default": "Information",
+      // 微软基础设施组件使用 Warning 级别以减少噪音
+      "Microsoft": "Warning",
+      // Host 生命周期日志保留 Information
+      "Microsoft.Hosting.Lifetime": "Information",
+      // EF Core 操作日志保留 Information（迁移、慢查询等）
+      "Microsoft.EntityFrameworkCore": "Information"
+    }
+  },
+  // 运行时资源阈值配置（告警级别边界，触发后优先限流与降级）。
+  "ResourceThresholds": {
+    // 数据库连接池最大连接数告警阈值（超过时启动期输出 Warn 日志）。
+    // 可填写范围：正整数，推荐值 100，生产环境建议 ≤ 200。
+    "MaxConnectionPoolSize": 128,
+    // 进程内存告警阈值（MB，超过时输出 Warn 告警）。
+    // 可填写范围：正整数（MB），建议值 1024（1 GB），设为 0 表示不启用内存阈值告警。
+    "MemoryWarningThresholdMB": 1024,
+    // 真实进程句柄/文件描述符告警阈值，0~1000000，0 关闭。
+    "HandleWarningThreshold": 10000,
+    // 持久化目录所在文件系统最小可用空间，0~1048576 MiB，0 关闭。
+    "MinimumDiskFreeMB": 1024,
+    // 资源后台采样间隔，10~3600 秒；异常状态按变化及十五分钟窗口记录日志。
+    "SampleIntervalSeconds": 60
+  }
+}

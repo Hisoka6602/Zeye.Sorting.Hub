@@ -72,3 +72,27 @@ test('失败和未知结果仍显示为历史异常，展示业务说明并保�
   assert.equal(result.records[0].errorMessage, detail);
   assert.equal(result.current, false);
 });
+
+test('外部接口详情使用同编号处理事件，正常调用诊断与真实失败保持原语义和完整字段', () => {
+  const processingRecords = ['started', 'failed'].map(outcome => {
+    const detail = JSON.stringify({ operationId: 'scan', attemptId: 'scan-1', operation: '扫描上传', outcome, attemptNumber: 1 });
+    return { ...event, stage: 3, recordId: outcome, exceptionCode: null, isSuccess: null, errorMessage: detail,
+      rawPayload: JSON.stringify({ kind: 'provider-attempt', name: '扫描上传', outcome, detail }) };
+  });
+  const apiRequests = processingRecords.map(record => ({ recordId: record.recordId, apiType: null, exception: record.errorMessage, rawData: record.rawPayload, elapsedMilliseconds: 0, futureFlag: false }));
+  const result = parcelExceptionDetails({ ...normal, processingRecords, apiRequests });
+  assert.deepEqual(result.records.map(record => record.recordId), ['failed']);
+  assert.equal(result.eventsByRecord.get('started').title, '扫描上传');
+  assert.equal(result.eventsByRecord.get('started').isIssue, false);
+  assert.equal(result.eventsByRecord.get('failed').isIssue, true);
+  assert.equal(result.eventsByRecord.get('missing'), undefined);
+  assert.equal(result.interfaceErrors[0], apiRequests[0]);
+  assert.equal(result.interfaceErrors[0].rawData, processingRecords[0].rawPayload);
+  assert.equal(result.interfaceErrors[0].elapsedMilliseconds, 0);
+  assert.equal(result.interfaceErrors[0].futureFlag, false);
+  assert.ok(result.messages.includes(result.eventsByRecord.get('started').description));
+  assert.ok(result.messages.includes(result.eventsByRecord.get('failed').description));
+  assert.ok(!result.messages.includes(processingRecords[0].errorMessage));
+  const differentError = parcelExceptionDetails({ ...normal, processingRecords, apiRequests: [{ ...apiRequests[0], exception: '接口返回不同异常' }] });
+  assert.ok(differentError.messages.includes('接口返回不同异常'));
+});

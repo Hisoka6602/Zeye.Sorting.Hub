@@ -6,6 +6,7 @@ import { NumberUnit } from '../../components/NumberUnit';
 import { PageIntro } from '../../components/PageIntro';
 import { SectionCard } from '../../components/SectionCard';
 import { requestApi } from '../../data/api/client';
+import { localDateTimeFormat } from '../../data/api/operationalTypes';
 
 /** Full creation contract; keep every 64-bit integer as a string in JavaScript. */
 interface ParcelFormValues {
@@ -76,8 +77,8 @@ export function ParcelCreatePage() {
         </div>
         <div className="section-band">分拣信息</div>
         <div className="two-cols">
-          <Form.Item name="scanTime" label="扫码时间" rules={[{ required: true, message: '请选择扫码时间' }]} extra="使用本地时间，不含时区偏移"><DatePicker showTime style={{ width: '100%' }} placeholder="请选择日期和时间" /></Form.Item>
-          <Form.Item name="landedTime" label="落格时间" rules={[{ required: true, message: '请选择落格时间' }]} extra="使用本地时间，不含时区偏移"><DatePicker showTime style={{ width: '100%' }} placeholder="请选择日期和时间" /></Form.Item>
+          <Form.Item name="scanTime" label="扫码时间" rules={[{ required: true, message: '请选择扫码时间' }]} extra="使用本地时间，不含时区偏移"><DatePicker showTime format={localDateTimeFormat} style={{ width: '100%' }} placeholder="请选择日期和时间" /></Form.Item>
+          <Form.Item name="landedTime" label="落格时间" rules={[{ required: true, message: '请选择落格时间' }]} extra="使用本地时间，不含时区偏移"><DatePicker showTime format={localDateTimeFormat} style={{ width: '100%' }} placeholder="请选择日期和时间" /></Form.Item>
           <Form.Item name="target" label="目标格口 ID" rules={[{ required: true, message: '请输入目标格口 ID' }, positiveInt64]}><InputNumber<string> stringMode precision={0} min="1" placeholder="请输入正整数" style={{ width: '100%' }} /></Form.Item>
           <Form.Item name="actual" label="实际格口 ID" rules={[{ required: true, message: '请输入实际格口 ID' }, positiveInt64]}><InputNumber<string> stringMode precision={0} min="1" placeholder="请输入正整数" style={{ width: '100%' }} /></Form.Item>
         </div>

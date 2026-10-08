@@ -367,6 +367,9 @@ FodyWeavers.xsd
 logs/
 # 整改验证依赖缓存、构建产物与测试结果由本地运行生成。
 .codex-artifacts/
+# 浏览器验收快照和截图是本地生成证据。
+.playwright-cli/
+/output/playwright/
 # 隔离数据库压测的原始结果与错误日志，可能包含执行计划和样本详情。
 performance/results/
 /deploy/.env
@@ -374,4 +377,10 @@ performance/results/
 # Fusion 耐久图片和未完成分块是部署数据，不属于源码。
 /fusion-images/
 /Zeye.Sorting.Hub.Host/fusion-images/
+# 当前配置和业务历史属于部署数据，不能提交。
+/data/
+/Zeye.Sorting.Hub.Host/data/
 !Zeye.Sorting.Hub.Host/Properties/PublishProfiles/Windows-x64.pubxml
+# 查询诊断归档是本地部署数据，不提交业务观测样本。
+/governance-artifacts/slow-queries/
+/Zeye.Sorting.Hub.Host/governance-artifacts/slow-queries/

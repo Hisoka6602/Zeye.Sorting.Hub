@@ -32,7 +32,9 @@ internal static class ParcelCreationIntervalQuery {
             ? "TIMESTAMPDIFF(MICROSECOND, PreviousTime, CreationTime)"
             : db.Database.IsSqlServer()
                 ? "DATEDIFF_BIG(MICROSECOND, PreviousTime, CreationTime)"
-                : db.Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite"
+                : db.Database.ProviderName == DbProviderNames.Oracle
+                    ? OracleMicrosecondsDifference()
+                : db.Database.ProviderName == DbProviderNames.SQLite
                     ? $"({SqliteMicroseconds("CreationTime")} - {SqliteMicroseconds("PreviousTime")})"
                     : throw new NotSupportedException("当前数据库不支持创建间隔统计。");
         var count = db.Database.IsSqlServer() ? "COUNT_BIG(*)" : "COUNT(*)";
@@ -65,4 +67,11 @@ internal static class ParcelCreationIntervalQuery {
     /// <summary>SQLite 用整数秒和毫秒拼接，避免 julianday 浮点误差破坏毫秒间隔。</summary>
     private static string SqliteMicroseconds(string column) =>
         $"(CAST(strftime('%s', {column}) AS INTEGER) * 1000000 + CAST(substr(strftime('%f', {column}), 4, 3) AS INTEGER) * 1000)";
+
+    /// <summary>Oracle 时间戳之差为 INTERVAL；逐项按十进制定点运算保留微秒，不转换为低精度 DATE。</summary>
+    private static string OracleMicrosecondsDifference() =>
+        "(EXTRACT(DAY FROM (CreationTime - PreviousTime)) * 86400000000"
+        + " + EXTRACT(HOUR FROM (CreationTime - PreviousTime)) * 3600000000"
+        + " + EXTRACT(MINUTE FROM (CreationTime - PreviousTime)) * 60000000"
+        + " + EXTRACT(SECOND FROM (CreationTime - PreviousTime)) * 1000000)";
 }

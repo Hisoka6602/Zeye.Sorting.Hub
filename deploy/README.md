@@ -12,7 +12,7 @@ Fusion 1.0 的来源登记、专用 SignalR 机器认证、图片持久化、可
 ./deploy/publish-windows.ps1
 ```
 
-构建机需要 .NET 10 SDK 和 Node.js 24/npm。默认输出为 `artifacts/windows-x64`，包含 Windows x64 自包含 Host、前端 `wwwroot`、配置和 `Start-Hub.cmd`。将整个目录一次复制到目标主机，配置数据库后运行 `Start-Hub.cmd` 或 `Zeye.Sorting.Hub.Host.exe`。目标机不需要 Node、Nginx、独立前端服务或另外安装 .NET；数据库继续使用现有 MySQL / SQL Server 连接。
+构建机需要 .NET 10 SDK 和 Node.js 24/npm。默认输出为 `artifacts/windows-x64`，包含 Windows x64 自包含 Host、前端 `wwwroot`、配置和 `Start-Hub.cmd`。将整个目录一次复制到目标主机，配置数据库后运行 `Start-Hub.cmd` 或 `Zeye.Sorting.Hub.Host.exe`。目标机不需要 Node、Nginx、独立前端服务或另外安装 .NET；业务数据库支持 MySQL、SQL Server、Oracle、SQLite，配置及四库隔离 Docker/Fusion 验收步骤见 [四数据库部署与验收](../docs/四数据库部署与验收.md)。
 
 页面、登录、API、包裹图片及健康探针由同一个进程和端口提供，默认入口为 `http://127.0.0.1:5078/`。深层页面刷新也可直接访问。程序从自身目录加载配置和 `wwwroot`，从其他工作目录启动同样有效。默认仅监听 HTTP，无需开发证书；配置服务器证书后可用 `Hosting:Urls` 或 `--urls` 启用 HTTPS。
 
@@ -20,7 +20,7 @@ Fusion 1.0 的来源登记、专用 SignalR 机器认证、图片持久化、可
 
 实时通道复用原接口认证、权限、限流及审计，每次调用重新验证账号；断线自动重连并恢复订阅，JSON 原文保证长编号不失真。写入只发送一次，断线或超时未收到结果时先检查业务记录，不能自动重放。账号、上传、下载、清理和其余管理写入继续使用现有 HTTP 安全流程。融合服务尚未上报的设备在线状态仍显示待接入，不能由浏览器实时连接推断设备在线。客户端参考：[微软 SignalR JavaScript 文档](https://learn.microsoft.com/aspnet/core/signalr/javascript-client)。
 
-原生部署使用已有环境变量或独立的 `appsettings.Production.json` 配置数据库及认证。例如在 PowerShell 中设置实际连接和不同的初始化、设备密钥后启动：
+原生部署可使用环境变量配置数据库及认证，环境变量始终优先于页面保存值。首次启动时也会自动导入独立的 `appsettings.Production.json`；导入完成后，运行配置由超级管理员在“系统配置”页面维护，JSON 文件仅保留配置库路径和 Kestrel 等启动引导参数。例如在 PowerShell 中设置实际连接和不同的初始化、设备密钥后启动：
 
 ```powershell
 $env:ConnectionStrings__MySql = '填写目标数据库的实际连接字符串'
@@ -34,9 +34,11 @@ $env:Persistence__Sharding__Prebuild__DryRun = 'false'
 & ./artifacts/windows-x64/Start-Hub.cmd
 ```
 
-这些建表设置允许程序自动执行迁移及预建分表，数据库账号需有对应 DDL 权限，生产危险迁移阻断仍遵循已有配置。双击启动时，将上述对应配置写入发布目录中的 `appsettings.Production.json`，无需每次设置环境变量。
+这些建表设置允许程序自动执行迁移及预建分表，数据库账号需有对应 DDL 权限，生产危险迁移阻断仍遵循已有配置。双击启动前，可将对应配置写入发布目录中的 `appsettings.Production.json` 作为首次导入值；已建立配置库后，修改旧 JSON 的运行参数不会覆盖配置库，应改用页面或明确的环境覆盖。
 
-首次运行仍需通过页面创建首个管理员，完成后才启用内置超级用户。仅剩内置账号、没有普通成员时，登录页重新提示创建管理员，仍需部署初始化密钥；已有普通成员时不能重复初始化。内置账号不显示在成员列表中，也不计入角色成员数。接口权限和清理密码确认流程保持生效。配置、账号及数据库不放在公开的 `wwwroot` 中；升级时先发布到新的输出目录，再保留目标机部署配置、日志、备份及数据库。
+首次运行仍需通过页面创建首个管理员，完成后才启用内置超级用户。仅剩内置账号、没有普通成员时，登录页重新提示创建管理员，仍需部署初始化密钥；已有普通成员时不能重复初始化。内置账号不显示在成员列表中，也不计入角色成员数。接口权限和清理密码确认流程保持生效。配置、账号及数据库不放在公开的 `wwwroot` 中；升级时先发布到新的输出目录，再保留目标机部署配置、`data/configuration`、`data/business-history`、`logs/data-protection`、日志、备份及业务数据库。配置目录和历史目录不能用发布包中的初始文件覆盖。
+
+配置默认保存在 `data/configuration/settings.db`，修改前后原值历史独立保存在 `data/business-history/configuration-history.db`，配置及历史原值接口仅超级管理员可访问；旧版已脱敏历史保留原记录。目录、文件、集合及历史表由程序自动建立。迁移旧配置时会保留已有版本和加密凭据，已有配置不会被旧 JSON 或关系库重复覆盖。备份和迁移部署时应在服务停止后整体复制上述目录。加密凭据依赖配置库目录下的 `data-protection` 密钥；启动会从旧 `logs/data-protection` 自动复制且保留原文件。热更新范围、旧版兼容和存储路径覆盖方式见根目录 [README.md](../README.md)。
 
 脚本可用 `-OutputDirectory 'D:\Publish\SortingHub'` 改变输出目录。原生发布默认按内容增量处理：依赖声明、锁文件、npm 配置或 Node 平台变化时才恢复依赖；源码、静态资源、TypeScript/Vite 配置、构建脚本或 `VITE_*` 环境变化时才重建前端。输入与全部输出的 SHA-256 均匹配时复用构建，每次仍将完整前端纳入发布包，并再次完整复制到 `wwwroot`，修复与源文件大小和时间戳相同的内容损坏。构建目录缺失或损坏的资源自动重建，失败的构建不能被缓存。缓存元数据保存在 `artifacts/web-publish`，不会进入公开的 `wwwroot`；并发发布共用锁，避免同时重装依赖。
 
@@ -63,13 +65,13 @@ install.bat
 uninstall.bat
 ```
 
-`install.bat` 注册延迟自动启动服务，使用专用虚拟账号 `NT SERVICE\Zeye.Sorting.Hub.Host`，授权其读写本发布目录，启动后验证服务保持运行。重复安装先停止再更新并启动服务。PowerShell 当前进程中显式设置的 `*__*` 配置变量以及 `ASPNETCORE_*` / `DOTNET_*` 会保存到该服务的注册表 `Environment`，已有配置继续保留；变量值不输出到安装日志。也可直接维护发布目录的 `appsettings.Production.json`。不需要配置管理员密码或默认使用 LocalSystem。
+`install.bat` 注册延迟自动启动服务，使用专用虚拟账号 `NT SERVICE\Zeye.Sorting.Hub.Host`，授权其读写本发布目录，启动后验证服务保持运行。重复安装先停止再更新并启动服务。PowerShell 当前进程中显式设置的 `*__*` 配置变量以及 `ASPNETCORE_*` / `DOTNET_*` 会保存到该服务的注册表 `Environment`，已有配置继续保留；变量值不输出到安装日志。运行配置通常从“系统配置”页面维护，`appsettings.Production.json` 仅用于首次导入或启动引导参数。不需要配置管理员密码或默认使用 LocalSystem。
 
 Linux 发布和安装：
 
 ```sh
 dotnet publish Zeye.Sorting.Hub.Host -c Release -r linux-x64 --self-contained true -o artifacts/linux-x64
-# 将整个目录复制到目标主机，并先配置 appsettings.Production.json。
+# 将整个目录复制到目标主机；首次部署可用 appsettings.Production.json 提供导入配置。
 cd /opt/zeye/sorting-hub
 sudo bash install.sh
 sudo bash uninstall.sh
@@ -79,7 +81,7 @@ sudo bash uninstall.sh
 
 发布目录支持中文、空格、美元及百分号；systemd 不支持可执行文件路径中的引号和反斜线，安装预检会提前拒绝这类目录。运行 `bash deploy/test-systemd-unit.sh` 可使用真实 systemd 解析器复验生成的 unit，测试不注册服务。
 
-Linux 的持久化环境变量文件默认 `/etc/default/Zeye.Sorting.Hub.Host`，首次安装自动创建，权限为 `600`；填入实际配置后重新执行安装或重启服务。Linux 不自动复制当前 shell 环境到服务，环境文件格式为 `配置名="值"`，也可使用 `appsettings.Production.json`。安装保留既有环境文件。正常服务管理与诊断示例：
+Linux 的持久化环境变量文件默认 `/etc/default/Zeye.Sorting.Hub.Host`，首次安装自动创建，权限为 `600`；填入实际配置后重新执行安装或重启服务。Linux 不自动复制当前 shell 环境到服务，环境文件格式为 `配置名="值"`。`appsettings.Production.json` 可提供首次导入值，之后从页面维护运行配置；环境文件中的配置仍为优先覆盖。安装保留既有环境文件。正常服务管理与诊断示例：
 
 ```sh
 sudo systemctl status Zeye.Sorting.Hub.Host
@@ -153,6 +155,19 @@ MySQL 默认使用 1 GiB InnoDB 数据页缓存和 3 GiB 容器内存上限，�
 Windows 部署完成后会提示按 `Ctrl+D` 收藏前端地址。选择“是”表示用户确认已经收藏，此地址之后不再提醒；选择“否”则下次部署继续提醒。确认记录按本机用户与完整前端地址保存至 `%LOCALAPPDATA%/Zeye.Sorting.Hub/bookmark-confirmations.json`，地址或端口变化会重新提醒。浏览器的真实收藏状态无法由普通部署脚本通用检测，因此此记录是用户确认，不代表脚本读取或写入了浏览器书签。
 
 可用参数：`-SkipBuild` 使用已有镜像，`-NoOpenBrowser` 跳过打开浏览器与收藏提醒（适用于自动化运行），`-RemindBookmark` 强制重新询问收藏状态，`-StartupTimeout 300` 调整就绪等待时间（默认 180 秒）。未就绪或部署失败时不会自动打开前端。需要手动部署时仍可使用 `docker compose --env-file deploy/.env -f deploy/compose.yaml up -d --build`。
+
+Windows 本机入口 `4187` 默认跟随当前工作目录的代码：`start.ps1` 成功部署后会启动无窗口后台监听。前端源码、样式、依赖或 Nginx 配置改变时重建 Web；后端源码、项目依赖或应用配置改变时重建 Host。每个 Compose 项目保持一个监听进程；同一批修改命中多个服务时，由 Compose 一起构建，全部成功后更新对应容器。编译失败时保留已有可用版本。原有 MySQL、登录账号和配置数据卷继续保留。浏览器刷新即可加载当前构建；已经打开的页面不会被自动刷新。监听排除依赖目录、编译输出、测试、日志和业务数据，避免重复构建。该流程使用 [Docker Compose Watch](https://docs.docker.com/compose/how-tos/file-watch/)，需要支持 `develop.watch.include` 的新版 Compose（本机已验证 v5.1.4）。
+
+```powershell
+# 独立开启监听，先补构建当前代码；重复执行复用已有监听。
+./deploy/watch.ps1
+# 查看状态及日志位置。
+./deploy/watch.ps1 -Action Status
+# 停止自动更新，现有服务和数据继续保留。
+./deploy/watch.ps1 -Action Stop
+```
+
+日志和进程状态保存在 Git 忽略的 `artifacts/local-watch/`。监听叠加 `compose.watch.yaml`，只更新 Host/Web，避免 Compose 连带重建数据库依赖；首次部署仍由 `start.ps1` 按原依赖顺序启动数据库。Docker Desktop 重启、监听异常退出或 Windows 文件事件出错导致监听停用时，后台进程自动重试并重新构建后恢复监听；Windows 重启后需重新执行 `./deploy/start.ps1 -NoOpenBrowser`。`-NoWatch` 可跳过启动监听，已运行的监听需要单独停止。修改 Compose 规则或 `.env` 后，应先停止监听，再重新执行部署入口以加载新的设置。`-SkipBuild` 只复用已有镜像，不能用于确认代码已更新。Linux 可在部署后运行 `docker compose --env-file deploy/.env -f deploy/compose.yaml -f deploy/compose.watch.yaml watch --no-up host web`，保持此进程运行以自动更新。
 
 Linux 对应参数为 `--skip-build`、`--no-open-browser`、`--startup-timeout 300`。无桌面环境时脚本输出访问地址；有桌面环境且安装了 `xdg-open` 时自动打开浏览器。
 

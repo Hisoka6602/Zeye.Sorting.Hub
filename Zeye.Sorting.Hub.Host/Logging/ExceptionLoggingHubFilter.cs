@@ -44,7 +44,11 @@ public sealed class ExceptionLoggingHubFilter(LogFactory factory) : IHubFilter {
             $"SignalR 调用失败，Hub={hub}，Method={method}。") { Exception = exception };
         entry.Properties["ConnectionId"] = caller.ConnectionId;
         entry.Properties["Method"] = method;
-        entry.Properties["TraceId"] = caller.GetHttpContext()?.TraceIdentifier;
+        try { entry.Properties["TraceId"] = caller.GetHttpContext()?.TraceIdentifier; }
+        catch (ObjectDisposedException contextFailure) {
+            // 连接异常退出时请求上下文可能已释放，原始调用异常仍必须按原样落盘和传播。
+            _logger.Debug(contextFailure, "SignalR 请求上下文已释放，保留连接身份与原始异常。");
+        }
         return entry;
     }
 }

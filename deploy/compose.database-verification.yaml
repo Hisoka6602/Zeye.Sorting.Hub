@@ -1,0 +1,112 @@
+# 独立验收环境；固定测试凭据仅用于此隔离项目，端口仅绑定本机。
+# docker compose -p zeye-db-verification -f deploy/compose.database-verification.yaml up -d
+x-hub-environment: &hub-environment
+  TZ: Asia/Shanghai
+  ASPNETCORE_ENVIRONMENT: DatabaseVerification
+  Hosting__Urls: http://0.0.0.0:5078
+  Persistence__DatabaseBootstrap__EnsureDatabaseExists__Enabled: "true"
+  Persistence__DatabaseBootstrap__EnsureDatabaseExists__Isolator__AllowDangerousActionExecution: "true"
+  Persistence__DatabaseBootstrap__EnsureDatabaseExists__Isolator__EnableDryRun: "false"
+  Persistence__Migration__FailureStrategy: FailFast
+  Persistence__Migration__FailureStrategyNonProduction: FailFast
+  Persistence__MigrationGovernance__DryRun: "false"
+  Persistence__Sharding__WriteRouting__AllowTableCreation: "true"
+  Persistence__Sharding__WriteRouting__DryRun: "false"
+  Persistence__Sharding__CreateShardingTableOnStarting: "false"
+  ZEYE_DATABASE_VERIFICATION: "1"
+  Access__BootstrapKey: MatrixBootstrap20261007_ForTests
+  FusionIngestion__IsEnabled: "true"
+  FusionIngestion__AllowInsecureHttp: "true"
+  FusionIngestion__DiscoveryEnabled: "true"
+  FusionIngestion__DiscoveryPort: "47651"
+  FusionIngestion__HubId: database-verification
+  WebRequestAuditLog__SampleRate: "1"
+x-hub: &hub
+  image: zeye-sorting-hub:database-verification
+  restart: "no"
+  environment: *hub-environment
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: MatrixMysql20261007_ForTests
+      TZ: Asia/Shanghai
+    ports: ["127.0.0.1:13316:3306"]
+    volumes: ["mysql-data:/var/lib/mysql"]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-pMatrixMysql20261007_ForTests"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_SA_PASSWORD: MatrixSqlServer20261007_ForTests
+      TZ: Asia/Shanghai
+    ports: ["127.0.0.1:14336:1433"]
+    volumes: ["sqlserver-data:/var/opt/mssql"]
+  oracle:
+    image: gvenzl/oracle-free:23-slim
+    environment:
+      ORACLE_PASSWORD: MatrixOracle20261007_ForTests
+      TZ: Asia/Shanghai
+    ports: ["127.0.0.1:15236:1521"]
+    volumes: ["oracle-data:/opt/oracle/oradata"]
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 90s
+  hub-mysql:
+    <<: *hub
+    environment:
+      <<: *hub-environment
+      Persistence__Provider: MySql
+      FusionIngestion__AdvertisedEndpoint: http://hub-mysql:5078/hubs/fusion-ingestion
+      ConnectionStrings__MySql: server=mysql;database=zeye_matrix;uid=root;pwd=MatrixMysql20261007_ForTests;SslMode=None;ConnectionTimeout=10;
+    ports: ["127.0.0.1:5191:5078"]
+    volumes: ["hub-mysql-data:/app/data", "hub-mysql-images:/app/fusion-images"]
+  hub-sqlserver:
+    <<: *hub
+    environment:
+      <<: *hub-environment
+      Persistence__Provider: SqlServer
+      FusionIngestion__AdvertisedEndpoint: http://hub-sqlserver:5078/hubs/fusion-ingestion
+      ConnectionStrings__SqlServer: Server=sqlserver;Database=zeye_matrix;User Id=sa;Password=MatrixSqlServer20261007_ForTests;TrustServerCertificate=True;Encrypt=False;Connect Timeout=15;
+    ports: ["127.0.0.1:5192:5078"]
+    volumes: ["hub-sqlserver-data:/app/data", "hub-sqlserver-images:/app/fusion-images"]
+  hub-oracle:
+    <<: *hub
+    environment:
+      <<: *hub-environment
+      Persistence__Provider: Oracle
+      FusionIngestion__AdvertisedEndpoint: http://hub-oracle:5078/hubs/fusion-ingestion
+      ConnectionStrings__Oracle: User Id=ZEYE_MATRIX_FIXED;Password=MatrixApp20261007_ForTests;Data Source=oracle:1521/FREEPDB1;Connection Timeout=15;
+      ConnectionStrings__OracleAdministration: User Id=SYS;Password=MatrixOracle20261007_ForTests;Data Source=oracle:1521/FREEPDB1;DBA Privilege=SYSDBA;
+    ports: ["127.0.0.1:5193:5078"]
+    volumes: ["hub-oracle-fixed-data:/app/data", "hub-oracle-images:/app/fusion-images"]
+  hub-sqlite:
+    <<: *hub
+    environment:
+      <<: *hub-environment
+      Persistence__Provider: SQLite
+      FusionIngestion__AdvertisedEndpoint: http://hub-sqlite:5078/hubs/fusion-ingestion
+      ConnectionStrings__SQLite: Data Source=data/business/nested/sorting-hub.db;Default Timeout=30;Foreign Keys=True;
+    ports: ["127.0.0.1:5194:5078"]
+    volumes: ["hub-sqlite-data:/app/data", "hub-sqlite-images:/app/fusion-images"]
+volumes:
+  mysql-data:
+  sqlserver-data:
+  oracle-data:
+  hub-mysql-data:
+  hub-mysql-images:
+  hub-sqlserver-data:
+  hub-sqlserver-images:
+  hub-oracle-data:
+  hub-oracle-fixed-data:
+  hub-oracle-images:
+  hub-sqlite-data:
+  hub-sqlite-images:

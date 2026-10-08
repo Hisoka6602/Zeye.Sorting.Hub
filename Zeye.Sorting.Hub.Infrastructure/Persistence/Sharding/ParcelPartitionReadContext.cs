@@ -2,6 +2,8 @@ using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Storage;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.ReadModels;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 
@@ -27,7 +29,7 @@ internal sealed class ParcelPartitionReadContext<TReadModel> : DbContext, IParce
 
     /// <summary>复制已有连接、超时和诊断拦截器配置，不建立第二套提供器配置或修改写入模型。</summary>
     internal static ParcelPartitionReadContext<TReadModel> Create<TEntity>(SortingHubDbContext template,
-        IReadOnlyList<string> suffixes) where TEntity : class {
+        IReadOnlyList<string> suffixes, bool streaming = false) where TEntity : class {
         if (suffixes.Count == 0) throw new ArgumentException("至少提供一个物理分表。", nameof(suffixes));
         var validated = suffixes.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
         foreach (var suffix in validated) ParcelPartitionStore.ValidateSuffix(suffix);
@@ -38,10 +40,24 @@ internal sealed class ParcelPartitionReadContext<TReadModel> : DbContext, IParce
             ((IDbContextOptionsBuilderInfrastructure)options).AddOrUpdateExtension(extension);
         options.ReplaceService<IModelCacheKeyFactory, ParcelPartitionReadModelCacheKeyFactory>()
             .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
+        if (streaming) options.ReplaceService<IExecutionStrategyFactory, StreamingReadExecutionStrategyFactory>();
         return new(options.Options, entity, validated);
     }
 
     /// <summary>每个分表投影为同一 DTO 后使用 LINQ Concat，避免依赖不同实体根的集合运算。</summary>
+    internal IQueryable<TReadModel> QueryAll(IReadOnlyList<string> suffixes,
+        Func<IQueryable<TReadModel>, IQueryable<TReadModel>> branch) {
+        if (suffixes.Count == 0) throw new ArgumentException("至少提供一个物理分表。", nameof(suffixes));
+        var queries = suffixes.Distinct(StringComparer.Ordinal).Select(suffix => {
+            if (Array.BinarySearch(_suffixes, suffix, StringComparer.Ordinal) < 0)
+                throw new ArgumentException("物理分表不属于当前只读模型。", nameof(suffixes));
+            // 筛选和有界候选先在各个物理表执行，禁止先联合全表再按主键或邻近时间过滤。
+            return branch(Set<TReadModel>(EntityName(suffix)).AsNoTracking().Select(Projection));
+        });
+        return queries.Aggregate((left, right) => left.Concat(right));
+    }
+
+    /// <summary>按指定的本地时间半开或闭区间读取物理分表。</summary>
     internal IQueryable<TReadModel> Query(IReadOnlyList<string> suffixes, string timeProperty,
         DateTime fromLocal, DateTime toLocal, bool includeEnd) {
         if (suffixes.Count == 0) throw new ArgumentException("至少提供一个物理分表。", nameof(suffixes));

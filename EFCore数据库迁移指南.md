@@ -2,6 +2,15 @@
 
 来源：仓库内 SortingHubDbContext、设计时工厂、迁移源码和 CI 工作流；本文为项目原生操作指南，未从 doc/pdf 解析。
 
+业务数据库现支持 MySQL、SQL Server、Oracle 和 SQLite，共用业务模型并各自维护提供器迁移与快照。Oracle 的迁移目录为 `Zeye.Sorting.Hub.Infrastructure.OracleMigrations/Migrations/`，SQLite 为 `Zeye.Sorting.Hub.Infrastructure.SqliteMigrations/Migrations/`。初始化权限、文件创建、旧分表版本升级及四库 Docker/Fusion 验收见 [四数据库部署与验收](docs/四数据库部署与验收.md)。Oracle/SQLite 新迁移生成示例：
+
+```powershell
+dotnet ef migrations add 业务变更名称 --project Zeye.Sorting.Hub.Infrastructure.OracleMigrations --startup-project Zeye.Sorting.Hub.Host -- --provider Oracle
+dotnet ef migrations add 业务变更名称 --project Zeye.Sorting.Hub.Infrastructure.SqliteMigrations --startup-project Zeye.Sorting.Hub.Host -- --provider SQLite
+```
+
+每次模型修改需分别生成四库迁移并检查 `HasPendingModelChanges()`。运行时在主库迁移成功后自动同步已登记和识别出的历史物理分表；不能仅更新主表快照而跳过旧分表升级。
+
 ## 1. 项目迁移架构总览
 
 本项目采用 **EF Core CodeFirst** 模式：实体类与值对象定义在代码中，数据库结构由 EF Core 根据模型自动生成，通过迁移文件管理演进历史。

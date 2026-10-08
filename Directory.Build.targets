@@ -31,6 +31,8 @@
     <_ChineseGarbledTextCheckFiles Remove="$(ChineseGarbledTextCheckRoot).vs\**" />
     <!-- 第三方依赖与测试产物不属于仓库源代码，避免编码字典误触发乱码门禁。 -->
     <_ChineseGarbledTextCheckFiles Remove="$(ChineseGarbledTextCheckRoot).codex-artifacts\**" />
+    <_ChineseGarbledTextCheckFiles Remove="$(ChineseGarbledTextCheckRoot).playwright-cli\**" />
+    <_ChineseGarbledTextCheckFiles Remove="$(ChineseGarbledTextCheckRoot)output\playwright\**" />
     <_ChineseGarbledTextCheckFiles Remove="$(ChineseGarbledTextCheckRoot)artifacts\**" />
     <_ChineseGarbledTextCheckFiles Remove="$(ChineseGarbledTextCheckRoot)**\node_modules\**" />
     <_ChineseGarbledTextCheckFiles Remove="$(ChineseGarbledTextCheckRoot)performance\results\**" />
@@ -51,6 +53,9 @@
     <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory).vs\**" />
     <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory).config\**" />
     <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory).codex-artifacts\**" />
+    <!-- 浏览器快照和验收结果属于生成证据，不是后端运行配置。 -->
+    <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory).playwright-cli\**" />
+    <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory)output\playwright\**" />
     <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory)artifacts\**" />
     <_RepositoryConfigurationFiles Remove="$(MSBuildThisFileDirectory)**\node_modules\**" />
     <!-- 中文说明：前端依赖清单、TypeScript工具配置及生成的设计数据不是后端运行配置。 -->

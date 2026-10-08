@@ -6,6 +6,7 @@ import { PageIntro } from '../../components/PageIntro';
 import { SectionCard } from '../../components/SectionCard';
 import { requestApi } from '../../data/api/client';
 import { createDetectionRecordId } from '../../data/api/detectionIdentity';
+import { localDateTimeFormat } from '../../data/api/operationalTypes';
 
 /** 在测量及格口结果未知时登记来源检测，重载页面后仍生成同一检测记录身份。 */
 interface DetectionForm { sourceInstanceId: string; sourceRunId: string; sourceParcelId: string; occurredAt: Dayjs; barcode?: string; workstationName?: string }
@@ -40,7 +41,7 @@ export function ParcelDetectionPage() {
         </div>
         <div className="section-band">检测信息</div>
         <div className="two-cols">
-          <Form.Item name="occurredAt" label="检测时间" rules={[{ required: true, message: '请选择检测时间' }]} extra="使用设备所在站点的本地时间"><DatePicker showTime placeholder="请选择检测日期和时间" style={{ width: '100%' }} /></Form.Item>
+          <Form.Item name="occurredAt" label="检测时间" rules={[{ required: true, message: '请选择检测时间' }]} extra="使用设备所在站点的本地时间"><DatePicker showTime format={localDateTimeFormat} placeholder="请选择检测日期和时间" style={{ width: '100%' }} /></Form.Item>
           <Form.Item name="barcode" label="主条码" rules={[{ max: 1024 }]}><Input placeholder="尚未识别时可留空" /></Form.Item>
         </div>
         <div className="create-form-footer"><Button onClick={() => navigate('/parcels')}>取消</Button><Button type="primary" htmlType="submit" loading={saving}>保存检测</Button></div>

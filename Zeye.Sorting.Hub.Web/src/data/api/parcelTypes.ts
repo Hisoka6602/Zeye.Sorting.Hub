@@ -196,7 +196,7 @@ export const parcelFieldLabels: Record<string, string> = {
   "formattedMessage": "格式化说明",
   "chuteId": "格口 ID",
   "chuteName": "格口名称",
-  "parcelCount": "当前集包中包裹数量",
+  "parcelCount": "当前集包中包裹票数",
   "baggingTime": "集包完成时间",
   "barCode": "条码",
   "barCodeType": "条码类型",

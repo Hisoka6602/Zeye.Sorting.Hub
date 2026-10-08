@@ -10,7 +10,7 @@ import { useNavigate } from 'react-router';
 import { SectionCard } from '../../components/SectionCard';
 import { useApiResource } from '../../data/api/useApiResource';
 import { ExceptionDonut, ExceptionShareDonut, WorkstationBars, stationShade, type Distribution } from './WorkbenchDistributionCharts';
-import { formatTrendCount, trendPlotWidth } from './trendChartFormat';
+import { formatTrendCount, trendValueLabelIndexes } from './trendChartFormat';
 import { sortingThroughputMetric } from './sortingThroughputMetric';
 import { workbenchMetricDays, type WorkbenchMetricDay } from './workbenchMetricDays';
 import { WorkbenchMetricTrend } from './WorkbenchMetricTrend';
@@ -73,8 +73,10 @@ function Metric({ title, value, suffix, note, hint, icon, tone, label, compariso
   </div>;
 }
 
+/** 全部日期随容器宽度展示，窄屏仅减少文字标签而保留每一天的柱形。 */
 function DailyTrend({ rows, range }: { rows: DailySorting[]; range: DateRange }) {
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const [chartWidth, setChartWidth] = useState(1000);
   const byDate = new Map(rows.map(row => [row.date, row.sortedCount]));
   const start = dayjs(range.from);
   const length = dayjs(range.to).diff(start, 'day') + 1;
@@ -86,24 +88,25 @@ function DailyTrend({ rows, range }: { rows: DailySorting[]; range: DateRange })
   const unit = Math.pow(10, Math.floor(Math.log10(Math.max(max / 4, 1))));
   const step = Math.max(1, Math.ceil(max / 4 / unit) * unit);
   const upper = step * 4;
-  const plot = { x: 56, y: 30, width: trendPlotWidth(days.map(day => day.count)), height: 168 };
-  const chartWidth = plot.x + plot.width + 30;
+  const plot = { x: 56, y: 30, width: Math.max(1, chartWidth - 86), height: 168 };
   const barStep = plot.width / days.length;
-  const labelEvery = Math.ceil(days.length / 9);
+  const labelEvery = Math.max(1, Math.ceil(days.length / Math.max(2, Math.floor(plot.width / 70))));
+  const valueLabelIndexes = trendValueLabelIndexes(days.map(day => day.count), plot.width);
   const activeDays = days.filter(day => day.count > 0);
   const activeIndexes = new Map(activeDays.map((day, index) => [day.date, index]));
   const total = activeDays.reduce((sum, day) => sum + day.count, 0);
 
   useEffect(() => {
-    const container = scrollRef.current;
-    if (container && container.scrollWidth > container.clientWidth) {
-      container.scrollLeft = container.scrollWidth - container.clientWidth;
-    }
-  }, [range.from, range.to, chartWidth]);
+    const container = viewportRef.current;
+    if (!container) return;
+    const observer = new ResizeObserver(([entry]) => setChartWidth(Math.max(1, entry.contentRect.width)));
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
 
   return <div className="workbench-data-chart-area">
-    <div className="workbench-data-chart-scroll" ref={scrollRef}>
-      <svg className="workbench-data-chart" viewBox={`0 0 ${chartWidth} 242`} style={chartWidth > 1000 ? { minWidth: chartWidth } : undefined} role="img" aria-label={`${range.from} 至 ${range.to} 的每日完成分拣件量柱状图，共 ${formatNumber(total, { grouping: true })} 件`}>
+    <div className="workbench-data-chart-viewport" ref={viewportRef}>
+      <svg className="workbench-data-chart" viewBox={`0 0 ${chartWidth} 242`} role="img" aria-label={`${range.from} 至 ${range.to} 的每日完成分拣票数柱状图，共 ${formatNumber(total, { grouping: true })} 票`}>
       {[0, 1, 2, 3, 4].map(index => {
         const y = plot.y + index * plot.height / 4;
         return <g key={index}>
@@ -118,16 +121,16 @@ function DailyTrend({ rows, range }: { rows: DailySorting[]; range: DateRange })
         const y = plot.y + plot.height - height;
         return <g key={day.date}>
           <rect x={x} y={y} width={width} height={height} rx="3" fill={stationShade(activeIndexes.get(day.date) ?? 0, activeDays.length)}>
-            <title>{day.date}：{formatNumber(day.count, { grouping: true })} 件</title>
+            <title>{day.date}：{formatNumber(day.count, { grouping: true })} 票</title>
           </rect>
-          {day.count > 0 && <text x={x + width / 2} y={Math.max(18, y - 8)} textAnchor="middle" className="workbench-data-value-label" aria-hidden="true">{formatTrendCount(day.count)}</text>}
-          {(index % labelEvery === 0 || index === days.length - 1) &&
+          {valueLabelIndexes.has(index) && <text x={x + width / 2} y={Math.max(18, y - 8)} textAnchor="middle" className="workbench-data-value-label" aria-hidden="true">{formatTrendCount(day.count)}</text>}
+          {(index === days.length - 1 || index % labelEvery === 0 && (days.length - 1 - index) * barStep >= 54) &&
             <text x={plot.x + index * barStep + barStep / 2} y="225" textAnchor="middle" className="workbench-data-axis">{day.date.slice(5)}</text>}
         </g>;
       })}
       </svg>
     </div>
-    {max >= 1_000 && <p className="workbench-data-chart-units">K = 千 · M = 百万 · B = 十亿；柱形提示显示精确件数</p>}
+    {max >= 1_000 && <p className="workbench-data-chart-units">K = 千 · M = 百万 · B = 十亿；柱形提示显示精确票数</p>}
   </div>;
 }
 
@@ -173,32 +176,32 @@ export function WorkbenchDataOverview() {
     </div>
     {error && <Alert className="workbench-data-error" type="error" showIcon message={`数据概览读取失败：${error.message}`} action={<Button size="small" onClick={refresh}>重试</Button>} />}
     <div className="workbench-data-metrics">
-      <Metric title="检测入库" value={number(data?.detectedCount)} suffix="件" note="时间范围内首次入库" icon={<AppstoreOutlined />} tone="blue"
+      <Metric title="检测入库" value={number(data?.detectedCount)} suffix="票" note="时间范围内首次入库" icon={<AppstoreOutlined />} tone="blue"
         trend={<WorkbenchMetricTrend days={metricDays} metric="detectedCount" title="检测入库" loading={loading} />} />
-      <Metric title="已完成分拣" value={number(data?.completedCount)} suffix="件" note="入库包裹的当前完成数" icon={<CheckCircleOutlined />} tone="green"
+      <Metric title="已完成分拣" value={number(data?.completedCount)} suffix="票" note="入库包裹的当前完成数" icon={<CheckCircleOutlined />} tone="green"
         trend={<WorkbenchMetricTrend days={metricDays} metric="completedCount" title="已完成分拣" loading={loading} />} />
-      <Metric title="分拣异常" value={number(data?.exceptionCount)} suffix="件" note="入库包裹的当前异常数" icon={<WarningOutlined />} tone="red"
+      <Metric title="分拣异常" value={number(data?.exceptionCount)} suffix="票" note="入库包裹的当前异常数" icon={<WarningOutlined />} tone="red"
         trend={<WorkbenchMetricTrend days={metricDays} metric="exceptionCount" title="分拣异常" loading={loading} />} />
       <Metric title="异常占比" value={data ? percent(data.exceptionCount, data.detectedCount) : '—'} note="反映入库包裹的异常情况" icon={<WarningOutlined />} tone="orange"
         sideVisual={<ExceptionShareDonut count={data?.exceptionCount} total={data?.detectedCount} loading={loading} />} />
-      <Metric title="NoRead 件数" value={number(data?.noReadCount)} suffix="件" note="条码未读或 NoRead 状态" icon={<ScanOutlined />} tone="blue"
-        trend={<WorkbenchMetricTrend days={metricDays} metric="noReadCount" title="NoRead 件数" loading={loading} />} />
+      <Metric title="NoRead 票数" value={number(data?.noReadCount)} suffix="票" note="条码未读或 NoRead 状态" icon={<ScanOutlined />} tone="blue"
+        trend={<WorkbenchMetricTrend days={metricDays} metric="noReadCount" title="NoRead 票数" loading={loading} />} />
       <Metric title="分拣时效" label="实际时效" value={throughput.actual.value} suffix="票/小时" note={throughput.actual.note}
         comparison={{ label: '理论时效', ...throughput.theoretical }} hint={throughput.hint} icon={<FieldTimeOutlined />} tone="green" />
     </div>
     <div className="workbench-data-distributions">
-      <SectionCard title="异常类型分布" extra={data && !loading ? <span className="workbench-data-panel-badge">共 {number(data.exceptionCount)} 件</span> : undefined} className="workbench-data-panel workbench-data-panel-exceptions">
+      <SectionCard title="异常类型分布" extra={data && !loading ? <span className="workbench-data-panel-badge">共 {number(data.exceptionCount)} 票</span> : undefined} className="workbench-data-panel workbench-data-panel-exceptions">
         <p className="workbench-data-panel-caption">当前异常构成 · 数量与占比</p>
         {loading ? <div className="workbench-distribution-empty"><Spin /></div>
           : <ExceptionDonut rows={data?.exceptionTypes ?? []} total={data?.exceptionCount ?? 0} />}
       </SectionCard>
-      <SectionCard title="工作台件量分布" extra={data && !loading ? <span className="workbench-data-panel-badge is-blue">共 {number(data.detectedCount)} 件</span> : undefined} className="workbench-data-panel workbench-data-panel-stations">
-        <p className="workbench-data-panel-caption">按工作台比较 · 柱顶显示件数</p>
+      <SectionCard title="工作台票数分布" extra={data && !loading ? <span className="workbench-data-panel-badge is-blue">共 {number(data.detectedCount)} 票</span> : undefined} className="workbench-data-panel workbench-data-panel-stations">
+        <p className="workbench-data-panel-caption">按工作台比较 · 柱顶显示票数</p>
         {loading ? <div className="workbench-distribution-empty"><Spin /></div>
           : <WorkstationBars rows={data?.workstations ?? []} total={data?.detectedCount ?? 0} />}
       </SectionCard>
     </div>
-    <SectionCard title="每日分拣趋势" extra={<span className="workbench-data-panel-note">{applied.from} 至 {applied.to} · 件</span>} className="workbench-data-trend">
+    <SectionCard title="每日分拣趋势" extra={<span className="workbench-data-panel-note">{applied.from} 至 {applied.to} · 票</span>} className="workbench-data-trend">
       {loading ? <div className="workbench-data-chart-empty"><Spin /></div>
         : data?.dailySorting?.length ? <DailyTrend rows={data.dailySorting} range={applied} />
           : <div className="workbench-data-chart-empty"><Empty description="该时间范围暂无完成分拣数据" /></div>}

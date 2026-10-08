@@ -5,7 +5,6 @@ using NLog;
 using Zeye.Sorting.Hub.Application.Abstractions.Queries;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.Analytics;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
-using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.Processing;
 using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Enums.Parcels;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
@@ -124,18 +123,9 @@ public sealed class ParcelAnalyticsReadService : IParcelAnalyticsReadService {
         }).ToArray();
 
         // 步骤3：处理事实按事件发生时间独立计数；失败尝试和未绑定消息不除以包裹件数。
-        // 每个物理表先在覆盖索引上计数，合并的行数由分表数量决定，不物化全部匹配事件。
-        await using var processing = ParcelPartitionReadContext<ParcelProcessingStatisticsRow>.Create<ParcelProcessingRecord>(db, allSuffixes);
-        var eventQueries = allSuffixes.Select(suffix =>
-            processing.Query(
-                [suffix], nameof(ParcelProcessingRecord.OccurredAt), budget.RangeStartLocal, budget.RangeEndLocal, false)
-            .GroupBy(_ => 1).Select(group => new {
-                Count = group.LongCount(),
-                Failed = group.LongCount(x => x.IsSuccess == false),
-                UnboundDws = group.LongCount(x => x.ParcelId == null
-                    && (x.Stage == ParcelProcessingStage.DwsReceived || x.Stage == ParcelProcessingStage.DwsBound))
-            }));
-        var events = await eventQueries.Aggregate((left, right) => left.Concat(right)).ToListAsync(cancellationToken);
+        // LINQ 条件求和，三项计数共用一次覆盖索引检索，每个分表只返回一组。
+        var events = await ParcelProcessingStatisticsQuery.ReadAsync(db, allSuffixes,
+            budget.RangeStartLocal, budget.RangeEndLocal, cancellationToken);
 
         return new ParcelAnalyticsResponse {
             FromDate = fromLocalDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
@@ -158,9 +148,9 @@ public sealed class ParcelAnalyticsReadService : IParcelAnalyticsReadService {
             ExceptionTypes = exceptionTypes,
             Workstations = workstations,
             WorkstationsTruncated = workstationsTruncated,
-            ProcessingEventCount = events.Sum(x => x.Count),
-            FailedAttemptCount = events.Sum(x => x.Failed),
-            UnboundDwsEventCount = events.Sum(x => x.UnboundDws)
+            ProcessingEventCount = events.Count,
+            FailedAttemptCount = events.Failed,
+            UnboundDwsEventCount = events.UnboundDws
         };
     }
 

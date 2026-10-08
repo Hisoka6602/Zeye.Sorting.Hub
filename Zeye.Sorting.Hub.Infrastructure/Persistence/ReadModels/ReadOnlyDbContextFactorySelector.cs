@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -70,13 +71,7 @@ public sealed class ReadOnlyDbContextFactorySelector {
             return await _primaryDbContextFactory.CreateDbContextAsync(cancellationToken);
         }
 
-        var optionsBuilder = new DbContextOptionsBuilder<SortingHubDbContext>();
-        PersistenceServiceCollectionExtensions.ConfigureConfiguredProviderDbContextOptions(
-            _serviceProvider,
-            optionsBuilder,
-            routeSelection.ConfiguredProviderName,
-            routeSelection.ReadOnlyConnectionString);
-        return new SortingHubDbContext(optionsBuilder.Options);
+        return CreateReadOnlyDbContext(routeSelection.ReadOnlyConnectionString, routeSelection.ConfiguredProviderName);
     }
 
     /// <summary>
@@ -194,6 +189,11 @@ public sealed class ReadOnlyDbContextFactorySelector {
     /// <param name="configuredProviderName">配置层提供器名称。</param>
     /// <returns>数据库上下文。</returns>
     private SortingHubDbContext CreateReadOnlyDbContext(string readOnlyConnectionString, string configuredProviderName) {
+        if (configuredProviderName == ConfiguredProviderNames.SQLite) {
+            // SQLite 只读连接不允许自动创建文件，即使配置中遗漏了打开模式。
+            var connection = new SqliteConnectionStringBuilder(readOnlyConnectionString) { Mode = SqliteOpenMode.ReadOnly };
+            readOnlyConnectionString = connection.ConnectionString;
+        }
         var optionsBuilder = new DbContextOptionsBuilder<SortingHubDbContext>();
         PersistenceServiceCollectionExtensions.ConfigureConfiguredProviderDbContextOptions(
             _serviceProvider,
@@ -208,17 +208,8 @@ public sealed class ReadOnlyDbContextFactorySelector {
     /// </summary>
     /// <returns>配置层提供器名称。</returns>
     private string ResolveConfiguredProviderName() {
-        var configuredProviderName = _configuration["Persistence:Provider"];
-        if (string.Equals(configuredProviderName, ConfiguredProviderNames.MySql, StringComparison.OrdinalIgnoreCase)) {
-            return ConfiguredProviderNames.MySql;
-        }
-
-        if (string.Equals(configuredProviderName, ConfiguredProviderNames.SqlServer, StringComparison.OrdinalIgnoreCase)) {
-            return ConfiguredProviderNames.SqlServer;
-        }
-
-        Logger.Error("读取报表只读数据库配置时发现不支持的 Provider，Provider={Provider}", configuredProviderName);
-        throw new InvalidOperationException($"不支持的数据库类型：{configuredProviderName}。");
+        try { return ConfiguredProviderNames.Normalize(_configuration["Persistence:Provider"]); }
+        catch (InvalidOperationException exception) { Logger.Error(exception, "报表只读数据库提供器配置无效。"); throw; }
     }
 
     /// <summary>
@@ -230,6 +221,8 @@ public sealed class ReadOnlyDbContextFactorySelector {
         return configuredProviderName switch {
             ConfiguredProviderNames.MySql => "MySqlReadOnly",
             ConfiguredProviderNames.SqlServer => "SqlServerReadOnly",
+            ConfiguredProviderNames.Oracle => "OracleReadOnly",
+            ConfiguredProviderNames.SQLite => "SQLiteReadOnly",
             _ => throw new InvalidOperationException($"不支持的数据库类型：{configuredProviderName}。")
         };
     }

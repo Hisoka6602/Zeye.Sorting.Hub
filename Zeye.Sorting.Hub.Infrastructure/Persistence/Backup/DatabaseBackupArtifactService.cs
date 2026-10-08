@@ -15,7 +15,7 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Backup;
 /// <summary>跨平台导出 MySQL 事务快照，并仅在新数据库进行恢复及逐表核验。</summary>
-public sealed class DatabaseBackupArtifactService(IConfiguration configuration, IHostEnvironment environment, IOptions<BackupOptions> options) : IDatabaseBackupArtifactService {
+public sealed class DatabaseBackupArtifactService(IConfiguration configuration, IHostEnvironment environment, IOptions<BackupOptions> options, SlowQueryAutoTuningPipeline? telemetry = null) : IDatabaseBackupArtifactService {
     /// <summary>备份及恢复串行执行，限制数据库和磁盘压力。</summary>
     private readonly SemaphoreSlim _gate = new(1, 1);
     /// <summary>清单合同采用驼峰字段及本地时间。</summary>
@@ -52,12 +52,13 @@ public sealed class DatabaseBackupArtifactService(IConfiguration configuration, 
             Directory.CreateDirectory(DirectoryPath);
             pendingPath = ResolvePath(id, ".partial");
             await using var connection = new MySqlConnection(configuration.GetConnectionString("MySql"));
-            await connection.OpenAsync(ct);
+            SlowQueryDbOperations.Attach(connection, telemetry);
+            await SlowQueryDbOperations.OpenAsync(connection, ct);
             // 仅备份本项目的事务表；视图、触发器或非事务表需要原生全库备份。
             var unsupported = await ScalarAsync(connection, null, "SELECT (SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND (TABLE_TYPE<>'BASE TABLE' OR ENGINE<>'InnoDB')) + (SELECT COUNT(*) FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA=DATABASE()) + (SELECT COUNT(*) FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA=DATABASE()) + (SELECT COUNT(*) FROM information_schema.EVENTS WHERE EVENT_SCHEMA=DATABASE())", ct);
             if (Convert.ToInt64(unsupported, CultureInfo.InvariantCulture) != 0) throw new InvalidOperationException("数据库包含非事务表、视图或存储程序，请使用原生全库备份工具。");
             var tables = await ReadTablesAsync(connection, null, ct);
-            await using var transaction = await connection.BeginTransactionAsync(IsolationLevel.RepeatableRead, ct);
+            await using var transaction = await SlowQueryDbOperations.BeginTransactionAsync(connection, () => connection.BeginTransactionAsync(IsolationLevel.RepeatableRead, ct));
             var rows = new Dictionary<string, long>();
             long exportedBytes = 0;
             await using (var output = new FileStream(pendingPath, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {
@@ -65,14 +66,14 @@ public sealed class DatabaseBackupArtifactService(IConfiguration configuration, 
                 foreach (var table in tables) {
                     var quoted = Quote(table);
                     using var schemaCommand = new MySqlCommand("SHOW CREATE TABLE " + quoted, connection, transaction);
-                    await using var schemaReader = await schemaCommand.ExecuteReaderAsync(ct);
+                    await using var schemaReader = await SlowQueryDbOperations.ExecuteReaderAsync(schemaCommand, ct);
                     if (!await schemaReader.ReadAsync(ct)) throw new InvalidOperationException("无法读取表结构。");
                     var ddl = schemaReader.GetString(1);
                     await schemaReader.DisposeAsync();
                     var columns = new List<string>();
                     using (var columnsCommand = new MySqlCommand("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=@table AND EXTRA NOT LIKE '%VIRTUAL GENERATED%' AND EXTRA NOT LIKE '%STORED GENERATED%' ORDER BY ORDINAL_POSITION", connection, transaction)) {
                         columnsCommand.Parameters.AddWithValue("@table", table);
-                        await using var columnsReader = await columnsCommand.ExecuteReaderAsync(ct);
+                        await using var columnsReader = await SlowQueryDbOperations.ExecuteReaderAsync(columnsCommand, ct);
                         while (await columnsReader.ReadAsync(ct)) columns.Add(columnsReader.GetString(0));
                     }
                     var entry = archive.CreateEntry(table + ".jsonl", CompressionLevel.Fastest);
@@ -81,7 +82,7 @@ public sealed class DatabaseBackupArtifactService(IConfiguration configuration, 
                     await writer.WriteLineAsync(JsonSerializer.Serialize(ddl).AsMemory(), ct);
                     var columnList = string.Join(',', columns.Select(Quote));
                     using var command = new MySqlCommand($"SELECT {columnList} FROM {quoted}", connection, transaction) { CommandTimeout = 300 };
-                    await using var reader = await command.ExecuteReaderAsync(CommandBehavior.SequentialAccess, ct);
+                    await using var reader = await SlowQueryDbOperations.ExecuteReaderAsync(command, CommandBehavior.SequentialAccess, ct);
                     long count = 0;
                     while (await reader.ReadAsync(ct)) {
                         var values = new string[reader.FieldCount];
@@ -96,7 +97,7 @@ public sealed class DatabaseBackupArtifactService(IConfiguration configuration, 
             }
             var afterTables = await ReadTablesAsync(connection, transaction, ct);
             if (!tables.SequenceEqual(afterTables)) throw new InvalidOperationException("备份过程中表目录发生变化，请重试。");
-            await transaction.CommitAsync(ct);
+            await SlowQueryDbOperations.CommitAsync(transaction, ct);
             var path = ResolvePath(id, ".zeye.zip"); File.Move(pendingPath, path); completedPath = path;
             var artifact = new DatabaseBackupArtifact { Id = id, Database = connection.Database, CreatedAtLocal = DateTime.SpecifyKind(DateTime.Now, DateTimeKind.Unspecified), RequestedBy = actor, TableRows = rows, SizeBytes = new FileInfo(path).Length, Sha256 = await HashAsync(path, ct) };
             await SaveAsync(artifact, ct); published = true;
@@ -120,7 +121,8 @@ public sealed class DatabaseBackupArtifactService(IConfiguration configuration, 
         try {
             var artifact = await FindVerifiedAsync(id, ct);
             var builder = new MySqlConnectionStringBuilder(configuration.GetConnectionString("MySql")) { Database = string.Empty };
-            await using var connection = new MySqlConnection(builder.ConnectionString); await connection.OpenAsync(ct);
+            await using var connection = new MySqlConnection(builder.ConnectionString);
+            SlowQueryDbOperations.Attach(connection, telemetry); await SlowQueryDbOperations.OpenAsync(connection, ct);
             var target = "zeye_restore_" + Guid.NewGuid().ToString("N")[..20];
             await ExecuteAsync(connection, "CREATE DATABASE " + Quote(target) + " CHARACTER SET utf8mb4", ct);
             try {
@@ -134,18 +136,18 @@ public sealed class DatabaseBackupArtifactService(IConfiguration configuration, 
                 var line = await reader.ReadLineAsync(ct) ?? throw new InvalidOperationException("表结构为空。");
                 await ExecuteAsync(connection, JsonSerializer.Deserialize<string>(line)!, ct);
             }
-            await using var transaction = await connection.BeginTransactionAsync(ct);
+            await using var transaction = await SlowQueryDbOperations.BeginTransactionAsync(connection, () => connection.BeginTransactionAsync(ct));
             foreach (var table in artifact.TableRows.Keys) {
                 using var reader = new StreamReader(archive.GetEntry(table + ".jsonl")!.Open());
                 _ = await reader.ReadLineAsync(ct);
                 while (await reader.ReadLineAsync(ct) is string line) {
                     using var command = new MySqlCommand(JsonSerializer.Deserialize<string>(line), connection, transaction) { CommandTimeout = 300 };
-                    await command.ExecuteNonQueryAsync(ct);
+                    await SlowQueryDbOperations.ExecuteNonQueryAsync(command, ct);
                 }
                 var count = Convert.ToInt64(await ScalarAsync(connection, transaction, "SELECT COUNT(*) FROM " + Quote(table), ct), CultureInfo.InvariantCulture);
                 if (count != artifact.TableRows[table]) throw new InvalidOperationException("恢复后表行数与备份清单不一致。");
             }
-            await transaction.CommitAsync(ct);
+            await SlowQueryDbOperations.CommitAsync(transaction, ct);
             await ExecuteAsync(connection, "SET FOREIGN_KEY_CHECKS=1", ct);
             var verified = artifact with { RestoredDatabase = target, VerifiedAtLocal = DateTime.SpecifyKind(DateTime.Now, DateTimeKind.Unspecified) };
             await SaveAsync(verified, ct); return verified;
@@ -308,11 +310,11 @@ public sealed class DatabaseBackupArtifactService(IConfiguration configuration, 
     /// <summary>读取当前数据库的基础表目录。</summary>
     private static async Task<List<string>> ReadTablesAsync(MySqlConnection connection, MySqlTransaction? transaction, CancellationToken ct) {
         using var command = new MySqlCommand("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_TYPE='BASE TABLE' ORDER BY TABLE_NAME", connection, transaction);
-        await using var reader = await command.ExecuteReaderAsync(ct); var tables = new List<string>();
+        await using var reader = await SlowQueryDbOperations.ExecuteReaderAsync(command, ct); var tables = new List<string>();
         while (await reader.ReadAsync(ct)) tables.Add(reader.GetString(0)); return tables;
     }
     /// <summary>执行标量查询，复用事务及连接。</summary>
-    private static async Task<object?> ScalarAsync(MySqlConnection connection, MySqlTransaction? transaction, string sql, CancellationToken ct) { using var command = new MySqlCommand(sql, connection, transaction); return await command.ExecuteScalarAsync(ct); }
+    private static async Task<object?> ScalarAsync(MySqlConnection connection, MySqlTransaction? transaction, string sql, CancellationToken ct) { using var command = new MySqlCommand(sql, connection, transaction); return await SlowQueryDbOperations.ExecuteScalarAsync(command, ct); }
     /// <summary>执行只作用于新数据库的结构命令。</summary>
-    private static async Task ExecuteAsync(MySqlConnection connection, string sql, CancellationToken ct) { using var command = new MySqlCommand(sql, connection) { CommandTimeout = 300 }; await command.ExecuteNonQueryAsync(ct); }
+    private static async Task ExecuteAsync(MySqlConnection connection, string sql, CancellationToken ct) { using var command = new MySqlCommand(sql, connection) { CommandTimeout = 300 }; await SlowQueryDbOperations.ExecuteNonQueryAsync(command, ct); }
 }

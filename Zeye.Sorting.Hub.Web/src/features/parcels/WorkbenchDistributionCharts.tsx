@@ -42,18 +42,18 @@ export function ExceptionShareDonut({ count, total, loading }: { count?: number;
   const countText = formatNumber(count, { grouping: true });
   const remainderText = formatNumber(remainder, { grouping: true });
   return <div className="workbench-metric-share">
-    <svg viewBox="0 0 72 72" role="img" aria-label={`异常占比饼图：异常包裹 ${countText} 件，占 ${share(count, total)}；其余包裹 ${remainderText} 件，占 ${share(remainder, total)}`}>
+    <svg viewBox="0 0 72 72" role="img" aria-label={`异常占比饼图：异常包裹 ${countText} 票，占 ${share(count, total)}；其余包裹 ${remainderText} 票，占 ${share(remainder, total)}`}>
       <circle cx="36" cy="36" r="25" fill="none" strokeWidth="12" className="workbench-metric-share-rest">
-        <title>其余包裹：{remainderText} 件，占 {share(remainder, total)}</title>
+        <title>其余包裹：{remainderText} 票，占 {share(remainder, total)}</title>
       </circle>
       <circle cx="36" cy="36" r="25" fill="none" strokeWidth="12" pathLength="100"
         strokeDasharray={`${percentage} ${100 - percentage}`} transform="rotate(-90 36 36)" className="workbench-metric-share-exception">
-        <title>异常包裹：{countText} 件，占 {share(count, total)}</title>
+        <title>异常包裹：{countText} 票，占 {share(count, total)}</title>
       </circle>
     </svg>
     <div className="workbench-metric-share-legend" aria-label="异常占比图例">
-      <div><span className="workbench-metric-share-dot is-exception" aria-hidden="true" /><span>异常包裹</span><strong>{countText} <small>件</small></strong></div>
-      <div><span className="workbench-metric-share-dot" aria-hidden="true" /><span>其余包裹</span><strong>{remainderText} <small>件</small></strong></div>
+      <div><span className="workbench-metric-share-dot is-exception" aria-hidden="true" /><span>异常包裹</span><strong>{countText} <small>票</small></strong></div>
+      <div><span className="workbench-metric-share-dot" aria-hidden="true" /><span>其余包裹</span><strong>{remainderText} <small>票</small></strong></div>
     </div>
   </div>;
 }
@@ -73,7 +73,7 @@ export function ExceptionDonut({ rows, total }: { rows: Distribution[]; total: n
   let offset = 0;
 
   return <div className="workbench-donut-layout">
-    <svg className="workbench-donut" viewBox="0 0 220 220" role="img" aria-label={`异常类型占比环形图，共 ${total} 件；${slices.map(row => `${row.name} ${row.count} 件`).join('；')}`}>
+    <svg className="workbench-donut" viewBox="0 0 220 220" role="img" aria-label={`异常类型占比环形图，共 ${total} 票；${slices.map(row => `${row.name} ${row.count} 票`).join('；')}`}>
       <circle cx="110" cy="110" r="78" fill="none" stroke="#edf2f8" strokeWidth="25" />
       {slices.map((slice, index) => {
         const span = slice.count / chartTotal * circumference;
@@ -83,17 +83,17 @@ export function ExceptionDonut({ rows, total }: { rows: Distribution[]; total: n
           stroke={exceptionColors[index % exceptionColors.length]} strokeWidth="25"
           strokeDasharray={`${Math.max(span - 3, 1)} ${circumference}`}
           strokeDashoffset={-start} transform="rotate(-90 110 110)">
-          <title>{slice.name}：{formatNumber(slice.count, { grouping: true })} 件，占异常 {share(slice.count, total)}</title>
+          <title>{slice.name}：{formatNumber(slice.count, { grouping: true })} 票，占异常 {share(slice.count, total)}</title>
         </circle>;
       })}
       <text x="110" y="103" textAnchor="middle" className="workbench-donut-total">{formatNumber(total, { grouping: true })}</text>
-      <text x="110" y="126" textAnchor="middle" className="workbench-donut-unit">件异常</text>
+      <text x="110" y="126" textAnchor="middle" className="workbench-donut-unit">票异常</text>
     </svg>
     <div className="workbench-donut-legend" aria-label="异常类型图例">
       {slices.map((slice, index) => <div className="workbench-donut-legend-item" key={slice.name}>
         <span className="workbench-donut-swatch" style={{ backgroundColor: exceptionColors[index % exceptionColors.length] }} aria-hidden="true" />
         <span className="workbench-donut-label">{slice.name}</span>
-        <strong>{formatNumber(slice.count, { grouping: true })} <small>件</small></strong>
+        <strong>{formatNumber(slice.count, { grouping: true })} <small>票</small></strong>
         <span className="workbench-donut-share">{share(slice.count, total)}</span>
       </div>)}
     </div>
@@ -116,7 +116,7 @@ export function WorkstationBars({ rows, total }: { rows: Distribution[]; total: 
   const step = niceStep(Math.max(...stations.map(row => row.count)) * 1.12 / 3);
   const upper = step * 3;
 
-  return <div className="workbench-bars" role="img" aria-label={`工作台件量柱状图，共 ${total} 件；${stations.map(row => `${row.name} ${row.count} 件`).join('；')}`}>
+  return <div className="workbench-bars" role="img" aria-label={`工作台票数柱状图，共 ${total} 票；${stations.map(row => `${row.name} ${row.count} 票`).join('；')}`}>
     <div className="workbench-bars-axis" aria-hidden="true">
       {[3, 2, 1, 0].map((tick, index) => <span key={tick} style={{ top: `${index * 100 / 3}%` }}>{formatNumber(tick * step, { grouping: true })}</span>)}
     </div>
@@ -126,7 +126,7 @@ export function WorkstationBars({ rows, total }: { rows: Distribution[]; total: 
       </div>
       <div className="workbench-bars-columns">
         {stations.map((station, index) => <div className="workbench-bars-column" key={station.name}
-          title={`${station.name}：${formatNumber(station.count, { grouping: true })} 件，占总件量 ${share(station.count, total)}`}>
+          title={`${station.name}：${formatNumber(station.count, { grouping: true })} 票，占总票数 ${share(station.count, total)}`}>
           <div className="workbench-bars-track">
             <strong>{formatNumber(station.count, { grouping: true })}</strong>
             <div className="workbench-bars-bar" style={{ height: `${station.count / upper * 100}%`, backgroundColor: stationColors[index % stationColors.length] }} />

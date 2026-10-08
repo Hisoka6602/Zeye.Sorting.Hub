@@ -41,6 +41,7 @@ using Microsoft.AspNetCore.Http.Timeouts;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.ResponseCompression;
 using Zeye.Sorting.Hub.Host.Serialization;
+using Zeye.Sorting.Hub.Host.Configuration;
 
 // ──────────────────────────────────────────────────────────
 // 启动期引导日志：在 DI 容器就绪之前捕获启动异常
@@ -61,6 +62,7 @@ try {
         Args = args.Where(arg => arg != "--verify-latest-backup").ToArray(),
         ContentRootPath = AppContext.BaseDirectory
     });
+    ConfigurationBootstrapper.Configure(builder);
     builder.AddNativeServiceLifetime();
     builder.WebHost.ConfigureKestrel(static options => {
         // 请求体硬上限用于在 JSON 反序列化前阻断异常大批次。
@@ -93,6 +95,8 @@ try {
     builder.Services.AddSingleton(LogManager.LogFactory);
     builder.Services.AddSingleton<ExceptionLoggingHubFilter>();
     builder.Services.Configure<HubOptions>(static options => options.AddFilter<ExceptionLoggingHubFilter>());
+    builder.Services.AddSingleton<SlowQueryHubFilter>();
+    builder.Services.Configure<HubOptions>(static options => options.AddFilter<SlowQueryHubFilter>());
 
     builder.Services.Configure<LogCleanupSettings>(
         builder.Configuration.GetSection("LogCleanup"));
@@ -123,9 +127,12 @@ try {
     builder.Services.Replace(ServiceDescriptor.Singleton<IAutoTuningObservability, AutoTuningLoggerObservability>());
     // 数据库启动链路严格按“迁移治理 -> 初始化 -> 预热/后台任务”顺序注册，避免后台查询抢跑迁移。
     builder.Services.AddHostedService<DatabaseInitializerHostedService>();
+    builder.Services.AddHostedService<LegacyConfigurationMigrationHostedService>();
     builder.Services.AddHostedService<BuiltInAccountHostedService>();
     builder.Services.AddHostedService<Zeye.Sorting.Hub.Infrastructure.Persistence.ReadModels.PersistenceReadSnapshotRefreshService>();
     builder.Services.AddHostedService<DatabaseConnectionWarmupHostedService>();
+    builder.Services.AddHostedService<ParcelDurationBackfillHostedService>();
+    builder.Services.AddHostedService<ParcelDwsMeasurementBackfillHostedService>();
     builder.Services.AddHostedService<ParcelBatchWriteFlushHostedService>();
     builder.Services.AddHostedService<ShardingPrebuildHostedService>();
     builder.Services.AddHostedService<ShardingInspectionHostedService>();
@@ -214,7 +221,9 @@ try {
         .AddAuthentication(GuardedAuthenticationHandler.SchemeName)
         .AddScheme<AuthenticationSchemeOptions, GuardedAuthenticationHandler>(GuardedAuthenticationHandler.SchemeName, static _ => { });
     builder.Services.AddAuthorization();
-    builder.Services.AddSortingHubAccess(builder.Environment.ContentRootPath);
+    var configurationDatabasePath = ((IConfigurationRoot)builder.Configuration).Providers
+        .OfType<Zeye.Sorting.Hub.Infrastructure.Configuration.RuntimeConfigurationProvider>().Single().StoragePath;
+    builder.Services.AddSortingHubAccess(builder.Environment.ContentRootPath, configurationDatabasePath);
     builder.Services.AddSortingRealtime();
     builder.Services.AddFusionIngestion(builder.Configuration, builder.Environment.ContentRootPath);
     builder.Services.AddEndpointsApiExplorer();
@@ -267,6 +276,8 @@ try {
     builder.Services.AddWebRequestAuditLogging(builder.Configuration);
 
     var app = builder.Build();
+    app.Services.GetRequiredService<Zeye.Sorting.Hub.Infrastructure.Configuration.ConfigurationHistoryStore>()
+        .AttachQueryDiagnostics(app.Services.GetRequiredService<SlowQueryAutoTuningPipeline>());
     if (verifyLatestBackup) {
         var artifacts = app.Services.GetRequiredService<IDatabaseBackupArtifactService>();
         var latest = (await artifacts.ListAsync(CancellationToken.None)).FirstOrDefault() ?? throw new InvalidOperationException("没有可用于隔离恢复核验的实际备份。");
@@ -412,6 +423,7 @@ try {
     app.MapDataGovernanceApis();
     app.MapDiagnosticsApis();
     app.MapOperationalReadApis();
+    app.MapRuntimeConfigurationApis();
     app.MapRuleManagementApis();
     app.MapAccessApis();
     app.MapFusionIngestion();
@@ -420,6 +432,10 @@ try {
     app.MapSortingRealtime();
 
     app.Run();
+}
+catch (Microsoft.Extensions.Hosting.HostAbortedException) {
+    // EF Core 设计时工具有意终止宿主解析，不属于启动故障。
+    throw;
 }
 catch (Exception ex) {
     // 捕获启动期间的顶层异常，确保日志落盘后再退出

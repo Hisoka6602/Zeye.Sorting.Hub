@@ -1,5 +1,6 @@
 using System.Data;
 using System.Data.Common;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
 
@@ -25,7 +26,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
             }
 
             if (connection.State != ConnectionState.Open) {
-                await connection.OpenAsync(cancellationToken);
+                await SlowQueryDbOperations.OpenAsync(connection, cancellationToken);
             }
         }
     }

@@ -200,6 +200,23 @@ public sealed class ExceptionLoggingTests : IDisposable {
         Assert.Contains("Method=Fail", content);
     }
 
+    /// <summary>异常断开后 HTTP 特性已释放时，日志仍保存原始异常并原样传播。</summary>
+    [Fact]
+    public async Task DisposedHttpContextDoesNotReplaceOriginalSignalRFailure() {
+        using var factory = CreateFactory();
+        using var services = new ServiceCollection().BuildServiceProvider();
+        var filter = new ExceptionLoggingHubFilter(factory);
+        var context = new HubLifetimeContext(new DisposedHubCallerContext(), services, new ExceptionLoggingTestHub());
+        var original = new InvalidOperationException("disposed-context-original-failure");
+        var actual = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            filter.OnConnectedAsync(context, _ => Task.FromException(original)));
+        Assert.Same(original, actual);
+        factory.Flush(TimeSpan.FromSeconds(10));
+        var content = ReadExceptionLogs();
+        Assert.Contains("disposed-context-original-failure", content);
+        Assert.Contains("disposed-context-connection", content);
+    }
+
     /// <summary>读取实际发布配置，只把输出目录和控制台目标替换成隔离测试设置。</summary>
     private LogFactory CreateFactory(Action<XDocument>? configure = null) {
         var document = XDocument.Load(Path.Combine(AppContext.BaseDirectory, "nlog.config"));

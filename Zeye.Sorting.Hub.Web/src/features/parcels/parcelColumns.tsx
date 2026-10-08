@@ -2,9 +2,10 @@ import { formatNumber } from '../../data/formatNumber';
 import { Button, type TableColumnsType } from 'antd';
 import { StatusTag } from '../../components/StatusTag';
 import type { Parcel } from '../../data/mock/parcels';
+import { localTime } from '../../data/api/operationalTypes';
 
 export const parcelColumns = (navigate: (path: string) => void): TableColumnsType<Parcel> => [
-  { title: '扫码时间', dataIndex: 'scanTime', width: 180, sorter: (a, b) => a.scanTime.localeCompare(b.scanTime) },
+  { title: '扫码时间', dataIndex: 'scanTime', width: 215, render: localTime, sorter: (a, b) => a.scanTime.localeCompare(b.scanTime) },
   { title: '包裹 ID', dataIndex: 'id', width: 120 },
   { title: '主条码', dataIndex: 'barcode', width: 170 },
   { title: '状态', dataIndex: 'status', width: 110, render: (value: string) => <StatusTag value={value} /> },

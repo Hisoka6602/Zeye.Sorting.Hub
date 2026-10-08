@@ -8,11 +8,20 @@ export interface AuditDetail extends AuditItem {
   databaseOperationSummary: string; databaseAccessCount: number; databaseDurationMs: number; requestUrl: string;
 }
 export interface SlowQuery {
+  kind?: 'query' | 'connection' | 'transaction' | 'request'; provider?: string; databaseRole?: string; traceId?: string; spanId?: string; commandId?: string;
+  canceledCount?: number; partialReadCount?: number; averageExecuteMilliseconds?: number; averageReadMilliseconds?: number;
+  averageConsumerMilliseconds?: number; averageConnectionMilliseconds?: number; totalRowsRead?: number; latestCommandCount?: number;
+  exceptionType?: string; statusCode?: number;
   fingerprint: string; normalizedSql: string; sampleSql: string; callCount: number; averageElapsedMilliseconds: number;
   p95Milliseconds: number; p99Milliseconds: number; maxMilliseconds: number; timeoutCount: number; errorCount: number; deadlockCount: number;
   lastOccurredAtLocal: string; windowStartedAtLocal: string; windowEndedAtLocal: string;
 }
-export interface SlowQuerySnapshot { generatedAtLocal: string; totalFingerprintCount: number; items: SlowQuery[] }
+export interface SlowQueryCollection {
+  enabled: boolean; thresholdMilliseconds: number; windowMinutes: number; capacityEvictions: number; expiredSamples: number;
+  collectionFailures: number; activeOperations: number; oldestActiveMilliseconds: number; oldestActiveTraceId: string;
+  archiveEnabled: boolean; archiveReady: boolean; archivePending: number; archiveDropped: number; restoredSamples: number;
+}
+export interface SlowQuerySnapshot { generatedAtLocal: string; totalFingerprintCount: number; items: SlowQuery[]; collection?: SlowQueryCollection }
 export interface HealthReport { status: string; generatedAt: string; entries: Record<string, { status: string; description?: string; durationMs?: number }> }
 export interface ArchiveTask {
   id: string; taskType: string; status: string; isDryRun: boolean; retentionDays: number; plannedItemCount: number; processedItemCount: number;
@@ -32,5 +41,13 @@ export interface ConfigurationSnapshot { environment: string; settings: { catego
 export interface OperationalPolicy { revision: number; automaticBackups: boolean; backupIntervalMinutes: number; prebuildAheadHours: number }
 export interface BackupArtifact { id: string; database: string; createdAtLocal: string; requestedBy: string; sizeBytes: number; sha256: string; tableRows: Record<string, number>; restoredDatabase?: string; verifiedAtLocal?: string }
 export interface BackupArtifacts { isSupported: boolean; artifacts: BackupArtifact[] }
-export function localTime(value?: string | null) { return value ? value.replace('T', ' ').replace(/\.\d+(?:[+-]\d{2}:\d{2})?$|[+-]\d{2}:\d{2}$/, '') : '-'; }
+/** 日期时间控件与当前时间统一使用三位毫秒的本地显示格式。 */
+export const localDateTimeFormat = 'YYYY-MM-DD HH:mm:ss.SSS';
+
+/** 仅截断展示精度，不解析时区或四舍五入；原始值保留用于排序、请求和报文追溯。 */
+export function localTime(value?: string | null): string {
+  if (!value) return '-';
+  const parts = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})(?:\.(\d+))?(?:[+-]\d{2}:?\d{2})?$/.exec(value.trim());
+  return parts ? `${parts[1]} ${parts[2]}.${(parts[3] ?? '').padEnd(3, '0').slice(0, 3)}` : value;
+}
 export const archiveStatusLabels: Record<string, string> = { Pending: '待生成', Running: '执行中', Completed: '已完成', Failed: '失败' };

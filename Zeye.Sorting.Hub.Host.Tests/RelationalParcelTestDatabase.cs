@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
@@ -25,12 +26,13 @@ public sealed class RelationalParcelTestDatabase : IAsyncDisposable {
     public ParcelMetadataIoInterceptor MetadataIo { get; } = new();
 
     /// <summary>配置测试专用数据库和允许执行的DDL隔离器。</summary>
-    public RelationalParcelTestDatabase(string? granularity = null) {
+    public RelationalParcelTestDatabase(string? granularity = null, IInterceptor? queryInterceptor = null) {
         // 与生产工厂保持一致，验证写仓储显式启用跟踪或执行数据库更新。
         // 每个测试使用独立原生连接，不清空其他并发测试使用的全进程 SQLite 连接池。
         var options = new DbContextOptionsBuilder<SortingHubDbContext>().UseSqlite("Data Source=" + _path + ";Pooling=False")
-            .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking).AddInterceptors(Failure, MetadataIo).Options;
-        Factory = new PooledDbContextFactory<SortingHubDbContext>(options);
+            .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking).AddInterceptors(Failure, MetadataIo);
+        if (queryInterceptor is not null) options.AddInterceptors(queryInterceptor);
+        Factory = new PooledDbContextFactory<SortingHubDbContext>(options.Options);
         var settings = new Dictionary<string, string?> {
             ["Persistence:Sharding:WriteRouting:AllowTableCreation"] = "true",
             ["Persistence:Sharding:WriteRouting:DryRun"] = "false"

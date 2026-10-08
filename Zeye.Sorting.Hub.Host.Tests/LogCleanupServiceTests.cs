@@ -15,6 +15,38 @@ public sealed class LogCleanupServiceTests {
     /// </summary>
     private const string TempDirectoryPrefix = "zeye-log-cleanup-tests";
 
+    /// <summary>热更新保留策略或重新启用清理时，立即唤醒长周期等待且仍保留近期日志。</summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ConfigurationChangeWakesPendingCleanupWithoutRestart(bool changeRetention) {
+        var rootDirectory = CreateTempDirectory();
+        try {
+            var initial = new LogCleanupSettings { Enabled = true, RetentionDays = changeRetention ? 30 : 2, CheckIntervalHours = 168, LogDirectory = rootDirectory };
+            var monitor = new TestOptionsMonitor<LogCleanupSettings>(initial);
+            var firstCycle = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var observability = new TestObservability { BeforeEmitMetric = name => { if (name == "log.cleanup.failed_files") firstCycle.TrySetResult(); } };
+            using var service = new LogCleanupService(new SafeExecutor(), monitor, observability, new ConfigChangeHistoryStore<LogCleanupSettings>());
+            await service.StartAsync(default);
+            try {
+                // 确认首次周期已经扫描完空目录，随后创建的文件必须由配置通知唤醒后的周期处理。
+                await firstCycle.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                var expired = Path.Combine(rootDirectory, "expired.log"); var recent = Path.Combine(rootDirectory, "recent.log");
+                File.WriteAllText(expired, "expired"); File.SetLastWriteTime(expired, DateTime.Now.AddDays(-10));
+                File.WriteAllText(recent, "recent");
+                if (changeRetention) monitor.Update(initial with { RetentionDays = 2 });
+                else { monitor.Update(initial with { Enabled = false }); monitor.Update(initial); }
+                var watch = System.Diagnostics.Stopwatch.StartNew();
+                while (File.Exists(expired) && watch.Elapsed < TimeSpan.FromSeconds(5)) await Task.Delay(20);
+                Assert.False(File.Exists(expired), "配置通知必须唤醒 168 小时的旧等待，无需重启。");
+                Assert.True(File.Exists(recent));
+            } finally { await service.StopAsync(default); }
+        } finally {
+            Assert.StartsWith(Path.GetFullPath(Path.Combine(Path.GetTempPath(), TempDirectoryPrefix)) + Path.DirectorySeparatorChar, rootDirectory);
+            Directory.Delete(rootDirectory, recursive: true);
+        }
+    }
+
     /// <summary>
     /// 验证场景：清理任务会递归扫描子目录并删除过期日志。
     /// </summary>

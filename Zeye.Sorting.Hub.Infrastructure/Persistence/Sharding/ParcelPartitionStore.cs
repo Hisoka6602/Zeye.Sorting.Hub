@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Configuration;
 using NLog;
 using Zeye.Sorting.Hub.Domain.Enums.Sharding;
@@ -58,7 +59,7 @@ public sealed class ParcelPartitionStore {
     public ParcelPartitionPeriod Resolve(DateTime registeredAt) => ParcelPartitionPeriod.Resolve(registeredAt, _granularity);
 
     /// <summary>创建使用实际物理表模型的独立上下文。</summary>
-    public async Task<SortingHubDbContext> CreateContextAsync(string suffix, CancellationToken cancellationToken) {
+    public async Task<SortingHubDbContext> CreateContextAsync(string suffix, CancellationToken cancellationToken, bool audit = false) {
         ValidateSuffix(suffix);
         cancellationToken.ThrowIfCancellationRequested();
         var options = Volatile.Read(ref _partitionOptions);
@@ -68,7 +69,7 @@ public sealed class ParcelPartitionStore {
                 .ReplaceService<IModelCacheKeyFactory, ParcelPartitionModelCacheKeyFactory>().Options;
             options = Interlocked.CompareExchange(ref _partitionOptions, configured, null) ?? configured;
         }
-        return new SortingHubDbContext(options) { ParcelPartitionSuffix = suffix };
+        return new SortingHubDbContext(options) { ParcelPartitionSuffix = audit ? string.Empty : suffix, AuditPartitionSuffix = audit ? suffix : string.Empty };
     }
 
     /// <summary>校验目录后缀，拒绝将外部文本拼入SQL表名。</summary>
@@ -191,11 +192,13 @@ public sealed class ParcelPartitionStore {
                 string.Join(Environment.NewLine, commands.Select(x => x.CommandText)), string.Join(Environment.NewLine, rollback.Select(x => x.CommandText)));
             if (!_allowCreation || _dryRun) throw new InvalidOperationException("目标分表或索引尚未预建。请核查DDL审计，显式启用Persistence:Sharding:WriteRouting:AllowTableCreation并关闭DryRun，或提前执行预建。");
             // 步骤4：MySQL的DDL独立提交，业务数据事务在建表之后开始。
-            foreach (var command in commands) await db.Database.ExecuteSqlRawAsync(command.CommandText, cancellationToken);
+            await db.GetService<IMigrationCommandExecutor>().ExecuteNonQueryAsync(commands, db.GetService<IRelationalConnection>(), cancellationToken);
             if (!hasCatalog) {
                 db.Add(new ParcelPartitionCatalogEntry { Suffix = period.Suffix, Start = period.Start, End = period.End, CreatedTime = DateTime.Now });
                 await db.SaveChangesAsync(cancellationToken);
             }
+            var migration = (await db.Database.GetAppliedMigrationsAsync(cancellationToken)).LastOrDefault();
+            if (migration is not null) await PhysicalPartitionMigrationService.SaveVersionAsync(db, "Parcel:" + period.Suffix, migration, cancellationToken);
             PublishCreatedPeriod(period);
         }
         catch (Exception ex) {

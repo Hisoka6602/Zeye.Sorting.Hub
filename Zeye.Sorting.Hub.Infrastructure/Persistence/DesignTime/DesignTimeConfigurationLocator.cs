@@ -1,5 +1,6 @@
 using System.Collections;
 using Microsoft.Extensions.Configuration;
+using Zeye.Sorting.Hub.Infrastructure.Configuration;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
 
@@ -28,17 +29,15 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
         /// <returns>加载的配置对象；若未找到 appsettings.json 则返回仅包含环境变量覆盖项的空配置。</returns>
         public static IConfiguration LoadConfiguration() {
             var builder = new ConfigurationBuilder();
-            var basePath = FindAppsettingsDirectory();
-            if (basePath is not null) {
-                builder
-                    .SetBasePath(basePath)
-                    .AddJsonFile("appsettings.json", optional: true)
-                    .AddJsonFile("appsettings.Development.json", optional: true);
-            }
-
+            var basePath = ResolveContentRoot();
+            var environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") ?? "Production";
+            builder.AddInMemoryCollection(ConfigurationDocument.Flatten(ConfigurationReadOnlyLoader.Load(basePath, environment)));
             AppendEnvironmentVariableOverrides(builder);
             return builder.Build();
         }
+
+        /// <summary>设计时配置和 SQLite 相对文件路径共用宿主内容目录，避免从解决方案运行时创建另一份业务库。</summary>
+        internal static string ResolveContentRoot() => FindAppsettingsDirectory() ?? Directory.GetCurrentDirectory();
 
         /// <summary>
         /// 将环境变量中的双下划线配置键追加为配置覆盖项。

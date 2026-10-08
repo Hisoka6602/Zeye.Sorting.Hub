@@ -5,10 +5,23 @@
 .parcel-exception-panel .ant-card-body { padding: 20px 22px; }
 .parcel-exception-panel .ant-descriptions-item-label { width: 156px; color: var(--hub-text-secondary); font-size: var(--hub-font-label); font-weight: var(--hub-weight-regular); }
 .parcel-exception-panel .ant-descriptions-item-content { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--hub-font-body); font-weight: var(--hub-weight-regular); color: var(--hub-text-body); }
-.parcel-exception-messages p { margin: 0; }
-.parcel-exception-messages p + p { margin-top: 8px; }
-.parcel-exception-records { margin-top: 16px; }
+.parcel-exception-messages { min-width: 0; }
+.parcel-exception-messages .ant-typography { margin: 0; line-height: 24px; }
+.parcel-exception-messages .ant-typography + .ant-typography { margin-top: 10px; padding-top: 10px; border-top: 1px solid #edf1f7; }
+.parcel-exception-records { margin-top: 20px; border-color: #e2e8f1; border-radius: 8px; background: #f8fafc; }
+.parcel-exception-records > .ant-collapse-item > .ant-collapse-header { align-items: center; padding: 14px 18px; }
+.parcel-exception-record-label { min-width: 0; }
+.parcel-exception-record-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; color: var(--hub-text-heading); font-size: var(--hub-font-label); font-weight: var(--hub-weight-semibold); line-height: 24px; }
+.parcel-exception-record-title .status-tag { margin: 0; }
+.parcel-exception-record-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 4px; color: var(--hub-text-secondary); font-size: var(--hub-font-caption); font-weight: var(--hub-weight-regular); line-height: 20px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.parcel-exception-records > .ant-collapse-item > .ant-collapse-content > .ant-collapse-content-box { padding: 0; }
+.parcel-exception-records > .ant-collapse-item > .ant-collapse-content > .ant-collapse-content-box > .parcel-detail-records > .parcel-detail-record { border: 0; border-radius: 0; padding: 18px 20px; }
 @media (max-width: 820px) {
   .parcel-exception-panel .ant-card-body { padding: 16px; }
   .parcel-exception-panel .ant-descriptions-item-label { width: 105px; font-size: var(--hub-font-label); font-weight: var(--hub-weight-regular); color: var(--hub-text-secondary); }
+}
+@media (max-width: 480px) {
+  .parcel-exception-panel .ant-card-body { padding: 12px; }
+  .parcel-exception-records > .ant-collapse-item > .ant-collapse-header { padding: 12px; }
+  .parcel-exception-records > .ant-collapse-item > .ant-collapse-content > .ant-collapse-content-box > .parcel-detail-records > .parcel-detail-record { padding: 14px 12px; }
 }

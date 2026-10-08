@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
-import { App, Alert, Badge, Button, Collapse, Drawer, Empty, Form, Input, InputNumber, Modal, Select, Skeleton, Space, Switch, Tag } from 'antd';
+import { App, Alert, AutoComplete, Badge, Button, Collapse, Drawer, Empty, Form, Input, InputNumber, Modal, Select, Skeleton, Space, Switch, Tag, Typography } from 'antd';
 import { ApiOutlined, CopyOutlined, KeyOutlined, PlusOutlined, ReloadOutlined, SaveOutlined } from '@ant-design/icons';
 import { PageIntro } from '../../components/PageIntro';
 import { SectionCard } from '../../components/SectionCard';
 import { DataTable } from '../../components/DataTable';
 import { ApiFeedback } from '../../components/ApiFeedback';
+import { ConfigurationNumberPicker } from '../../components/ConfigurationNumberPicker';
 import { useApiResource } from '../../data/api/useApiResource';
 import { useAccessSession } from '../../data/api/useAccessSession';
 import { requestApi } from '../../data/api/client';
+import { localTime } from '../../data/api/operationalTypes';
 import type { FusionConfiguration, FusionPairing, FusionPairingResult, FusionPresence, FusionSettings, FusionSource } from '../../data/api/fusionTypes';
 import './fusion-settings.css';
 
@@ -21,24 +23,24 @@ function SettingsForm({ config, busy, onSave }: { config: FusionConfiguration; b
   const [dirty, setDirty] = useState(false);
   const [baseRevision, setBaseRevision] = useState(config.revision);
   useEffect(() => { if (!dirty) { form.setFieldsValue(config.settings); setBaseRevision(config.revision); } }, [config.revision, config.settings, dirty, form]);
-  const numeric: [keyof FusionSettings, string, number, number][] = [
-    ['maxBatchRecords', '事实批次条数上限', 1, 100], ['maxBatchBytes', '事实批次字节上限', 16384, 524288],
-    ['maxImageChunkBytes', '图片分块字节上限', 1024, 65536], ['maxImageBytes', '单张图片字节上限', 1, 134217728],
-    ['maxPendingImagesPerSource', '单来源未完成图片上限', 1, 1000], ['leaseSeconds', '心跳租约期限（秒）', 30, 600],
-    ['uploadRetentionHours', '临时上传保留期（小时）', 1, 168],
+  const numeric: [keyof FusionSettings, string, number, number, readonly number[]][] = [
+    ['maxBatchRecords', '事实批次条数上限', 1, 100, [10, 25, 50, 100]], ['maxBatchBytes', '事实批次字节上限', 16384, 524288, [16384, 65536, 131072, 262144, 524288]],
+    ['maxImageChunkBytes', '图片分块字节上限', 1024, 65536, [1024, 4096, 8192, 16384, 32768, 65536]], ['maxImageBytes', '单张图片字节上限', 1, 134217728, [1048576, 4194304, 16777216, 67108864, 134217728]],
+    ['maxPendingImagesPerSource', '单来源未完成图片上限', 1, 1000, [10, 50, 100, 200, 500, 1000]], ['leaseSeconds', '心跳租约期限（秒）', 30, 600, [30, 60, 120, 180, 300, 600]],
+    ['uploadRetentionHours', '临时上传保留期（小时）', 1, 168, [1, 6, 12, 24, 48, 72, 168]],
   ];
   return <Form form={form} layout="vertical" initialValues={config.settings} onValuesChange={() => setDirty(true)} onFinish={async values => { if (await onSave(values, baseRevision)) setDirty(false); }} disabled={busy}>
     {dirty && baseRevision !== config.revision && <Alert type="warning" message="配置已被其他页面更新；当前草稿保留，请撤销修改以读取最新版本后再编辑。" />}
     <div className="fusion-settings-grid">
       <Form.Item name="isEnabled" label={label('启用 Fusion 接入', 'FusionIngestion.IsEnabled')} valuePropName="checked"><Switch /></Form.Item>
-      <Form.Item label={label('Hub 标识', 'FusionIngestion.HubId')}><Input value={config.hubId} readOnly /><span className="fusion-help">由部署设置固定，已有包裹的归属保持稳定。</span></Form.Item>
+      <Form.Item label={label('Hub 标识', 'FusionIngestion.HubId')}><Typography.Text className="fusion-fixed-value" copyable>{config.hubId}</Typography.Text><span className="fusion-help">由部署设置固定，已有包裹的归属保持稳定。</span></Form.Item>
       <Form.Item name="advertisedEndpoint" label={label('对外 SignalR 地址', 'FusionIngestion.AdvertisedEndpoint')}><Input placeholder="https://hub.example/hubs/fusion-ingestion" /></Form.Item>
       <Form.Item name="allowInsecureHttp" label={label('允许开发 HTTP 地址', 'FusionIngestion.AllowInsecureHttp')} valuePropName="checked" extra="本机 Docker 测试开启；生产使用 HTTPS。"><Switch /></Form.Item>
       <Form.Item name="discoveryEnabled" label={label('启用 UDP 自动发现', 'FusionIngestion.DiscoveryEnabled')} valuePropName="checked"><Switch /></Form.Item>
       <Form.Item name="discoveryPort" label={label('UDP 发现端口', 'FusionIngestion.DiscoveryPort')} rules={[{ required: true, type: 'number', min: 1024, max: 65535, message: '填写 1024–65535 范围内的整数端口' }, { validator: (_, value) => value === 5089 ? Promise.reject(new Error('5089 保留给 NarrowBeltSorter')) : Promise.resolve() }]}><InputNumber min={1024} max={65535} precision={0} /></Form.Item>
     </div>
     <Alert type="info" showIcon message="对外地址必须能从 Fusion 所在机器访问" description="本机 Docker Fusion 可使用 http://host.docker.internal:5087/hubs/fusion-ingestion；其他机器填写 Hub 的实际域名或局域网 IP。启用发现还需发布对应 UDP 端口，发现不会自动授予接入权限。" />
-    <Collapse className="fusion-advanced" items={[{ key: 'limits', label: '传输限额与临时上传保留', children: <div className="fusion-settings-grid">{numeric.map(([key, title, min, max]) => <Form.Item key={key} name={key} label={label(title, `FusionIngestion.${key[0].toUpperCase()}${key.slice(1)}`)} rules={[{ required: true, type: 'number', min, max, message: `${title}必须为 ${min}–${max} 范围内的整数` }]}><InputNumber min={min} max={max} precision={0} /></Form.Item>)}<Form.Item label={label('图片持久化目录', 'FusionIngestion.ImageDirectory')}><Input value={config.imageDirectory} readOnly /><span className="fusion-help">由部署目录和持久化卷管理。</span></Form.Item></div> }]} />
+    <Collapse className="fusion-advanced" items={[{ key: 'limits', label: '传输限额与临时上传保留', children: <div className="fusion-settings-grid">{numeric.map(([key, title, min, max, presets]) => <Form.Item key={key} name={key} label={label(title, `FusionIngestion.${key[0].toUpperCase()}${key.slice(1)}`)} rules={[{ required: true, type: 'number', min, max, message: `${title}必须为 ${min}–${max} 范围内的整数` }]}><ConfigurationNumberPicker min={min} max={max} precision={0} presets={presets} /></Form.Item>)}<Form.Item label={label('图片持久化目录', 'FusionIngestion.ImageDirectory')}><Typography.Text className="fusion-fixed-value" copyable>{config.imageDirectory}</Typography.Text><span className="fusion-help">由部署目录和持久化卷管理。</span></Form.Item></div> }]} />
     <div className="fusion-form-footer"><span>{dirty ? '有未保存的修改' : `已保存版本 ${config.revision} · 保存后在线生效`}</span><Space><Button disabled={!dirty || busy} onClick={() => { form.setFieldsValue(config.settings); setBaseRevision(config.revision); setDirty(false); }}>撤销修改</Button><Button type="primary" htmlType="submit" icon={<SaveOutlined />} disabled={!dirty || baseRevision !== config.revision} loading={busy}>保存接入设置</Button></Space></div>
   </Form>;
 }
@@ -86,6 +88,8 @@ export function FusionSettingsPage() {
   const rows = (config.data?.sources ?? []).filter(source => `${source.sourceInstanceId} ${source.workstationName} ${source.lineId}`.toLowerCase().includes(search.toLowerCase()));
   const states = new Map((presence.data ?? []).map(source => [source.sourceInstanceId, source]));
   const locked = editing !== null && editing !== 'new' && editing.identityLocked;
+  /** 业务归属可复用已登记工作台的值，也允许输入实际部署使用的新标识。 */
+  const sourceOptions = (key: 'lineId' | 'siteCode' | 'deviceCode' | 'tenantId' | 'storagePartitionId') => [...new Set((config.data?.sources ?? []).map(source => source[key]).filter((value): value is string => typeof value === 'string' && value.length > 0))].map(value => ({ value }));
   return <div className="fusion-management">
     <PageIntro title="Fusion 接入" description="在线登记分拣工作台，管理独立配对凭据与 SignalR / UDP 接入。" action={<Button icon={<ReloadOutlined />} onClick={refresh} loading={config.loading || presence.loading}>刷新状态</Button>} />
     <div className="fusion-summary"><div><span>已登记工作台</span><strong>{config.data?.sources.length ?? '—'}</strong></div><div><span>当前在线</span><strong>{presence.data?.filter(source => source.isOnline).length ?? '—'}</strong></div><div><span>接入服务</span><strong className="fusion-summary-state"><Badge status={config.data?.settings.isEnabled ? 'success' : 'default'} />{config.data ? config.data.settings.isEnabled ? '已启用' : '已关闭' : '读取中'}</strong></div></div>
@@ -100,7 +104,7 @@ export function FusionSettingsPage() {
           { title: '工作台 / 来源', key: 'name', width: 245, render: (_, source) => <div className="fusion-source-name"><strong>{source.workstationName || source.sourceInstanceId}</strong><small>{source.sourceInstanceId}</small></div> },
           { title: '产线 / 时区', key: 'line', width: 210, render: (_, source) => <div className="fusion-source-name"><span>{source.lineId}</span><small>{source.timeZoneId}</small></div> },
           { title: '连接状态', key: 'status', width: 110, render: (_, source) => <Badge status={!source.enabled ? 'default' : states.get(source.sourceInstanceId)?.isOnline ? 'success' : 'warning'} text={!source.enabled ? '已停用' : states.get(source.sourceInstanceId)?.isOnline ? '在线' : '离线'} /> },
-          { title: '最近心跳', key: 'seen', width: 190, render: (_, source) => states.get(source.sourceInstanceId)?.lastSeenAt?.replace('T', ' ') ?? '尚未接入' },
+          { title: '最近心跳', key: 'seen', width: 215, render: (_, source) => { const seen = states.get(source.sourceInstanceId)?.lastSeenAt; return seen ? localTime(seen) : '尚未接入'; } },
           { title: '待确认 / 图片', key: 'pending', width: 145, render: (_, source) => `${states.get(source.sourceInstanceId)?.pendingFacts ?? 0} / ${states.get(source.sourceInstanceId)?.pendingImages ?? 0}` },
           { title: '操作', key: 'action', width: 175, render: (_, source) => <Space wrap><Button type="link" size="small" disabled={!canManage || busy} onClick={() => openSource(source)}>编辑 / 停用</Button><Button type="link" size="small" disabled={!canManage || busy} onClick={() => rotate(source)}>重置密钥</Button></Space> },
         ]} />
@@ -112,12 +116,12 @@ export function FusionSettingsPage() {
         <div className="fusion-settings-grid">
           <Form.Item name="sourceInstanceId" label={label('Fusion 来源标识', 'SourceInstanceId')} rules={identityRules}><Input disabled={editing !== 'new'} placeholder="fusion-line-01" /></Form.Item>
           <Form.Item name="workstationName" label={label('工作台名称', 'WorkstationName')} rules={[{ required: true, max: 128, message: '填写工作台名称，最多 128 个字符' }]}><Input placeholder="分拣工作台 1" /></Form.Item>
-          <Form.Item name="lineId" label={label('产线标识', 'LineId')} rules={identityRules}><Input disabled={locked} /></Form.Item>
+          <Form.Item name="lineId" label={label('产线标识', 'LineId')} rules={identityRules}><AutoComplete disabled={locked} options={sourceOptions('lineId')} filterOption={false} /></Form.Item>
           <Form.Item name="timeZoneId" label={label('业务时区', 'TimeZoneId')} rules={[{ required: true, message: '请选择业务时区' }]}><Select disabled={locked} showSearch optionFilterProp="label" options={zoneOptions} /></Form.Item>
-          <Form.Item name="siteCode" label={label('站点编码（可留空）', 'SiteCode')} rules={[{ pattern: /^[A-Za-z0-9._-]{0,96}$/, message: '最多 96 位字母、数字、点、下划线或连字符' }]}><Input disabled={locked} /></Form.Item>
-          <Form.Item name="deviceCode" label={label('设备编码（可留空）', 'DeviceCode')} rules={[{ pattern: /^[A-Za-z0-9._-]{0,96}$/, message: '最多 96 位字母、数字、点、下划线或连字符' }]}><Input disabled={locked} /></Form.Item>
-          <Form.Item name="tenantId" label={label('租户标识', 'TenantId')} rules={identityRules}><Input disabled={locked} /></Form.Item>
-          <Form.Item name="storagePartitionId" label={label('存储分区', 'StoragePartitionId')} rules={identityRules}><Input disabled={locked} /></Form.Item>
+          <Form.Item name="siteCode" label={label('站点编码（可留空）', 'SiteCode')} rules={[{ pattern: /^[A-Za-z0-9._-]{0,96}$/, message: '最多 96 位字母、数字、点、下划线或连字符' }]}><AutoComplete disabled={locked} options={sourceOptions('siteCode')} filterOption={false} /></Form.Item>
+          <Form.Item name="deviceCode" label={label('设备编码（可留空）', 'DeviceCode')} rules={[{ pattern: /^[A-Za-z0-9._-]{0,96}$/, message: '最多 96 位字母、数字、点、下划线或连字符' }]}><AutoComplete disabled={locked} options={sourceOptions('deviceCode')} filterOption={false} /></Form.Item>
+          <Form.Item name="tenantId" label={label('租户标识', 'TenantId')} rules={identityRules}><AutoComplete disabled={locked} options={sourceOptions('tenantId')} filterOption={false} /></Form.Item>
+          <Form.Item name="storagePartitionId" label={label('存储分区', 'StoragePartitionId')} rules={identityRules}><AutoComplete disabled={locked} options={sourceOptions('storagePartitionId')} filterOption={false} /></Form.Item>
           <Form.Item name="enabled" label={label('允许工作台接入', 'Enabled')} valuePropName="checked"><Switch /></Form.Item>
         </div>
         <div className="fusion-form-footer"><Button onClick={() => setEditing(null)} disabled={busy}>取消</Button><Button type="primary" htmlType="submit" loading={busy}>{editing === 'new' ? '登记并生成配对信息' : '保存工作台'}</Button></div>

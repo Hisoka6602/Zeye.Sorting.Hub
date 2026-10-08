@@ -29,7 +29,7 @@ export function WorkbenchMetricTrend({ days, metric, title, loading }: {
   if (segment.length) segments.push(segment);
   const lastPoint = points.reduce((last, point, index) => point ? index : last, -1);
   const formatValue = (value: number | null) => value === null ? '暂无入库数据'
-    : `${formatNumber(value, { grouping: true })}${metric === 'exceptionPercent' ? '%' : ' 件'}`;
+    : `${formatNumber(value, { grouping: true })}${metric === 'exceptionPercent' ? '%' : ' 票'}`;
 
   return <div className="workbench-metric-trend">
     <svg viewBox="0 0 320 44" preserveAspectRatio="none" role="img"

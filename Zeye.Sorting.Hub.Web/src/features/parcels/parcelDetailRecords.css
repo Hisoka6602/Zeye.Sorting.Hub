@@ -1,0 +1,60 @@
+/* 只作用于展开明细，字体与颜色沿用全站变量。 */
+.parcel-detail-sections{background:#f8fafc;border-color:#e5ebf4;border-radius:8px}
+.parcel-detail-sections>.ant-collapse-item>.ant-collapse-header{align-items:center;padding:14px 18px;font-size:var(--hub-font-label);font-weight:var(--hub-weight-semibold);color:var(--hub-text-heading)}
+.parcel-detail-sections>.ant-collapse-item>.ant-collapse-content>.ant-collapse-content-box{padding:16px;background:#f6f8fb}
+.parcel-detail-records{container-type:inline-size;display:flex;flex-direction:column;gap:12px}
+.parcel-detail-record{min-width:0;padding:18px 20px;border:1px solid #e2e8f1;border-radius:8px;background:#fff}
+.parcel-record-heading{display:flex;align-items:center;flex-wrap:wrap;gap:10px;min-width:0}
+.parcel-record-index{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;min-width:28px;height:28px;background:#eef3fb;border-radius:6px;color:var(--hub-text-secondary);font-size:var(--hub-font-caption);font-variant-numeric:tabular-nums}
+.parcel-record-heading h4{margin:0;color:var(--hub-text-heading);font-size:var(--hub-font-item);font-weight:var(--hub-weight-semibold);line-height:24px}
+.parcel-record-heading .status-tag{margin:0}
+.parcel-record-heading time{margin-left:auto;color:var(--hub-text-secondary);font-size:var(--hub-font-caption);font-variant-numeric:tabular-nums;line-height:22px;overflow-wrap:anywhere}
+.parcel-record-context{display:flex;flex-wrap:wrap;gap:6px 16px;margin:6px 0 0 38px;color:var(--hub-text-secondary);font-size:var(--hub-font-caption);line-height:22px}
+.parcel-record-context strong{font-weight:var(--hub-weight-semibold);font-variant-numeric:tabular-nums;color:var(--hub-text-body)}
+.parcel-detail-record .parcel-facts{grid-template-columns:repeat(3,minmax(0,1fr));gap:14px 24px}
+.parcel-detail-record .parcel-fact-full{grid-column:auto}
+.parcel-detail-record .parcel-fact dt{font-size:var(--hub-font-caption);line-height:20px}
+.parcel-detail-record .parcel-fact dd{margin-top:3px;font-variant-numeric:tabular-nums}
+.parcel-detail-record .parcel-fact dd .ant-typography{color:var(--hub-text-body);font-size:var(--hub-font-label);line-height:22px}
+.parcel-detail-record .parcel-fact dd>.ant-typography{display:flex;align-items:flex-start;gap:6px}
+.parcel-detail-record .parcel-fact-value{min-width:0;flex:0 1 auto;overflow-wrap:anywhere}
+.parcel-record-facts{margin-top:16px;padding-top:14px;border-top:1px solid #edf1f7}
+.parcel-record-fact-groups{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px 28px;padding-top:20px}
+.parcel-record-fact-group{min-width:0}
+.parcel-record-fact-group h5{margin:0 0 12px;padding-left:10px;border-left:3px solid #8ca9e5;color:var(--hub-text-heading);font-size:var(--hub-font-label);font-weight:var(--hub-weight-semibold);line-height:20px}
+.parcel-record-fact-groups>.parcel-record-fact-group[data-group="overview"],.parcel-record-fact-groups>.parcel-record-fact-group[data-group="measurement"]{grid-column:1/-1}
+.parcel-record-fact-groups>.parcel-record-fact-group:last-child:nth-child(odd){grid-column:1/-1}
+.parcel-record-fact-groups .parcel-facts{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 24px}
+.parcel-record-fact-groups [data-group="overview"] .parcel-facts{grid-template-columns:repeat(3,minmax(0,1fr))}
+.parcel-record-fact-groups [data-group="timing"] .parcel-facts{grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr))}
+.parcel-record-fact-groups [data-field="barcode"]{grid-column:1/-1}
+.parcel-record-fact-groups [data-group="measurement"] .parcel-facts{grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.parcel-record-fact-groups [data-group="measurement"] .parcel-fact{padding:12px 14px;border-radius:6px;background:#f5f7fb}
+.parcel-record-fact-groups [data-group="measurement"] .parcel-fact dd{margin-top:6px}
+.parcel-record-fact-groups [data-group="measurement"] .parcel-fact dd .ant-typography{font-size:var(--hub-font-item);font-weight:var(--hub-weight-semibold);line-height:24px}
+.parcel-unbound-table .ant-table-expanded-row>td{padding:16px!important;background:#f5f7fb!important}
+.parcel-unbound-table .ant-table-expanded-row-fixed{box-sizing:border-box;padding-right:32px}
+.parcel-detail-record .ant-typography-copy{display:inline-flex;align-items:center;justify-content:center;min-width:24px;min-height:24px;margin-inline-start:4px;vertical-align:middle;border-radius:4px;color:var(--hub-text-muted)}
+.parcel-detail-record .parcel-fact .ant-typography-copy{flex-shrink:0;margin-inline-start:0}
+.parcel-detail-record .ant-typography-copy:hover,.parcel-detail-record .ant-typography-copy:focus-visible{background:#eef4ff;color:#1677ff}
+.parcel-detail-record .ant-typography-copy:focus-visible{outline:2px solid #1677ff;outline-offset:2px}
+.parcel-record-sections{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:24px;margin-top:12px;padding-top:8px;border-top:1px solid #edf1f7}
+.parcel-record-sections>.ant-collapse-item{min-width:0}
+.parcel-record-sections>.ant-collapse-item:has(>.ant-collapse-content-active){grid-column:1/-1}
+.parcel-record-sections.ant-collapse>.ant-collapse-item>.ant-collapse-header{padding:8px 0;align-items:center;color:var(--hub-text-secondary);font-size:var(--hub-font-label);line-height:22px}
+.parcel-record-sections.ant-collapse>.ant-collapse-item>.ant-collapse-content>.ant-collapse-content-box{padding:6px 0 12px}
+.parcel-record-section-label{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.parcel-record-section-label>span{color:var(--hub-text-muted);font-size:var(--hub-font-caption);font-weight:var(--hub-weight-regular)}
+.parcel-record-payload{min-width:0;overflow:hidden;border:1px solid #e2e8f1;border-radius:6px;background:#f7f9fc}
+.parcel-record-payload+.parcel-record-payload{margin-top:10px}
+.parcel-record-payload-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;border-bottom:1px solid #e5ebf4;background:#f0f4f9;color:var(--hub-text-secondary);font-size:var(--hub-font-caption);line-height:22px}
+.parcel-record-payload-heading>span:first-child{display:flex;align-items:center;gap:8px;min-width:0;overflow-wrap:anywhere}
+.parcel-record-copy.ant-typography{display:flex;align-items:center;flex-shrink:0;white-space:nowrap;color:var(--hub-text-secondary);font-size:var(--hub-font-caption)}
+.parcel-record-payload pre{max-height:280px;overflow:auto;margin:0;padding:12px 16px;color:var(--hub-text-body);font-family:Consolas,'SFMono-Regular',monospace;font-size:var(--hub-font-caption);line-height:22px;white-space:pre-wrap;overflow-wrap:anywhere;tab-size:2}
+.parcel-record-payload pre:focus-visible{outline:2px solid #1677ff;outline-offset:-2px}
+.parcel-record-missing{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 24px;list-style:none;padding:0;margin:0}
+.parcel-record-missing li{display:flex;justify-content:space-between;align-items:baseline;gap:12px;min-width:0;color:var(--hub-text-secondary);font-size:var(--hub-font-caption);line-height:22px;overflow-wrap:anywhere}
+.parcel-record-missing li>span:last-child{flex-shrink:0;color:var(--hub-text-muted)}
+@container(max-width:850px){.parcel-detail-record .parcel-facts,.parcel-record-missing,.parcel-record-fact-groups [data-group="overview"] .parcel-facts{grid-template-columns:repeat(2,minmax(0,1fr))}.parcel-record-fact-groups{grid-template-columns:minmax(0,1fr);gap:20px}.parcel-record-heading time{flex-basis:100%;margin-left:38px}}
+@container(max-width:480px){.parcel-detail-record{padding:14px}.parcel-detail-record .parcel-facts,.parcel-record-missing,.parcel-record-fact-groups [data-group="overview"] .parcel-facts{grid-template-columns:minmax(0,1fr);gap:12px}.parcel-record-fact-groups [data-group="measurement"] .parcel-facts{grid-template-columns:repeat(auto-fit,minmax(min(100%,115px),1fr));gap:10px}.parcel-record-fact-groups [data-group="measurement"] .parcel-fact{padding:10px}.parcel-record-sections{grid-template-columns:minmax(0,1fr)}.parcel-record-context{margin-left:0}.parcel-record-heading time{margin-left:0}.parcel-record-payload-heading{flex-wrap:wrap}.parcel-record-payload pre{padding:12px;max-height:240px}}
+@media(max-width:600px){.parcel-detail-sections>.ant-collapse-item>.ant-collapse-content>.ant-collapse-content-box{padding:10px}}

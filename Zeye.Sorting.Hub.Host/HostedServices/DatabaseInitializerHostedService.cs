@@ -61,10 +61,13 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             [MySqlProviderKey] = MySqlProviderKey,
             [SqlServerProviderKey] = SqlServerProviderKey,
             [DialectProviderNameMySql] = MySqlProviderKey,
-            [DialectProviderNameSqlServer] = SqlServerProviderKey
+            [DialectProviderNameSqlServer] = SqlServerProviderKey,
+            ["MSSQL"] = SqlServerProviderKey,
+            ["Oracle"] = "Oracle",
+            ["SQLite"] = "SQLite"
         };
 
-        /// <summary>数据持久化 Provider 类型配置键。可填写值:MySql / SqlServer。</summary>
+        /// <summary>数据持久化 Provider 类型配置键。可填写值:MySql / SqlServer / Oracle / SQLite。</summary>
         private const string PersistenceProviderConfigKey = "Persistence:Provider";
 
         /// <summary>是否启用启动期自动建库检查的配置键。可填写值:true / false。</summary>
@@ -353,6 +356,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     try {
                         NLogLogger.Info("开始执行数据库迁移，Provider={Provider}", _dialect.ProviderName);
                         await db.Database.MigrateAsync(ct);
+                        await scope.ServiceProvider.GetRequiredService<PhysicalPartitionMigrationService>().ExecuteAsync(ct);
                         NLogLogger.Info("数据库迁移完成，Provider={Provider}", _dialect.ProviderName);
                         if (migrationPlan is not null && migrationPlan.IsEnabled) {
                             _migrationGovernanceStateStore.SetLatestExecutionRecord(
@@ -646,9 +650,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 databaseName,
                 decisionResult.CompensationBoundary);
 
-            if (databaseExists || decisionResult.Decision != ActionIsolationDecision.Execute) {
-                return;
-            }
+            if (databaseExists) return;
+            if (decisionResult.Decision != ActionIsolationDecision.Execute) throw new InvalidOperationException($"目标数据库不存在，自动创建被隔离器阻止：{decisionResult.Decision}。请核查建库审计或预先创建数据库。");
 
             await _dialect.CreateDatabaseAsync(administrationConnection, databaseName, cancellationToken);
             NLogLogger.Info("启动期自动建库已执行完成，Provider={Provider}, DatabaseName={DatabaseName}", _dialect.ProviderName, databaseName);

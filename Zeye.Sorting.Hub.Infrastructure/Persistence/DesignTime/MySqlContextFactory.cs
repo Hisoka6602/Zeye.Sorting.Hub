@@ -1,8 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Configuration;
 using NLog;
 using Pomelo.EntityFrameworkCore.MySql.Infrastructure;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
 
@@ -18,11 +20,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
     ///   <item><description><c>dotnet ef dbcontext script</c> — 生成 DDL SQL 脚本</description></item>
     /// </list>
     /// <para>
-    /// 默认按 <c>Persistence:Provider</c> 解析数据库提供器（支持 <c>MySql</c> / <c>SqlServer</c>），也支持通过
+    /// 默认按 <c>Persistence:Provider</c> 解析数据库提供器（MySql / SqlServer / Oracle / SQLite），也支持通过
     /// <c>dotnet ef ... -- --provider SqlServer</c> 显式覆盖提供器。
     /// </para>
     /// <para>
-    /// 连接字符串从 <c>appsettings.json</c>（<c>ConnectionStrings:MySql</c> / <c>ConnectionStrings:SqlServer</c>）读取。
+    /// 连接字符串由只读配置加载器读取配置库，兼容尚未导入的 JSON，环境变量优先。
     /// 其中 provider 值与 ConnectionStrings key 均使用 <see cref="ConfiguredProviderNames"/> 常量。
     /// 工厂按以下顺序搜索 <c>appsettings.json</c>：
     /// <list type="number">
@@ -54,11 +56,26 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
         /// <inheritdoc />
         public SortingHubDbContext CreateDbContext(string[] args) {
             var config = DesignTimeConfigurationLocator.LoadConfiguration();
+            return CreateDbContext(config, args);
+        }
+
+        /// <summary>根据给定配置构建设计时上下文，便于离线验证与运行期采用相同的索引生成策略。</summary>
+        internal SortingHubDbContext CreateDbContext(IConfiguration config, params string[] args) {
             var provider = ResolveProvider(args, config);
 
             if (string.Equals(provider, ConfiguredProviderNames.SqlServer, StringComparison.OrdinalIgnoreCase)) {
                 var factory = new SqlServerContextFactory();
                 return factory.CreateDbContext(config);
+            }
+
+            if (provider is ConfiguredProviderNames.Oracle or ConfiguredProviderNames.SQLite) {
+                var additionalConnection = config.GetConnectionString(provider);
+                if (string.IsNullOrWhiteSpace(additionalConnection)) additionalConnection = provider == ConfiguredProviderNames.Oracle
+                    ? "User Id=design_time_only;Password=design_time_only;Data Source=127.0.0.1:1521/FREEPDB1"
+                    : "Data Source=data/business/design-time-only.db";
+                var additionalOptions = new DbContextOptionsBuilder<SortingHubDbContext>();
+                AdditionalDbContextOptions.Configure(additionalOptions, provider, additionalConnection, DesignTimeConfigurationLocator.ResolveContentRoot());
+                return new SortingHubDbContext(additionalOptions.Options);
             }
 
             var connectionString = config.GetConnectionString(ConfiguredProviderNames.MySql);
@@ -71,6 +88,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
                 msg => Logger.Warn("[DesignTime] {Message}", msg));
             var options = new DbContextOptionsBuilder<SortingHubDbContext>()
                 .UseMySql(normalizedConnectionString, serverVersion)
+                .ReplaceService<IMigrationsSqlGenerator, MySqlOnlineIndexMigrationsSqlGenerator>()
                 .Options;
             return new SortingHubDbContext(options);
         }
@@ -87,7 +105,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
 
                 if (arg.StartsWith($"{ProviderArgumentName}=", StringComparison.OrdinalIgnoreCase)) {
                     if (arg.Length == ProviderArgumentName.Length + 1) {
-                        throw new InvalidOperationException($"参数 '--provider=' 未提供值。可选值：{ConfiguredProviderNames.MySql} / {ConfiguredProviderNames.SqlServer}。");
+                        throw new InvalidOperationException("参数 '--provider=' 未提供值。可选值：MySql / SqlServer / Oracle / SQLite。");
                     }
 
                     var provided = arg[(ProviderArgumentName.Length + 1)..];
@@ -102,19 +120,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
         /// 标准化并校验数据库提供器名称。
         /// </summary>
         private static string NormalizeProvider(string? provider) {
-            if (string.IsNullOrWhiteSpace(provider)) {
-                throw new InvalidOperationException($"数据库提供器不能为空。可选值：{ConfiguredProviderNames.MySql} / {ConfiguredProviderNames.SqlServer}。");
-            }
-
-            if (string.Equals(provider, ConfiguredProviderNames.SqlServer, StringComparison.OrdinalIgnoreCase)) {
-                return ConfiguredProviderNames.SqlServer;
-            }
-
-            if (string.Equals(provider, ConfiguredProviderNames.MySql, StringComparison.OrdinalIgnoreCase)) {
-                return ConfiguredProviderNames.MySql;
-            }
-
-            throw new InvalidOperationException($"不支持的数据库提供器：{provider}。可选值：{ConfiguredProviderNames.MySql} / {ConfiguredProviderNames.SqlServer}。");
+            return ConfiguredProviderNames.Normalize(provider);
         }
 
     }

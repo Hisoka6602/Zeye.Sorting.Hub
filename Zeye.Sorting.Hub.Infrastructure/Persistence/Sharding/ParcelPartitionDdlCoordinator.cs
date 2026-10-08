@@ -1,8 +1,16 @@
 using System.Data.Common;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
 using NLog;
+using System.Data;
+using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Text;
+using Microsoft.Data.Sqlite;
+using Oracle.ManagedDataAccess.Client;
+using Oracle.ManagedDataAccess.Types;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 
@@ -16,16 +24,23 @@ internal sealed class ParcelPartitionDdlCoordinator : IAsyncDisposable {
     private readonly string _resource;
     /// <summary>锁释放失败的审计日志。</summary>
     private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
+    /// <summary>SQLite 跨进程建表文件锁，所有周期共享同一锁文件。</summary>
+    private FileStream? _sqliteLease;
+    /// <summary>Oracle 会话锁 ID，使用 DBMS_LOCK 的非保留整数范围。</summary>
+    private readonly long _oracleLockId;
 
     /// <summary>建立会话协调器。</summary>
     private ParcelPartitionDdlCoordinator(SortingHubDbContext db, string suffix) {
         _db = db; _provider = db.Database.ProviderName ?? string.Empty; _resource = "SortingHub.Parcel.Partition." + suffix;
+        _oracleLockId = (int)(BitConverter.ToUInt32(SHA256.HashData(Encoding.UTF8.GetBytes(_resource)), 0) % 1073741823);
     }
 
-    /// <summary>获取生产数据库独占会话锁；SQLite测试由进程内有界锁保护。</summary>
+    /// <summary>获取跨进程独占建表锁；Oracle 使用会话锁，SQLite 使用同文件目录的持久化锁文件。</summary>
     public static async Task<ParcelPartitionDdlCoordinator> AcquireAsync(SortingHubDbContext db, string suffix, CancellationToken token) {
+        SlowQueryDbOperations.Attach(db);
         await db.Database.OpenConnectionAsync(token);
         var coordinator = new ParcelPartitionDdlCoordinator(db, suffix);
+        try {
         if (coordinator._provider.Contains("MySql", StringComparison.OrdinalIgnoreCase)) {
             var result = await coordinator.ScalarAsync("SELECT GET_LOCK(@resource, 30)", token, ("@resource", coordinator._resource));
             if (Convert.ToInt32(result) != 1) throw new InvalidOperationException("获取包裹分表建表锁超时。");
@@ -34,7 +49,24 @@ internal sealed class ParcelPartitionDdlCoordinator : IAsyncDisposable {
             var result = await coordinator.ScalarAsync("DECLARE @result int; EXEC @result = sys.sp_getapplock @Resource=@resource, @LockMode='Exclusive', @LockOwner='Session', @LockTimeout=30000; SELECT @result;", token, ("@resource", coordinator._resource));
             if (Convert.ToInt32(result) < 0) throw new InvalidOperationException("获取包裹分表建表锁失败。");
         }
+        else if (coordinator._provider == DbProviderNames.Oracle) {
+            var result = await coordinator.OracleLockAsync("REQUEST(:id,6,30,FALSE)", token);
+            if (result is not (0 or 4)) throw new InvalidOperationException($"获取 Oracle 分表锁失败，返回码={result}。");
+        }
+        else if (coordinator._provider == DbProviderNames.SQLite) {
+            var path = new SqliteConnectionStringBuilder(db.Database.GetConnectionString()).DataSource;
+            if (path != ":memory:" && !string.IsNullOrWhiteSpace(path)) {
+                var timeout = Stopwatch.StartNew();
+                while (coordinator._sqliteLease is null) {
+                    token.ThrowIfCancellationRequested();
+                    try { coordinator._sqliteLease = new FileStream(Path.GetFullPath(path) + ".ddl.lock", FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None); }
+                    catch (IOException exception) when (timeout.Elapsed < TimeSpan.FromSeconds(30)) { Logger.Debug(exception, "等待 SQLite 分表建表锁。"); await Task.Delay(50, token); }
+                }
+            }
+        }
         return coordinator;
+        }
+        catch (Exception exception) { Logger.Error(exception, "获取物理分表锁失败，Resource={Resource}", coordinator._resource); await coordinator.DisposeAsync(); throw; }
     }
 
     /// <summary>读取真实表列名；不存在返回空集合。</summary>
@@ -43,9 +75,11 @@ internal sealed class ParcelPartitionDdlCoordinator : IAsyncDisposable {
             ? "SELECT name FROM pragma_table_info(@table)"
             : _provider.Contains("MySql", StringComparison.OrdinalIgnoreCase)
                 ? "SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=@table"
-                : "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=@schema AND TABLE_NAME=@table";
-        await using var command = CreateCommand(sql, ("@table", table), ("@schema", schema ?? "dbo"));
-        await using var reader = await command.ExecuteReaderAsync(token);
+                : _provider == DbProviderNames.Oracle
+                    ? "SELECT COLUMN_NAME FROM ALL_TAB_COLUMNS WHERE OWNER=NVL(:schemaName,SYS_CONTEXT('USERENV','CURRENT_SCHEMA')) AND TABLE_NAME=:tableName"
+                    : "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA=@schema AND TABLE_NAME=@table";
+        await using var command = CreateCommand(sql, ("@table", table), ("@schema", schema ?? (_provider == DbProviderNames.Oracle ? null : "dbo")));
+        await using var reader = await SlowQueryDbOperations.ExecuteReaderAsync(command, token);
         var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         while (await reader.ReadAsync(token)) columns.Add(reader.GetString(0));
         return columns;
@@ -57,25 +91,40 @@ internal sealed class ParcelPartitionDdlCoordinator : IAsyncDisposable {
             ? "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND tbl_name=@table AND name=@index"
             : _provider.Contains("MySql", StringComparison.OrdinalIgnoreCase)
                 ? "SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=@table AND INDEX_NAME=@index"
-                : "SELECT COUNT(*) FROM sys.indexes i JOIN sys.tables t ON i.object_id=t.object_id JOIN sys.schemas s ON t.schema_id=s.schema_id WHERE s.name=@schema AND t.name=@table AND i.name=@index";
-        return Convert.ToInt32(await ScalarAsync(sql, token, ("@table", table), ("@schema", schema ?? "dbo"), ("@index", index))) > 0;
+                : _provider == DbProviderNames.Oracle
+                    ? "SELECT COUNT(*) FROM ALL_INDEXES WHERE OWNER=NVL(:schemaName,SYS_CONTEXT('USERENV','CURRENT_SCHEMA')) AND TABLE_NAME=:tableName AND INDEX_NAME=:indexName"
+                    : "SELECT COUNT(*) FROM sys.indexes i JOIN sys.tables t ON i.object_id=t.object_id JOIN sys.schemas s ON t.schema_id=s.schema_id WHERE s.name=@schema AND t.name=@table AND i.name=@index";
+        return Convert.ToInt32(await ScalarAsync(sql, token, ("@table", table), ("@schema", schema ?? (_provider == DbProviderNames.Oracle ? null : "dbo")), ("@index", index))) > 0;
     }
 
     /// <summary>创建参数化命令，命令文本仅来自内部常量。</summary>
-    private DbCommand CreateCommand(string sql, params (string Name, string Value)[] parameters) {
+    private DbCommand CreateCommand(string sql, params (string Name, object? Value)[] parameters) {
         var command = _db.Database.GetDbConnection().CreateCommand();
-        command.CommandText = sql;
+        command.CommandText = _provider == DbProviderNames.Oracle ? sql.Replace("@", ":", StringComparison.Ordinal) : sql;
+        command.Transaction = _db.Database.CurrentTransaction?.GetDbTransaction();
+        if (command is OracleCommand oracle) oracle.BindByName = true;
         command.CommandTimeout = 40;
         foreach (var value in parameters) {
-            var parameter = command.CreateParameter(); parameter.ParameterName = value.Name; parameter.Value = value.Value; command.Parameters.Add(parameter);
+            var name = value.Name.TrimStart('@', ':');
+            if (_provider == DbProviderNames.Oracle && name is "table" or "schema" or "index") name += "Name";
+            if (!command.CommandText.Contains((_provider == DbProviderNames.Oracle ? ":" : "@") + name, StringComparison.Ordinal)) continue;
+            var parameter = command.CreateParameter(); parameter.ParameterName = name; parameter.Value = value.Value ?? DBNull.Value; command.Parameters.Add(parameter);
         }
         return command;
     }
 
     /// <summary>执行结构探测或锁命令。</summary>
-    private async Task<object?> ScalarAsync(string sql, CancellationToken token, params (string Name, string Value)[] parameters) {
+    private async Task<object?> ScalarAsync(string sql, CancellationToken token, params (string Name, object? Value)[] parameters) {
         await using var command = CreateCommand(sql, parameters);
-        return await command.ExecuteScalarAsync(token);
+        return await SlowQueryDbOperations.ExecuteScalarAsync(command, token);
+    }
+
+    /// <summary>执行内部固定的 Oracle 锁过程，参数化锁 ID 和返回码，不分配隐式提交的锁句柄。</summary>
+    private async Task<int> OracleLockAsync(string operation, CancellationToken token) {
+        await using var command = (OracleCommand)CreateCommand("BEGIN :result := DBMS_LOCK." + operation + "; END;", ("@id", _oracleLockId));
+        var output = new OracleParameter("result", OracleDbType.Int32) { Direction = ParameterDirection.Output };
+        command.Parameters.Add(output); await SlowQueryDbOperations.ExecuteNonQueryAsync(command, token);
+        return output.Value is OracleDecimal number ? number.ToInt32() : Convert.ToInt32(output.Value);
     }
 
     /// <summary>释放会话锁；失败时记录日志且关闭连接，不覆盖原始DDL错误。</summary>
@@ -83,8 +132,9 @@ internal sealed class ParcelPartitionDdlCoordinator : IAsyncDisposable {
         try {
             if (_provider.Contains("MySql", StringComparison.OrdinalIgnoreCase)) await ScalarAsync("SELECT RELEASE_LOCK(@resource)", default, ("@resource", _resource));
             else if (_provider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase)) await ScalarAsync("EXEC sys.sp_releaseapplock @Resource=@resource, @LockOwner='Session';", default, ("@resource", _resource));
+            else if (_provider == DbProviderNames.Oracle) await OracleLockAsync("RELEASE(:id)", default);
         }
         catch (Exception exception) { Logger.Error(exception, "包裹分表会话锁释放失败，Resource={Resource}", _resource); }
-        finally { await _db.Database.CloseConnectionAsync(); }
+        finally { _sqliteLease?.Dispose(); await _db.Database.CloseConnectionAsync(); }
     }
 }

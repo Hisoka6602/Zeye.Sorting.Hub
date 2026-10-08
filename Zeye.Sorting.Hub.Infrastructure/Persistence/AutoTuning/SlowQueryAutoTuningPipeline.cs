@@ -156,7 +156,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         /// <summary>
         /// 慢查询画像存储，用于复用本流水线已经生成的指纹与样本。
         /// </summary>
-        private readonly SlowQueryProfileStore? _profileStore;
+        private SlowQueryProfileStore? _profileStore;
         /// <summary>
         /// 队列溢出时的丢弃样本计数。
         /// </summary>
@@ -211,26 +211,37 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         }
 
         /// <summary>采集慢查询样本（含错误、超时、死锁标记）。</summary>
-        public void Collect(string commandText, TimeSpan elapsed, int affectedRows = 0, Exception? exception = null) {
+        public void Collect(string commandText, TimeSpan elapsed, int affectedRows = 0, Exception? exception = null, SlowQueryObservation? observation = null) {
+            try { CollectCore(commandText, elapsed, affectedRows, exception, observation); }
+            catch (Exception) { _profileStore?.CollectionFailed(); }
+        }
+
+        /// <summary>诊断故障与业务返回解耦，原始命令和异常不受采样失败影响。</summary>
+        private void CollectCore(string commandText, TimeSpan elapsed, int affectedRows, Exception? exception, SlowQueryObservation? observation) {
             if (string.IsNullOrWhiteSpace(commandText)) {
                 return;
             }
 
-            if (commandText.Contains(AutoTuningMarker, StringComparison.OrdinalIgnoreCase)) {
-                return;
-            }
-
-            var isError = exception is not null;
+            observation ??= new();
+            observation = observation with { IsCanceled = observation.IsCanceled || SlowQueryFailureClassifier.IsCanceled(exception),
+                ExceptionType = exception?.GetType().FullName ?? observation.ExceptionType };
+            if (observation.DatabaseRole == "business" && commandText.Contains(AutoTuningMarker, StringComparison.OrdinalIgnoreCase))
+                observation = observation with { DatabaseRole = "maintenance" };
+            var isError = !observation.IsCanceled && (observation.IsFailed || exception is not null);
             var elapsedMilliseconds = elapsed.Ticks / (decimal)TimeSpan.TicksPerMillisecond;
             var isSlow = elapsedMilliseconds >= _slowQueryThresholdMilliseconds;
-            if (!isSlow && !isError) {
+            if (!isSlow && !isError && !observation.IsCanceled) {
                 return;
             }
 
-            var isTimeout = IsTimeoutException(exception);
-            var isDeadlock = IsDeadlockException(exception);
-            var safeCommandText = commandText.Length <= 4096 ? commandText : commandText[..4096];
-            var slowQueryFingerprint = SlowQueryFingerprintAggregator.Create(safeCommandText);
+            var isTimeout = SlowQueryFailureClassifier.IsTimeout(exception, observation.Provider);
+            var isDeadlock = SlowQueryFailureClassifier.IsDeadlock(exception, observation.Provider);
+            // 先用完整结构生成指纹，再裁剪展示文本，防止长 SQL 被合并。
+            var slowQueryFingerprint = SlowQueryFingerprintAggregator.CreateObservation(commandText, observation);
+            slowQueryFingerprint = slowQueryFingerprint with { NormalizedSql = slowQueryFingerprint.NormalizedSql.Length <= 4096
+                ? slowQueryFingerprint.NormalizedSql : slowQueryFingerprint.NormalizedSql[..4096] };
+            var sanitized = SlowQueryFingerprintAggregator.SanitizeSql(commandText, observation.Provider);
+            var safeCommandText = sanitized.Length <= 4096 ? sanitized : sanitized[..4096];
             var sample = new SlowQuerySample(
                 commandText: safeCommandText,
                 sqlFingerprint: slowQueryFingerprint.Fingerprint,
@@ -239,7 +250,13 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                 isError: isError,
                 isTimeout: isTimeout,
                 isDeadlock: isDeadlock,
-                occurredTime: DateTime.Now);
+                occurredTime: DateTime.Now) { Observation = observation };
+            _profileStore?.Record(slowQueryFingerprint, sample);
+            // 调优和连接观测仍可诊断，但不能再次触发自动调优。
+            if (observation.Kind != "query" || observation.DatabaseRole != "business" || observation.IsCanceled
+                || commandText.Contains(AutoTuningMarker, StringComparison.OrdinalIgnoreCase)
+                || (observation.ExecuteMilliseconds + observation.ReadMilliseconds > 0m
+                    && observation.ExecuteMilliseconds + observation.ReadMilliseconds < _slowQueryThresholdMilliseconds && !isError)) return;
             var droppedThisCollect = 0;
             lock (_queueSync) {
                 while (_slowQueries.Count >= _maxQueueSize && _slowQueries.TryDequeue(out _)) {
@@ -251,7 +268,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             }
 
             SortingHubPerformanceMetrics.RecordSlowQueryCollected(droppedThisCollect);
-            _profileStore?.Record(slowQueryFingerprint, sample);
         }
 
         /// <summary>
@@ -691,30 +707,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             var rank = (int)Math.Ceiling(percentile / 100m * sorted.Count);
             var index = Math.Clamp(rank - 1, 0, sorted.Count - 1);
             return sorted[index];
-        }
-
-        /// <summary>判断异常是否属于超时类。</summary>
-        private static bool IsTimeoutException(Exception? exception) {
-            if (exception is null) {
-                return false;
-            }
-
-            if (exception is TimeoutException) {
-                return true;
-            }
-
-            return DatabaseProviderOperations.TryGetProviderErrorNumber(exception, out var number)
-                && (number == -2 || number == 3024);
-        }
-
-        /// <summary>判断异常是否属于死锁类。</summary>
-        private static bool IsDeadlockException(Exception? exception) {
-            if (exception is null) {
-                return false;
-            }
-
-            return DatabaseProviderOperations.TryGetProviderErrorNumber(exception, out var number)
-                && (number == 1205 || number == 1213);
         }
 
         /// <summary>从 SQL 中提取主表 schema/table。</summary>

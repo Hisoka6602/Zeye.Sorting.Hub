@@ -11,7 +11,7 @@ import { PageIntro } from '../../components/PageIntro';
 import { SectionCard } from '../../components/SectionCard';
 import { StatusTag } from '../../components/StatusTag';
 import { useApiResource } from '../../data/api/useApiResource';
-import { localTime, type AuditItem, type PagedResult } from '../../data/api/operationalTypes';
+import { localDateTimeFormat, localTime, type AuditItem, type PagedResult } from '../../data/api/operationalTypes';
 import { describeAuditRequest } from './requestDescriptions';
 import './audit.css';
 export function AuditListPage() {
@@ -40,7 +40,7 @@ export function AuditListPage() {
     <PageIntro title="请求审计" description="按时间、路径和追踪 ID 排查请求。" />
     <SectionCard className="filter-card audit-list-filter"><div className="audit-filter-rows">
       <div className="audit-filter-row audit-filter-row-top">
-        <Field label="请求时间" wide><DatePicker.RangePicker separator="~" value={range} onChange={setRange} showTime style={{ width: '100%' }} /></Field>
+        <Field label="请求时间" wide><DatePicker.RangePicker separator="~" value={range} onChange={setRange} showTime format={localDateTimeFormat} style={{ width: '100%' }} /></Field>
         <Field label="状态码"><Select allowClear placeholder="请选择状态码" value={status} onChange={setStatus} options={[200, 201, 204, 400, 401, 403, 404, 409, 429, 500, 503].map(value => ({ value }))} /></Field>
         <Field label="是否成功"><Select allowClear placeholder="请选择" value={success} onChange={setSuccess} options={['是', '否'].map(value => ({ value }))} /></Field>
       </div>

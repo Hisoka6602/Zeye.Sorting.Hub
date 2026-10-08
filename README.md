@@ -10,6 +10,20 @@ Fusion 工作台通过独立的 SignalR `/hubs/fusion-ingestion` 注册、上报
 
 ## 仓库文件结构（当前）
 
+当前配置由 LiteDB 管理，程序首次启动自动创建 `data/configuration/settings.db`、配置集合及结构版本。`appsettings.json` 只保留 `ConfigurationStorage` 启动参数；需要由 Kestrel 在启动时读取的证书和端点参数也可保留。其他默认值内置在 Infrastructure 资源中，无配置文件也可初始化。相对存储路径以程序内容根目录为基准，设置 `ZEYE_HUB_CONFIG_ROOT` 可指定独立配置根目录。
+
+升级时保留原 `appsettings.json` 和环境配置文件，首次建立 LiteDB 时会整体导入并保留未知旧字段。数据库初始化后，自动导入旧 `ManagedDocuments` 中的运维策略、分类规则和加密 Fusion 目录，保留原版本；已有 LiteDB 值不会被旧 JSON 或旧关系库覆盖。旧关系库配置行作为兼容副本保留，生产读写使用 LiteDB。账号、个人资料、包裹、处理事实、接入租约和清理历史继续保存到业务关系库，支持 MySQL、SQL Server、Oracle 和 SQLite，默认使用 MySQL。四库初始化、Code First 迁移、分表、调优及真实 Fusion 验收见 [四数据库部署与验收](docs/四数据库部署与验收.md)。
+
+配置变更的前后原值保存在独立 SQLite 文件 `data/business-history/configuration-history.db`，仅超级管理员可查询，自动建表和索引，重启后可查。旧版已脱敏的历史保留原记录，无法还原；新记录保存修改前后原值。修改先准备历史再提交 LiteDB，存储失败不发布新配置；提交状态暂未确认时保留 Pending，并在启动时核对耐久版本。Fusion 目录中的机器密钥仍通过原 Data Protection 密钥环加密保存；导入加密接入目录后移除运行配置中的旧明文来源种子。密钥存于实际配置库目录下的 `data-protection`，启动自动复制旧 `logs/data-protection` 密钥并保留原文件；升级时整体保留配置目录和历史目录。
+
+超级管理员可通过 `GET/PUT /api/operations/configuration/runtime` 读取和按版本保存配置，通过 `GET /api/operations/configuration/history?limit=100` 查看历史。PUT 载荷为 `{ "revision": "读取响应中的版本", "changes": { "LogCleanup": { "RetentionDays": 7 } } }`，Cookie 写请求沿用 `X-Zeye-Client: web`。配置及历史接口由后端独立校验超级管理员身份，返回密钥、连接字符串及环境覆盖原值，响应禁止缓存；配置请求和响应正文不进入请求审计。未修改字段不提交，文本按输入原值保存，不使用掩码占位语义。运维策略、分类规则和 Fusion 目录继续使用原网页接口和版本合同。
+
+前端“系统配置”包含运行配置、运维策略及变更历史，页面使用“配置存储”“配置库”等业务文案，不展示底层配置存储引擎名称。超级管理员可按分类搜索和修改开关、数字、文本、凭据原值及完整 JSON 数组；保存前展示变化字段。页面依据后端 `hotReloadKeys` 标识在线更新能力，显示当前有效值、部署环境覆盖和待重启参数。每五秒读取最新版本，刷新及版本冲突保留未保存草稿；版本过期时拒绝覆盖，撤销后可读取最新配置。浏览器刷新、站内跳转和历史返回均保护未保存的运行配置及运维策略，离开前可继续编辑或明确放弃修改；保存期间等待结果后再离开。Fusion 工作台目录及规则仍通过独立页面维护。配置历史可按类型过滤，查看修改前后值与提交状态。
+
+日志清理、运行资源告警与采样、审计采样/正文策略、访问保护及 Logging 过滤配置可热更新；本实例保存立即通知 options，其他进程对同一 LiteDB 的修改按 `ConfigurationStorage:ReloadIntervalSeconds` 检测。分类规则保存立即发布内存快照，其他进程由既有后台刷新同步；Fusion 目录按既有刷新周期同步，凭据轮换立即改变本实例安全戳。监听地址、数据库连接和工厂、对象存储、审计队列容量/批量参数及只用于启动基线审计的连接池阈值等启动项保存后仍使用原有效值，接口通过 `restartRequiredKeys` 明确提示重启。环境变量、用户密钥和命令行继续按框架顺序覆盖 LiteDB，不把这些临时覆盖值回写数据库。NLog 启动日志及文件目标仍由 `nlog.config` 引导。
+
+Docker 使用 `host_configuration` 和 `host_configuration_history` 两个持久化卷。重新发布时只替换程序文件，保留配置数据库、SQLite 历史和凭据密钥环；内置默认资源用于首次初始化及有结构版本升级时的缺省字段补全。
+
 > 说明：以下基础结构与“Fusion处理事实与实际物理分表”中的新增文件结构共同组成当前清单（不含 `.git`、`bin/`、`obj/` 等构建产物）。
 
 ```text
@@ -416,8 +430,8 @@ Fusion 工作台通过独立的 SignalR `/hubs/fusion-ingestion` 注册、上报
 │   ├── Program.cs（应用入口与 Host 构建流程）
 │   ├── Zeye.Sorting.Hub.Host.csproj（Host 项目定义）
 │   ├── nlog.config（NLog 日志配置）
-│   ├── appsettings.Development.json（开发环境配置）
-│   └── appsettings.json（默认运行配置，含 WebRequestAuditLog Body 采集开关、AuditReadOnlyApi:Enabled、Persistence:Backup、Persistence:ReadOnlyDatabase 与 Persistence:Retention）
+│   ├── appsettings.Development.json（开发环境启动引导覆盖）
+│   └── appsettings.json（配置库路径及必要启动引导参数；运行默认值内置于 Infrastructure/Configuration）
 ├── Zeye.Sorting.Hub.Host.Tests（自动调优行为测试工程）
 │   ├── BundledWebUiTests.cs（页面刷新、服务路由、静态资源及配置隔离回归）
 │   ├── AutoTuningProductionControlTests.cs（自动调优生产可控能力测试：dry-run/隔离器/告警恢复/普通与严重回归/探针双路径/闭环链路；含分表策略评估与 PerDay 预建守卫联动测试；新增 WebRequestAuditLog 治理解耦/保留治理三态/逻辑表索引分发/配置错误键指向回归；配置键拼装参数化覆盖（Theory））
@@ -588,7 +602,7 @@ Fusion 工作台通过独立的 SignalR `/hubs/fusion-ingestion` 注册、上报
 │   │   │   └── SqlServerDialect.cs（SQL Server 方言实现：自动调优 + 分表探测 + 启动期数据库存在性探测/建库执行）
 │   │   ├── DesignTime（EF 设计时支持目录）
 │   │   │   ├── DesignTimeConfigurationLocator.cs（设计时配置目录定位器：统一 appsettings.json 查找与加载逻辑，消除 MySql/SqlServer 工厂重复代码）
-│   │   │   ├── MySqlContextFactory.cs（统一设计时 DbContext 工厂，支持 --provider 切换 MySql/SqlServer；告警输出通过 NLog 落盘）
+│   │   │   ├── MySqlContextFactory.cs（统一设计时 DbContext 工厂，支持 --provider 切换 MySql/SqlServer/Oracle/SQLite；告警输出通过 NLog 落盘）
 │   │   │   └── SqlServerContextFactory.cs（SQL Server 设计时 DbContext 构建器）
 │   │   ├── Migrations（EF Core 迁移文件目录）
 │   │   │   ├── 20260324094539_RebuildBaseline20260324.cs（全新基线迁移：空库初始化全量建表/索引/约束）
@@ -670,6 +684,40 @@ Fusion 工作台通过独立的 SignalR `/hubs/fusion-ingestion` 注册、上报
 - 硬性规则：全项目禁止使用 UTC 时间（如 `DateTime.UtcNow`、`DateTimeOffset.UtcNow`、`DateTimeKind.Utc`、`ToUniversalTime` 等），统一使用本地时间语义（如 `DateTime.Now`、`DateTimeKind.Local`）。
 
 ## 各层级与各文件作用说明（逐项）
+
+配置存储相关文件职责如下，包含宿主引导、当前配置、关系库历史和回归验证：
+
+| 目录 | 文件 | 职责 |
+| --- | --- | --- |
+| Zeye.Sorting.Hub.Infrastructure/Configuration | `default-settings.json` | 完整内置默认配置，首次建库和结构升级的基础 |
+| Zeye.Sorting.Hub.Infrastructure/Configuration | `default-settings.Development.json` | 开发环境内置审计及日志默认值 |
+| Zeye.Sorting.Hub.Infrastructure/Configuration | `ConfigurationDocument.cs` | JSON 兼容合并、整体数组替换和稳定版本 |
+| Zeye.Sorting.Hub.Infrastructure/Configuration | `ConfigurationReadOnlyLoader.cs` | 设计时及工具读取已有 LiteDB 权威配置，不创建数据库 |
+| Zeye.Sorting.Hub.Infrastructure/Configuration | `LiteDbConfigurationStore.cs` | 自动建库建集合、结构迁移、配置文档导入和事务版本校验 |
+| Zeye.Sorting.Hub.Infrastructure/Configuration | `IConfigurationDocumentStore.cs` | 运维策略、分类规则和 Fusion 目录的配置存储边界 |
+| Zeye.Sorting.Hub.Infrastructure/Configuration | `RuntimeConfigurationProvider.cs` | .NET 配置源、环境覆盖识别、热更新和启动值固定 |
+| Zeye.Sorting.Hub.Infrastructure/Configuration | `RuntimeConfigurationState.cs` | 管理员保存原值、生效原值、版本及待重启字段合同 |
+| Zeye.Sorting.Hub.Infrastructure/Configuration | `RuntimeConfigurationSaveResult.cs` | 本次提交版本、变化字段和待重启字段 |
+| Zeye.Sorting.Hub.Infrastructure/Configuration | `ConfigurationConflictException.cs` | 旧版本配置提交的冲突信号 |
+| Zeye.Sorting.Hub.Infrastructure/Configuration | `ConfigurationHistoryStore.cs` | SQLite 配置原值历史、自动建表和提交状态恢复 |
+| Zeye.Sorting.Hub.Infrastructure/Configuration | `ConfigurationHistoryEntry.cs` | 耐久变更历史查询合同 |
+| Zeye.Sorting.Hub.Host/Configuration | `ConfigurationBootstrapper.cs` | 宿主绑定前建立唯一 LiteDB 配置源及启动参数覆盖 |
+| Zeye.Sorting.Hub.Host/Configuration | `HostConfigurationValidator.cs` | 发布前复用配置类型和业务范围校验 |
+| Zeye.Sorting.Hub.Host/Configuration | `ReloadableOptions.cs` | 为现有按 Value 读取的组件提供最新 options |
+| Zeye.Sorting.Hub.Host/HostedServices | `ConfigurationReloadHostedService.cs` | 周期检测同一 LiteDB 文件的外部修改 |
+| Zeye.Sorting.Hub.Host/HostedServices | `LegacyConfigurationMigrationHostedService.cs` | 业务库初始化后导入旧配置白名单并绑定规则快照 |
+| Zeye.Sorting.Hub.Host/Routing | `RuntimeConfigurationApi.cs` | 超级管理员读取、版本化保存和历史查询接口 |
+| Zeye.Sorting.Hub.Host/Routing | `RuntimeConfigurationUpdate.cs` | 带版本的 JSON 局部更新合同 |
+| Zeye.Sorting.Hub.Host.Tests | `ConfigurationTestStorage.cs` | 独立 LiteDB 和 SQLite 文件测试环境 |
+| Zeye.Sorting.Hub.Host.Tests | `RuntimeConfigurationTests.cs` | 自动建库、旧配置兼容、热更新、并发、原值快照和接口权限测试 |
+| Zeye.Sorting.Hub.Host.Tests | `LiteDbManagedConfigurationTests.cs` | 加密目录迁移、租约撤销、运维策略和只读工具验证 |
+| Zeye.Sorting.Hub.Web/src/data/api | `configurationTypes.ts` | 运行配置、能力清单和配置历史的前后端合同 |
+| Zeye.Sorting.Hub.Web/src/features/access | `RuntimeConfigurationPanel.tsx` | 分类编辑、版本冲突保护、保存和生效状态展示 |
+| Zeye.Sorting.Hub.Web/src/features/access | `RuntimeConfigurationHistory.tsx` | SQLite 变更历史筛选、提交状态与前后值查询 |
+| Zeye.Sorting.Hub.Web/src/features/access | `configurationModel.ts` | 类型化草稿、字段分类、数组补丁、本地日历校验和能力匹配 |
+| Zeye.Sorting.Hub.Web/src/features/access | `configurationFields.ts` | 配置维护字段的中文说明、固定选项、数值预设、列表建议和输入范围 |
+| Zeye.Sorting.Hub.Web/src/features/access | `useConfigurationNavigationGuard.ts` | 运行配置及策略草稿的站内导航、历史返回和刷新保护 |
+| Zeye.Sorting.Hub.Web/tests | `configurationModel.test.mjs` | 配置类型、数组替换、本地日期时间、列表、凭据和热更新能力回归 |
 
 ### Fusion 1.0 耐久接收与工作台接入
 
@@ -903,7 +951,8 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 - `.dockerignore`：排除编译产物、前端依赖和验收截图，缩小 Host 镜像构建上下文。
 - `README.md`：仓库总览、结构清单与维护规范文档。
 - `deploy/.env.example`：本机部署所需的独立数据库密码、端口、MySQL 数据页缓存及容器内存预算模板；实际 `deploy/.env` 不提交。
-- `deploy/start.ps1`：部署并等待 Web/API 就绪，打开系统默认浏览器；根据用户确认显示或跳过收藏提醒。
+- `deploy/start.ps1`：部署并等待 Web/API 就绪，默认启动源码自动更新，打开系统默认浏览器；根据用户确认显示或跳过收藏提醒。
+- `deploy/watch.ps1`：后台监听前后端源码，成功构建后更新本机 Docker 入口并回收无引用的旧构建镜像；支持查看状态和停止监听，数据库卷不参与清理。
 - `deploy/compose.yaml`：构建并启动独立的 MySQL、Host、Web 容器与持久化数据卷；MySQL 默认使用可配置的 1 GiB 数据页缓存和 3 GiB 内存上限。
 - `deploy/README.md`：本机 Docker 部署、健康检查与停止命令。
 - `业务模块接入规范.md`：业务模块接入规范，约束新增模块的目录结构、分层边界、查询/写入治理与统一错误处理。
@@ -1325,8 +1374,8 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 - `Middleware/ResponseCaptureResult.cs`：响应正文采集结果值类型。
 - `Zeye.Sorting.Hub.Host.csproj`：Host 项目定义。
 - `nlog.config`：NLog 日志配置。
-- `appsettings.json`：默认运行配置（含 `WebRequestAuditLog.IncludeRequestBody/IncludeResponseBody`、`AuditReadOnlyApi:Enabled` 显式开关、`ObjectStorage:Minio` 对象存储占位配置、`ResourceThresholds:MaxConnectionPoolSize/MemoryWarningThresholdMB` 资源阈值节、`Persistence:Diagnostics` 数据库连接诊断配置、`Persistence:WriteBuffering` 批量缓冲写入配置、`Persistence:Archiving` 归档 dry-run 配置、`Persistence:Backup` 备份治理配置、`Persistence:Retention` 数据保留治理配置、`Persistence:BaselineData` 基线数据校验配置、`Persistence:MigrationGovernance` 迁移治理配置、`Persistence:Sharding:RuntimeInspection/Prebuild` 分表巡检与预建配置，以及 `Persistence:AutoTuning:SlowQueryProfile` 慢查询画像配置与 `Persistence:AutoTuning:QueryGovernance` 查询治理报告/索引建议阈值配置）。
-- `appsettings.Development.json`：开发环境配置覆盖文件。
+- `appsettings.json`：仅保留配置库、历史库路径及重载间隔等必要启动引导参数；运行配置由配置库管理，首次建立时自动导入旧 JSON，默认值来自 Infrastructure 内置资源。
+- `appsettings.Development.json`：开发环境启动引导覆盖文件；开发运行默认值来自 Infrastructure 内置环境资源。
 
 #### `Zeye.Sorting.Hub.Host/Swagger/`：Swagger 扩展目录
 - `EnumDescriptionSchemaFilter.cs`：枚举 Schema 中文增强过滤器。
@@ -1383,8 +1432,8 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 
 #### `Zeye.Sorting.Hub.Infrastructure/Persistence/`：持久化核心目录（DbContext、方言、设计时工厂）
 - `SortingHubDbContext.cs`：EF Core DbContext（实体集与模型构建入口）。
-- `DbProviderNames.cs`：EF Core 运行时/迁移 providerName 常量（`Pomelo.EntityFrameworkCore.MySql` / `Microsoft.EntityFrameworkCore.SqlServer`），用于 `DbContext.Database.ProviderName` 识别与迁移分支判断。
-- `ConfiguredProviderNames.cs`：配置层 provider key 常量（`MySql` / `SqlServer`），用于 `Persistence:Provider`、`ConnectionStrings` key 与设计时 CLI `--provider` 参数值，避免配置语义与 EF providerName 语义混用。
+- `DbProviderNames.cs`：四库 EF Core 运行时/迁移 providerName 常量，用于 `DbContext.Database.ProviderName` 识别与迁移分支判断。
+- `ConfiguredProviderNames.cs`：配置层 provider key 常量（`MySql` / `SqlServer` / `Oracle` / `SQLite`），用于 `Persistence:Provider`、`ConnectionStrings` key 与设计时 CLI `--provider` 参数值，兼容 MSSQL/Sqlite 旧命名。
 - `DuplicateKeyExceptionDetector.cs`：重复键异常检测工具，统一识别 MySQL/SQL Server 唯一键冲突并供多仓储复用。
 - `ParcelIndexNames.cs`：Parcel 关键索引名称常量（供分表治理审计与测试复用，避免多处硬编码漂移；包含 BagCode/ActualChuteId/TargetChuteId 三条 ScannedTime 复合索引及 MySQL FULLTEXT 索引名）。
 - `WebRequestAuditLogIndexNames.cs`：Web 请求审计日志关键索引名称常量（供关键索引审计与映射复用）。
@@ -1583,7 +1632,7 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 - `FakeParcelRepository.cs`：Parcel 仓储测试替身，提供只读/写入/过期清理三态结果用于 API 回归测试。
 - `FixedPlanProbe.cs`：执行计划探针测试桩，固定返回“探针可用且无回归”。
 - `LocalTimeTestConstraint.cs`：测试层本地时间语义约束工具类，提供 `CreateLocalTime`/`AssertIsLocalTime`/`AssertNotUtc` 方法，防止测试代码引入 UTC 语义。
-- `LogCleanupServiceTests.cs`：日志清理服务回归测试，验证目录栈递归扫描子目录日志并仅清理超过保留天数的旧日志文件。
+- `LogCleanupServiceTests.cs`：日志清理服务回归测试，验证递归清理、过期保护及热更新立即唤醒长周期等待。
 - `ConfigChangeHistoryStoreTests.cs`：配置变更历史存储器单元测试，覆盖空历史、单条记录、多条按序排列、超容量环形覆盖与 LogCleanupService 热加载联动快照记录五个场景。
 - `MissingIndexShardingPhysicalTableProbe.cs`：关键索引缺失探测测试桩，按物理表返回缺失索引。
 - `ConfigurableShardingPhysicalTableProbe.cs`：可配置分表物理对象探测测试桩，支持按需模拟缺表与缺索引。
@@ -1722,8 +1771,9 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 | Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations | `20261002050545_AddManagedDocuments.Designer.cs` | EF 管理文档迁移的目标模型元数据 |
 | Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations | `20261002050545_AddManagedDocuments.cs` | 新增管理文档表、版本字段及迁移回滚 |
 | Zeye.Sorting.Hub.Web/src/components | `ApiFeedback.tsx` | 统一 API 错误和重试入口 |
+| Zeye.Sorting.Hub.Web/src/components | `ConfigurationNumberPicker.tsx` | 共用数值预设与自定义入口，保留当前值、精度及完整合法范围 |
 | Zeye.Sorting.Hub.Web/src/data/api | `accessTypes.ts` | 账号、角色与会话的 API 合同 |
-| Zeye.Sorting.Hub.Web/src/data/api | `operationalTypes.ts` | 运维、审计、归档和健康报告合同 |
+| Zeye.Sorting.Hub.Web/src/data/api | `operationalTypes.ts` | 运维、审计、归档和健康报告合同，以及本地日期时间的统一三位毫秒显示格式 |
 | Zeye.Sorting.Hub.Web/src/data/api | `useAccessSession.ts` | 服务器会话读取和登录状态变更订阅 |
 | Zeye.Sorting.Hub.Web/src/data/api | `useServerRules.ts` | 服务器规则加载、版本条件提交及失败时保留编辑内容 |
 | Zeye.Sorting.Hub.Web/src/data | `exceptionConditions.ts` | 前端异常条件和协议规则的合同及匹配工具 |
@@ -1733,16 +1783,16 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 | Zeye.Sorting.Hub.Web/src/features/operations | `LiveOperationsRealPage.tsx` | 真实业务页面及其复用组件或样式 |
 | Zeye.Sorting.Hub.Web/src/features/operations | `rules.css` | 真实业务页面及其复用组件或样式 |
 | Zeye.Sorting.Hub.Web/src/features/parcels | `DataOverviewPage.tsx` | 真实业务页面及其复用组件或样式 |
-| Zeye.Sorting.Hub.Web/src/features/parcels | `ParcelExceptionPanel.tsx` | 真实业务页面及其复用组件或样式 |
+| Zeye.Sorting.Hub.Web/src/features/parcels | `ParcelExceptionPanel.tsx` | 包裹异常摘要、调用类型与状态标签、分组记录详情和长说明展开复制 |
 | Zeye.Sorting.Hub.Web/src/features/parcels | `WorkbenchDataOverview.tsx` | 真实业务页面及其复用组件或样式 |
 | Zeye.Sorting.Hub.Web/src/features/parcels | `WorkbenchDistributionCharts.tsx` | 真实业务页面及其复用组件或样式 |
-| Zeye.Sorting.Hub.Web/src/features/parcels | `parcelException.css` | 真实业务页面及其复用组件或样式 |
-| Zeye.Sorting.Hub.Web/src/features/parcels | `parcelExceptionDetails.ts` | 真实业务页面及其复用组件或样式 |
+| Zeye.Sorting.Hub.Web/src/features/parcels | `parcelException.css` | 异常摘要、调用折叠标题和桌面至窄屏详情的局部样式 |
+| Zeye.Sorting.Hub.Web/src/features/parcels | `parcelExceptionDetails.ts` | 已保存异常事实及规则说明、同编号调用事件映射和原文一致的诊断摘要 |
 | Zeye.Sorting.Hub.Web/src/features/parcels | `trendChartFormat.ts` | 真实业务页面及其复用组件或样式 |
 | Zeye.Sorting.Hub.Web/tests | `exceptionConditions.test.mjs` | 前端异常匹配、精度或图表行为回归测试 |
 | Zeye.Sorting.Hub.Web/tests | `exceptionRules.test.mjs` | 前端异常匹配、精度或图表行为回归测试 |
 | Zeye.Sorting.Hub.Web/tests | `operationalApi.test.mjs` | 真实请求来源头、失败语义、健康报告及长整数回归 |
-| Zeye.Sorting.Hub.Web/tests | `parcelExceptionDetails.test.mjs` | 前端异常匹配、精度或图表行为回归测试 |
+| Zeye.Sorting.Hub.Web/tests | `parcelExceptionDetails.test.mjs` | 异常判定、旧版接口兼容、诊断摘要与完整原文保留回归 |
 | Zeye.Sorting.Hub.Web/tests | `trendChartFormat.test.mjs` | 前端异常匹配、精度或图表行为回归测试 |
 | deploy | `.env.example` | 部署与样本数据写入的配置或脚本 |
 | deploy | `compose.yaml` | 部署与样本数据写入的配置或脚本 |
@@ -1902,6 +1952,7 @@ Zeye.Sorting.Hub.Web/src/app/
   typography.ts
 Zeye.Sorting.Hub.Web/src/components/
   AccountAvatar.tsx
+  ConfigurationNumberPicker.tsx
   controlAlignment.css
 Zeye.Sorting.Hub.Web/src/data/
   formatNumber.ts
@@ -1913,8 +1964,10 @@ Zeye.Sorting.Hub.Web/src/features/access/
   profile.css
   ProfilePage.tsx
   settings.css
+  useConfigurationNavigationGuard.ts
 Zeye.Sorting.Hub.Web/src/features/observability/
   audit.css
+  health.css
   requestDescriptions.ts
 Zeye.Sorting.Hub.Web/src/features/operations/
   analytics.css
@@ -2000,6 +2053,7 @@ Zeye.Sorting.Hub.Web/tests/
 | Zeye.Sorting.Hub.Web/src/features/access | `ProfilePage.tsx` | 个人资料、头像和密码维护页面 |
 | Zeye.Sorting.Hub.Web/src/features/access | `settings.css` | 系统配置分类导航、策略表单与信息卡片样式 |
 | Zeye.Sorting.Hub.Web/src/features/observability | `audit.css` | 审计列表、详情及请求说明样式 |
+| Zeye.Sorting.Hub.Web/src/features/observability | `health.css` | 健康检查状态卡片、宽表明细及窄屏列表样式 |
 | Zeye.Sorting.Hub.Web/src/features/observability | `requestDescriptions.ts` | 业务请求路径与操作的可读说明映射 |
 | Zeye.Sorting.Hub.Web/src/features/operations | `analytics.css` | 分析报表卡片、图表及统计说明样式 |
 | Zeye.Sorting.Hub.Web/src/features/operations | `AnalyticsCharts.tsx` | 运营报表趋势与分布图表 |
@@ -2156,6 +2210,8 @@ Zeye.Sorting.Hub.Infrastructure/Persistence/
 Zeye.Sorting.Hub.Host.Tests/
   ParcelMetadataIoInterceptor.cs
   ParcelReadSnapshotTests.cs
+  SlowQueryReadCaptureInterceptor.cs
+  SlowQueryReadPathTests.cs
 ```
 
 | 目录 | 文件 | 职责 |
@@ -2168,6 +2224,8 @@ Zeye.Sorting.Hub.Host.Tests/
 | Infrastructure/Persistence/Sharding | `ParcelPartitionReadModelCacheKeyFactory.cs` | 按来源实体、读模型和物理分表集合隔离 EF 模型缓存，日期保持查询参数 |
 | Host.Tests | `ParcelMetadataIoInterceptor.cs` | 记录真实 EF 命令中的配置与目录读取次数 |
 | Host.Tests | `ParcelReadSnapshotTests.cs` | 预热后零配置读取、并发冷加载、保存即时生效、跨实例刷新与失败隔离回归 |
+| Host.Tests | `SlowQueryReadCaptureInterceptor.cs` | 保存包裹与投影队列的真实 SELECT 和参数，验证有界读取及执行计划 |
+| Host.Tests | `SlowQueryReadPathTests.cs` | 短窗口分页与游标、跨周期晚到数据、受配置约束的回退、投影队列认领边界及四种驱动查询翻译回归 |
 
 业务查询与写入优先使用 EF Core 的 LINQ、`SaveChangesAsync`、`ExecuteUpdateAsync` 和 `ExecuteDeleteAsync`。报表及工作台统计不再手写跨表窄字段 SELECT；独立分表的列表查询直接使用对应 EF 模型。尚需原生语句的范围限于数据库维护、跨实体物理分表路由和精确创建间隔窗口统计，集中在基础设施实现并复用提供器映射与参数化，禁止把语句散落到页面、应用用例或高频收包逻辑。
 
@@ -2252,3 +2310,340 @@ docs/Fusion在线接入配置.md
 | docs | `Fusion在线接入配置.md` | 多工作台接入、配对、网络及凭据备份说明 |
 
 在线接入操作说明见 [Fusion 在线接入配置](docs/Fusion在线接入配置.md)。前端增量发布仍检查完整资源指纹，源码或产物变化会重建；首次构建需要 Node/npm，目标服务器只运行发布后的 Host。
+
+## 各层级与各文件作用说明（逐项）：包裹完整字段展示
+
+```text
+Zeye.Sorting.Hub.Web/
+  src/features/parcels/ParcelContractFields.tsx
+  src/features/parcels/parcelContractFieldGroups.ts
+  src/features/parcels/parcelContractFields.css
+  src/features/parcels/ParcelDetailRecords.tsx
+  src/features/parcels/parcelDetailRecordFields.ts
+  src/features/parcels/parcelDetailRecords.css
+  tests/parcelContractFieldGroups.test.mjs
+  tests/parcelDetailRecordFields.test.mjs
+```
+
+| 目录 | 文件 | 职责 |
+| --- | --- | --- |
+| Web/src/features/parcels | `ParcelContractFields.tsx` | 完整字段的业务分组展示，复用原有值格式化及复制交互 |
+| Web/src/features/parcels | `parcelContractFieldGroups.ts` | 来源身份、路由、量测、时间及附件字段归组，保留未知字段 |
+| Web/src/features/parcels | `parcelContractFields.css` | 完整字段区的局部字体、分组间距、空值及响应式布局 |
+| Web/tests | `parcelContractFieldGroups.test.mjs` | 字段完整性、去重、未知字段及空值可见性回归 |
+| Web/src/features/parcels | `ParcelDetailRecords.tsx` | 通用明细、异常面板、未关联记录展开区及处理详情抽屉的业务分组、报文分区、缺省字段收纳和完整原文复制 |
+| Web/src/features/parcels | `parcelDetailRecordFields.ts` | 明细字段无损归组、处理记录的量测/关联/时间/执行分组、旧合同显式接口类型识别及保留大整数的报文排版 |
+| Web/src/features/parcels | `parcelDetailRecords.css` | 展开记录、量测卡片、报文代码区、相邻复制按钮和桌面至窄屏布局的局部样式 |
+| Web/tests | `parcelDetailRecordFields.test.mjs` | 原始字段完整性、零值与 false、长编号精度及异常报文回归 |
+
+## 各层级与各文件作用说明（逐项）：页面加载恢复
+
+```text
+Zeye.Sorting.Hub.Web/
+  index.html
+  nginx.conf
+  src/main.tsx
+  src/app/App.tsx
+  src/app/PageErrorBoundary.tsx
+  tests/pageLoadRecovery.test.mjs
+```
+
+| 目录 | 文件 | 职责 |
+| --- | --- | --- |
+| Web | `index.html` | 入口执行前的加载反馈、模块加载故障识别及每个版本一次的自动恢复 |
+| Web | `nginx.conf` | HTML 禁止缓存，带哈希的静态资源缓存，缺失资源明确返回 404 |
+| Web/src | `main.tsx` | 应用根级错误边界与数据路由组装 |
+| Web/src/app | `App.tsx` | 路由按需加载、加载反馈及保留页面外壳的错误处理 |
+| Web/src/app | `PageErrorBoundary.tsx` | 页面异常兜底、重新加载操作及切换页面后的恢复 |
+| Web/tests | `pageLoadRecovery.test.mjs` | 自动恢复上限、解析期间故障、启动异常、存储限制及手动重试行为回归 |
+
+## 各层级与各文件作用说明（逐项）：实时运行态势布局
+
+```text
+Zeye.Sorting.Hub.Web/src/features/operations/
+  LiveOperationsRealPage.tsx
+  liveOperations.css
+```
+
+| 目录 | 文件 | 职责 |
+| --- | --- | --- |
+| Web/src/features/operations | `LiveOperationsRealPage.tsx` | 真实健康探针与最近 50 票包裹的状态卡片、来源工作台及状态筛选、本地时间展示和分页 |
+| Web/src/features/operations | `liveOperations.css` | 实时运行页的等高卡片、紧凑来源提示、表格阅读层级及桌面至窄屏布局；继承全局文字规范 |
+
+## 各层级与各文件作用说明（逐项）：未关联处理记录查询
+
+```text
+Zeye.Sorting.Hub.Infrastructure/Repositories/
+  ParcelProcessingRepository.cs
+  UnboundProcessingRecordCandidate.cs
+Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/
+  ParcelProcessingRecordEntityTypeConfiguration.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/
+  20261006211255_OptimizeUnboundRecordLookup.cs
+  20261006211255_OptimizeUnboundRecordLookup.Designer.cs
+  SortingHubDbContextModelSnapshot.cs
+Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations/
+  20261006211340_OptimizeUnboundRecordLookupSqlServer.cs
+  20261006211340_OptimizeUnboundRecordLookupSqlServer.Designer.cs
+  SortingHubDbContextModelSnapshot.cs
+Zeye.Sorting.Hub.Host.Tests/
+  RelationalParcelTestDatabase.cs
+  UnboundQueryCaptureInterceptor.cs
+  UnboundProcessingQueryTests.cs
+```
+
+| 目录 | 文件 | 职责 |
+| --- | --- | --- |
+| Infrastructure/Repositories | `ParcelProcessingRepository.cs` | 未关联记录按物理表查询有界候选，选出全局最新主键后加载完整报文；保留旧基础表及不同粒度分表 |
+| Infrastructure/Repositories | `UnboundProcessingRecordCandidate.cs` | 主键、入库时间和物理后缀组成的窄查询候选 |
+| Infrastructure/EntityConfigurations | `ParcelProcessingRecordEntityTypeConfiguration.cs` | 未关联过滤与时间倒序、主键正序相匹配的复合覆盖索引 |
+| Infrastructure/Persistence/Migrations | `20261006211255_OptimizeUnboundRecordLookup.cs` | MySQL 未关联记录查询索引的 Code First 升级与回滚 |
+| Infrastructure/Persistence/Migrations | `20261006211255_OptimizeUnboundRecordLookup.Designer.cs` | MySQL 未关联记录索引迁移的目标模型 |
+| Infrastructure/Persistence/Migrations | `SortingHubDbContextModelSnapshot.cs` | MySQL 当前完整模型快照及后续迁移差异基准 |
+| Infrastructure.SqlServerMigrations/Migrations | `20261006211340_OptimizeUnboundRecordLookupSqlServer.cs` | SQL Server 对应复合索引的独立升级与回滚 |
+| Infrastructure.SqlServerMigrations/Migrations | `20261006211340_OptimizeUnboundRecordLookupSqlServer.Designer.cs` | SQL Server 对应索引迁移的目标模型 |
+| Infrastructure.SqlServerMigrations/Migrations | `SortingHubDbContextModelSnapshot.cs` | SQL Server 当前完整模型快照及后续迁移差异基准 |
+| Host.Tests | `RelationalParcelTestDatabase.cs` | 独立关系数据库、真实物理分表、事务及可选查询拦截器 |
+| Host.Tests | `UnboundQueryCaptureInterceptor.cs` | 捕获实际候选及详情 SQL 和参数，供有界读取与执行计划验收 |
+| Host.Tests | `UnboundProcessingQueryTests.cs` | 混合分表排序、旧无凭据记录、完整报文、有界读取、覆盖索引及历史索引补齐回归 |
+
+## 仓库文件结构（当前）：四数据库持久化增补
+
+```text
+Zeye.Sorting.Hub.Host/
+  Authentication/DataProtectionKeyStorage.cs
+Zeye.Sorting.Hub.Host.Tests/
+  AdditionalDatabaseProviderTests.cs
+  DataProtectionKeyStorageTests.cs
+  DisposedHubCallerContext.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/
+  AdditionalDbContextOptions.cs
+  OracleConnectionLivenessInterceptor.cs
+  OracleConnectionRecoveryStrategy.cs
+  SqlServerConnectionRecoveryStrategy.cs
+  ConnectionPoolRecovery.cs
+  OracleModelCompatibility.cs
+  DatabaseDialects/EfModelDatabaseDialect.cs
+  DatabaseDialects/OracleDialect.cs
+  DatabaseDialects/SqliteDialect.cs
+  Backup/AdditionalDatabaseBackupProvider.cs
+  Backup/OracleBackupProvider.cs
+  Backup/SqliteBackupProvider.cs
+  Migrations/AdditionalMigrationAssemblies.cs
+  Migrations/20261006212222_AddPartitionSchemaVersions.cs
+  Migrations/20261006212222_AddPartitionSchemaVersions.Designer.cs
+  Sharding/PartitionMigrationOperationRebaser.cs
+  Sharding/PartitionSchemaVersion.cs
+  Sharding/PhysicalPartitionMigrationService.cs
+Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations/
+  20261006212227_AddPartitionSchemaVersions.cs
+  20261006212227_AddPartitionSchemaVersions.Designer.cs
+Zeye.Sorting.Hub.Infrastructure.OracleMigrations/
+  Zeye.Sorting.Hub.Infrastructure.OracleMigrations.csproj
+  Migrations/20261006210557_InitialOracleSchema.cs
+  Migrations/20261006210557_InitialOracleSchema.Designer.cs
+  Migrations/20261006212233_AddPartitionSchemaVersions.cs
+  Migrations/20261006212233_AddPartitionSchemaVersions.Designer.cs
+  Migrations/SortingHubDbContextModelSnapshot.cs
+Zeye.Sorting.Hub.Infrastructure.SqliteMigrations/
+  Zeye.Sorting.Hub.Infrastructure.SqliteMigrations.csproj
+  Migrations/20261006210701_InitialSqliteSchema.cs
+  Migrations/20261006210701_InitialSqliteSchema.Designer.cs
+  Migrations/20261006212238_AddPartitionSchemaVersions.cs
+  Migrations/20261006212238_AddPartitionSchemaVersions.Designer.cs
+  Migrations/SortingHubDbContextModelSnapshot.cs
+tools/DatabaseVerification/
+  DatabaseVerification.csproj
+  Program.cs
+  FusionEvidenceExporter.cs
+  fusion_database_matrix.py
+  database_fault_scenarios.py
+  SqliteWriteLockScenario.cs
+  FusionProtocolFaultScenario.cs
+deploy/compose.database-verification.yaml
+docs/四数据库部署与验收.md
+```
+
+## 各层级与各文件作用说明（逐项）：四数据库持久化
+
+| 目录 | 文件 | 职责 |
+| --- | --- | --- |
+| Host/Authentication | `DataProtectionKeyStorage.cs` | 密钥持久化到实际配置目录，兼容复制旧密钥且不覆盖和删除原文件 |
+| Host.Tests | `AdditionalDatabaseProviderTests.cs` | 四库运行工厂和迁移快照一致性、SQLite 文件探测和只读路由、Oracle 空字符串编码回归 |
+| Host.Tests | `DataProtectionKeyStorageTests.cs` | 旧密钥迁移后能解密已有配置，并验证重复启动保留原文件 |
+| Host.Tests | `DisposedHubCallerContext.cs` | 构造真实已释放的 HTTP 请求上下文，回归 SignalR 故障日志保留原始异常 |
+| Infrastructure/Persistence | `AdditionalDbContextOptions.cs` | Oracle/SQLite 统一运行和设计时选项、独立迁移程序集及持久化路径验证 |
+| Infrastructure/Persistence | `OracleConnectionLivenessInterceptor.cs` | Oracle 同步、异步及管理连接统一启用 TCP 存活探测，避免网络中断后的失效连接长期等待 |
+| Infrastructure/Persistence | `OracleConnectionRecoveryStrategy.cs` | Oracle 结果读取和事务网络异常返回前处理关联连接池，保留原有单次执行及用户事务语义 |
+| Infrastructure/Persistence | `SqlServerConnectionRecoveryStrategy.cs` | SQL Server 连接、结果读取及事务网络故障后有界清理关联池，保留默认 EF 重试集合和等待预算 |
+| Infrastructure/Persistence | `ConnectionPoolRecovery.cs` | SQL Server 与 Oracle 共用错误识别、固定大小节流、关联池清理及原异常保护，普通请求不增加数据库往返 |
+| Infrastructure/Persistence | `OracleModelCompatibility.cs` | Oracle 空字符串可逆编码、长正文和有界索引列类型约束 |
+| Infrastructure/Persistence/DatabaseDialects | `EfModelDatabaseDialect.cs` | EF 索引生成、批量表和索引元数据探测、事务连接与参数绑定复用 |
+| Infrastructure/Persistence/DatabaseDialects | `OracleDialect.cs` | 目标 PDB schema 初始化、授权检查、统计维护和物理表探测 |
+| Infrastructure/Persistence/DatabaseDialects | `SqliteDialect.cs` | 业务文件和目录自动建立、只读存在探测、WAL 与统计维护 |
+| Infrastructure/Persistence/Backup | `AdditionalDatabaseBackupProvider.cs` | Oracle/SQLite 共用的备份文件命名与运行手册计划构造 |
+| Infrastructure/Persistence/Backup | `OracleBackupProvider.cs` | 不含凭据的 Oracle Data Pump 备份运行手册 |
+| Infrastructure/Persistence/Backup | `SqliteBackupProvider.cs` | 使用 SQLite backup API 的一致性备份运行手册 |
+| Infrastructure/Persistence/Migrations | `AdditionalMigrationAssemblies.cs` | Oracle 与 SQLite 迁移程序集名的唯一来源 |
+| Infrastructure/Persistence/Migrations | `20261006212222_AddPartitionSchemaVersions.cs` | MySQL 分表模型版本目录的 Code First 升级与受控回退 |
+| Infrastructure/Persistence/Migrations | `20261006212222_AddPartitionSchemaVersions.Designer.cs` | MySQL 分表版本目录迁移的目标模型 |
+| Infrastructure.SqlServerMigrations/Migrations | `20261006212227_AddPartitionSchemaVersions.cs` | SQL Server 分表模型版本目录升级与受控回退 |
+| Infrastructure.SqlServerMigrations/Migrations | `20261006212227_AddPartitionSchemaVersions.Designer.cs` | SQL Server 分表版本目录迁移的目标模型 |
+| Infrastructure/Persistence/Sharding | `PartitionMigrationOperationRebaser.cs` | 深复制 EF 操作和注解，将表、索引、主外键改为物理分表名称 |
+| Infrastructure/Persistence/Sharding | `PartitionSchemaVersion.cs` | 业务库中保存分表组与迁移版本、本地更新时间 |
+| Infrastructure/Persistence/Sharding | `PhysicalPartitionMigrationService.cs` | 旧表模型识别、历史分表升级、缺失索引补齐、预演与生产守卫、版本成功后提交 |
+| Infrastructure.OracleMigrations | `Zeye.Sorting.Hub.Infrastructure.OracleMigrations.csproj` | Oracle 迁移独立项目及驱动依赖 |
+| Infrastructure.OracleMigrations/Migrations | `20261006210557_InitialOracleSchema.cs` | Oracle 业务库初始表、约束和索引的 Code First 模型 |
+| Infrastructure.OracleMigrations/Migrations | `20261006210557_InitialOracleSchema.Designer.cs` | Oracle 初始迁移的目标模型 |
+| Infrastructure.OracleMigrations/Migrations | `20261006212233_AddPartitionSchemaVersions.cs` | Oracle 分表模型版本目录升级与受控回退 |
+| Infrastructure.OracleMigrations/Migrations | `20261006212233_AddPartitionSchemaVersions.Designer.cs` | Oracle 分表版本目录迁移的目标模型 |
+| Infrastructure.OracleMigrations/Migrations | `SortingHubDbContextModelSnapshot.cs` | Oracle 当前 Code First 模型快照 |
+| Infrastructure.SqliteMigrations | `Zeye.Sorting.Hub.Infrastructure.SqliteMigrations.csproj` | SQLite 迁移独立项目及驱动依赖 |
+| Infrastructure.SqliteMigrations/Migrations | `20261006210701_InitialSqliteSchema.cs` | SQLite 业务库初始表、约束和索引的 Code First 模型 |
+| Infrastructure.SqliteMigrations/Migrations | `20261006210701_InitialSqliteSchema.Designer.cs` | SQLite 初始迁移的目标模型 |
+| Infrastructure.SqliteMigrations/Migrations | `20261006212238_AddPartitionSchemaVersions.cs` | SQLite 分表模型版本目录升级与受控回退 |
+| Infrastructure.SqliteMigrations/Migrations | `20261006212238_AddPartitionSchemaVersions.Designer.cs` | SQLite 分表版本目录迁移的目标模型 |
+| Infrastructure.SqliteMigrations/Migrations | `SortingHubDbContextModelSnapshot.cs` | SQLite 当前 Code First 模型快照 |
+| tools/DatabaseVerification | `DatabaseVerification.csproj` | 仅引用本项目 EF 持久化与各迁移程序集的 Linux 验收工具项目 |
+| tools/DatabaseVerification | `Program.cs` | 专属环境和库名守卫、只读连接异常探测、协议异常与 SQLite 持锁入口、迁移一致性、分表竞争、旧索引启动断言、调优和投影完成校验 |
+| tools/DatabaseVerification | `FusionEvidenceExporter.cs` | EF 导出单一测试来源的原始事实、业务快照和图片元数据供逐条对账 |
+| tools/DatabaseVerification | `fusion_database_matrix.py` | 等待 HTTP 与数据库就绪后验证错误连接拒绝、真实 Fusion TCP 业务与扩展异常、强制故障恢复、发送库及图片逐条对账；配置热更新、历史原值和版本冲突实测，支持保留证据复验 |
+| tools/DatabaseVerification | `database_fault_scenarios.py` | 专属数据库断网及强制地址变化、数据库崩溃、处理中断、发送库积压后 Fusion 崩溃和恢复证据，异常退出恢复容器 |
+| tools/DatabaseVerification | `SqliteWriteLockScenario.cs` | 在隔离 SQLite 中通过 EF 同值更新持有写锁，覆盖 busy 超时后耐久重放并回滚无业务变更的事务 |
+| tools/DatabaseVerification | `FusionProtocolFaultScenario.cs` | 在四个真实关系库验证混合坏消息、身份冲突、并发重放、Int64/Unicode 原文及图片损坏块与实例重建后的续传 |
+| deploy | `compose.database-verification.yaml` | 四库和四个 Hub 的隔离 Docker 验收项目，本机端口、专属卷与测试环境 |
+| docs | `四数据库部署与验收.md` | 提供器配置、自动化范围、迁移与密钥兼容、四库验收步骤和证据说明 |
+
+## 各层级与各文件作用说明（逐项）：前端时间显示守卫
+
+```text
+Zeye.Sorting.Hub.Web/
+  scripts/time-display-guard.mjs
+  scripts/time-display-guard.d.mts
+  tests/timeDisplay.test.mjs
+  tests/timeDisplayGuard.test.mjs
+```
+
+| 目录 | 文件 | 职责 |
+| --- | --- | --- |
+| Web/scripts | `time-display-guard.mjs` | 解析全部前端源码，拦截原始时间渲染、遗漏格式化的时间列和超长毫秒格式；供构建、开发编译及命令行共用 |
+| Web/scripts | `time-display-guard.d.mts` | Vite 配置使用时间显示守卫时的类型合同 |
+| Web/tests | `timeDisplay.test.mjs` | 本地时间截断、补零、缺省值及原始排序精度保留回归 |
+| Web/tests | `timeDisplayGuard.test.mjs` | 原始时间、别名、表格、提示和控件编译门禁，以及纯日期、耗时和报文隔离回归 |
+
+前端日期时间统一经 `localTime` 显示为 `yyyy-MM-dd HH:mm:ss.fff`；日期时间控件使用 `localDateTimeFormat`。`npm run build` 的前置检查、直接 Vite 构建及开发编译共用源码守卫，违规报告包含文件、行列。可通过 `npm run check:time-display` 单独检查。显示精度不改变接口、排序、计算或原始协议报文；纯日期、配置中的时刻及耗时数值保留各自语义。
+
+## 格口热力图
+
+「包裹中心 → 格口分析」提供实际 / 目标格口的包裹量、编码不一致票数及兜底票数热力图，按来源实例和工作台隔离格口。支持搜索原始编码、按编码或热度排序、点击对应指标下钻，视图和下钻条件保存在 URL。兜底和编码不一致筛选同时启用时取交集。
+
+热力图在数据库独立按格口聚合，不从受限的流向表累加。每个方向最多返回报表预算允许的 1,000 个格口分组；截断只限制返回格口数量，组内票数仍完整，编码有效及缺失总体不受截断影响。前端默认展示最繁忙来源 / 工作台，首屏最多渲染 80 个格口，可继续展开。颜色为当前视图的线性票数色阶，搜索不改变色阶；缺失编码和未出现的格口不伪造为零，编码排列不代表物理布局。
+
+```text
+Zeye.Sorting.Hub.Contracts/Models/Parcels/Analysis/
+  ParcelChuteHeatmapCellResponse.cs
+  ParcelChuteHeatmapResponse.cs
+Zeye.Sorting.Hub.Infrastructure/Queries/
+  ParcelChuteHeatmapReader.cs
+Zeye.Sorting.Hub.Host.Tests/
+  ParcelChuteHeatmapTests.cs
+Zeye.Sorting.Hub.Web/src/features/parcels/
+  ParcelChuteHeatmap.tsx
+  parcelChuteHeatmapModel.ts
+  parcelChuteHeatmap.css
+Zeye.Sorting.Hub.Web/tests/
+  parcelChuteHeatmapModel.test.mjs
+```
+
+| 目录 | 文件 | 职责 |
+| --- | --- | --- |
+| Contracts/Models/Parcels/Analysis | `ParcelChuteHeatmapCellResponse.cs` | 独立格口的来源、原始编码、总票数及异常指标合同 |
+| Contracts/Models/Parcels/Analysis | `ParcelChuteHeatmapResponse.cs` | 有界分布、完整有效编码样本、缺失编码及截断标记 |
+| Infrastructure/Queries | `ParcelChuteHeatmapReader.cs` | EF Core 跨物理分表按格口聚合，保留完整组内统计 |
+| Host.Tests | `ParcelChuteHeatmapTests.cs` | 跨日分表、编码原值、来源及工作台隔离、截断和指标下钻回归 |
+| Web/src/features/parcels | `ParcelChuteHeatmap.tsx` | 可筛选、搜索、排序、按指标下钻及渐进展开的热力图 |
+| Web/src/features/parcels | `parcelChuteHeatmapModel.ts` | 来源分组、原始编码排序、线性色阶及精确下钻条件 |
+| Web/src/features/parcels | `parcelChuteHeatmap.css` | 格口单元、数量色阶、选择标记及手机布局 |
+| Web/tests | `parcelChuteHeatmapModel.test.mjs` | 前导零及大编码保真、来源隔离、零票色阶和 URL 下钻回归 |
+
+## 多包裹对比
+
+「包裹中心 → 包裹对比」支持混合输入完整条码和中央包裹 ID，最多选择8票。重复条码及数字条码与ID碰撞时由用户选择。台账可跨页勾选进入对比，详情可带入一票继续添加。选择、基准、时间轴模式和缩放保存在URL。
+
+量测读取当前持久化快照，重量kg、尺寸mm、体积由mm³换算为L，不根据尺寸补造缺失体积；缺失及无效量测不参与差值。时序只读选中包裹，支持绝对时间、检测/扫码对齐、完整动作展开和A/B间隔，并按真实端点对照阶段耗时。批量端点 `GET /api/parcels/timing/compare?ids=...` 沿用 `parcels.read` 权限，跨分表批量读取身份、量测、精简事实和调用时间，不装载完整聚合及报文正文，缺失ID显式返回。
+
+```text
+Zeye.Sorting.Hub.Contracts/Models/Parcels/
+  ParcelComparisonItemResponse.cs
+  ParcelComparisonResponse.cs
+Zeye.Sorting.Hub.Host.Tests/
+  ParcelComparisonTests.cs
+Zeye.Sorting.Hub.Web/src/data/api/
+  parcelComparisonTypes.ts
+Zeye.Sorting.Hub.Web/src/features/parcels/
+  ParcelComparisonPage.tsx
+  ParcelComparisonMeasurements.tsx
+  ParcelComparisonTiming.tsx
+  parcelComparisonModel.ts
+  useParcelComparisonLookup.ts
+  parcelComparison.css
+Zeye.Sorting.Hub.Web/tests/
+  parcelComparisonModel.test.mjs
+```
+
+| 目录 | 文件 | 职责 |
+| --- | --- | --- |
+| Contracts/Models/Parcels | `ParcelComparisonItemResponse.cs` | 单票精简时序和当前物理量测合同 |
+| Contracts/Models/Parcels | `ParcelComparisonResponse.cs` | 选择顺序、缺失身份和最多8票的批量返回合同 |
+| Host.Tests | `ParcelComparisonTests.cs` | 真实跨日分表、64位身份、量测单位、零值/缺失及接口预算回归 |
+| Web/src/data/api | `parcelComparisonTypes.ts` | 前端只读批量对比合同 |
+| Web/src/features/parcels | `ParcelComparisonPage.tsx` | 多票输入、消歧、选择管理、基准及URL恢复 |
+| Web/src/features/parcels | `ParcelComparisonMeasurements.tsx` | 共同刻度柱状对比、量测交叉表及相对基准差值 |
+| Web/src/features/parcels | `ParcelComparisonTiming.tsx` | 自选包裹时间轴、任意A/B间隔和阶段耗时交叉表 |
+| Web/src/features/parcels | `parcelComparisonModel.ts` | 身份和输入验证、单位换算、缺失值和真实节点间隔 |
+| Web/src/features/parcels | `useParcelComparisonLookup.ts` | 可取消的批量精确查询和重复条码分页消歧 |
+| Web/src/features/parcels | `parcelComparison.css` | 对比包裹、量测图表和手机布局 |
+| Web/tests | `parcelComparisonModel.test.mjs` | 64位编号、单位、缺失、零值和原始时间精度回归 |
+
+## DWS分析读取
+
+DWS一致性分析读取按首次入库周期分区的 `Parcel_DwsMeasurements` 窄表。检测、DWS接收和绑定的身份、真实时间与量测字段随原事实在同一事务中保存，不读取报文正文。历史记录按512条主键批次补齐，与耗时事实使用独立的补齐游标；只有完整补齐的分表才切换到窄表，未完成分表仍按原事实统计。页面筛选不会触发补齐写库，重复消息、身份冲突、缺失量测及扫码时间判定沿用原口径。
+
+新增量测表与游标通过四数据库 Code First 迁移及既有物理分表迁移治理落库，迁移审批、预览、审计与回滚流程保持一致。`AlignDwsMeasurementIdentityLength` 将量测消息身份长度与原事实的256字符对齐；回退该长度前应核实历史身份均不超过128字符，避免截断。量测分析的20万记录预算与显式刷新保持有效。
+
+```text
+Zeye.Sorting.Hub.Application/Abstractions/Persistence/
+  IParcelDwsMeasurementBackfillService.cs
+Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/
+  ParcelDwsMeasurementSnapshotEntityTypeConfiguration.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/ReadModels/
+  ParcelDwsMeasurementBackfillService.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/
+  20261007211954_AlignDwsMeasurementIdentityLength.cs
+  20261007211954_AlignDwsMeasurementIdentityLength.Designer.cs
+Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations/
+  20261007212012_AlignDwsMeasurementIdentityLength.cs
+  20261007212012_AlignDwsMeasurementIdentityLength.Designer.cs
+Zeye.Sorting.Hub.Infrastructure.OracleMigrations/Migrations/
+  20261007212036_AlignDwsMeasurementIdentityLength.cs
+  20261007212036_AlignDwsMeasurementIdentityLength.Designer.cs
+Zeye.Sorting.Hub.Infrastructure.SqliteMigrations/Migrations/
+  20261007212040_AlignDwsMeasurementIdentityLength.cs
+  20261007212040_AlignDwsMeasurementIdentityLength.Designer.cs
+Zeye.Sorting.Hub.Host/HostedServices/
+  ParcelDwsMeasurementBackfillHostedService.cs
+Zeye.Sorting.Hub.Host.Tests/
+  ParcelDwsMeasurementProjectionTests.cs
+```
+
+| 目录 | 文件 | 职责 |
+| --- | --- | --- |
+| Application/Abstractions/Persistence | `IParcelDwsMeasurementBackfillService.cs` | 宿主调用有界历史量测补齐的应用抽象 |
+| Infrastructure/EntityConfigurations | `ParcelDwsMeasurementSnapshotEntityTypeConfiguration.cs` | 量测窄表、原事实字段长度和精度及来源/日期索引 |
+| Infrastructure/Persistence/ReadModels | `ParcelDwsMeasurementBackfillService.cs` | 独立游标、幂等插入、并发保护和补齐完成标记 |
+| Infrastructure/Persistence/Migrations | `20261007211954_AlignDwsMeasurementIdentityLength.cs`、`.Designer.cs` | MySQL量测消息身份长度迁移及目标模型 |
+| Infrastructure.SqlServerMigrations/Migrations | `20261007212012_AlignDwsMeasurementIdentityLength.cs`、`.Designer.cs` | SQL Server量测消息身份长度迁移及目标模型 |
+| Infrastructure.OracleMigrations/Migrations | `20261007212036_AlignDwsMeasurementIdentityLength.cs`、`.Designer.cs` | Oracle量测消息身份长度迁移及目标模型 |
+| Infrastructure.SqliteMigrations/Migrations | `20261007212040_AlignDwsMeasurementIdentityLength.cs`、`.Designer.cs` | SQLite量测消息身份长度迁移及目标模型 |
+| Host/HostedServices | `ParcelDwsMeasurementBackfillHostedService.cs` | 初始化后低负载执行补齐，异常后保留已提交游标 |
+| Host.Tests | `ParcelDwsMeasurementProjectionTests.cs` | 四库查询翻译和字段保真、跨日补齐、统计一致性及批次幂等回归 |

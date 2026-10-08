@@ -91,6 +91,10 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private static readonly Regex MySqlCreateIndexRegex = new(
             @"\bcreate\s+(?:unique\s+)?index\s+`(?<index>[^`]+)`\s+on\s+(?<table>(?:`[^`]+`\.)?`[^`]+`)",
             RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
+        /// <summary>Oracle 与 SQLite 的双引号索引标识符，用于审计及生成原生回滚操作。</summary>
+        private static readonly Regex QuotedCreateIndexRegex = new(
+            """\bcreate\s+(?:unique\s+)?index\s+(?<index>(?:"[^"]+"\.)?"[^"]+")\s+on\s+""",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
         /// <summary>
         /// 匹配 SQL 文本前导注释（行注释/块注释），用于在风险分析前剥离注释噪声，避免误判 DDL 或查询结构。
         /// </summary>
@@ -2181,6 +2185,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 return $"DROP INDEX `{indexName}` ON {tableName}";
             }
 
+            var quotedMatch = QuotedCreateIndexRegex.Match(normalized);
+            if (quotedMatch.Success) return $"DROP INDEX {quotedMatch.Groups["index"].Value}";
             return null;
         }
 

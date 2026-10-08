@@ -23,10 +23,11 @@ WORKDIR /app
 ENV TZ=Asia/Shanghai
 # curl 及其依赖位于 main，减少构建时不需要的额外软件源索引下载。
 RUN if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then sed -i 's/^Components:.*/Components: main/' /etc/apt/sources.list.d/ubuntu.sources; fi \
-    && apt-get update && apt-get install -y --no-install-recommends curl \
+    && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends curl tzdata \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /out .
-RUN mkdir -p logs migration-scripts backup-artifacts backup-runbooks drill-records monthly-reports governance-artifacts fusion-images \
+# 预先建立配置与历史目录，使首次挂载的数据卷继承 app 用户写入权限。
+RUN mkdir -p logs migration-scripts backup-artifacts backup-runbooks drill-records monthly-reports governance-artifacts fusion-images data/configuration data/business-history \
     && chown -R app:app /app
 USER app
 EXPOSE 5078

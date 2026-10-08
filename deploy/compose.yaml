@@ -36,6 +36,26 @@ services:
     build:
       context: ..
       dockerfile: Zeye.Sorting.Hub.Host/Dockerfile
+    develop:
+      watch:
+        # 4187 的 API 随后端源码更新；排除测试和构建产物，避免重建循环。
+        - action: rebuild
+          path: ..
+          include:
+            - "Zeye.Sorting.Hub.*/**/*.cs"
+            - "Zeye.Sorting.Hub.*/**/*.csproj"
+            - "Zeye.Sorting.Hub.*/**/*.json"
+            - "Zeye.Sorting.Hub.*/**/*.config"
+            - "Zeye.Sorting.Hub.Host/Dockerfile"
+            - "Directory.Build.*"
+            - "Directory.Packages.props"
+            - "NuGet.Config"
+            - "nuget.config"
+            - "global.json"
+            - ".dockerignore"
+          ignore:
+            - "Zeye.Sorting.Hub.*.Tests/"
+            - "Zeye.Sorting.Hub.Web/"
     restart: unless-stopped
     logging: *bounded-logging
     # 宿主给应用 30 秒退出预算，容器宽限必须更长，避免尚在排空时收到 SIGKILL。
@@ -78,6 +98,8 @@ services:
       - "${ZEYE_FUSION_UDP_BIND:-127.0.0.1}:${ZEYE_FUSION_UDP_PORT:-47651}:${ZEYE_FUSION_UDP_PORT:-47651}/udp"
     volumes:
       - host_logs:/app/logs
+      - host_configuration:/app/data/configuration
+      - host_configuration_history:/app/data/business-history
       - host_backups:/app/backup-artifacts
       - host_governance:/app/governance-artifacts
       - host_fusion_images:/app/fusion-images
@@ -87,6 +109,13 @@ services:
     build:
       context: ../Zeye.Sorting.Hub.Web
       dockerfile: Dockerfile
+    develop:
+      watch:
+        - action: rebuild
+          path: ../Zeye.Sorting.Hub.Web
+          ignore:
+            - tests/
+            - README.md
     restart: unless-stopped
     logging: *bounded-logging
     depends_on:
@@ -104,6 +133,8 @@ services:
 volumes:
   mysql_data:
   host_logs:
+  host_configuration:
+  host_configuration_history:
   host_backups:
   host_governance:
   host_fusion_images:

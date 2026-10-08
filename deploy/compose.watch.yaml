@@ -1,0 +1,6 @@
+# 源码监听只重建应用服务。部署入口仍使用原 Compose 的依赖及就绪顺序。
+services:
+  host:
+    depends_on: !reset {}
+  web:
+    depends_on: !reset {}

@@ -7,6 +7,7 @@ using Zeye.Sorting.Hub.Infrastructure.Integrations.Fusion;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Fusion;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Management;
+using Zeye.Sorting.Hub.Infrastructure.Configuration;
 
 namespace Zeye.Sorting.Hub.Host.Queries;
 
@@ -22,6 +23,8 @@ public sealed class FusionConfigurationService : IFusionRuntimeConfiguration {
     private static readonly SemaphoreSlim WriteGate = new(1, 1);
     /// <summary>创建持久化管理数据库上下文。</summary>
     private readonly IDbContextFactory<SortingHubDbContext> _factory;
+    /// <summary>生产环境使用 LiteDB；旧工具调用保留原数据库读取语义。</summary>
+    private readonly IConfigurationDocumentStore? _configurations;
     /// <summary>加密保存各来源的独立机器密钥。</summary>
     private readonly IDataProtector _protector;
     /// <summary>部署固定的 Hub 身份及图片目录。</summary>
@@ -33,8 +36,9 @@ public sealed class FusionConfigurationService : IFusionRuntimeConfiguration {
 
     /// <summary>初始化部署配置及凭据保护器。</summary>
     public FusionConfigurationService(IDbContextFactory<SortingHubDbContext> factory,
-        IOptions<FusionIngestionOptions> options, IDataProtectionProvider protection) {
+        IOptions<FusionIngestionOptions> options, IDataProtectionProvider protection, IConfigurationDocumentStore? configurations = null) {
         _factory = factory;
+        _configurations = configurations;
         _protector = protection.CreateProtector("Zeye.Sorting.Hub.FusionCredentials.v1");
         _deployment = Clone(options.Value);
         Validate(_deployment);
@@ -75,6 +79,12 @@ public sealed class FusionConfigurationService : IFusionRuntimeConfiguration {
 
     /// <summary>读取最新持久化版本并保留有效快照。</summary>
     public async Task RefreshAsync(CancellationToken ct) {
+        if (_configurations is not null) {
+            ct.ThrowIfCancellationRequested();
+            var stored = _configurations.Read(DocumentKey);
+            if (stored is not null && stored.Revision != Snapshot.Revision) Publish(Decode(stored.Json), stored.Revision);
+            return;
+        }
         await using var db = await _factory.CreateDbContextAsync(ct);
         var doc = await db.Set<ManagedDocument>().AsNoTracking().SingleOrDefaultAsync(x => x.Key == DocumentKey, ct);
         if (doc is not null && doc.Revision != Snapshot.Revision) Publish(Decode(doc.Json), doc.Revision);
@@ -83,6 +93,17 @@ public sealed class FusionConfigurationService : IFusionRuntimeConfiguration {
     public async Task InitializeAsync(CancellationToken ct) {
         await WriteGate.WaitAsync(ct);
         try {
+            if (_configurations is not null) {
+                var stored = _configurations.Read(DocumentKey);
+                if (stored is null) {
+                    var initial = Clone(_deployment);
+                    foreach (var source in initial.Sources) source.SecurityStamp = Guid.NewGuid().ToString("N");
+                    stored = _configurations.Write(DocumentKey, Encode(initial), 0) ?? _configurations.Read(DocumentKey)!;
+                }
+                Publish(Decode(stored.Json), stored.Revision);
+                RemoveImportedCredentialSeeds();
+                return;
+            }
             await using var db = await _factory.CreateDbContextAsync(ct);
             var doc = await db.Set<ManagedDocument>().AsTracking().SingleOrDefaultAsync(x => x.Key == DocumentKey, ct);
             if (doc is null) {
@@ -100,6 +121,20 @@ public sealed class FusionConfigurationService : IFusionRuntimeConfiguration {
         } finally { WriteGate.Release(); }
     }
 
+    /// <summary>接入目录加密保存后删除旧 JSON 导入的明文密钥种子，不再保留第二份来源配置。</summary>
+    private void RemoveImportedCredentialSeeds() {
+        if (_configurations is not LiteDbConfigurationStore store) return;
+        for (var attempt = 0; attempt < 3; attempt++) {
+            var current = store.ReadRuntime();
+            if (current["FusionIngestion"] is not System.Text.Json.Nodes.JsonObject fusion
+                || fusion["Sources"] is not System.Text.Json.Nodes.JsonArray sources || sources.Count == 0) return;
+            var revision = ConfigurationDocument.Revision(current);
+            fusion["Sources"] = new System.Text.Json.Nodes.JsonArray();
+            if (store.WriteRuntime(revision, current)) return;
+        }
+        throw new InvalidOperationException("接入目录已导入，但旧明文种子存在并发修改，请重启后重试。");
+    }
+
     /// <summary>接入目录版本及公开配置快照。</summary>
     public async Task<FusionConfigurationView> ReadAsync(CancellationToken ct) {
         await RefreshAsync(ct);
@@ -114,14 +149,16 @@ public sealed class FusionConfigurationService : IFusionRuntimeConfiguration {
         source.SourceInstanceId, source.WorkstationName, source.Enabled, source.TenantId, source.StoragePartitionId,
         source.LineId, source.SiteCode, source.DeviceCode, source.TimeZoneId, identityLocked);
 
-    /// <summary>按预期版本保存目录，并在同一事务内撤销受影响租约。</summary>
+    /// <summary>按预期版本保存目录；新安全戳立即撤销旧连接，关系库租约随后更新。</summary>
     private async Task<FusionRuntimeSnapshot?> MutateAsync(int revision,
         Func<FusionIngestionOptions, SortingHubDbContext, Task<string[]>> change, CancellationToken ct) {
         if (revision < 1) throw new ArgumentException("配置版本无效，请刷新后重试。");
         await WriteGate.WaitAsync(ct);
         try {
             await using var db = await _factory.CreateDbContextAsync(ct);
-            var doc = await db.Set<ManagedDocument>().AsTracking().SingleAsync(x => x.Key == DocumentKey, ct);
+            var doc = _configurations is null
+                ? await db.Set<ManagedDocument>().AsTracking().SingleAsync(x => x.Key == DocumentKey, ct)
+                : _configurations.Read(DocumentKey) ?? throw new InvalidOperationException("接入配置尚未初始化。");
             if (doc.Revision != revision) { Publish(Decode(doc.Json), doc.Revision); return null; }
             var next = Decode(doc.Json);
             var revoked = await change(next, db);
@@ -129,6 +166,16 @@ public sealed class FusionConfigurationService : IFusionRuntimeConfiguration {
             if (revoked.Length > 0) {
                 var leases = await db.Set<FusionSourceLease>().AsTracking().Where(x => revoked.Contains(x.SourceInstanceId)).ToListAsync(ct);
                 foreach (var lease in leases) { lease.ConnectionId = ""; lease.ExpiresAt = DateTime.Now; lease.Revision++; }
+            }
+            if (_configurations is not null) {
+                var saved = _configurations.Write(DocumentKey, Encode(next), revision);
+                if (saved is null) { await RefreshAsync(ct); return null; }
+                Publish(next, saved.Revision);
+                try { await db.SaveChangesAsync(ct); }
+                catch (DbUpdateException exception) {
+                    Logger.Warn(exception, "接入配置已持久化，新安全戳已撤销旧连接；租约状态将在过期后恢复。");
+                }
+                return Build(next, saved.Revision);
             }
             doc.Json = Encode(next); doc.Revision++; doc.ModifiedAt = DateTime.Now;
             try { await db.SaveChangesAsync(ct); }

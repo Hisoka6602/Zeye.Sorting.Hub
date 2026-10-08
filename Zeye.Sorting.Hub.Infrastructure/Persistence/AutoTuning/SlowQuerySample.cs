@@ -28,6 +28,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         /// <summary>发生时间（本地时间语义）。</summary>
         public DateTime OccurredTime { get; init; }
 
+        /// <summary>分阶段耗时和发起请求标识；兼容旧采样调用。</summary>
+        public SlowQueryObservation Observation { get; init; } = new();
+
         /// <summary>
         /// 初始化慢查询采样记录。
         /// </summary>

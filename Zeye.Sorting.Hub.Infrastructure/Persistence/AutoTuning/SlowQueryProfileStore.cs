@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Configuration;
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Threading.Channels;
 using Zeye.Sorting.Hub.Application.Abstractions.Diagnostics;
-using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 
@@ -44,11 +46,6 @@ public sealed class SlowQueryProfileStore : ISlowQueryProfileReader {
     private readonly TimeSpan _window;
 
     /// <summary>
-    /// 列表接口返回的 TopN。
-    /// </summary>
-    private readonly int _topN;
-
-    /// <summary>
     /// 最大可追踪指纹数量。
     /// </summary>
     private readonly int _maxFingerprintCount;
@@ -67,6 +64,21 @@ public sealed class SlowQueryProfileStore : ISlowQueryProfileReader {
     /// 上次维护后的累计记录数量。
     /// </summary>
     private int _recordsSinceMaintenance;
+
+    /// <summary>仍未完成的执行与读取，仅保留追踪标识和单调时间戳。</summary>
+    private readonly ConcurrentDictionary<string, (string TraceId, long Started)> _active = new();
+    /// <summary>采集异常与容量淘汰计数。</summary>
+    private long _collectionFailures, _capacityEvictions, _expiredSamples;
+    /// <summary>归档排队、丢失和恢复计数。</summary>
+    private long _archivePending, _archiveDropped, _restoredSamples;
+    /// <summary>归档可用标记。</summary>
+    private volatile bool _archiveReady;
+    /// <summary>有界后台归档队列；热路径仅执行 TryWrite。</summary>
+    internal Channel<(SlowQueryFingerprint Fingerprint, SlowQuerySample Sample)> ArchiveQueue { get; }
+    /// <summary>归档是否启用。</summary>
+    internal bool ArchiveEnabled { get; }
+    /// <summary>观测窗口开始时间，用于仅恢复仍有效的历史样本。</summary>
+    internal DateTime WindowStart => DateTime.Now - _window;
 
     /// <summary>
     /// 初始化慢查询画像存储。
@@ -103,13 +115,11 @@ public sealed class SlowQueryProfileStore : ISlowQueryProfileReader {
                 256),
             1,
             4096);
-        _topN = Math.Clamp(
-            AutoTuningConfigurationReader.GetPositiveIntOrDefault(
-                configuration,
-                AutoTuningConfigurationReader.BuildAutoTuningKey("SlowQueryProfile:TopN"),
-                50),
-            1,
-            Math.Min(_maxFingerprintCount, 200));
+        ArchiveEnabled = _isEnabled && AutoTuningConfigurationReader.GetBoolOrDefault(configuration,
+            AutoTuningConfigurationReader.BuildAutoTuningKey("SlowQueryProfile:ArchiveEnabled"), true);
+        ArchiveQueue = Channel.CreateBounded<(SlowQueryFingerprint, SlowQuerySample)>(new BoundedChannelOptions(4096) {
+            SingleReader = true, SingleWriter = false, FullMode = BoundedChannelFullMode.Wait
+        });
     }
 
     /// <summary>
@@ -124,24 +134,26 @@ public sealed class SlowQueryProfileStore : ISlowQueryProfileReader {
             return;
         }
 
-        var isError = exception is not null;
+        var canceled = SlowQueryFailureClassifier.IsCanceled(exception);
+        var isError = exception is not null && !canceled;
         var elapsedMilliseconds = elapsed.Ticks / (decimal)TimeSpan.TicksPerMillisecond;
-        if (!isError && elapsedMilliseconds < _slowQueryThresholdMilliseconds) {
+        if (!isError && !canceled && elapsedMilliseconds < _slowQueryThresholdMilliseconds) {
             return;
         }
 
         var now = DateTime.Now;
         var fingerprint = SlowQueryFingerprintAggregator.Create(commandText);
         var sample = new SlowQuerySample(
-            commandText: commandText,
+            commandText: SlowQueryFingerprintAggregator.SanitizeSql(commandText),
             sqlFingerprint: fingerprint.Fingerprint,
             elapsedMilliseconds: elapsedMilliseconds,
             affectedRows: Math.Max(affectedRows, 0),
             isError: isError,
-            isTimeout: IsTimeoutException(exception),
-            isDeadlock: IsDeadlockException(exception),
-            occurredTime: now);
-        RecordCore(fingerprint, sample);
+            isTimeout: SlowQueryFailureClassifier.IsTimeout(exception),
+            isDeadlock: SlowQueryFailureClassifier.IsDeadlock(exception),
+            occurredTime: now) { Observation = new() { IsCanceled = canceled, ExceptionType = exception?.GetType().FullName ?? "",
+                ExecuteMilliseconds = elapsedMilliseconds, CommandCount = 1 } };
+        Record(fingerprint, sample);
     }
 
     /// <summary>
@@ -150,18 +162,19 @@ public sealed class SlowQueryProfileStore : ISlowQueryProfileReader {
     /// <param name="sample">慢查询样本。</param>
     public void Record(SlowQuerySample sample) {
         ArgumentNullException.ThrowIfNull(sample);
-        var fingerprint = SlowQueryFingerprintAggregator.Create(sample.CommandText);
-        RecordCore(
+        if (!_isEnabled) return;
+        var fingerprint = SlowQueryFingerprintAggregator.CreateObservation(sample.CommandText, sample.Observation);
+        Record(
             fingerprint,
             new SlowQuerySample(
-                commandText: sample.CommandText,
+                commandText: SlowQueryFingerprintAggregator.SanitizeSql(sample.CommandText, sample.Observation.Provider),
                 sqlFingerprint: fingerprint.Fingerprint,
                 elapsedMilliseconds: sample.ElapsedMilliseconds,
                 affectedRows: Math.Max(sample.AffectedRows, 0),
                 isError: sample.IsError,
                 isTimeout: sample.IsTimeout,
                 isDeadlock: sample.IsDeadlock,
-                occurredTime: sample.OccurredTime));
+                occurredTime: sample.OccurredTime) { Observation = sample.Observation });
     }
 
     /// <summary>
@@ -177,10 +190,16 @@ public sealed class SlowQueryProfileStore : ISlowQueryProfileReader {
         }
 
         RecordCore(fingerprint, sample);
+        if (ArchiveEnabled) {
+            Interlocked.Increment(ref _archivePending);
+            if (!ArchiveQueue.Writer.TryWrite((fingerprint, sample))) {
+                Interlocked.Decrement(ref _archivePending); Interlocked.Increment(ref _archiveDropped);
+            }
+        }
     }
 
     /// <summary>
-    /// 获取 TopN 画像快照。
+    /// 获取有界观测窗口中的全部画像，客户端筛选不遗漏排名之外的指纹。
     /// </summary>
     /// <returns>画像快照列表与总量。</returns>
     public (IReadOnlyList<SlowQueryProfileReadModel> Items, int TotalFingerprintCount) GetTopProfiles() {
@@ -204,7 +223,8 @@ public sealed class SlowQueryProfileStore : ISlowQueryProfileReader {
             .ThenByDescending(static snapshot => snapshot.P95Milliseconds)
             .ThenByDescending(static snapshot => snapshot.CallCount)
             .ThenBy(static snapshot => snapshot.Fingerprint, StringComparer.Ordinal)
-            .Take(_topN)
+            // 返回当前有界存储中的全部指纹，前端分页筛选不再受 TopN 隐藏。
+            .Take(_maxFingerprintCount)
             .Select(MapToReadModel)
             .ToArray();
         return (snapshots, totalFingerprintCount);
@@ -214,18 +234,18 @@ public sealed class SlowQueryProfileStore : ISlowQueryProfileReader {
     /// 按指纹读取画像快照。
     /// </summary>
     /// <param name="fingerprint">慢查询指纹。</param>
-    /// <param name="snapshot">画像快照。</param>
+    /// <param name="profile">画像快照。</param>
     /// <returns>是否命中。</returns>
     public bool TryGetProfile(string fingerprint, out SlowQueryProfileReadModel? profile) {
         ArgumentException.ThrowIfNullOrWhiteSpace(fingerprint);
 
-        SlowQueryFingerprint slowQueryFingerprint;
+        SlowQueryFingerprint? slowQueryFingerprint;
         SlowQuerySample[] samples;
         lock (_sync) {
             TrimExpiredEntries(DateTime.Now);
             if (!_samplesByFingerprint.TryGetValue(fingerprint, out var queue)
                 || queue.Count == 0
-                || !_fingerprints.TryGetValue(fingerprint, out slowQueryFingerprint)) {
+                || !_fingerprints.TryGetValue(fingerprint, out slowQueryFingerprint) || slowQueryFingerprint is null) {
                 profile = null;
                 return false;
             }
@@ -311,13 +331,19 @@ public sealed class SlowQueryProfileStore : ISlowQueryProfileReader {
     private void RecordCore(SlowQueryFingerprint fingerprint, SlowQuerySample sample) {
         lock (_sync) {
             var queue = GetOrCreateQueue(fingerprint);
-            queue.Enqueue(sample);
+            if (_lastSeenAtLocalByFingerprint.TryGetValue(fingerprint.Fingerprint, out var lastSeen) && sample.OccurredTime < lastSeen) {
+                // 后台恢复与新查询可能并发，按时间排序才能正确过期和淘汰最旧样本。
+                var ordered = queue.Append(sample).OrderBy(item => item.OccurredTime).ToArray();
+                queue.Clear(); foreach (var item in ordered) queue.Enqueue(item);
+            }
+            else queue.Enqueue(sample);
             var overflowSampleCount = queue.Count - _maxSampleCountPerFingerprint;
             for (var index = 0; index < overflowSampleCount; index++) {
                 queue.Dequeue();
+                Interlocked.Increment(ref _capacityEvictions);
             }
 
-            _lastSeenAtLocalByFingerprint[fingerprint.Fingerprint] = sample.OccurredTime;
+            _lastSeenAtLocalByFingerprint[fingerprint.Fingerprint] = sample.OccurredTime > lastSeen ? sample.OccurredTime : lastSeen;
             _recordsSinceMaintenance++;
             if (_recordsSinceMaintenance >= MaintenanceRecordInterval) {
                 _recordsSinceMaintenance = 0;
@@ -340,6 +366,7 @@ public sealed class SlowQueryProfileStore : ISlowQueryProfileReader {
         foreach (var pair in _samplesByFingerprint) {
             while (pair.Value.Count > 0 && pair.Value.Peek().OccurredTime < expireBefore) {
                 pair.Value.Dequeue();
+                Interlocked.Increment(ref _expiredSamples);
             }
 
             if (pair.Value.Count == 0) {
@@ -367,6 +394,7 @@ public sealed class SlowQueryProfileStore : ISlowQueryProfileReader {
                      .Select(static pair => pair.Key)
                      .Take(_samplesByFingerprint.Count - _maxFingerprintCount)
                      .ToArray()) {
+            Interlocked.Add(ref _capacityEvictions, _samplesByFingerprint[fingerprint].Count);
             _samplesByFingerprint.Remove(fingerprint);
             _fingerprints.Remove(fingerprint);
             _lastSeenAtLocalByFingerprint.Remove(fingerprint);
@@ -394,38 +422,45 @@ public sealed class SlowQueryProfileStore : ISlowQueryProfileReader {
             TotalAffectedRows: snapshot.TotalAffectedRows,
             WindowStartedAtLocal: snapshot.WindowStartedAtLocal,
             WindowEndedAtLocal: snapshot.WindowEndedAtLocal,
-            LastOccurredAtLocal: snapshot.LastOccurredAtLocal);
+            LastOccurredAtLocal: snapshot.LastOccurredAtLocal) { Kind = snapshot.Observation.Kind, Provider = snapshot.Observation.Provider, DatabaseRole = snapshot.Observation.DatabaseRole,
+                TraceId = snapshot.Observation.TraceId, SpanId = snapshot.Observation.SpanId, ExceptionType = snapshot.Observation.ExceptionType,
+                StatusCode = snapshot.Observation.StatusCode, CommandId = snapshot.Observation.CommandId, LatestCommandCount = snapshot.Observation.CommandCount,
+                CanceledCount = snapshot.CanceledCount,
+                PartialReadCount = snapshot.PartialReadCount, AverageExecuteMilliseconds = snapshot.AverageExecuteMilliseconds,
+                AverageReadMilliseconds = snapshot.AverageReadMilliseconds, AverageConsumerMilliseconds = snapshot.AverageConsumerMilliseconds,
+                AverageConnectionMilliseconds = snapshot.AverageConnectionMilliseconds, TotalRowsRead = snapshot.TotalRowsRead };
     }
 
-    /// <summary>
-    /// 判断异常是否属于超时。
-    /// </summary>
-    /// <param name="exception">异常。</param>
-    /// <returns>是否超时。</returns>
-    private static bool IsTimeoutException(Exception? exception) {
-        if (exception is null) {
-            return false;
-        }
-
-        if (exception is TimeoutException) {
-            return true;
-        }
-
-        return DatabaseProviderOperations.TryGetProviderErrorNumber(exception, out var number)
-            && (number == -2 || number == 3024);
+    /// <summary>登记进行中的操作，数据库阻塞时也能看见尚未完成的观测。</summary>
+    internal void Started(string key) {
+        if (!_isEnabled || key.Length == 0) return;
+        if (_active.Count >= 4096) { CollectionFailed(); return; }
+        _active.TryAdd(key, (Activity.Current?.TraceId.ToString() ?? SlowQueryRequestScope.Capture()?.TraceId ?? "", Stopwatch.GetTimestamp()));
+    }
+    /// <summary>完成或失败均移除活动项。</summary>
+    internal void Finished(string key) => _active.TryRemove(key, out _);
+    /// <summary>诊断故障不覆盖业务异常，计数对页面可见。</summary>
+    internal void CollectionFailed() => Interlocked.Increment(ref _collectionFailures);
+    /// <summary>后台归档操作结果。</summary>
+    internal void ArchiveCompleted(int count, bool success) { Interlocked.Add(ref _archivePending, -count); if (!success) Interlocked.Add(ref _archiveDropped, count); }
+    /// <summary>后台恢复后公布可用状态。</summary>
+    internal void ArchiveInitialized(bool ready) => _archiveReady = ready;
+    /// <summary>只恢复有效样本，恢复过程不会再次入队或驱动自动调优。</summary>
+    internal void Restore(SlowQueryFingerprint fingerprint, SlowQuerySample sample) {
+        if (!_isEnabled || sample.OccurredTime < WindowStart) return;
+        RecordCore(fingerprint, sample); Interlocked.Increment(ref _restoredSamples);
+    }
+    /// <inheritdoc />
+    public SlowQueryCollectionStatusReadModel GetCollectionStatus() {
+        var active = _active.Values.OrderBy(item => item.Started).FirstOrDefault();
+        return new() {
+            Enabled = _isEnabled, ThresholdMilliseconds = _slowQueryThresholdMilliseconds, WindowMinutes = (int)(_window.Ticks / TimeSpan.TicksPerMinute),
+            CapacityEvictions = Interlocked.Read(ref _capacityEvictions), ExpiredSamples = Interlocked.Read(ref _expiredSamples),
+            CollectionFailures = Interlocked.Read(ref _collectionFailures), ActiveOperations = _active.Count,
+            OldestActiveMilliseconds = active.Started == 0 ? 0m : Stopwatch.GetElapsedTime(active.Started).Ticks / (decimal)TimeSpan.TicksPerMillisecond,
+            OldestActiveTraceId = active.TraceId ?? "", ArchiveEnabled = ArchiveEnabled, ArchiveReady = _archiveReady,
+            ArchivePending = Interlocked.Read(ref _archivePending), ArchiveDropped = Interlocked.Read(ref _archiveDropped), RestoredSamples = Interlocked.Read(ref _restoredSamples)
+        };
     }
 
-    /// <summary>
-    /// 判断异常是否属于死锁。
-    /// </summary>
-    /// <param name="exception">异常。</param>
-    /// <returns>是否死锁。</returns>
-    private static bool IsDeadlockException(Exception? exception) {
-        if (exception is null) {
-            return false;
-        }
-
-        return DatabaseProviderOperations.TryGetProviderErrorNumber(exception, out var number)
-            && (number == 1205 || number == 1213);
-    }
 }

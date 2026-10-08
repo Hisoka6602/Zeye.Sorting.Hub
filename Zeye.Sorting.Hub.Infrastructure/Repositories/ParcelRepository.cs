@@ -8,6 +8,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Data.SqlClient;
 using MySqlConnector;
 using NLog;
+using Zeye.Sorting.Hub.Domain.Abstractions;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Domain.Repositories;
@@ -19,6 +20,7 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Management;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.ReadModels;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.Processing;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
@@ -29,7 +31,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
 public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContext>, IParcelRepository {
     /// <summary>实际分表路由，独立单元测试可省略以使用基础表模型。</summary>
     private readonly ParcelPartitionStore? _partitions;
-    /// <summary>是否对长窗口启用有界分表并行读取。</summary>
+    /// <summary>是否对分页启用有界分表读取，避免短窗口也物化宽行合并结果。</summary>
     private readonly bool _readFanoutEnabled;
     /// <summary>分表并行读取的连接数上限。</summary>
     private readonly int _readFanoutConcurrency;
@@ -229,7 +231,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
         try {
             ValidateQueryFilter(filter);
             var upperBound = (long)pageRequest.NormalizePageNumber() * pageRequest.NormalizePageSize();
-            return _partitions is not null && _readFanoutEnabled && PreferReadFanout(filter) && upperBound <= MaxPartitionTopRows
+            return _partitions is not null && _readFanoutEnabled && upperBound <= MaxPartitionTopRows
                 ? ExecuteAdaptivePageQueryAsync(filter, pageRequest, (int)upperBound, cancellationToken)
                 : ExecutePagedQueryAsync((db, query) => ApplyFilter(query, filter, db.Database.ProviderName), pageRequest, cancellationToken);
         }
@@ -256,7 +258,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
 
         try {
             ValidateQueryFilter(filter);
-            return _partitions is null || !_readFanoutEnabled || !PreferReadFanout(filter)
+            return _partitions is null || !_readFanoutEnabled
                 ? ExecuteCursorQueryAsync(
                     (db, query) => ApplyFilter(query, filter, db.Database.ProviderName)
                         .ApplyCursorCondition(pageRequest), pageRequest, cancellationToken)
@@ -353,35 +355,38 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
 
         try {
             await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
-            var query = await BuildPartitionQueryAsync(db, cancellationToken);
-            var anchor = await query
-                .Where(x => x.Id == id)
+            var suffixes = _partitions is null ? [string.Empty] : await _partitions.GetReadSuffixesAsync(cancellationToken);
+            await using var read = db.Database.IsRelational() ? ParcelPartitionReadContext<ParcelSummaryReadModel>.Create<Parcel>(db, suffixes) : null;
+            // 非关系测试提供器没有物理分表，继续查询原实体数据；四种业务库使用同一窄模型。
+            IQueryable<ParcelSummaryReadModel> Branch(Func<IQueryable<ParcelSummaryReadModel>, IQueryable<ParcelSummaryReadModel>> select) =>
+                read is null ? select(Query(db).Select(SelectSummaryExpression)) : read.QueryAll(suffixes, select);
+            var anchor = await Branch(branch => branch.Where(x => x.Id == id))
                 .Select(x => new { x.Id, x.ScannedTime })
                 .FirstOrDefaultAsync(cancellationToken);
             if (anchor is null) {
                 return RepositoryResult<IReadOnlyList<ParcelSummaryReadModel>>.Fail($"未找到 Id 为 {id} 的资源。");
             }
 
-            var beforeItems = await query
+            var beforeItems = await Branch(branch => branch
                 .Where(x => x.Id != anchor.Id
                             && (x.ScannedTime < anchor.ScannedTime
                                 || (x.ScannedTime == anchor.ScannedTime && x.Id < anchor.Id)))
                 .OrderByDescending(x => x.ScannedTime)
                 .ThenByDescending(x => x.Id)
-                .Take(normalizedBeforeCount)
-                .Select(SelectSummaryExpression)
+                .Take(normalizedBeforeCount))
+                .OrderByDescending(x => x.ScannedTime).ThenByDescending(x => x.Id).Take(normalizedBeforeCount)
                 .ToListAsync(cancellationToken);
 
             beforeItems.Reverse();
 
-            var afterItems = await query
+            var afterItems = await Branch(branch => branch
                 .Where(x => x.Id != anchor.Id
                             && (x.ScannedTime > anchor.ScannedTime
                                 || (x.ScannedTime == anchor.ScannedTime && x.Id > anchor.Id)))
                 .OrderBy(x => x.ScannedTime)
                 .ThenBy(x => x.Id)
-                .Take(normalizedAfterCount)
-                .Select(SelectSummaryExpression)
+                .Take(normalizedAfterCount))
+                .OrderBy(x => x.ScannedTime).ThenBy(x => x.Id).Take(normalizedAfterCount)
                 .ToListAsync(cancellationToken);
 
             return RepositoryResult<IReadOnlyList<ParcelSummaryReadModel>>.Success([.. beforeItems, .. afterItems]);
@@ -533,6 +538,18 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
                 physical.RemoveRange(parcels); deleted = parcels.Count;
             }
             if (deleted != ids.Length) throw new InvalidOperationException("删除数量与批次计划不一致，本批次已回滚。");
+            // 分析投影不是追溯事实，随包裹一起释放，不能使清理后留下永久统计副本。
+            foreach (var keys in ids.Chunk(512)) {
+                var calls = physical.Set<ParcelDurationCall>().Where(row => keys.Contains(row.ParcelId));
+                var facts = physical.Set<ParcelDurationFact>().Where(row => row.ParcelId != null && keys.Contains(row.ParcelId.Value));
+                if (physical.Database.IsRelational()) {
+                    await calls.ExecuteDeleteAsync(ct);
+                    await facts.ExecuteDeleteAsync(ct);
+                } else {
+                    physical.RemoveRange(await calls.ToListAsync(ct));
+                    physical.RemoveRange(await facts.ToListAsync(ct));
+                }
+            }
             var updated = audit with { ExecutedCount = audit.ExecutedCount + deleted, BatchCount = audit.BatchCount + 1 };
             var receipt = new ParcelCleanupBatchAudit { DeletedCount = deleted, PartitionSuffix = physical.ParcelPartitionSuffix, CommittedAtLocal = DateTime.Now };
             physical.Add(new ManagedDocument { Key = batchKey, Json = JsonSerializer.Serialize(receipt, CleanupJsonOptions), Revision = 1, ModifiedAt = receipt.CommittedAtLocal });
@@ -630,7 +647,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     /// 执行分页查询。
     /// </summary>
     private async Task<PageResult<ParcelSummaryReadModel>> ExecutePagedQueryAsync(
-        Func<SortingHubDbContext, IQueryable<Parcel>, IQueryable<Parcel>> queryBuilder,
+        Func<SortingHubDbContext, IQueryable<ParcelSummaryReadModel>, IQueryable<ParcelSummaryReadModel>> queryBuilder,
         PageRequest pageRequest,
         CancellationToken cancellationToken,
         IReadOnlyList<string>? suffixes = null) {
@@ -639,9 +656,10 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
 
         try {
             await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
-            var source = suffixes is null ? await BuildPartitionQueryAsync(db, cancellationToken)
-                : ParcelPartitionQueryBuilder.BuildFromSuffixes<Parcel>(db, suffixes);
-            var query = queryBuilder(db, source);
+            suffixes ??= _partitions is null ? [string.Empty] : await _partitions.GetReadSuffixesAsync(cancellationToken);
+            await using var read = db.Database.IsRelational() ? ParcelPartitionReadContext<ParcelSummaryReadModel>.Create<Parcel>(db, suffixes) : null;
+            var query = read is null ? queryBuilder(db, Query(db).Select(SelectSummaryExpression))
+                : read.QueryAll(suffixes, branch => queryBuilder(db, branch));
 
             var totalCount = pageRequest.IncludeTotalCount
                 ? await query.LongCountAsync(cancellationToken)
@@ -651,7 +669,6 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
                 .ThenByDescending(x => x.Id)
                 .Skip((pageNumber - 1) * pageSize)
                 .Take(pageSize)
-                .Select(SelectSummaryExpression)
                 .ToListAsync(cancellationToken);
 
             return new PageResult<ParcelSummaryReadModel> {
@@ -763,12 +780,6 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
             .OrderByDescending(item => item.ScannedTime).ThenByDescending(item => item.Id)
             .Skip(skip).Take(take).ToArray();
 
-    /// <summary>短扫码窗口的单条数据库查询更快；缺少边界或长窗口才走有界分表读取。</summary>
-    private static bool PreferReadFanout(ParcelQueryFilter filter) =>
-        string.IsNullOrWhiteSpace(filter.BarCodeKeyword)
-        && (!filter.ScannedTimeStart.HasValue || !filter.ScannedTimeEnd.HasValue
-            || filter.ScannedTimeEnd.Value - filter.ScannedTimeStart.Value > TimeSpan.FromDays(2));
-
     /// <summary>单个分表允许提取的最大候选行数，深页改用原有数据库查询。</summary>
     private const int MaxPartitionTopRows = 2000;
 
@@ -780,7 +791,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>游标分页结果。</returns>
     private async Task<CursorPageResult<ParcelSummaryReadModel>> ExecuteCursorQueryAsync(
-        Func<SortingHubDbContext, IQueryable<Parcel>, IQueryable<Parcel>> queryBuilder,
+        Func<SortingHubDbContext, IQueryable<ParcelSummaryReadModel>, IQueryable<ParcelSummaryReadModel>> queryBuilder,
         CursorPageRequest pageRequest,
         CancellationToken cancellationToken,
         IReadOnlyList<string>? suffixes = null) {
@@ -788,14 +799,15 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
 
         try {
             await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
-            var source = suffixes is null ? await BuildPartitionQueryAsync(db, cancellationToken)
-                : ParcelPartitionQueryBuilder.BuildFromSuffixes<Parcel>(db, suffixes);
-            var query = queryBuilder(db, source);
+            suffixes ??= _partitions is null ? [string.Empty] : await _partitions.GetReadSuffixesAsync(cancellationToken);
+            await using var read = db.Database.IsRelational() ? ParcelPartitionReadContext<ParcelSummaryReadModel>.Create<Parcel>(db, suffixes) : null;
+            var query = read is null ? queryBuilder(db, Query(db).Select(SelectSummaryExpression))
+                : read.QueryAll(suffixes, branch => queryBuilder(db, branch)
+                    .OrderByDescending(x => x.ScannedTime).ThenByDescending(x => x.Id).Take(pageSize + 1));
             var items = await query
                 .OrderByDescending(x => x.ScannedTime)
                 .ThenByDescending(x => x.Id)
                 .Take(pageSize + 1)
-                .Select(SelectSummaryExpression)
                 .ToListAsync(cancellationToken);
 
             var hasMore = items.Count > pageSize;
@@ -833,7 +845,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     /// <param name="query">基础查询。</param>
     /// <param name="filter">过滤参数。</param>
     /// <param name="providerName">当前数据库提供器名称。</param>
-    private static IQueryable<Parcel> ApplyFilter(IQueryable<Parcel> query, ParcelQueryFilter filter, string? providerName) {
+    private static IQueryable<T> ApplyFilter<T>(IQueryable<T> query, ParcelQueryFilter filter, string? providerName) where T : IParcelSummaryView {
         if (!string.IsNullOrWhiteSpace(filter.BarCodeKeyword)) {
             var barCodeKeyword = filter.BarCodeKeyword.Trim();
             // 分表和基础表使用一致的子串检索语义。

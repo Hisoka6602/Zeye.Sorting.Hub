@@ -30,8 +30,7 @@ public sealed partial class FusionIngestionService {
                 var sequences = valid.Select(x => x.Sequence).Distinct().ToArray();
                 var source = db.Set<FusionFactReceipt>().AsNoTracking().Where(x =>
                     x.SourceInstanceId == connection.Source.SourceInstanceId && x.JournalId == connection.JournalId);
-                var existing = await source.Where(x => ids.Contains(x.RecordId))
-                    .Union(source.Where(x => sequences.Contains(x.SourceSequence))).ToListAsync(token);
+                var existing = await ReadExistingFactsAsync(source, x => ids.Contains(x.RecordId), x => sequences.Contains(x.SourceSequence), token);
                 var byId = existing.ToDictionary(x => x.RecordId, StringComparer.Ordinal);
                 var bySequence = existing.ToDictionary(x => x.SourceSequence);
                 var images = new Dictionary<string, FusionImageUpload>(StringComparer.Ordinal);

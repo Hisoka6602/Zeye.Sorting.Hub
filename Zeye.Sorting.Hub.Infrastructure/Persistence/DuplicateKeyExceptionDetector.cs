@@ -1,6 +1,8 @@
 using Microsoft.Data.SqlClient;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using MySqlConnector;
+using Oracle.ManagedDataAccess.Client;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence;
 
@@ -14,14 +16,12 @@ internal static class DuplicateKeyExceptionDetector {
     /// <param name="exception">数据库更新异常。</param>
     /// <returns>是否为唯一键冲突。</returns>
     public static bool IsDuplicateKeyException(DbUpdateException exception) {
-        if (exception.InnerException is MySqlException mySqlException) {
-            return mySqlException.Number == 1062;
+        for (Exception? current = exception; current is not null; current = current.InnerException) {
+            if (current is MySqlException { Number: 1062 }
+                or SqlException { Number: 2627 or 2601 }
+                or OracleException { Number: 1 }
+                or SqliteException { SqliteErrorCode: 19, SqliteExtendedErrorCode: 1555 or 2067 }) return true;
         }
-
-        if (exception.InnerException is SqlException sqlException) {
-            return sqlException.Number == 2627 || sqlException.Number == 2601;
-        }
-
         return false;
     }
 

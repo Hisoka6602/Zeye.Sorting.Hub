@@ -4,6 +4,8 @@ namespace Zeye.Sorting.Hub.Application.Abstractions.Diagnostics;
 /// 慢查询画像只读接口。
 /// </summary>
 public interface ISlowQueryProfileReader {
+    /// <summary>读取采集状态和窗口限制，不触发数据库查询。</summary>
+    SlowQueryCollectionStatusReadModel GetCollectionStatus() => new();
     /// <summary>
     /// 获取当前窗口内的慢查询画像列表。
     /// </summary>

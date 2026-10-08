@@ -7,11 +7,17 @@ using System.Data.Common;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
 
     /// <summary>MySQL 方言</summary>
     public sealed class MySqlDialect : IDatabaseDialect, IBatchShardingPhysicalTableProbe {
+
+        /// <summary>管理连接的诊断管线，离线方言测试可省略。</summary>
+        private readonly SlowQueryAutoTuningPipeline? _telemetry;
+        /// <summary>关联启动期原生命令采集。</summary>
+        public MySqlDialect(SlowQueryAutoTuningPipeline? telemetry = null) => _telemetry = telemetry;
 
         /// <summary>当前方言提供器名称。</summary>
         public string ProviderName => "MySQL";
@@ -71,7 +77,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
             var builder = new MySqlConnectionStringBuilder(connectionString) {
                 Database = string.Empty
             };
-            return new MySqlConnection(builder.ConnectionString);
+            var connection = new MySqlConnection(builder.ConnectionString); SlowQueryDbOperations.Attach(connection, _telemetry); return connection;
         }
 
         /// <summary>
@@ -99,7 +105,7 @@ SELECT CASE WHEN EXISTS (
             databaseNameParameter.DbType = DbType.String;
             databaseNameParameter.Value = normalizedDatabaseName;
             command.Parameters.Add(databaseNameParameter);
-            var scalar = await command.ExecuteScalarAsync(cancellationToken);
+            var scalar = await SlowQueryDbOperations.ExecuteScalarAsync(command, cancellationToken);
             return scalar switch {
                 null => false,
                 DBNull => false,
@@ -132,7 +138,7 @@ SELECT CASE WHEN EXISTS (
             await DatabaseConnectionOpenCoordinator.EnsureOpenedAsync(administrationConnection, cancellationToken);
             await using var command = administrationConnection.CreateCommand();
             command.CommandText = $"CREATE DATABASE IF NOT EXISTS `{escapedDatabaseName}`";
-            _ = await command.ExecuteNonQueryAsync(cancellationToken);
+            _ = await SlowQueryDbOperations.ExecuteNonQueryAsync(command, cancellationToken);
         }
 
         /// <summary>生成闭环自治维护 SQL（高峰/高风险仅执行轻量动作）。</summary>

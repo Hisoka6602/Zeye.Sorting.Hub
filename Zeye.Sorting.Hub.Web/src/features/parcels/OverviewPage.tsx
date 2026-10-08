@@ -58,9 +58,9 @@ function WorkstationCard({ station, onSelect }: { station: WorkstationObservatio
     {station.presence && (station.presence.droppedUnacknowledgedFacts > 0 || station.presence.droppedUnacknowledgedImages > 0) &&
       <div className="workbench-station-loss" role="status">发送端累计舍弃 {formatNumber(station.presence.droppedUnacknowledgedFacts, { grouping: true })} 条未确认事实、
         {formatNumber(station.presence.droppedUnacknowledgedImages, { grouping: true })} 张未确认图片</div>}
-    <dl className="workbench-station-counts"><div><dt>待分拣</dt><dd>{formatNumber(station.pendingCount, { grouping: true })}</dd></div>
-      <div><dt>已完成</dt><dd>{formatNumber(station.completedCount, { grouping: true })}</dd></div><div className={station.exceptionCount > 0 ? 'has-exceptions' : ''}><dt>分拣异常</dt><dd>{formatNumber(station.exceptionCount, { grouping: true })}</dd></div></dl>
-    {station.otherCount > 0 && <div className="workbench-station-other">其他状态 {formatNumber(station.otherCount, { grouping: true })} 件</div>}
+    <dl className="workbench-station-counts"><div><dt>待分拣（票）</dt><dd>{formatNumber(station.pendingCount, { grouping: true })}</dd></div>
+      <div><dt>已完成（票）</dt><dd>{formatNumber(station.completedCount, { grouping: true })}</dd></div><div className={station.exceptionCount > 0 ? 'has-exceptions' : ''}><dt>分拣异常（票）</dt><dd>{formatNumber(station.exceptionCount, { grouping: true })}</dd></div></dl>
+    {station.otherCount > 0 && <div className="workbench-station-other">其他状态 {formatNumber(station.otherCount, { grouping: true })} 票</div>}
     <div className="workbench-station-foot"><div><span>窗口内最近入库</span><time dateTime={station.lastParcelAt?.replace(' ', 'T')}>{station.lastParcelAt ? localTime(station.lastParcelAt) : station.parcelCount === 0 ? '当前窗口暂无包裹' : '入库时间未提供'}</time></div>
       <Button type="link" icon={<ArrowRightOutlined />} iconPosition="end" onClick={onSelect} aria-label={`查看 ${station.name} ${station.sourceInstanceId ?? ''} 的包裹`}>查看包裹</Button></div>
   </article>;
@@ -106,11 +106,11 @@ export function OverviewPage() {
       <div className={`workbench-probes ${canReadGovernance ? '' : 'is-basic'}`}>{healthProbes.map((probe, index) => (index < 2 || canReadGovernance) && <PlatformProbe key={probe.path} probe={probe} resource={[live, ready, deep][index]} />)}</div>
     </section>
     <SectionCard className="workbench-stations-card" title={<div className="workbench-section-title"><AppstoreOutlined /><div><h2>分拣工作台</h2><p>按来源实例查看处理情况，支持多个工作台同时工作</p></div></div>} extra={<span className="workbench-connection-state"><ApiOutlined />{connection === 'connected' ? '实时通道已连接' : connection === 'reconnecting' ? '实时通道重连中' : connection === 'connecting' ? '正在连接实时通道' : '实时通道未连接'}</span>}>
-      <div className="workbench-source-note"><span><CheckCircleOutlined />处理情况来自已入库包裹，在线状态来自 Fusion 心跳</span><p>显示已登记工作台及最近出现的来源。包裹统计按扫码时间汇总滚动最近 24 小时内的全部记录；下方明细展示最新 200 条。Fusion 在线表示服务心跳有效，设备连接状态需另行上报。</p></div>
+      <div className="workbench-source-note"><span><CheckCircleOutlined />处理情况来自已入库包裹，在线状态来自 Fusion 心跳</span><p>显示已登记工作台及最近出现的来源。包裹统计按扫码时间汇总滚动最近 24 小时内的全部记录；下方明细展示最新 200 票包裹。Fusion 在线表示服务心跳有效，设备连接状态需另行上报。</p></div>
       <ApiFeedback error={sources.error} retry={sources.refresh} />
       {statistics.data && <p className="workbench-unassigned-note">统计窗口 {localTime(statistics.data.windowStartLocal)} — {localTime(statistics.data.windowEndLocal)}</p>}
       <div className="workbench-summary"><div><span>观察到的工作台</span><strong>{statistics.data ? observations.workstations.length : '—'}</strong></div>
-        <div><span>窗口内包裹</span><strong>{statistics.data ? formatNumber(statistics.data.parcelCount, { grouping: true }) : '—'}<small>件</small></strong></div>
+        <div><span>窗口内包裹</span><strong>{statistics.data ? formatNumber(statistics.data.parcelCount, { grouping: true }) : '—'}<small>票</small></strong></div>
         <div><span>有包裹异常的工作台</span><strong>{statistics.data ? observations.workstations.filter(item => item.exceptionCount > 0).length : '—'}</strong></div></div>
       <div className="workbench-station-filters"><Input allowClear prefix={<SearchOutlined />} value={search} onChange={event => { setSearch(event.target.value); setPage(1); }} aria-label="搜索工作台名称或实例编码" placeholder="工作台名称 / 来源实例编码" />
         <Segmented aria-label="工作台处理筛选" value={filter} onChange={value => { setFilter(String(value)); setPage(1); }} options={[{ value: 'all', label: '全部工作台' }, { value: 'exceptions', label: '有包裹异常' }]} /></div>
@@ -119,12 +119,12 @@ export function OverviewPage() {
           {filteredStations.length > 6 && <Pagination className="workbench-station-pagination" current={currentPage} total={filteredStations.length} pageSize={6} showSizeChanger={false} onChange={setPage} showTotal={total => `共 ${total} 个工作台`} />}</>
         : <div className="workbench-stations-empty"><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={keyword || filter !== 'all' ? '没有匹配的工作台' : '暂无工作台处理记录'} />
           {keyword || filter !== 'all' ? <Button onClick={() => { setSearch(''); setFilter('all'); setPage(1); }}>清除筛选</Button> : <p>登记来源并接入 Fusion 后将显示工作台心跳及处理情况。</p>}</div>}
-      {statistics.data && observations.unassignedCount > 0 && <p className="workbench-unassigned-note">另有 {observations.unassignedCount} 条记录未提供工作台名称或来源实例编码，未计入工作台数量。</p>}
+      {statistics.data && observations.unassignedCount > 0 && <p className="workbench-unassigned-note">另有 {observations.unassignedCount} 票包裹未提供工作台名称或来源实例编码，未计入工作台数量。</p>}
     </SectionCard>
     <div ref={recentRef} className="workbench-recent-anchor">
-      <SectionCard title={<div className="workbench-section-title"><DesktopOutlined /><div><h2>最近包裹记录</h2><p>{selectedKey ? `${selectedStation?.name ?? '所选工作台'} · 最近 24 小时内最新 200 条记录` : '最近 24 小时 · 最新 200 条包裹记录'}</p></div></div>} extra={<div className="workbench-table-actions">
+      <SectionCard title={<div className="workbench-section-title"><DesktopOutlined /><div><h2>最近包裹记录</h2><p>{selectedKey ? `${selectedStation?.name ?? '所选工作台'} · 最近 24 小时内最新 200 票包裹` : '最近 24 小时 · 最新 200 票包裹'}</p></div></div>} extra={<div className="workbench-table-actions">
         {selectedKey && <Button onClick={() => setSelectedKey(undefined)}>显示全部工作台</Button>}<Button type="link" icon={<ArrowRightOutlined />} iconPosition="end" onClick={() => navigate('/parcels')}>查看台账</Button></div>}>
-        {parcels.error ? <ApiFeedback error={parcels.error} retry={parcels.refresh} /> : <DataTable<ParcelSummary> loading={parcels.loading} rowKey="id" dataSource={recent} pagination={{ defaultPageSize: 8, showSizeChanger: false }} scroll={{ x: 940 }} columns={[
+        {parcels.error ? <ApiFeedback error={parcels.error} retry={parcels.refresh} /> : <DataTable<ParcelSummary> countUnit="票" loading={parcels.loading} rowKey="id" dataSource={recent} pagination={{ defaultPageSize: 8, showSizeChanger: false }} scroll={{ x: 940 }} columns={[
           { title: '入库时间', dataIndex: 'createdTime', width: 165, render: localTime },
           { title: '主条码 / 包裹 ID', dataIndex: 'barCodes', width: 180, render: (value: string, item) => <Button type="link" className="table-link" onClick={() => navigate(`/parcels/${item.id}`)}>{value || item.id}</Button> },
           { title: '工作台', dataIndex: 'workstationName', width: 130, render: (value: string) => value || '未提供' },

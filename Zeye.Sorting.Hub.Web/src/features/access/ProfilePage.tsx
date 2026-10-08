@@ -5,6 +5,7 @@ import { ApiFeedback } from '../../components/ApiFeedback';
 import { PageIntro } from '../../components/PageIntro';
 import { SectionCard } from '../../components/SectionCard';
 import type { AccessProfile } from '../../data/api/accessTypes';
+import { localTime } from '../../data/api/operationalTypes';
 import { ApiError, requestApi } from '../../data/api/client';
 import { useApiResource } from '../../data/api/useApiResource';
 import { sessionChanged } from '../../data/api/useAccessSession';
@@ -72,7 +73,7 @@ export function ProfilePage() {
         </div>
         <dl className="profile-account-details">
           <div><dt>登录账号</dt><dd>{saved.account}</dd></div>
-          <div><dt>最近登录</dt><dd>{saved.lastLogin ?? '—'}</dd></div>
+          <div><dt>最近登录</dt><dd>{saved.lastLogin ? localTime(saved.lastLogin) : '—'}</dd></div>
         </dl>
       </SectionCard>
       <SectionCard title="基本信息" className="profile-form-card">

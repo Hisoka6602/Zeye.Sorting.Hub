@@ -9,8 +9,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
     /// <summary>
     /// 日志清理服务 - 自动清理超过指定天数的日志文件，支持配置热加载与可观测性指标输出。
     /// <para>
-    /// 配置热加载行为：使用 <see cref="IOptionsMonitor{T}"/>，配置文件变更后，
-    /// 下次执行 <see cref="ExecuteAsync"/> 循环时自动读取 <see cref="Settings"/> 属性获取最新配置，
+    /// 配置热加载行为：使用 <see cref="IOptionsMonitor{T}"/>，配置变更后立即唤醒周期等待，
+    /// 执行 <see cref="ExecuteAsync"/> 循环时读取 <see cref="Settings"/> 属性获取最新配置，
     /// 无需手动重启服务。变更事件同步输出审计日志（含前后值对比）并记录到历史快照存储器。
     /// </para>
     /// </summary>
@@ -47,6 +47,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// 实例构造后不可变，无需防御性拷贝即可安全作为历史快照存储。
         /// </summary>
         private LogCleanupSettings? _previousSettings;
+        /// <summary>有界配置通知，仅保留一次待处理唤醒，避免频繁更新累积清理任务。</summary>
+        private readonly SemaphoreSlim _settingsChanged = new(0, 1);
 
         /// <summary>
         /// 初始化 <see cref="LogCleanupService"/>。
@@ -118,7 +120,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
             while (!stoppingToken.IsCancellationRequested) {
                 try {
-                    await Task.Delay(TimeSpan.FromHours(GetEffectiveCheckIntervalHours(Settings)), stoppingToken);
+                    await _settingsChanged.WaitAsync(TimeSpan.FromHours(GetEffectiveCheckIntervalHours(Settings)), stoppingToken);
 
                     _safeExecutor.Execute(
                         () => CleanupOldLogs(stoppingToken),
@@ -250,6 +252,11 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             // LogCleanupSettings 属性为 init-only（真正不可变），IOptionsMonitor 每次变更创建新实例，
             // 故直接存储引用即可，无需防御性 with{} 拷贝。
             var prev = Interlocked.Exchange(ref _previousSettings, newSettings);
+            if (prev == newSettings) return;
+
+            // 唤醒旧周期等待，使用当前配置重新决定是否清理和下一次等待间隔。
+            try { _settingsChanged.Release(); }
+            catch (SemaphoreFullException exception) { Logger.Debug(exception, "日志清理配置通知已合并，等待处理最新配置。"); }
 
             // 步骤 2：基于捕获的旧值计算变更字段摘要（此后不再依赖共享状态）。
             var changedFields = BuildChangedFieldsSummary(prev, newSettings);

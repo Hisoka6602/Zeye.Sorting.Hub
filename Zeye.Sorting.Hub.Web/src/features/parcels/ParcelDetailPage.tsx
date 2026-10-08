@@ -1,8 +1,8 @@
 import { formatNumber } from '../../data/formatNumber';
-import { PictureOutlined } from '@ant-design/icons';
+import { FieldTimeOutlined, PictureOutlined } from '@ant-design/icons';
 import { Button, Collapse, Drawer, Empty, Skeleton, Space, Timeline, Typography } from 'antd';
 import { useMemo, useState } from 'react';
-import { useParams } from 'react-router';
+import { Link, useParams } from 'react-router';
 import { DataTable } from '../../components/DataTable';
 import { PageIntro } from '../../components/PageIntro';
 import { SectionCard } from '../../components/SectionCard';
@@ -10,10 +10,12 @@ import { StatusTag } from '../../components/StatusTag';
 import { ApiError } from '../../data/api/client';
 import { useApiResource } from '../../data/api/useApiResource';
 import type { ParcelDetail, ParcelProcessingRecord } from '../../data/api/parcelTypes';
-import { ParcelFacts, parcelFactValue } from './ParcelFacts';
+import { parcelFactValue } from './ParcelFacts';
+import { ParcelContractFields } from './ParcelContractFields';
+import { ParcelDetailRecords } from './ParcelDetailRecords';
 import { ParcelExceptionPanel } from './ParcelExceptionPanel';
 import { ParcelImagesDrawer } from './ParcelImagesDrawer';
-import { buildParcelProcessingTimeline, parcelProcessingFieldLabels, type ParcelProcessingEvent } from './parcelProcessingTimeline';
+import { buildParcelProcessingTimeline, type ParcelProcessingEvent } from './parcelProcessingTimeline';
 import './parcelProcessing.css';
 
 /** Every existing value object remains available below the reference-sized summary. */
@@ -60,7 +62,7 @@ export function ParcelDetailPage() {
   </div>;
 
   return <div className="parcel-detail-page">
-    <PageIntro title="包裹详情" description="查看包裹的详细信息、处理轨迹及相关记录。" action={parcel?.hasImages && <Button icon={<PictureOutlined />} onClick={() => setImagesOpen(true)}>查看图片</Button>} />
+    <PageIntro title="包裹详情" description="查看包裹的详细信息、处理轨迹及相关记录。" action={parcel && <Space wrap><Link to={`/parcels/compare?ids=${encodeURIComponent(parcel.id)}`}><Button>加入包裹对比</Button></Link><Link to={`/parcels/timing?id=${encodeURIComponent(parcel.id)}`}><Button icon={<FieldTimeOutlined />}>包裹时序</Button></Link>{parcel.hasImages && <Button icon={<PictureOutlined />} onClick={() => setImagesOpen(true)}>查看图片</Button>}</Space>} />
     <SectionCard title="基本信息" className="parcel-detail-basic" extra={error && !notFound ? <Space><Typography.Text type="danger">详情加载失败：{error.message}</Typography.Text><Button onClick={refresh}>重试</Button></Space> : status && <StatusTag value={status} />}>
       {notFound ? <Empty description="未找到该包裹" /> : loading ? <Skeleton active paragraph={{ rows: 5 }} /> : summary}
     </SectionCard>
@@ -90,28 +92,18 @@ export function ParcelDetailPage() {
     </div>}
     <ParcelExceptionPanel parcel={parcel} events={history.events} />
     {parcel && <SectionCard title="完整合同字段" className="parcel-detail-complete">
-      <ParcelFacts facts={parcel} keys={Object.keys(parcel).filter(key => key !== 'processingRecords' && !detailGroups.some(([group]) => group === key))} />
-      <Collapse items={detailGroups.map(([key, title]) => {
+      <ParcelContractFields facts={parcel} keys={Object.keys(parcel).filter(key => key !== 'processingRecords' && !detailGroups.some(([group]) => group === key))} />
+      <Collapse className="parcel-detail-sections" items={detailGroups.map(([key, title]) => {
         const value = parcel[key];
         const rows = Array.isArray(value) ? value : value ? [value] : [];
-        return { key, label: `${title}（${rows.length}）`, children: rows.length ? rows.map((row, index) => {
-          const event = key === 'apiRequests' && typeof row.recordId === 'string' ? eventsByRecord.get(row.recordId) : undefined;
-          return <ParcelFacts key={index} facts={event ? { ...row, apiType: event.title, stage: event.title, attemptNumber: event.attemptNumber } : row} labels={event ? parcelProcessingFieldLabels(event) : undefined} />;
-        }) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={`暂无${title}`} /> };
+        return { key, label: `${title}（${rows.length}）`, children: rows.length
+          ? <ParcelDetailRecords rows={rows} title={title} category={key} eventsByRecord={eventsByRecord} />
+          : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={`暂无${title}`} /> };
       })} />
     </SectionCard>}
     <Drawer title={selectedEvent ? `${selectedEvent.title} · 处理记录详情` : '处理记录详情'} width="min(960px, 100vw)" open={!!selectedEvent} onClose={() => setSelectedEvent(null)}>
       {/* 业务类型在摘要和每段报文旁明确展示；所有原文保持完整、可复制。 */}
-      {selectedEvent && <>
-        <Space wrap className="parcel-processing-details-summary">
-          <Typography.Text>业务类型</Typography.Text><StatusTag value={selectedEvent.title} />
-          {selectedEvent.state && <StatusTag value={selectedEvent.state} tone={selectedEvent.color} />}
-          {selectedEvent.provider && <Typography.Text type="secondary">{selectedEvent.provider}</Typography.Text>}
-          <Typography.Text type="secondary">第 {selectedEvent.attemptNumber} 次尝试</Typography.Text>
-          {(selectedEvent.title === 'Provider 交互' || selectedEvent.title === 'Provider 调用') && <Typography.Text type="secondary">来源未提供明确业务类型</Typography.Text>}
-        </Space>
-        <ParcelFacts facts={{ ...selectedEvent.record, stage: selectedEvent.title, attemptNumber: selectedEvent.attemptNumber, provider: selectedEvent.provider || selectedEvent.record.provider }} labels={parcelProcessingFieldLabels(selectedEvent)} />
-      </>}
+      {selectedEvent && <ParcelDetailRecords rows={[{ ...selectedEvent.record }]} title={selectedEvent.title} category="processingRecords" eventsByRecord={eventsByRecord} />}
     </Drawer>
     {parcel && imagesOpen && <ParcelImagesDrawer key={parcel.id} parcel={parcel} onClose={() => setImagesOpen(false)} />}
   </div>;

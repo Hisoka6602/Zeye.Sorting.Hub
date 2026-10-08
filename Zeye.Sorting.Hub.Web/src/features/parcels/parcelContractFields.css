@@ -1,0 +1,22 @@
+/* 限定于完整字段区，复用全站字体层级及真实值展示组件。 */
+.parcel-contract-fields{container-type:inline-size;margin-bottom:24px}
+.parcel-contract-intro{margin:0 0 20px;color:var(--hub-text-secondary);font-size:var(--hub-font-caption);line-height:22px}
+.parcel-contract-group{min-width:0;padding:18px 20px;border:1px solid #e5ebf4;border-radius:8px;background:#fff}
+.parcel-contract-group+.parcel-contract-group{margin-top:16px}
+.parcel-contract-group-heading{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #edf1f7}
+.parcel-contract-group-icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 28px;width:28px;height:28px;border-radius:6px;background:#eef4ff;color:#4e75d9;font-size:16px}
+.parcel-contract-group-heading h3{margin:0;color:var(--hub-text-heading);font-size:var(--hub-font-item);font-weight:var(--hub-weight-semibold);line-height:24px}
+.parcel-contract-group-description{margin-left:4px;color:var(--hub-text-muted);font-size:var(--hub-font-caption);line-height:22px}
+.parcel-contract-group-count{margin-left:auto;color:var(--hub-text-muted);font-size:var(--hub-font-caption);line-height:22px;white-space:nowrap}
+.parcel-contract-group .parcel-facts{grid-template-columns:repeat(4,minmax(0,1fr));gap:18px 24px}
+.parcel-contract-group:not([data-group="other"]) .parcel-fact-full{grid-column:auto}
+.parcel-contract-group .parcel-fact dt{font-size:var(--hub-font-label);line-height:22px}
+.parcel-contract-group .parcel-fact dd{margin-top:4px;font-variant-numeric:tabular-nums}
+.parcel-contract-group .parcel-fact dd .ant-typography{font-size:var(--hub-font-body);line-height:24px;overflow-wrap:anywhere}
+.parcel-contract-group .parcel-fact dd .ant-typography:not(:has(.ant-typography-copy)){color:var(--hub-text-muted)}
+.parcel-contract-group .ant-typography-copy{display:inline-flex;align-items:center;justify-content:center;min-width:24px;min-height:24px;margin-inline-start:6px;vertical-align:middle;border-radius:4px;color:var(--hub-text-muted)}
+.parcel-contract-group .ant-typography-copy:hover,.parcel-contract-group .ant-typography-copy:focus-visible{background:#eef4ff;color:#1677ff}
+.parcel-contract-group .ant-typography-copy:focus-visible{outline:2px solid #1677ff;outline-offset:3px;border-radius:2px}
+@container(max-width:1050px){.parcel-contract-group .parcel-facts{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@container(max-width:750px){.parcel-contract-group .parcel-facts{grid-template-columns:repeat(2,minmax(0,1fr))}.parcel-contract-group-description{order:1;flex-basis:100%;margin-left:38px}}
+@container(max-width:460px){.parcel-contract-group{padding:16px}.parcel-contract-group .parcel-facts{grid-template-columns:minmax(0,1fr);gap:16px}.parcel-contract-group-description{margin-left:0}.parcel-contract-group-heading{gap:8px;margin-bottom:16px}}

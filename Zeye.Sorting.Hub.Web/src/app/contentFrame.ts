@@ -64,9 +64,9 @@ const frames: Record<string, { x: number; y: number; width: number }> = {
     "width": 4.857
   },
   "/governance/sharding": {
-    "x": 14,
+    "x": 0,
     "y": -12,
-    "width": 2.857
+    "width": 0
   },
   "/settings": {
     "x": 0,

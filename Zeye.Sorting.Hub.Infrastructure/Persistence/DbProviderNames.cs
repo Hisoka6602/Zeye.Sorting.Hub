@@ -16,5 +16,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence {
         /// SQL Server 提供器名称（微软官方 SQL Server EF Core 驱动）。
         /// </summary>
         internal const string SqlServer = "Microsoft.EntityFrameworkCore.SqlServer";
+
+        /// <summary>Oracle 官方 EF Core 驱动。</summary>
+        internal const string Oracle = "Oracle.EntityFrameworkCore";
+
+        /// <summary>SQLite 官方 EF Core 驱动。</summary>
+        internal const string SQLite = "Microsoft.EntityFrameworkCore.Sqlite";
     }
 }

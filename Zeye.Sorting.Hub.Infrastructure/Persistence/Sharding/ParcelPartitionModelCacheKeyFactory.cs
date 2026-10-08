@@ -7,6 +7,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 public sealed class ParcelPartitionModelCacheKeyFactory : IModelCacheKeyFactory {
     /// <summary>创建包含分表后缀与设计时标识的模型键。</summary>
     public object Create(DbContext context, bool designTime) => context is SortingHubDbContext sortingContext
-        ? (context.GetType(), sortingContext.ParcelPartitionSuffix, designTime)
+        ? (context.GetType(), sortingContext.ParcelPartitionSuffix, sortingContext.AuditPartitionSuffix, designTime)
         : (object)(context.GetType(), designTime);
 }

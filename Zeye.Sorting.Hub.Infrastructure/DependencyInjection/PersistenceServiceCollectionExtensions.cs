@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using NLog;
 using Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests;
 using Zeye.Sorting.Hub.Domain.Aggregates.DataGovernance;
@@ -79,7 +80,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             RegisterDataRetentionServices(services, configuration);
             RegisterBaselineDataServices(services, configuration);
             RegisterMigrationGovernanceServices(services);
-            var provider = configuration["Persistence:Provider"];
+            var provider = ConfiguredProviderNames.Normalize(configuration["Persistence:Provider"]);
             var commandTimeoutSeconds = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30);
             var minCommandElapsedMilliseconds = AutoTuningConfigurationReader.GetPositiveIntOrDefault(configuration, "Persistence:PerformanceTuning:MinCommandElapsedMilliseconds", 50);
             var dbContextPoolSize = Math.Clamp(
@@ -103,71 +104,50 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
             services.TryAddSingleton<QueryIndexRecommendationService>();
             services.TryAddSingleton<IdempotencyKeyHasher>();
             services.AddSingleton<SlowQueryCommandInterceptor>();
+            services.TryAddSingleton<OracleQueryFetchInterceptor>();
+            services.AddSingleton<SlowQueryConnectionInterceptor>();
+            services.AddSingleton<SlowQueryTransactionInterceptor>();
+            services.AddHostedService<SlowQueryArchiveWorker>();
             services.AddSingleton<MySqlSessionBootstrapConnectionInterceptor>();
             services.TryAddSingleton<IAutoTuningObservability, NullAutoTuningObservability>();
             services.TryAddSingleton<IExecutionPlanRegressionProbe, LoggingOnlyExecutionPlanRegressionProbe>();
 
-            if (string.IsNullOrWhiteSpace(provider)) {
-                throw new InvalidOperationException($"缺少配置：Persistence:Provider，可选值：{ConfiguredProviderNames.MySql} / {ConfiguredProviderNames.SqlServer}");
+            var connectionString = configuration.GetConnectionString(provider);
+            if (string.IsNullOrWhiteSpace(connectionString)) throw new InvalidOperationException($"缺少连接字符串：ConnectionStrings:{provider}");
+            // 全部持久化调用复用唯一池化工厂，四种数据库共享注册流程。
+            services.AddPooledDbContextFactory<SortingHubDbContext>((sp, options) =>
+                ConfigureConfiguredProviderDbContextOptions(sp, options, provider, connectionString), dbContextPoolSize);
+            var databaseType = provider switch {
+                ConfiguredProviderNames.MySql => DatabaseType.MySql,
+                ConfiguredProviderNames.SqlServer => DatabaseType.SqlServer,
+                ConfiguredProviderNames.Oracle => DatabaseType.Oracle,
+                ConfiguredProviderNames.SQLite => DatabaseType.SQLite,
+                _ => throw new InvalidOperationException($"不支持的数据库类型：{provider}")
+            };
+            services.AddEFCoreSharding(shardingBuilder => {
+                shardingBuilder.SetEntityAssemblies(typeof(SortingHubDbContext).Assembly)
+                    .SetCommandTimeout(commandTimeoutSeconds).SetMinCommandElapsedMilliseconds(minCommandElapsedMilliseconds)
+                    .CreateShardingTableOnStarting(createShardingTableOnStarting)
+                    .UseDatabase(connectionString, databaseType, typeof(Parcel).Namespace!, static _ => { });
+                ConfigureWebRequestAuditLogSharding(shardingBuilder, parcelShardingStartTime);
+            });
+            // 物理表由本项目的版本目录、跨进程锁和 EF 迁移服务统一管理。
+            // 第三方启动器会异步读取已释放的 DbCommand 并触发 Oracle 空引用；慢查询已由本项目拦截器同步快照。
+            var libraryBootstrapper = services.FirstOrDefault(descriptor => descriptor.ServiceType == typeof(IHostedService)
+                && descriptor.ImplementationType == typeof(EFCoreShardingBootstrapper));
+            if (libraryBootstrapper is not null) services.Remove(libraryBootstrapper);
+            switch (provider) {
+                case ConfiguredProviderNames.MySql:
+                    services.AddSingleton<IDatabaseDialect, MySqlDialect>(); services.TryAddSingleton<IBackupProvider, MySqlBackupProvider>(); break;
+                case ConfiguredProviderNames.SqlServer:
+                    services.AddSingleton<IDatabaseDialect, SqlServerDialect>(); services.TryAddSingleton<IBackupProvider, SqlServerBackupProvider>(); break;
+                case ConfiguredProviderNames.Oracle:
+                    services.AddSingleton<IDatabaseDialect, OracleDialect>(); services.TryAddSingleton<IBackupProvider, OracleBackupProvider>(); break;
+                case ConfiguredProviderNames.SQLite:
+                    services.AddSingleton<IDatabaseDialect, SqliteDialect>(); services.TryAddSingleton<IBackupProvider, SqliteBackupProvider>(); break;
             }
-
-            if (string.Equals(provider, ConfiguredProviderNames.MySql, StringComparison.OrdinalIgnoreCase)) {
-                var connectionString = configuration.GetConnectionString(ConfiguredProviderNames.MySql);
-                if (string.IsNullOrWhiteSpace(connectionString)) {
-                    throw new InvalidOperationException($"缺少连接字符串：ConnectionStrings:{ConfiguredProviderNames.MySql}");
-                }
-
-                // 全部持久化调用统一复用一个池化工厂，避免同时注册两套 DbContext 池。
-                services.AddPooledDbContextFactory<SortingHubDbContext>(ConfigureMySqlDbContextOptions, dbContextPoolSize);
-
-                services.AddEFCoreSharding(shardingBuilder => {
-                    shardingBuilder
-                        .SetEntityAssemblies(typeof(SortingHubDbContext).Assembly)
-                        .SetCommandTimeout(commandTimeoutSeconds)
-                        .SetMinCommandElapsedMilliseconds(minCommandElapsedMilliseconds)
-                        .CreateShardingTableOnStarting(createShardingTableOnStarting)
-                        .UseDatabase(connectionString, DatabaseType.MySql, typeof(Parcel).Namespace!, static _ => { });
-
-                    ConfigureWebRequestAuditLogSharding(shardingBuilder, parcelShardingStartTime);
-                });
-
-                services.AddSingleton<IDatabaseDialect, MySqlDialect>();
-                services.TryAddSingleton<IBackupProvider, MySqlBackupProvider>();
-                services.AddSingleton<IShardingPhysicalTableProbe>(sp =>
-                    (IShardingPhysicalTableProbe)sp.GetRequiredService<IDatabaseDialect>());
-                services.AddSingleton<IBatchShardingPhysicalTableProbe>(sp =>
-                    (IBatchShardingPhysicalTableProbe)sp.GetRequiredService<IDatabaseDialect>());
-            }
-            else if (string.Equals(provider, ConfiguredProviderNames.SqlServer, StringComparison.OrdinalIgnoreCase)) {
-                var connectionString = configuration.GetConnectionString(ConfiguredProviderNames.SqlServer);
-                if (string.IsNullOrWhiteSpace(connectionString)) {
-                    throw new InvalidOperationException($"缺少连接字符串：ConnectionStrings:{ConfiguredProviderNames.SqlServer}");
-                }
-
-                // 全部持久化调用统一复用一个池化工厂，避免同时注册两套 DbContext 池。
-                services.AddPooledDbContextFactory<SortingHubDbContext>(ConfigureSqlServerDbContextOptions, dbContextPoolSize);
-
-                services.AddEFCoreSharding(shardingBuilder => {
-                    shardingBuilder
-                        .SetEntityAssemblies(typeof(SortingHubDbContext).Assembly)
-                        .SetCommandTimeout(commandTimeoutSeconds)
-                        .SetMinCommandElapsedMilliseconds(minCommandElapsedMilliseconds)
-                        .CreateShardingTableOnStarting(createShardingTableOnStarting)
-                        .UseDatabase(connectionString, DatabaseType.SqlServer, typeof(Parcel).Namespace!, static _ => { });
-
-                    ConfigureWebRequestAuditLogSharding(shardingBuilder, parcelShardingStartTime);
-                });
-
-                services.AddSingleton<IDatabaseDialect, SqlServerDialect>();
-                services.TryAddSingleton<IBackupProvider, SqlServerBackupProvider>();
-                services.AddSingleton<IShardingPhysicalTableProbe>(sp =>
-                    (IShardingPhysicalTableProbe)sp.GetRequiredService<IDatabaseDialect>());
-                services.AddSingleton<IBatchShardingPhysicalTableProbe>(sp =>
-                    (IBatchShardingPhysicalTableProbe)sp.GetRequiredService<IDatabaseDialect>());
-            }
-            else {
-                throw new InvalidOperationException($"不支持的数据库类型：{provider}，可选值：{ConfiguredProviderNames.MySql} / {ConfiguredProviderNames.SqlServer}");
-            }
+            services.AddSingleton<IShardingPhysicalTableProbe>(sp => (IShardingPhysicalTableProbe)sp.GetRequiredService<IDatabaseDialect>());
+            services.AddSingleton<IBatchShardingPhysicalTableProbe>(sp => (IBatchShardingPhysicalTableProbe)sp.GetRequiredService<IDatabaseDialect>());
 
             // 后台服务按作用域获取 DbContext；统一从已注册的池化工厂创建，避免第二套连接池。
             services.AddScoped<SortingHubDbContext>(static serviceProvider =>
@@ -175,9 +155,19 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
 
             services.AddScoped<IParcelRepository, ParcelRepository>();
             services.AddSingleton<ParcelPartitionStore>();
+            services.AddSingleton<Zeye.Sorting.Hub.Infrastructure.Persistence.ReadModels.ParcelDurationBackfillService>();
+            services.AddSingleton<Zeye.Sorting.Hub.Application.Abstractions.Persistence.IParcelDwsMeasurementBackfillService,
+                Zeye.Sorting.Hub.Infrastructure.Persistence.ReadModels.ParcelDwsMeasurementBackfillService>();
+            services.AddSingleton<ParcelDurationCallProjectionService>();
+            services.AddSingleton<PhysicalPartitionMigrationService>();
             services.AddScoped<IParcelProcessingRepository, ParcelProcessingRepository>();
             services.AddScoped<Zeye.Sorting.Hub.Application.Abstractions.Queries.IParcelAnalyticsReadService, Zeye.Sorting.Hub.Infrastructure.Queries.ParcelAnalyticsReadService>();
             services.AddScoped<Zeye.Sorting.Hub.Application.Abstractions.Queries.IParcelWorkbenchReadService, Zeye.Sorting.Hub.Infrastructure.Queries.ParcelWorkbenchReadService>();
+            services.AddScoped<Zeye.Sorting.Hub.Application.Abstractions.Queries.IParcelTimingReadService, Zeye.Sorting.Hub.Infrastructure.Queries.ParcelTimingReadService>();
+            services.AddScoped<Zeye.Sorting.Hub.Application.Abstractions.Queries.IParcelAnalysisReadService, Zeye.Sorting.Hub.Infrastructure.Queries.ParcelAnalysisReadService>();
+            services.AddSingleton<Zeye.Sorting.Hub.Infrastructure.Queries.ParcelDurationAnalysisCache>();
+            services.AddScoped<Zeye.Sorting.Hub.Application.Abstractions.Queries.IParcelDwsConsistencyReadService, Zeye.Sorting.Hub.Infrastructure.Queries.ParcelDwsConsistencyReadService>();
+            services.AddSingleton<Zeye.Sorting.Hub.Infrastructure.Queries.ParcelDwsConsistencyCache>();
             services.AddScoped<IArchiveTaskRepository, ArchiveTaskRepository>();
             services.AddScoped<IIdempotencyRepository, IdempotencyRepository>();
             services.AddScoped<IInboxMessageRepository, InboxMessageRepository>();
@@ -642,6 +632,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
 
             options.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
             options.AddInterceptors(interceptor, mySqlSessionInterceptor);
+            if (sp.GetService<SlowQueryConnectionInterceptor>() is { } connectionObserver) options.AddInterceptors(connectionObserver);
+            if (sp.GetService<SlowQueryTransactionInterceptor>() is { } transactionObserver) options.AddInterceptors(transactionObserver);
+            options.ReplaceService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsSqlGenerator, MySqlOnlineIndexMigrationsSqlGenerator>();
         }
 
         /// <summary>
@@ -717,15 +710,15 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
 
             options.UseSqlServer(connectionString, sqlServerOptions => {
                 sqlServerOptions.MigrationsAssembly(SqlServerMigrationAssembly.Name);
-                sqlServerOptions.EnableRetryOnFailure(
-                    maxRetryCount: maxRetryCount,
-                    maxRetryDelay: TimeSpan.FromSeconds(maxRetryDelaySeconds),
-                    errorNumbersToAdd: null);
+                sqlServerOptions.ExecutionStrategy(dependencies => new SqlServerConnectionRecoveryStrategy(
+                    dependencies, maxRetryCount, TimeSpan.FromSeconds(maxRetryDelaySeconds)));
                 sqlServerOptions.CommandTimeout(commandTimeoutSeconds);
             });
 
             options.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
             options.AddInterceptors(interceptor);
+            if (sp.GetService<SlowQueryConnectionInterceptor>() is { } connectionObserver) options.AddInterceptors(connectionObserver);
+            if (sp.GetService<SlowQueryTransactionInterceptor>() is { } transactionObserver) options.AddInterceptors(transactionObserver);
         }
 
         /// <summary>
@@ -750,7 +743,16 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 return;
             }
 
-            throw new InvalidOperationException($"不支持的数据库类型：{configuredProviderName}，可选值：{ConfiguredProviderNames.MySql} / {ConfiguredProviderNames.SqlServer}");
+            AdditionalDbContextOptions.Configure(options, configuredProviderName, connectionString,
+                sp.GetService<IHostEnvironment>()?.ContentRootPath,
+                AutoTuningConfigurationReader.GetPositiveIntOrDefault(sp.GetRequiredService<IConfiguration>(), "Persistence:PerformanceTuning:CommandTimeoutSeconds", 30));
+            options.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
+            // 在慢查询透明包装读取器之前配置原生批量取数，仍完整保留执行与读取诊断。
+            if (string.Equals(configuredProviderName, ConfiguredProviderNames.Oracle, StringComparison.OrdinalIgnoreCase))
+                options.AddInterceptors(sp.GetRequiredService<OracleQueryFetchInterceptor>());
+            options.AddInterceptors(sp.GetRequiredService<SlowQueryCommandInterceptor>());
+            if (sp.GetService<SlowQueryConnectionInterceptor>() is { } connectionObserver) options.AddInterceptors(connectionObserver);
+            if (sp.GetService<SlowQueryTransactionInterceptor>() is { } transactionObserver) options.AddInterceptors(transactionObserver);
         }
 
         /// <summary>
@@ -758,8 +760,10 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// </summary>
         /// <returns>实体类型清单。</returns>
         public static IReadOnlyList<Type> GetParcelPerDayShardingEntityTypes() {
-            return DiscoverParcelAggregateShardingCandidates().Where(type => type != typeof(BagInfo)).Prepend(typeof(Parcel))
-                .Append(typeof(Zeye.Sorting.Hub.Domain.Aggregates.Parcels.Processing.ParcelProcessingRecord)).ToArray();
+            using var db = new SortingHubDbContext(new DbContextOptionsBuilder<SortingHubDbContext>()
+                .UseSqlServer("Server=localhost;Database=SortingHubModelValidation;Integrated Security=True;TrustServerCertificate=True").Options);
+            return db.Model.GetEntityTypes().Where(entity => entity.GetTableName() == "Parcels"
+                || entity.GetTableName()?.StartsWith("Parcel_", StringComparison.Ordinal) == true).Select(entity => entity.ClrType).Distinct().ToArray();
         }
 
         /// <summary>

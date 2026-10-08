@@ -7,11 +7,16 @@ using System.Threading.Tasks;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Data.SqlClient;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
 
     /// <summary>SQL Server 方言</summary>
     public sealed class SqlServerDialect : IDatabaseDialect, IBatchShardingPhysicalTableProbe {
+        /// <summary>管理连接的诊断管线，离线方言测试可省略。</summary>
+        private readonly SlowQueryAutoTuningPipeline? _telemetry;
+        /// <summary>关联启动期原生命令采集。</summary>
+        public SqlServerDialect(SlowQueryAutoTuningPipeline? telemetry = null) => _telemetry = telemetry;
         /// <summary>批量探测分表物理存在性的 SQL 语句模板。</summary>
         internal const string BatchShardingProbeSql = """
 SELECT t.name
@@ -89,7 +94,7 @@ WHERE s.name = @p0
             var builder = new SqlConnectionStringBuilder(connectionString) {
                 InitialCatalog = "master"
             };
-            return new SqlConnection(builder.ConnectionString);
+            var connection = new SqlConnection(builder.ConnectionString); SlowQueryDbOperations.Attach(connection, _telemetry); return connection;
         }
 
         /// <summary>
@@ -111,7 +116,7 @@ WHERE s.name = @p0
             databaseNameParameter.DbType = DbType.String;
             databaseNameParameter.Value = normalizedDatabaseName;
             command.Parameters.Add(databaseNameParameter);
-            var scalar = await command.ExecuteScalarAsync(cancellationToken);
+            var scalar = await SlowQueryDbOperations.ExecuteScalarAsync(command, cancellationToken);
             return scalar is true || (scalar is bool value && value);
         }
 
@@ -140,7 +145,7 @@ END
             databaseNameParameter.DbType = DbType.String;
             databaseNameParameter.Value = normalizedDatabaseName;
             command.Parameters.Add(databaseNameParameter);
-            _ = await command.ExecuteNonQueryAsync(cancellationToken);
+            _ = await SlowQueryDbOperations.ExecuteNonQueryAsync(command, cancellationToken);
         }
 
         /// <summary>生成闭环自治维护 SQL（高峰/高风险仅执行轻量动作）。</summary>

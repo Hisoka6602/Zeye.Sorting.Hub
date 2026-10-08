@@ -1,9 +1,13 @@
 // 按请求方法和实际路由说明用途，历史记录无需重新写入即可显示中文说明。
 const descriptions: Record<string, string> = {
+  'GET /api/parcels/timing/candidates': '按包裹编号或完整条码查询时序候选，选择要追溯的包裹。',
+  'GET /api/parcels/timing/compare': '读取选定多票包裹的重量、尺寸、体积及真实动作时序，比较量测差异和节点耗时。',
   'GET /api/parcels': '分页查询包裹台账，用于检索包裹及处理状态。',
   'GET /api/parcels/cursor': '通过游标分页查询包裹，连续浏览台账记录。',
   'GET /api/parcels/adjacent': '查询指定包裹的前后邻近记录，辅助定位过机顺序。',
   'GET /api/parcels/analytics': '查询包裹运营统计，用于数据概览与分析报表。',
+  'GET /api/parcels/analysis': '按首次入库日期和来源分析包裹异常、完成耗时、DWS 获取、格口决策、分拣执行及各业务接口调用耗时，支持分布筛选和分页追溯。',
+  'GET /api/parcels/dws-consistency': '比较同条码的 DWS 重复重量、物理体积和扫码耗时，合并接收和绑定记录，查看偏差排行、扫码 P95、来源对比和原始测量明细。',
   'GET /api/parcels/workbench': '按来源汇总滚动最近24小时的全部包裹，用于分拣工作台计数，不受明细分页上限限制。',
   'GET /api/parcels/processing-records/unbound': '查询未关联包裹的处理记录，排查数据绑定问题。',
   'POST /api/admin/parcels': '管理员手工创建测试包裹，用于验证包裹处理功能。',
@@ -31,6 +35,9 @@ const descriptions: Record<string, string> = {
   'GET /api/operations/partitions': '查询物理分表与预建计划，用于分区管理。',
   'POST /api/operations/partitions/prebuild': '预建当前及未来窗口的包裹分表，为后续写入做准备。',
   'GET /api/operations/configuration': '读取当前生效配置，用于查看系统运行设置。',
+  'GET /api/operations/configuration/runtime': '超级管理员读取运行配置原值及生效状态，查看配置版本、环境覆盖项和待重启参数。',
+  'PUT /api/operations/configuration/runtime': '按已读取版本保存运行配置，校验修改内容并应用热更新；启动参数在下次启动生效。',
+  'GET /api/operations/configuration/history': '超级管理员读取配置变更历史，追溯修改前后原值及提交状态。',
   'GET /api/operations/configuration/policy': '读取运维策略，用于查看自动备份、备份间隔和分表预建窗口。',
   'PUT /api/operations/configuration/policy': '保存运维策略，更新自动备份、备份间隔和分表预建窗口。',
   'GET /api/operations/configuration/fusion': '读取 Fusion 接入配置和工作台目录，用于管理来源登记与通信设置。',
@@ -57,6 +64,7 @@ const descriptions: Record<string, string> = {
 };
 
 const parameterizedDescriptions: [string, RegExp, string][] = [
+  ['GET', /^\/api\/parcels\/timing\/-?\d+$/, '读取指定包裹及前后邻近包裹的真实动作时序，辅助排查处理顺序。'],
   ['GET', /^\/api\/admin\/parcels\/cleanup-history\/[^/]+$/, '读取清理操作汇总，追溯操作人、清理条件、执行数量和结果。'],
   ['GET', /^\/api\/parcels\/fusion\/images\/[^/]+\/content$/, '读取 Fusion 工作台上传的完整包裹图片，用于图片预览。'],
   ['PUT', /^\/api\/operations\/configuration\/fusion\/sources\/[^/]+$/, '更新已登记来源工作台的名称、身份配置及启用状态。'],

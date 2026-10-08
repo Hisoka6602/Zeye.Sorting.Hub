@@ -1,0 +1,24 @@
+.dws-filter-grid{display:grid;grid-template-columns:minmax(280px,1.4fr) repeat(3,minmax(150px,1fr));gap:20px;align-items:end}
+.dws-filter-actions{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-top:20px}
+.dws-threshold-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+.dws-consistency-page .ant-collapse-header{padding-left:0!important;color:#52617b!important}
+.dws-subvalue,.dws-source small{display:block;font-size:12px;color:#66748d;margin-top:5px}
+.dws-source{min-width:0;overflow-wrap:anywhere;line-height:1.6}
+.dws-muted{font-size:12px;color:#66748d}
+.dws-detail-barcode{display:inline-block;max-width:38vw;font-size:13px;color:#66748d;font-weight:400;margin-left:12px;vertical-align:middle;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dws-detail-summary,.dws-trends{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px}
+.dws-metric-details{padding:18px 20px;background:#f8faff;border:1px solid #e8edf5;border-radius:8px;min-width:0}
+.dws-metric-details h3,.dws-trend h3,.dws-subheading{margin:0;font-size:15px;font-weight:600;color:#243b62}
+.dws-metric-details h3{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+.dws-metric-details h3 span{font-size:12px;font-weight:400;color:#66748d}
+.dws-metric-details dl{margin:14px 0 0}
+.dws-metric-details dl>div{display:flex;justify-content:space-between;gap:12px;padding:8px 0;line-height:1.6;font-size:13px}
+.dws-metric-details dt{color:#66748d}.dws-metric-details dd{margin:0;text-align:right;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.dws-trend{min-width:0;margin:24px 0 0}.dws-trend figcaption{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:12px}
+.dws-trend figcaption>span{font-size:12px;color:#66748d}.dws-trend svg{display:block;width:100%;height:auto;overflow:visible}
+.dws-trend svg text{fill:#66748d;font-size:11px;font-variant-numeric:tabular-nums}
+.dws-trend-legend{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:12px;color:#52617b;line-height:1.7}
+.dws-trend-legend>span{display:flex;align-items:center;gap:6px;overflow-wrap:anywhere;max-width:100%}.dws-trend-legend i{flex-shrink:0;width:8px;height:8px;border-radius:50%}
+.dws-subheading{margin:26px 0 14px}
+@media(max-width:1250px){.dws-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.dws-detail-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.dws-trends{grid-template-columns:1fr}}
+@media(max-width:700px){.dws-filter-grid,.dws-threshold-grid,.dws-detail-summary{grid-template-columns:1fr;gap:16px}.dws-filter-actions{align-items:flex-start}.dws-metric-details{padding:16px}.dws-trends{gap:0}.dws-detail-barcode{max-width:55vw}.dws-trend figcaption{flex-wrap:wrap}.dws-metric-details dl>div{gap:8px}}

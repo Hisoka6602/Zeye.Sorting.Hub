@@ -25,15 +25,13 @@ public static class DiagnosticsApiRouteExtensions {
         group.MapGet("/slow-queries", GetSlowQueryProfiles)
             .WithName("GetSlowQueryProfiles")
             .WithSummary("获取慢查询画像列表")
-            .WithDescription("返回当前内存窗口内的慢查询指纹聚合快照；只读取进程内快照，不触发数据库重查询。")
-            .CacheOutput("short-diagnostics")
+            .WithDescription("返回有效窗口内的 SQL 执行与结果读取、连接与事务等待及慢请求累计耗时；包含错误、取消、进行中及归档状态。只读取内存，不触发业务数据库查询。")
             .Produces<SlowQueryProfileListResponse>(StatusCodes.Status200OK);
 
         group.MapGet("/slow-queries/{fingerprint}", GetSlowQueryProfileByFingerprint)
             .WithName("GetSlowQueryProfileByFingerprint")
             .WithSummary("获取指定慢查询画像详情")
             .WithDescription("按慢查询指纹读取当前窗口内的画像详情；仅查询内存快照，不访问数据库。")
-            .CacheOutput("short-diagnostics")
             .Produces<SlowQueryProfileResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound);

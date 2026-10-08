@@ -1,14 +1,18 @@
-import { App, Button, Empty, Form, InputNumber, Skeleton, Switch } from 'antd';
+import { App, Button, Empty, Form, Modal, Skeleton, Switch, Tabs } from 'antd';
 import { ApiOutlined, ClockCircleOutlined, CloudUploadOutlined, DatabaseOutlined, DeploymentUnitOutlined, FileSearchOutlined, InfoCircleOutlined, LockOutlined, ReloadOutlined, SaveOutlined, UndoOutlined } from '@ant-design/icons';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ApiFeedback } from '../../components/ApiFeedback';
 import { PageIntro } from '../../components/PageIntro';
 import { SectionCard } from '../../components/SectionCard';
 import { InfoAlert } from '../../components/InfoAlert';
 import { useApiResource } from '../../data/api/useApiResource';
 import type { ConfigurationSnapshot, OperationalPolicy } from '../../data/api/operationalTypes';
-import { requestApi } from '../../data/api/client';
+import { requestApi, requestHttpApi } from '../../data/api/client';
 import { useAccessSession } from '../../data/api/useAccessSession';
+import { RuntimeConfigurationPanel } from './RuntimeConfigurationPanel';
+import { ConfigurationNumberPicker } from '../../components/ConfigurationNumberPicker';
+import { RuntimeConfigurationHistory } from './RuntimeConfigurationHistory';
+import { useConfigurationNavigationGuard } from './useConfigurationNavigationGuard';
 import './settings.css';
 
 const categories = [
@@ -34,32 +38,33 @@ const parameterHelp: Record<string, string> = {
 
 type PolicyValues = Omit<OperationalPolicy, 'revision'>;
 
-function PolicyForm({ policy, canManage, permissionPending, busy, onSave }: {
+function PolicyForm({ policy, canManage, permissionPending, busy, onSave, onDirtyChange }: {
   policy: OperationalPolicy; canManage: boolean; permissionPending: boolean; busy: boolean;
   onSave: (values: PolicyValues) => Promise<void>;
+  onDirtyChange: (dirty: boolean) => void;
 }) {
   const [form] = Form.useForm<PolicyValues>();
   const [dirty, setDirty] = useState(false);
   const automaticBackups = Form.useWatch('automaticBackups', form) ?? policy.automaticBackups;
   const disabled = !canManage || busy;
-  const reset = () => { form.resetFields(); setDirty(false); };
+  const reset = () => { form.resetFields(); setDirty(false); onDirtyChange(false); };
 
   return <Form name="operationalPolicy" form={form} layout="vertical" initialValues={policy} disabled={disabled} onFinish={onSave}
-    onValuesChange={(_, values: PolicyValues) => setDirty(values.automaticBackups !== policy.automaticBackups || values.backupIntervalMinutes !== policy.backupIntervalMinutes || values.prebuildAheadHours !== policy.prebuildAheadHours)}>
+    onValuesChange={(_, values: PolicyValues) => { const changed = values.automaticBackups !== policy.automaticBackups || values.backupIntervalMinutes !== policy.backupIntervalMinutes || values.prebuildAheadHours !== policy.prebuildAheadHours; setDirty(changed); onDirtyChange(changed); }}>
     <div className="settings-policy-fields">
       <div className="settings-policy-field settings-policy-toggle">
         <Form.Item name="automaticBackups" label="自动创建备份" valuePropName="checked"><Switch checkedChildren="启用" unCheckedChildren="关闭" /></Form.Item>
         <p className="settings-field-help">{automaticBackups ? '按设定间隔自动创建数据库备份。' : '开启后，按设定间隔自动创建数据库备份。'}</p>
       </div>
       <div className="settings-policy-field">
-        <Form.Item name="backupIntervalMinutes" label="备份间隔" rules={[{ required: true, type: 'number', min: 10, max: 1440, message: '请输入 10～1440 分钟' }]}>
-          <InputNumber min={10} max={1440} precision={0} addonAfter="分钟" />
+        <Form.Item name="backupIntervalMinutes" label="备份间隔（分钟）" rules={[{ required: true, type: 'number', min: 10, max: 1440, message: '请选择或设置 10～1440 分钟' }]}>
+          <ConfigurationNumberPicker min={10} max={1440} precision={0} presets={[15, 30, 60, 120, 360, 720, 1440]} unit="分钟" />
         </Form.Item>
         <p className="settings-field-help">10～1440 分钟，控制自动备份频率。</p>
       </div>
       <div className="settings-policy-field">
-        <Form.Item name="prebuildAheadHours" label="预建窗口" rules={[{ required: true, type: 'number', min: 1, max: 168, message: '请输入 1～168 小时' }]}>
-          <InputNumber min={1} max={168} precision={0} addonAfter="小时" />
+        <Form.Item name="prebuildAheadHours" label="预建窗口（小时）" rules={[{ required: true, type: 'number', min: 1, max: 168, message: '请选择或设置 1～168 小时' }]}>
+          <ConfigurationNumberPicker min={1} max={168} precision={0} presets={[12, 24, 48, 72, 96, 120, 168]} unit="小时" />
         </Form.Item>
         <p className="settings-field-help">1～168 小时，供手动预建分表使用。</p>
       </div>
@@ -87,26 +92,37 @@ export function SettingsPage() {
   const { message } = App.useApp();
   const [category, setCategory] = useState<(typeof categories)[number]['name']>('运行');
   const [busy, setBusy] = useState(false);
-  const resource = useApiResource<ConfigurationSnapshot>('/api/operations/configuration');
-  const policy = useApiResource<OperationalPolicy>('/api/operations/configuration/policy');
+  const [policyDirty, setPolicyDirty] = useState(false);
+  const [runtimeDirty, setRuntimeDirty] = useState(false);
+  const [runtimeBusy, setRuntimeBusy] = useState(false);
+  const [tab, setTab] = useState('runtime');
+  const [refreshToken, setRefreshToken] = useState(0);
+  const resource = useApiResource<ConfigurationSnapshot>('/api/operations/configuration', requestHttpApi, false);
+  const policy = useApiResource<OperationalPolicy>('/api/operations/configuration/policy', requestHttpApi, false);
   const session = useAccessSession();
   const canManage = session.data?.permissions.includes('access.manage') ?? false;
+  const canManageRuntime = session.data?.authenticated === true && session.data.isSuperAdministrator === true;
+  const savingConfiguration = busy || runtimeBusy;
+  const blocker = useConfigurationNavigationGuard(canManageRuntime && runtimeDirty || canManage && policyDirty, savingConfiguration);
+  const runtimeDraftChanged = useCallback((dirty: boolean, saving: boolean) => { setRuntimeDirty(dirty); setRuntimeBusy(saving); }, []);
   const activeCategory = categories.find(item => item.name === category)!;
   const parameters = resource.data?.settings.filter(item => item.category === category) ?? [];
-  const refresh = () => { resource.refresh(); policy.refresh(); };
+  const refresh = () => { resource.refresh(); if (!policyDirty) policy.refresh(); setRefreshToken(value => value + 1); };
   const save = async (values: PolicyValues) => {
     if (!policy.data || !canManage || busy) return;
     setBusy(true);
-    try { await requestApi('/api/operations/configuration/policy', undefined, { method: 'PUT', body: JSON.stringify({ ...values, revision: policy.data.revision }) }); policy.refresh(); message.success('运维策略已保存，后台将在一分钟内加载'); }
+    try { await requestApi('/api/operations/configuration/policy', undefined, { method: 'PUT', body: JSON.stringify({ ...values, revision: policy.data.revision }) }); setPolicyDirty(false); policy.refresh(); message.success('运维策略已保存，后台将在一分钟内加载'); }
     catch (error) { message.error(error instanceof Error ? error.message : '保存失败'); } finally { setBusy(false); }
   };
   return <div className="system-settings" aria-busy={resource.loading || policy.loading}>
-    <PageIntro title="系统配置" description="管理在线运维策略，查看服务器运行、数据库与治理参数。" action={<div className="settings-header-actions">
+    <PageIntro title="系统配置" description="在线维护运行参数与运维策略，查看配置的生效状态和变更历史。" action={<div className="settings-header-actions">
       <span className="settings-environment" title={resource.data?.environment}><DeploymentUnitOutlined /><span className="settings-environment-label">{resource.data?.environment ?? (resource.loading ? '读取环境中…' : '环境未知')}</span></span>
       <Button icon={<ReloadOutlined />} onClick={refresh} loading={resource.loading || policy.loading} disabled={busy}>刷新配置</Button>
     </div>} />
-    <InfoAlert message="在线策略保存后跨重启保留" description="自动备份策略将在一分钟内加载；手动预建使用已保存的窗口。其余参数通过服务器配置维护。" closable={false} />
-    <div className="settings-layout">
+    <InfoAlert message="配置保存后，重启仍保留" description="在线参数保存后发布热更新；数据库连接、监听地址等启动参数需要重启。环境覆盖值和待重启字段会单独显示。" closable={false} />
+    <Tabs className="settings-tabs" activeKey={tab} onChange={setTab} items={[
+      { key: 'runtime', label: '运行配置', children: <RuntimeConfigurationPanel allowed={canManageRuntime} authenticated={session.data?.authenticated ?? false} active={tab === 'runtime'} refreshToken={refreshToken} onDraftStateChange={runtimeDraftChanged} /> },
+      { key: 'policy', label: '运维策略', children: <div className="settings-layout">
       <SectionCard className="settings-navigation" title={<span className="settings-section-title">配置分类</span>}>
         <nav className="settings-category-list" aria-label="配置分类">{categories.map(item => <button type="button" className={`settings-category${category === item.name ? ' selected' : ''}`} aria-pressed={category === item.name}
           key={item.name} onClick={() => setCategory(item.name)}>
@@ -114,14 +130,14 @@ export function SettingsPage() {
           <span className="settings-category-copy"><span>{item.name}</span><small>{item.description}</small></span>
           <span className="settings-category-count" title="参数数量">{resource.data ? resource.data.settings.filter(setting => setting.category === item.name).length : '—'}</span>
         </button>)}</nav>
-        <div className="settings-navigation-note"><InfoCircleOutlined />参数值来自当前服务器配置。</div>
+        <div className="settings-navigation-note"><InfoCircleOutlined />参数值来自当前已生效的配置。</div>
       </SectionCard>
       <div className="settings-main">
         <SectionCard className="settings-policy-card" title={<div className="settings-card-heading"><span className="settings-heading-icon"><CloudUploadOutlined /></span><div>
           <div className="settings-section-title">运维策略</div><div className="settings-section-caption">在线维护自动备份与分表预建窗口</div>
         </div></div>} extra={<span className={`settings-access-badge${canManage ? ' editable' : ''}`}>{session.loading ? '确认权限中' : canManage ? '可在线修改' : '只读查看'}</span>}>
           {policy.loading ? <Skeleton active title={false} paragraph={{ rows: 5 }} /> : policy.error ? <ApiFeedback error={policy.error} retry={policy.refresh} /> : policy.data
-            ? <PolicyForm key={policy.data.revision} policy={policy.data} canManage={canManage} permissionPending={session.loading} busy={busy} onSave={save} />
+            ? <PolicyForm key={policy.data.revision} policy={policy.data} canManage={canManage} permissionPending={session.loading} busy={busy} onSave={save} onDirtyChange={setPolicyDirty} />
             : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未读取运维策略" />}
           {session.error && <ApiFeedback error={session.error} retry={session.refresh} />}
         </SectionCard>
@@ -133,11 +149,19 @@ export function SettingsPage() {
               <dt>{item.name}</dt><dd><ParameterValue value={item.value} />{parameterHelp[item.name] && <p>{parameterHelp[item.name]}</p>}</dd>
             </div>)}</dl> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="该分类暂无服务器参数" />}
           <div className="settings-config-source">
-            <div><span>配置来源</span><p>服务器 appsettings 与部署环境变量</p></div>
-            <div><span>生效方式</span><p>按服务器实际配置与后台服务加载方式生效</p></div>
+            <div><span>配置来源</span><p>配置库与部署环境覆盖</p></div>
+            <div><span>生效方式</span><p>运行配置页可修改参数并查看在线或重启生效状态</p></div>
           </div>
         </SectionCard>
       </div>
-    </div>
+    </div> },
+      { key: 'history', label: '变更历史', children: <RuntimeConfigurationHistory allowed={canManageRuntime} active={tab === 'history'} refreshToken={refreshToken} /> },
+    ]} />
+    <Modal open={blocker.state === 'blocked'} title={savingConfiguration ? '配置正在保存' : '有未保存的配置修改'}
+      okText="放弃修改并离开" cancelText="继续编辑" maskClosable={false} okButtonProps={{ danger: true, disabled: savingConfiguration }}
+      onCancel={() => { if (blocker.state === 'blocked') blocker.reset(); }}
+      onOk={() => { if (!savingConfiguration && blocker.state === 'blocked') blocker.proceed(); }}>
+      <p>{savingConfiguration ? '请等待保存结果后再离开页面。' : '离开将丢失尚未保存的运行配置或运维策略修改。可以继续编辑，或明确放弃修改后离开。'}</p>
+    </Modal>
   </div>;
 }

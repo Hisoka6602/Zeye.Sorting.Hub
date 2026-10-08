@@ -75,6 +75,10 @@ test('Fusion 查询与配置维护拥有独立说明，清理说明只描述永�
 });
 
 test('同一路径区分读取和修改，未知方法不冒充已知业务操作', () => {
+  assert.match(describeAuditRequest('GET', '/api/operations/configuration/runtime'), /读取.*生效状态/);
+  assert.match(describeAuditRequest('PUT', '/api/operations/configuration/runtime'), /按已读取版本保存.*下次启动生效/);
+  assert.match(describeAuditRequest('GET', '/api/operations/configuration/history'), /超级管理员读取配置变更历史.*修改前后原值/);
+  assert.match(describeAuditRequest('POST', '/api/operations/configuration/runtime'), /未配置/);
   assert.match(describeAuditRequest('GET', '/api/access/profile'), /读取/);
   assert.match(describeAuditRequest('PUT', '/api/access/profile'), /保存/);
   assert.match(describeAuditRequest('DELETE', '/api/access/profile'), /未配置/);

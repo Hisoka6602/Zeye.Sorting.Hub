@@ -1,4 +1,4 @@
-using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
+using Zeye.Sorting.Hub.Domain.Abstractions;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.Paging;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Repositories;
@@ -13,7 +13,7 @@ internal static class ParcelCursorQueryExtensions {
     /// <param name="query">基础查询。</param>
     /// <param name="pageRequest">游标分页请求。</param>
     /// <returns>追加游标条件后的查询。</returns>
-    public static IQueryable<Parcel> ApplyCursorCondition(this IQueryable<Parcel> query, CursorPageRequest pageRequest) {
+    public static IQueryable<T> ApplyCursorCondition<T>(this IQueryable<T> query, CursorPageRequest pageRequest) where T : IParcelSummaryView {
         if (!pageRequest.LastScannedTimeLocal.HasValue || !pageRequest.LastId.HasValue) {
             return query;
         }

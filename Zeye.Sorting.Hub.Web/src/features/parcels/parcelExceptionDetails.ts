@@ -1,4 +1,4 @@
-import type { ParcelDetail, ParcelProcessingRecord } from '../../data/api/parcelTypes.ts';
+import type { ParcelDetail } from '../../data/api/parcelTypes.ts';
 import { buildParcelProcessingTimeline, type ParcelProcessingEvent } from './parcelProcessingTimeline.ts';
 
 const exceptionLabels: Record<number, string> = {
@@ -20,7 +20,9 @@ type ExceptionParcel = Pick<ParcelDetail, 'status' | 'exceptionType' | 'sourceEx
 /** Describe saved facts only; a browser draft is not evidence of the rule that classified a parcel. */
 export function parcelExceptionDetails(parcel: ExceptionParcel | undefined, events?: readonly ParcelProcessingEvent[]) {
   if (!parcel) return null;
-  const issues = (events ?? buildParcelProcessingTimeline(parcel.processingRecords).events).filter(event => event.isIssue);
+  const recordEvents = events ?? buildParcelProcessingTimeline(parcel.processingRecords).events;
+  const eventsByRecord = new Map(recordEvents.map(event => [event.record.recordId, event]));
+  const issues = recordEvents.filter(event => event.isIssue);
   const records = issues.map(event => event.record);
   const interfaceErrors = parcel.apiRequests.filter(request => typeof request.exception === 'string' && request.exception.trim());
   const current = parcel.status === 2 || parcel.exceptionType != null;
@@ -39,7 +41,11 @@ export function parcelExceptionDetails(parcel: ExceptionParcel | undefined, even
   const messages = [...new Set([
     ...issues.flatMap(event => event.record.stage === 3 || event.record.stage === 8 ? [event.description]
       : [event.record.errorMessage, event.record.decisionReason]).filter((value): value is string => Boolean(value?.trim())),
-    ...interfaceErrors.map(request => String(request.exception)),
+    ...interfaceErrors.map(request => {
+      const event = typeof request.recordId === 'string' ? eventsByRecord.get(request.recordId) : undefined;
+      // 仅使用同编号、同原文的现有事件摘要；不同接口错误与旧版记录仍展示自身原文。
+      return event && request.exception === event.record.errorMessage ? event.description : String(request.exception);
+    }),
   ])];
   return {
     current,
@@ -50,10 +56,6 @@ export function parcelExceptionDetails(parcel: ExceptionParcel | undefined, even
     records,
     recordTitles: Object.fromEntries(issues.map(event => [event.record.recordId, event.title])),
     interfaceErrors,
+    eventsByRecord,
   };
-}
-
-export function exceptionRecordKeys(record: ParcelProcessingRecord): string[] {
-  return ['occurredAt', 'stage', 'exceptionCode', 'errorMessage', 'decisionReason', 'rawPayload', 'responseStatusCode', 'requestBody', 'responseBody']
-    .filter(key => record[key as keyof ParcelProcessingRecord] != null && record[key as keyof ParcelProcessingRecord] !== '');
 }

@@ -8,62 +8,44 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 /// 慢查询指纹聚合辅助器。
 /// </summary>
 public static partial class SlowQueryFingerprintAggregator {
-    /// <summary>
-    /// 多空白折叠正则。
-    /// </summary>
-    [GeneratedRegex(@"\s+", RegexOptions.CultureInvariant)]
-    private static partial Regex MultiWhitespaceRegex();
+    /// <summary>Oracle 管理 DDL 的双引号密码也必须脱敏。</summary>
+    [GeneratedRegex("(?i)(identified\\s+by\\s+)\"(?:\"\"|[^\"])*\"", RegexOptions.CultureInvariant)]
+    private static partial Regex PasswordRegex();
 
-    /// <summary>
-    /// EF Core / ADO.NET 命名参数占位符正则。
-    /// </summary>
-    [GeneratedRegex(@"@[A-Za-z_][A-Za-z0-9_]*", RegexOptions.CultureInvariant)]
-    private static partial Regex NamedParameterRegex();
-
-    /// <summary>
-    /// 数值字面量正则。
-    /// </summary>
-    [GeneratedRegex(@"(?<![A-Za-z0-9_])[-+]?(?:\d+\.\d+|\d+)(?![A-Za-z0-9_])", RegexOptions.CultureInvariant)]
-    private static partial Regex NumericLiteralRegex();
-
-    /// <summary>
-    /// 字符串字面量正则。
-    /// </summary>
-    [GeneratedRegex(@"'(?:''|[^'])*'", RegexOptions.CultureInvariant)]
-    private static partial Regex StringLiteralRegex();
+    /// <summary>脱敏样例保留标识符大小写，调优解析不能错误修改大小写敏感的物理表名。</summary>
+    public static string SanitizeSql(string sql, string provider = "") => SlowQuerySqlText.Transform(PasswordRegex().Replace(sql, "$1?"), false, provider);
 
     /// <summary>
     /// 生成慢查询指纹。
     /// </summary>
     /// <param name="commandText">原始 SQL。</param>
+    /// <param name="provider">提供器名称，用于区分引号语义。</param>
     /// <returns>标准化指纹结果。</returns>
-    public static SlowQueryFingerprint Create(string commandText) {
-        var normalizedSql = NormalizeSql(commandText);
+    public static SlowQueryFingerprint Create(string commandText, string provider = "") {
+        var normalizedSql = NormalizeSql(commandText, provider);
         return new SlowQueryFingerprint(
             Fingerprint: BuildFingerprintId(normalizedSql),
             NormalizedSql: normalizedSql);
+    }
+    /// <summary>统一隔离请求、事务、连接和不同数据库用途，显式记录重载不能错误合并画像。</summary>
+    internal static SlowQueryFingerprint CreateObservation(string commandText, SlowQueryObservation observation) {
+        var fingerprint = Create(commandText, observation.Provider);
+        return observation.Kind == "query" && observation.Provider.Length == 0 && observation.DatabaseRole == "business" ? fingerprint
+            : fingerprint with { Fingerprint = BuildFingerprintId(observation.Kind + ":" + observation.Provider + ":" + observation.DatabaseRole + ":" + fingerprint.NormalizedSql) };
     }
 
     /// <summary>
     /// 归一化 SQL 文本。
     /// </summary>
     /// <param name="sql">原始 SQL。</param>
+    /// <param name="provider">提供器名称，用于区分引号语义。</param>
     /// <returns>去参数化后的标准 SQL。</returns>
-    public static string NormalizeSql(string sql) {
+    public static string NormalizeSql(string sql, string provider = "") {
         if (string.IsNullOrWhiteSpace(sql)) {
             return string.Empty;
         }
 
-        // 步骤 1：剥离字符串与参数占位符，避免业务实参影响指纹稳定性。
-        var withoutStringLiterals = StringLiteralRegex().Replace(sql, "?");
-        var withoutNamedParameters = NamedParameterRegex().Replace(withoutStringLiterals, "?");
-
-        // 步骤 2：将直接内联的数值常量统一替换为占位符，覆盖 limit/top/where id=1 等语句。
-        var withoutNumericLiterals = NumericLiteralRegex().Replace(withoutNamedParameters, "?");
-
-        // 步骤 3：压缩空白并统一小写，保证同义 SQL 产生稳定指纹。
-        var normalized = MultiWhitespaceRegex().Replace(withoutNumericLiterals, " ").Trim().ToLowerInvariant();
-        return normalized.Length <= 512 ? normalized : normalized[..512];
+        return SlowQuerySqlText.Transform(PasswordRegex().Replace(sql, "$1?"), true, provider);
     }
 
     /// <summary>
@@ -72,10 +54,10 @@ public static partial class SlowQueryFingerprintAggregator {
     /// <param name="normalizedSql">标准 SQL。</param>
     /// <returns>16 位十六进制指纹。</returns>
     public static string BuildFingerprintId(string normalizedSql) {
-        Span<byte> utf8Buffer = stackalloc byte[Encoding.UTF8.GetMaxByteCount(normalizedSql.Length)];
-        var written = Encoding.UTF8.GetBytes(normalizedSql, utf8Buffer);
+        // 大型分析 SQL 不使用无界栈分配；哈希只在慢样本发布时执行。
+        var utf8Buffer = Encoding.UTF8.GetBytes(normalizedSql);
         Span<byte> hashBytes = stackalloc byte[32];
-        SHA256.HashData(utf8Buffer[..written], hashBytes);
+        SHA256.HashData(utf8Buffer, hashBytes);
         return Convert.ToHexStringLower(hashBytes[..8]);
     }
 
@@ -142,7 +124,7 @@ public static partial class SlowQueryFingerprintAggregator {
         return new SlowQueryProfileSnapshot(
             Fingerprint: fingerprint.Fingerprint,
             NormalizedSql: fingerprint.NormalizedSql,
-            SampleSql: NormalizeSql(latestSample.CommandText),
+            SampleSql: NormalizeSql(latestSample.CommandText, latestSample.Observation.Provider),
             CallCount: callCount,
             AverageElapsedMilliseconds: averageElapsedMilliseconds,
             P95Milliseconds: CalculatePercentile(orderedElapsed, 95),
@@ -154,7 +136,16 @@ public static partial class SlowQueryFingerprintAggregator {
             TotalAffectedRows: totalAffectedRows,
             WindowStartedAtLocal: earliestOccurredTime,
             WindowEndedAtLocal: latestSample.OccurredTime,
-            LastOccurredAtLocal: latestSample.OccurredTime);
+            LastOccurredAtLocal: latestSample.OccurredTime) {
+            Observation = latestSample.Observation,
+            CanceledCount = orderedSamples.Count(sample => sample.Observation.IsCanceled),
+            PartialReadCount = orderedSamples.Count(sample => sample.Observation.IsPartialRead),
+            AverageExecuteMilliseconds = orderedSamples.Average(sample => sample.Observation.ExecuteMilliseconds),
+            AverageReadMilliseconds = orderedSamples.Average(sample => sample.Observation.ReadMilliseconds),
+            AverageConsumerMilliseconds = orderedSamples.Average(sample => sample.Observation.ConsumerMilliseconds),
+            AverageConnectionMilliseconds = orderedSamples.Average(sample => sample.Observation.ConnectionMilliseconds),
+            TotalRowsRead = orderedSamples.Sum(sample => sample.Observation.RowsRead)
+        };
     }
 
     /// <summary>

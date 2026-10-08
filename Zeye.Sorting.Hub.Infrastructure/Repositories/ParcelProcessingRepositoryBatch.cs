@@ -6,6 +6,7 @@ using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.Processing;
 using Zeye.Sorting.Hub.Domain.Enums.Parcels;
 using Zeye.Sorting.Hub.Domain.Repositories.Models.Results;
+using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Repositories;
@@ -31,7 +32,8 @@ public sealed partial class ParcelProcessingRepository {
             var rules = await _rules.GetAsync(cancellationToken);
             await using var template = await _factory.CreateDbContextAsync(cancellationToken);
             var strategy = template.Database.CreateExecutionStrategy();
-            var isSqlServer = template.Database.IsSqlServer();
+            var providerName = template.Database.ProviderName;
+            var useRowLock = providerName is DbProviderNames.SqlServer or DbProviderNames.Oracle;
             /// <summary>每次重试创建新上下文，禁止把失败事务的跟踪状态带到下一次。</summary>
             async Task<IReadOnlyList<RepositoryResult<ParcelProcessingWriteResult>>> AppendOnceAsync() {
                 await using var lookup = await _factory.CreateDbContextAsync(cancellationToken);
@@ -51,7 +53,8 @@ public sealed partial class ParcelProcessingRepository {
                 var baseIdCollision = location is null && await lookup.Set<Parcel>().AnyAsync(row => row.Id == newParcelId, cancellationToken);
                 await using var db = await _partitions.CreateContextAsync(suffix, cancellationToken);
                 await using var transaction = await db.Database.BeginTransactionAsync(
-                    isSqlServer ? IsolationLevel.ReadCommitted : IsolationLevel.Serializable, cancellationToken);
+                    useRowLock ? IsolationLevel.ReadCommitted : IsolationLevel.Serializable, cancellationToken);
+                if (useRowLock) await LockParcelLocationAsync(db, sourceKey, cancellationToken);
                 known = await db.Set<ParcelProcessingReceipt>().AsNoTracking()
                     .Where(row => distinctKeys.Contains(row.Key)).ToDictionaryAsync(row => row.Key, cancellationToken);
                 var outcomes = new RepositoryResult<ParcelProcessingWriteResult>[records.Count];
@@ -104,7 +107,7 @@ public sealed partial class ParcelProcessingRepository {
             }
             for (var attempt = 0; ; attempt++) {
                 try { return await strategy.ExecuteAsync(AppendOnceAsync); }
-                catch (DbUpdateException exception) when (isSqlServer && IsSqlServerUniqueConflict(exception) && attempt < 4) {
+                catch (Exception exception) when (IsRetryableWriteConflict(providerName, exception) && attempt < 8) {
                     Logger.Warn(exception, "包裹批次唯一键竞争，重试完整事务，Source={Source}, Parcel={Parcel}", first.SourceInstanceId, first.SourceParcelId);
                     await Task.Delay(5 * (attempt + 1), cancellationToken);
                 }

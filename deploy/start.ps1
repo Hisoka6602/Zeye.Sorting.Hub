@@ -2,6 +2,7 @@
 param(
     [switch]$SkipBuild,
     [switch]$NoOpenBrowser,
+    [switch]$NoWatch,
     [switch]$RemindBookmark,
     [ValidateRange(10, 3600)]
     [int]$StartupTimeout = 180
@@ -92,6 +93,7 @@ function Invoke-LocalDeployment {
         [string]$EnvFile,
         [switch]$SkipBuild,
         [switch]$NoOpenBrowser,
+        [switch]$NoWatch,
         [switch]$RemindBookmark,
         [int]$StartupTimeout = 180
     )
@@ -117,6 +119,9 @@ function Invoke-LocalDeployment {
     Wait-FrontendReady -FrontendUrl $frontendUrl -TimeoutSeconds $StartupTimeout
     Write-Host "部署完成，前端地址：$frontendUrl"
 
+    # 本机入口默认持续跟随源码；先完成部署，再启动无窗口的后台监听。
+    if (-not $NoWatch) { & (Join-Path $PSScriptRoot 'watch.ps1') -Action Start -SkipInitialBuild }
+
     if ($NoOpenBrowser) { return }
     try {
         # Opening a URI uses the user's system default browser.
@@ -127,4 +132,4 @@ function Invoke-LocalDeployment {
     Show-BookmarkReminder -FrontendUrl $frontendUrl -Force:$RemindBookmark
 }
 
-Invoke-LocalDeployment -ComposeFile (Join-Path $PSScriptRoot 'compose.yaml') -EnvFile (Join-Path $PSScriptRoot '.env') -SkipBuild:$SkipBuild -NoOpenBrowser:$NoOpenBrowser -RemindBookmark:$RemindBookmark -StartupTimeout $StartupTimeout
+Invoke-LocalDeployment -ComposeFile (Join-Path $PSScriptRoot 'compose.yaml') -EnvFile (Join-Path $PSScriptRoot '.env') -SkipBuild:$SkipBuild -NoOpenBrowser:$NoOpenBrowser -NoWatch:$NoWatch -RemindBookmark:$RemindBookmark -StartupTimeout $StartupTimeout

@@ -6,9 +6,99 @@
     <meta name="theme-color" content="#ffffff" />
     <link rel="icon" type="image/svg+xml" sizes="any" href="/src/assets/brand-symbol.svg?no-inline" />
     <title>Zeye Sorting Hub</title>
+    <script id="zeye-page-load-recovery">
+      // 入口脚本自身不可用时仍可恢复；此代码随不缓存的 HTML 更新。
+      (function installPageLoadRecovery() {
+        // 资源可能在 HTML 解析完成前失败，保留状态直到静态反馈元素可用。
+        var startupFailed = false;
+        // 启动资源故障与入口执行异常分别保留明确的反馈。
+        var startupFailureMessage = '页面资源暂时无法加载，请检查网络后重试。';
+        /** 判断模块资源错误，业务请求或普通组件异常不触发自动刷新。 */
+        function isAssetError(error) {
+          var message = typeof error === 'string' ? error : error && [error.name, error.message].join(' ');
+          return typeof message === 'string' && /ChunkLoadError|Loading (?:CSS )?chunk|Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|Failed to load module script|Unable to preload CSS/i.test(message);
+        }
+        /** 每个入口版本在当前标签页仅自动恢复一次，避免服务持续故障时无限刷新。 */
+        function recoveryKey() {
+          var entry = document.querySelector('script[type="module"][src]');
+          return 'zeye-page-load-recovery:' + (entry ? entry.getAttribute('src') : location.pathname);
+        }
+        /** React 尚未启动时使用静态反馈；已挂载页面由错误边界处理。 */
+        function showStartupFailure(message) {
+          startupFailed = true;
+          if (message) startupFailureMessage = message;
+          var feedback = document.getElementById('startup-feedback');
+          var description = document.getElementById('startup-description');
+          var button = document.getElementById('startup-retry');
+          if (!feedback || !description || !button) return;
+          feedback.setAttribute('role', 'alert');
+          description.textContent = startupFailureMessage;
+          button.hidden = false;
+        }
+        /** 只有确认的资源加载错误可自动恢复；存储不可用时保留可操作的失败界面。 */
+        function recover(error, knownAssetFailure) {
+          if (!knownAssetFailure && !isAssetError(error)) return false;
+          console.error('页面资源加载失败', error);
+          try {
+            var key = recoveryKey();
+            if (!sessionStorage.getItem(key)) {
+              sessionStorage.setItem(key, 'attempted');
+              location.reload();
+              return true;
+            }
+          } catch (storageError) {
+            console.warn('页面自动恢复不可用', storageError);
+          }
+          showStartupFailure();
+          return false;
+        }
+        /** 显式重试重新获得最新入口，自动恢复次数只在该操作或版本变化后重置。 */
+        function retry() {
+          try { sessionStorage.removeItem(recoveryKey()); }
+          catch (storageError) { console.warn('页面恢复状态无法重置', storageError); }
+          location.reload();
+        }
+        /** Vite 模块预加载失败时恢复一次，持续失败则交由 React 错误边界显示提示。 */
+        function onPreloadError(event) {
+          if (recover(event.payload, true)) event.preventDefault();
+        }
+        /** 入口资源错误可恢复一次；启动异常只提供重试，已挂载的组件异常交给错误边界。 */
+        function onPageError(event) {
+          var target = event.target;
+          if (target && target.tagName === 'SCRIPT' && target.type === 'module') {
+            recover(new Error('Failed to load module script: ' + target.src), true);
+            return;
+          }
+          var error = event.error || event.reason;
+          if (!error || !document.getElementById('startup-feedback')) return;
+          if (isAssetError(error)) recover(error);
+          else {
+            console.error('页面启动失败', error);
+            showStartupFailure('页面启动时发生异常，请重新加载后重试。');
+          }
+        }
+        /** 解析完成后连接重试操作，并呈现解析期间已发生的资源故障。 */
+        function onStartupReady() {
+          var button = document.getElementById('startup-retry');
+          if (button) button.addEventListener('click', retry);
+          if (startupFailed) showStartupFailure();
+        }
+        window.zeyePageLoadRecovery = { isAssetError: isAssetError, recover: recover, retry: retry };
+        window.addEventListener('vite:preloadError', onPreloadError);
+        window.addEventListener('error', onPageError, true);
+        window.addEventListener('unhandledrejection', onPageError);
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', onStartupReady, { once: true });
+        else onStartupReady();
+      })();
+    </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="startup-feedback" role="status" aria-live="polite" style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px;box-sizing:border-box;text-align:center;font-family:system-ui,sans-serif;color:#26354e">
+        <p id="startup-description">页面加载中…</p>
+        <button id="startup-retry" type="button" hidden style="padding:10px 20px;border:1px solid #dbe3ee;border-radius:8px;background:white;color:#26354e;cursor:pointer">重新加载</button>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

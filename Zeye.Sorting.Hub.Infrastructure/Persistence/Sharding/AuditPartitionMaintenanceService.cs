@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Configuration;
 using NLog;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
@@ -72,11 +73,13 @@ public sealed class AuditPartitionMaintenanceService(IDbContextFactory<SortingHu
             }
             var commands = db.GetService<IMigrationsSqlGenerator>().Generate(pending, model);
             if (commands.Count > 0) Logger.Info("审计日表建表审计：Suffix={Suffix}, DDL={DDL}", suffix, string.Join(Environment.NewLine, commands.Select(x => x.CommandText)));
-            foreach (var command in commands) await db.Database.ExecuteSqlRawAsync(command.CommandText, ct);
+            await db.GetService<IMigrationCommandExecutor>().ExecuteNonQueryAsync(commands, db.GetService<IRelationalConnection>(), ct);
+            var migration = (await db.Database.GetAppliedMigrationsAsync(ct)).LastOrDefault();
+            if (migration is not null) await PhysicalPartitionMigrationService.SaveVersionAsync(db, "Audit:" + suffix, migration, ct);
         }
         finally { gate.Release(); }
     }
 
     /// <summary>索引及约束名在 SQLite 全库唯一，并满足 MySQL 的 64 字符限制。</summary>
-    private static string PhysicalName(string name, string suffix) => (name.Length <= 54 ? name : name[..45] + "_" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(name)))[..8]) + "_" + suffix;
+    internal static string PhysicalName(string name, string suffix) => (name.Length <= 54 ? name : name[..45] + "_" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(name)))[..8]) + "_" + suffix;
 }

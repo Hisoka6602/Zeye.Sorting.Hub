@@ -23,8 +23,8 @@ export function ParcelCleanupHistory({ revision, selectedId, onSelect }: { revis
       { title: '操作人', width: 180, render: (_, item) => <div>{item.operator.name}<div className="text-muted">{item.operator.account}</div></div> },
       { title: '创建时间早于', dataIndex: 'createdBefore', width: 180, render: localTime },
       { title: '结果', width: 155, render: (_, item) => status(item) },
-      { title: '计划处理数', dataIndex: 'plannedCount', width: 110 },
-      { title: '实际删除数', dataIndex: 'executedCount', width: 110 },
+      { title: '计划票数', dataIndex: 'plannedCount', width: 110 },
+      { title: '删除票数', dataIndex: 'executedCount', width: 110 },
       { title: '操作', width: 110, render: (_, item) => <Button type="link" onClick={() => onSelect(item.id)}>查看记录</Button> },
     ]} />
     <Drawer title="清理记录详情" width="min(960px, 100vw)" open={selectedId !== null} onClose={() => onSelect(null)} extra={<Button onClick={detail.refresh}>刷新详情</Button>}>
@@ -40,7 +40,7 @@ export function ParcelCleanupHistory({ revision, selectedId, onSelect }: { revis
           { key: 'start', label: '操作时间', children: localTime(record.startedAtLocal) },
           { key: 'end', label: '结束时间', children: localTime(record.completedAtLocal) },
           { key: 'before', label: '创建时间早于', children: localTime(record.createdBefore) },
-          { key: 'count', label: '执行数量', children: `计划 ${record.plannedCount.toLocaleString()} 条，实际删除 ${record.executedCount.toLocaleString()} 条，已提交 ${record.batchCount} 批` },
+          { key: 'count', label: '执行数量', children: `计划 ${record.plannedCount.toLocaleString()} 票，实际删除 ${record.executedCount.toLocaleString()} 票，已提交 ${record.batchCount} 批` },
           { key: 'scope', label: '清理范围', children: record.scope },
           { key: 'boundary', label: '恢复说明', children: record.compensationBoundary },
           { key: 'ip', label: '来源地址', children: record.operator.clientIp || '-' },

@@ -1,0 +1,80 @@
+/* 实时运行页独立布局，沿用全局字体与颜色，不影响旧演示页及其他列表。 */
+.live-operations-page .page-intro { align-items: center; margin-bottom: 24px; }
+.live-page-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 16px; }
+.live-update-time { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 7px; font-size: var(--hub-font-caption); color: var(--hub-text-secondary); }
+.live-update-time time { font-variant-numeric: tabular-nums; }
+.live-status-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+.live-status-card { display: flex; flex-direction: column; min-width: 0; padding: 22px 24px 18px; border: 1px solid #e1e7f0; border-radius: 12px; background: #fff; box-shadow: 0 4px 16px rgb(25 60 110 / 3%); }
+.live-status-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.live-status-heading h2 { margin: 0; color: var(--hub-text-heading); font-size: var(--hub-font-item); font-weight: var(--hub-weight-semibold); line-height: 26px; }
+.live-status-icon { display: grid; place-items: center; flex: none; width: 42px; height: 42px; border: 1px solid #e7edfe; border-radius: 11px; color: #597be0; background: #f3f6ff; font-size: 22px; }
+.live-probe-value { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; min-height: 48px; margin-top: 14px; }
+.live-probe-value > strong { font-size: var(--hub-font-compact-metric); font-weight: var(--hub-weight-bold); line-height: 40px; color: var(--hub-text-heading); }
+.live-operations-page .live-probe-value .status-tag { padding: 1px 9px; border-radius: 5px; }
+.live-status-description { margin: 5px 0 17px; color: var(--hub-text-secondary); font-size: var(--hub-font-caption); line-height: 22px; }
+.live-status-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 5px 12px; margin-top: auto; padding-top: 13px; border-top: 1px solid #edf1f7; color: var(--hub-text-secondary); font-size: var(--hub-font-caption); line-height: 22px; }
+.live-status-footer time { font-variant-numeric: tabular-nums; }
+.live-tone-red .live-status-icon { background: #fdf1f3; border-color: #f8e3e7; color: #c25a68; }
+.live-tone-orange .live-status-icon, .live-exception-card .live-status-icon { background: #fff8ef; border-color: #f6ebd9; color: #bf8c3b; }
+.live-exception-value { display: flex; align-items: baseline; gap: 8px; min-height: 48px; margin-top: 14px; }
+.live-exception-value > strong { color: var(--hub-text-heading); font-size: var(--hub-font-metric); font-weight: var(--hub-weight-bold); line-height: 40px; font-variant-numeric: tabular-nums; }
+.live-exception-value > span { color: var(--hub-text-secondary); font-size: var(--hub-font-body); }
+.live-source-note { display: flex; align-items: flex-start; gap: 8px; margin: 16px 0 24px; padding: 11px 14px; border-radius: 8px; background: #edf3fc; color: var(--hub-text-secondary); font-size: var(--hub-font-caption); line-height: 22px; }
+.live-source-note > .anticon { flex: none; color: #718bc2; margin-top: 4px; }
+.live-operations-page .live-activity-card { border-radius: 12px; margin-bottom: 0; }
+.live-operations-page .live-activity-card .ant-card-head { padding: 0 24px; border-bottom: 1px solid #edf1f7; }
+.live-operations-page .live-activity-card .ant-card-head-title { padding: 20px 0; min-width: 0; }
+.live-operations-page .live-activity-card .ant-card-extra { padding: 20px 0; }
+.live-activity-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; }
+.live-activity-heading h2 { margin: 0; font-size: var(--hub-font-section); font-weight: var(--hub-weight-semibold); line-height: 28px; color: var(--hub-text-heading); }
+.live-activity-heading > span { font-size: var(--hub-font-caption); font-weight: var(--hub-weight-regular); color: var(--hub-text-secondary); }
+.live-ledger-link { font-size: var(--hub-font-caption); white-space: nowrap; }
+.live-ledger-link:focus-visible, .live-barcode-link:focus-visible { outline: 2px solid #8bb4ff; outline-offset: 3px; border-radius: 3px; }
+.live-operations-page .live-activity-card .ant-card-body { padding: 18px 24px 22px; }
+.live-activity-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; margin-bottom: 18px; }
+.live-activity-toolbar .ant-segmented { font-size: var(--hub-font-label); padding: 4px; background: #f2f5fa; }
+.live-workstation-filter { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.live-workstation-filter > label { color: var(--hub-text-secondary); font-size: var(--hub-font-label); white-space: nowrap; }
+.live-workstation-filter .ant-select { width: 230px; min-width: 0; }
+.live-operations-page .data-table .ant-table-container { border: 1px solid #e7edf5; border-radius: 8px; }
+.live-operations-page .data-table.ant-table-wrapper .ant-table-thead > tr > th { padding: 12px 16px !important; background: #f5f7fb !important; font-size: var(--hub-font-label); font-weight: var(--hub-weight-semibold); border-right: 0 !important; border-bottom: 1px solid #e7edf5 !important; white-space: nowrap; }
+.live-operations-page .data-table.ant-table-wrapper .ant-table-tbody > tr > td { padding: 14px 16px !important; border-right: 0 !important; border-bottom: 1px solid #edf1f7 !important; }
+.live-operations-page .data-table .ant-table-tbody > tr:last-child > td { border-bottom: 0 !important; }
+.live-operations-page .data-table .ant-table-tbody > tr:hover > td { background: #f8faff; }
+.live-parcel-time { font-size: var(--hub-font-caption); white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--hub-text-secondary); }
+.live-barcode-link { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--hub-font-body); text-align: left; }
+.live-workstation-cell { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: var(--hub-font-body); }
+.live-workstation-cell > .anticon { flex: none; color: #8797b4; }
+.live-workstation-cell > span:not(.anticon) { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.live-chute-code { font-variant-numeric: tabular-nums; color: var(--hub-text-body); }
+.live-operations-page .data-table .ant-pagination { margin: 20px 0 0 !important; }
+@media (max-width: 1200px) {
+  .live-operations-page .page-intro { align-items: flex-start; }
+  .live-page-actions { max-width: 340px; gap: 10px; }
+  .live-status-card { padding: 18px; }
+  .live-status-footer { align-items: flex-start; flex-direction: column; }
+}
+@media (max-width: 820px) {
+  .live-operations-page .page-intro { flex-direction: column; gap: 14px; margin-bottom: 20px; }
+  .live-operations-page .page-intro > .ant-space, .live-operations-page .page-intro > .ant-space > .ant-space-item { width: 100%; }
+  .live-page-actions { max-width: none; width: 100%; justify-content: space-between; }
+  .live-status-grid { grid-template-columns: 1fr; gap: 14px; }
+  .live-status-card { padding: 18px; }
+  .live-status-footer { flex-direction: row; align-items: center; }
+  .live-status-description { margin-bottom: 14px; }
+  .live-source-note { margin-bottom: 20px; }
+  .live-operations-page .live-activity-card .ant-card-head { padding: 0 16px; }
+  .live-operations-page .live-activity-card .ant-card-head-title { padding: 16px 0; }
+  .live-operations-page .live-activity-card .ant-card-head-wrapper { align-items: flex-start; gap: 12px; flex-wrap: wrap; padding-bottom: 12px; }
+  .live-operations-page .live-activity-card .ant-card-extra { padding: 0; }
+  .live-activity-heading { align-items: flex-start; flex-direction: column; gap: 3px; }
+  .live-operations-page .live-activity-card .ant-card-body { padding: 16px; }
+  .live-activity-toolbar { gap: 14px; }
+  .live-activity-toolbar > .ant-segmented { width: 100%; }
+  .live-activity-toolbar .ant-segmented-group { justify-content: space-between; }
+  .live-activity-toolbar .ant-segmented-item-label { min-width: 0; padding-inline: 8px; font-size: var(--hub-font-caption); }
+  .live-workstation-filter { flex: 1; width: 100%; }
+  .live-workstation-filter .ant-select { flex: 1; width: auto; }
+  .live-operations-page .data-table .ant-pagination { justify-content: flex-start; flex-wrap: wrap; row-gap: 10px; }
+  .live-operations-page .data-table .ant-pagination-total-text { flex-basis: 100%; }
+}

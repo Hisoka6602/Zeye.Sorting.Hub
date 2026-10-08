@@ -39,7 +39,7 @@ export function ParcelBatchPage() {
           return [key, value];
         })));
       } else entries = parseApiJson(raw);
-      if (!Array.isArray(entries) || entries.length === 0 || entries.length > 1000) throw new Error('请输入1至1000条完整新增合同');
+      if (!Array.isArray(entries) || entries.length === 0 || entries.length > 1000) throw new Error('请输入1至1000票包裹的完整新增合同');
       const seen = new Set<string>();
       const rows = entries.map((entry, key): PreviewRow => {
         const item = entry && typeof entry === 'object' && !Array.isArray(entry) ? entry as Record<string, unknown> : {};
@@ -51,7 +51,7 @@ export function ParcelBatchPage() {
         seen.add(id);
         return { key, id, barcode: String(item.barCodes ?? ''), workstation: String(item.workstationName ?? ''), weight: item.weight, target: String(item.targetChuteId ?? ''), payload: item, error };
       });
-      setPreview(rows); setValidated(true); message.success(`已预览 ${rows.length} 条数据，最终校验由服务端执行`);
+      setPreview(rows); setValidated(true); message.success(`已预览 ${rows.length} 票包裹，最终校验由服务端执行`);
     } catch (error) { message.error(error instanceof Error ? error.message : '数据格式有误'); setValidated(false); }
   };
   const submit = async () => {
@@ -60,7 +60,7 @@ export function ParcelBatchPage() {
     setSaving(true);
     try {
       const result = await requestApi<BatchResult>('/api/admin/parcels/batch-buffer', undefined, { method: 'POST', body: JSON.stringify({ parcels: preview.map(row => row.payload) }) });
-      modal.info({ title: '服务端入队结果', content: <div><p>成功入队：{result.acceptedCount} 条</p><p>拒绝：{result.rejectedCount} 条</p><p>当前队列深度：{result.queueDepth} 条</p><p>{result.message}</p><p>入队不等于数据库写入完成，可返回台账查询最终记录。</p></div> });
+      modal.info({ title: '服务端入队结果', content: <div><p>成功入队：{result.acceptedCount} 票</p><p>拒绝：{result.rejectedCount} 票</p><p>当前队列深度：{result.queueDepth} 票</p><p>{result.message}</p><p>入队不等于数据库写入完成，可返回台账查询最终记录。</p></div> });
       // 部分接收后重发整批可能重复入队，要求核对服务端结果后重新准备批次。
       setValidated(false);
     } catch (error) { message.error(error instanceof Error ? error.message : '提交失败'); }
@@ -68,7 +68,7 @@ export function ParcelBatchPage() {
   };
   return <>
     <PageIntro title="批量入队" description="仅供管理员测试使用。业务包裹由工作台或融合服务自动传入。" />
-    <InfoAlert message="最多 1000 条；入队不等于数据库写入完成。" />
+    <InfoAlert message="最多 1000 票包裹；入队不等于数据库写入完成。" />
     <SectionCard className="batch-input-card">
       <Tabs activeKey={tab} onChange={value => { setTab(value); setValidated(false); }} items={[{ key: 'json', label: '粘贴 JSON' }, { key: 'csv', label: '本地 CSV' }]} />
       {tab === 'csv' && <Upload accept=".csv,text/csv" showUploadList={false} beforeUpload={file => { file.text().then(value => { setRaw(value); setValidated(false); }).catch(() => message.error('文件读取失败')); return false; }}><Button icon={<DownloadOutlined />}>选择 CSV 文件</Button></Upload>}
@@ -81,7 +81,7 @@ export function ParcelBatchPage() {
         { title: '重量 (kg)', dataIndex: 'weight', width: 165, render: value => typeof value === 'number' && Number.isFinite(value) ? formatNumber(value) : String(value ?? '未提供') }, { title: '目标格口', dataIndex: 'target', width: 198 },
         { title: '校验状态', render: (_, row) => row.error ? <Typography.Text type="danger">{row.error}</Typography.Text> : <StatusTag value="校验通过" /> },
       ]} />
-      <div className="batch-submit-action"><span>待提交 <b className="batch-pending-count">{preview.length}</b> 条，错误 <b className="batch-error-count">{preview.filter(item => item.error).length}</b> 条</span><Space><Button onClick={() => { setRaw(''); setPreview([]); setValidated(false); }}>取消</Button><Button type="primary" loading={saving} disabled={!validated || preview.some(item => !!item.error)} onClick={submit}>提交入队</Button></Space></div>
+      <div className="batch-submit-action"><span>待提交 <b className="batch-pending-count">{preview.length}</b> 票，错误 <b className="batch-error-count">{preview.filter(item => item.error).length}</b> 票</span><Space><Button onClick={() => { setRaw(''); setPreview([]); setValidated(false); }}>取消</Button><Button type="primary" loading={saving} disabled={!validated || preview.some(item => !!item.error)} onClick={submit}>提交入队</Button></Space></div>
     </SectionCard>
   </>;
 }

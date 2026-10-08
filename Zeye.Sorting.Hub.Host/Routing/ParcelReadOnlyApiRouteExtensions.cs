@@ -56,6 +56,9 @@ public static class ParcelReadOnlyApiRouteExtensions {
             .ProducesProblem(StatusCodes.Status400BadRequest);
 
         routeBuilder.MapParcelImageApis();
+        routeBuilder.MapParcelTimingApis();
+            routeBuilder.MapParcelAnalysisApis();
+            routeBuilder.MapParcelDwsConsistencyApis();
         return routeBuilder;
     }
 

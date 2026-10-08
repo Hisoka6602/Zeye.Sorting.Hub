@@ -187,6 +187,9 @@ public sealed partial class BaselineDataValidator {
             return "Unknown";
         }
 
+        try { provider = ConfiguredProviderNames.Normalize(provider); }
+        catch (InvalidOperationException exception) { Logger.Error(exception, "基线数据库提供器配置无效。"); errors.Add(exception.Message); return provider; }
+
         if (string.Equals(provider, ConfiguredProviderNames.MySql, StringComparison.OrdinalIgnoreCase)) {
             var connectionString = _configuration.GetConnectionString(ConfiguredProviderNames.MySql);
             if (string.IsNullOrWhiteSpace(connectionString)) {
@@ -229,7 +232,21 @@ public sealed partial class BaselineDataValidator {
             return ConfiguredProviderNames.SqlServer;
         }
 
-        errors.Add($"不支持的 Persistence:Provider={provider}，仅允许 {ConfiguredProviderNames.MySql} / {ConfiguredProviderNames.SqlServer}。");
+        if (string.Equals(provider, ConfiguredProviderNames.Oracle, StringComparison.OrdinalIgnoreCase) || string.Equals(provider, ConfiguredProviderNames.SQLite, StringComparison.OrdinalIgnoreCase)) {
+            var normalized = ConfiguredProviderNames.Normalize(provider);
+            var connectionString = _configuration.GetConnectionString(normalized);
+            try {
+                if (string.IsNullOrWhiteSpace(connectionString)) errors.Add($"Provider 为 {normalized} 时必须提供 ConnectionStrings:{normalized}。");
+                else if (normalized == ConfiguredProviderNames.Oracle) {
+                    var builder = new Oracle.ManagedDataAccess.Client.OracleConnectionStringBuilder(connectionString);
+                    if (string.IsNullOrWhiteSpace(builder.UserID) || string.IsNullOrWhiteSpace(builder.DataSource)) errors.Add("Oracle 连接字符串必须包含 User Id 和 Data Source（目标 PDB 服务）。");
+                }
+                else AdditionalDbContextOptions.NormalizeSqliteConnectionString(connectionString);
+            }
+            catch (Exception exception) { NLog.LogManager.GetCurrentClassLogger().Error(exception, "新增业务数据库连接配置非法，Provider={Provider}", normalized); errors.Add($"{normalized} 连接字符串格式非法。"); }
+            return normalized;
+        }
+        errors.Add($"不支持的 Persistence:Provider={provider}，仅允许 MySql / SqlServer / Oracle / SQLite。");
         return provider;
     }
 

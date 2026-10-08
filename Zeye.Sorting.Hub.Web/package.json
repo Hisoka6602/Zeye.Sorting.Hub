@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "check:time-display": "node scripts/time-display-guard.mjs",
+    "prebuild": "npm run check:time-display",
     "build": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "test:publish": "node --test tests/publish-web-ui.test.mjs",

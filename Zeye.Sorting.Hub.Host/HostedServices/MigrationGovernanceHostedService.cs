@@ -137,8 +137,13 @@ public sealed class MigrationGovernanceHostedService : IHostedService {
 
             await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
             var allMigrations = dbContext.Database.GetMigrations().ToArray();
-            var appliedMigrations = (await dbContext.Database.GetAppliedMigrationsAsync(cancellationToken)).ToArray();
-            var pendingMigrations = (await dbContext.Database.GetPendingMigrationsAsync(cancellationToken)).ToArray();
+            // 首次启动先用管理连接探测，不通过业务连接隐式创建 SQLite 文件或要求 Oracle 业务用户已存在。
+            var providerKey = ConfiguredProviderNames.Normalize(_dialect.ProviderName);
+            var connectionString = _configuration.GetConnectionString(providerKey) ?? throw new InvalidOperationException($"缺少 ConnectionStrings:{providerKey}。");
+            await using var administration = _dialect.CreateAdministrationConnection(connectionString);
+            var databaseExists = await _dialect.DatabaseExistsAsync(administration, _dialect.ExtractDatabaseName(connectionString), cancellationToken);
+            var appliedMigrations = databaseExists ? (await dbContext.Database.GetAppliedMigrationsAsync(cancellationToken)).ToArray() : [];
+            var pendingMigrations = allMigrations.Except(appliedMigrations, StringComparer.Ordinal).ToArray();
             var forwardScript = GenerateForwardScript(dbContext, appliedMigrations, pendingMigrations);
             var dangerousOperations = _migrationSafetyEvaluator.EvaluateDangerousOperations(forwardScript);
             var (shouldApplyMigrations, skipReason) = EvaluateShouldApplyMigrations(

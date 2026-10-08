@@ -6,10 +6,10 @@ using Zeye.Sorting.Hub.Host.Queries;
 namespace Zeye.Sorting.Hub.Host.Authentication;
 /// <summary>注册可撤销的安全会话，并按部署配置保护业务接口。</summary>
 public static class SortingHubAccessExtensions {
-    /// <summary>注册真实账号认证；密钥保存在现有可写日志卷内，重启不会丢失会话密钥。</summary>
-    public static IServiceCollection AddSortingHubAccess(this IServiceCollection services, string contentRoot) {
+    /// <summary>注册真实账号认证；密钥与配置文件同卷保存，兼容旧日志目录的会话密钥。</summary>
+    public static IServiceCollection AddSortingHubAccess(this IServiceCollection services, string contentRoot, string? configurationDatabasePath = null) {
         services.AddScoped<AccessDirectoryService>();
-        services.AddDataProtection().SetApplicationName("Zeye.Sorting.Hub").PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(contentRoot, "logs", "data-protection")));
+        services.AddDataProtection().SetApplicationName("Zeye.Sorting.Hub").PersistKeysToFileSystem(DataProtectionKeyStorage.Prepare(contentRoot, configurationDatabasePath));
         services.AddAuthentication("SortingCookie").AddCookie("SortingCookie", options => {
             options.Cookie.Name = "Zeye.Sorting.Session"; options.Cookie.HttpOnly = true; options.Cookie.SameSite = SameSiteMode.Lax;
             options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest; options.ExpireTimeSpan = TimeSpan.FromHours(8); options.SlidingExpiration = true;

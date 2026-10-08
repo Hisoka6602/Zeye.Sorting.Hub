@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.Processing;
+using Zeye.Sorting.Hub.Infrastructure.Configuration;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Management;
 
@@ -16,6 +17,10 @@ public sealed class ClassificationRuleSnapshotCache {
     private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
     /// <summary>统一 EF Core 工厂。</summary>
     private readonly IDbContextFactory<SortingHubDbContext> _factory;
+    /// <summary>迁移后读取 LiteDB 中的当前规则配置。</summary>
+    private IConfigurationDocumentStore? _configurations;
+    /// <summary>启动迁移后绑定唯一配置存储；事实处理继续只读内存快照。</summary>
+    public void UseConfigurationStore(IConfigurationDocumentStore configurations) => Volatile.Write(ref _configurations, configurations);
     /// <summary>后台刷新单飞闸门，冷启动也复用同一加载。</summary>
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
     /// <summary>原子更新两类规则和发布版本的内存锁。</summary>
@@ -52,9 +57,15 @@ public sealed class ClassificationRuleSnapshotCache {
         await _refreshGate.WaitAsync(cancellationToken);
         try {
             if (onlyIfMissing && Volatile.Read(ref _initialized)) return;
-            await using var db = await _factory.CreateDbContextAsync(cancellationToken);
-            var documents = await db.Set<ManagedDocument>().AsNoTracking()
-                .Where(document => document.Key == "rules-exception" || document.Key == "rules-parcel").ToArrayAsync(cancellationToken);
+            ManagedDocument[] documents;
+            var configurations = Volatile.Read(ref _configurations);
+            if (configurations is not null) documents = new[] { configurations.Read("rules-exception"), configurations.Read("rules-parcel") }
+                .OfType<ManagedDocument>().ToArray();
+            else {
+                await using var db = await _factory.CreateDbContextAsync(cancellationToken);
+                documents = await db.Set<ManagedDocument>().AsNoTracking()
+                    .Where(document => document.Key == "rules-exception" || document.Key == "rules-parcel").ToArrayAsync(cancellationToken);
+            }
             Publish(documents);
             lock (_publishGate) {
                 if (_snapshot is null) Volatile.Write(ref _snapshot, _exceptionRules.Concat(_parcelRules).ToImmutableArray());

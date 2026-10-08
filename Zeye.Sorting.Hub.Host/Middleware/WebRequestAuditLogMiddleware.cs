@@ -9,6 +9,7 @@ using NLog;
 using Zeye.Sorting.Hub.Application.Services.AuditLogs;
 using Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests;
 using Zeye.Sorting.Hub.Domain.Enums.AuditLogs;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 
 namespace Zeye.Sorting.Hub.Host.Middleware;
 
@@ -38,11 +39,13 @@ public sealed class WebRequestAuditLogMiddleware {
     /// <summary>
     /// 审计配置。
     /// </summary>
-    private readonly WebRequestAuditLogOptions _options;
+    private readonly IOptions<WebRequestAuditLogOptions> _options;
     /// <summary>
     /// 后台审计队列（有界队列+背压保护）。
     /// </summary>
     private readonly WebRequestAuditBackgroundQueue _backgroundQueue;
+    /// <summary>共享查询诊断管线，审计采样关闭时也保留数据库性能观测。</summary>
+    private readonly SlowQueryAutoTuningPipeline? _slowQueries;
 
     /// <summary>
     /// JSON 序列化选项。
@@ -57,13 +60,16 @@ public sealed class WebRequestAuditLogMiddleware {
     /// <param name="next">下一个中间件委托。</param>
     /// <param name="options">审计配置。</param>
     /// <param name="backgroundQueue">后台审计队列。</param>
+    /// <param name="slowQueries">独立于审计开关的查询诊断管线。</param>
     public WebRequestAuditLogMiddleware(
         RequestDelegate next,
         IOptions<WebRequestAuditLogOptions> options,
-        WebRequestAuditBackgroundQueue backgroundQueue) {
+        WebRequestAuditBackgroundQueue backgroundQueue,
+        SlowQueryAutoTuningPipeline? slowQueries = null) {
         _next = next ?? throw new ArgumentNullException(nameof(next));
-        _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
+        _options = options ?? throw new ArgumentNullException(nameof(options));
         _backgroundQueue = backgroundQueue ?? throw new ArgumentNullException(nameof(backgroundQueue));
+        _slowQueries = slowQueries;
     }
 
     /// <summary>
@@ -72,13 +78,37 @@ public sealed class WebRequestAuditLogMiddleware {
     /// <param name="context">HTTP 上下文。</param>
     /// <returns>异步任务。</returns>
     public async Task InvokeAsync(HttpContext context) {
-        if (!_options.Enabled || ShouldExclude(context.Request.Path, _options.ExcludedPathPrefixes)) {
+        using var queryScope = SlowQueryRequestScope.Begin(ResolveTraceId(context));
+        var queryStarted = Stopwatch.GetTimestamp();
+        Exception? queryFailure = null;
+        try { await InvokeAuditedAsync(context); }
+        catch (Exception exception) { queryFailure = exception; throw; }
+        finally {
+            // 使用路由模板，不能把业务编号、密码或查询参数写入诊断名称。
+            var route = (context.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText ?? "/api/{unmatched}";
+            var failure = queryFailure ?? context.Features.Get<IExceptionHandlerFeature>()?.Error;
+            // 外层尚未生成异常响应时不能保留默认 200；取消没有确定响应时保持未知。
+            var status = failure is null || context.Response.StatusCode >= 400 ? context.Response.StatusCode
+                : failure.GetBaseException() is OperationCanceledException ? 0 : StatusCodes.Status500InternalServerError;
+            if (context.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase)) _slowQueries?.Collect(
+                "REQUEST " + context.Request.Method + " " + route, Stopwatch.GetElapsedTime(queryStarted),
+                exception: failure, observation: queryScope.Snapshot(ResolveTraceId(context)) with {
+                    StatusCode = status,
+                    IsFailed = status >= 500
+                });
+        }
+    }
+
+    /// <summary>原有审计采样与正文处理；数据库观测独立于审计开关。</summary>
+    private async Task InvokeAuditedAsync(HttpContext context) {
+        var options = _options.Value;
+        if (!options.Enabled || ShouldExclude(context.Request.Path, options.ExcludedPathPrefixes)) {
             await _next(context);
             return;
         }
 
-        var isSampled = ShouldSample(_options.SampleRate);
-        if (!isSampled && !_options.AlwaysAuditFailedRequests && _options.SlowRequestThresholdMs <= 0L) {
+        var isSampled = ShouldSample(options.SampleRate);
+        if (!isSampled && !options.AlwaysAuditFailedRequests && options.SlowRequestThresholdMs <= 0L) {
             await _next(context);
             return;
         }
@@ -95,10 +125,10 @@ public sealed class WebRequestAuditLogMiddleware {
         var requestSizeBytes = context.Request.ContentLength ?? 0L;
 
         // 账号维护载荷可能包含密码或初始化密钥，任何采样策略都不采集其正文。
-        if (isSampled && _options.IncludeRequestBody && !context.Request.Path.StartsWithSegments("/api/access") && !context.Request.Path.StartsWithSegments("/api/operations/configuration/fusion")
+        if (isSampled && options.IncludeRequestBody && !context.Request.Path.StartsWithSegments("/api/access") && !context.Request.Path.StartsWithSegments("/api/operations/configuration")
             && !string.Equals(context.Request.Path.Value?.TrimEnd('/'), "/api/admin/parcels/cleanup-expired", StringComparison.OrdinalIgnoreCase)) {
             try {
-                requestBodyCapture = await CaptureRequestBodyAsync(context.Request, _options.MaxRequestBodyLength);
+                requestBodyCapture = await CaptureRequestBodyAsync(context.Request, options.MaxRequestBodyLength);
                 requestSizeBytes = requestBodyCapture.OriginalLengthBytes;
             }
             catch (Exception exception) {
@@ -108,9 +138,9 @@ public sealed class WebRequestAuditLogMiddleware {
         }
 
         var originalResponseBody = context.Response.Body;
-        var responseCaptureStream = isSampled && _options.IncludeResponseBody
-            && !context.Request.Path.StartsWithSegments("/api/operations/configuration/fusion")
-            ? new ResponseCaptureTeeStream(originalResponseBody, _options.MaxResponseBodyLength)
+        var responseCaptureStream = isSampled && options.IncludeResponseBody
+            && !context.Request.Path.StartsWithSegments("/api/operations/configuration")
+            ? new ResponseCaptureTeeStream(originalResponseBody, options.MaxResponseBodyLength)
             : null;
         if (responseCaptureStream is not null) {
             context.Response.Body = responseCaptureStream;
@@ -164,8 +194,8 @@ public sealed class WebRequestAuditLogMiddleware {
                 ? context.Response.StatusCode
                 : StatusCodes.Status500InternalServerError;
             var isSuccess = statusCode is >= StatusCodes.Status200OK and < StatusCodes.Status400BadRequest;
-            var shouldForceAudit = (_options.AlwaysAuditFailedRequests && (!isSuccess || resolvedException is not null))
-                || (_options.SlowRequestThresholdMs > 0L && durationMs >= _options.SlowRequestThresholdMs);
+            var shouldForceAudit = (options.AlwaysAuditFailedRequests && (!isSuccess || resolvedException is not null))
+                || (options.SlowRequestThresholdMs > 0L && durationMs >= options.SlowRequestThresholdMs);
             if (isSampled || shouldForceAudit) {
                 try {
                     var detail = BuildDetail(

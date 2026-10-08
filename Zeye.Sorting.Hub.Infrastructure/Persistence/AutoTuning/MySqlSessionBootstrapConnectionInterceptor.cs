@@ -43,7 +43,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                 try {
                     using var command = connection.CreateCommand();
                     command.CommandText = sql;
-                    command.ExecuteNonQuery();
+                    SlowQueryDbOperations.ExecuteNonQuery(command);
                 }
                 catch (Exception ex) {
                     Logger.Warn(ex, "MySQL 会话初始化 SQL 执行失败，已降级忽略，Sql={Sql}", sql);
@@ -57,7 +57,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
                 try {
                     await using var command = connection.CreateCommand();
                     command.CommandText = sql;
-                    await command.ExecuteNonQueryAsync(cancellationToken);
+                    await SlowQueryDbOperations.ExecuteNonQueryAsync(command, cancellationToken);
                 }
                 catch (Exception ex) {
                     Logger.Warn(ex, "MySQL 会话初始化 SQL 执行失败，已降级忽略，Sql={Sql}", sql);

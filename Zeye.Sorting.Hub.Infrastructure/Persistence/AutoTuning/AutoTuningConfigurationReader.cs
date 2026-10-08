@@ -84,7 +84,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             value = value.Trim();
             if (!TimeSpan.TryParseExact(
                     value,
-                    ["HH\\:mm\\:ss", "HH\\:mm"],
+                    ["hh\\:mm\\:ss", "hh\\:mm"],
                     CultureInfo.InvariantCulture,
                     TimeSpanStyles.None,
                     out var parsed)) {

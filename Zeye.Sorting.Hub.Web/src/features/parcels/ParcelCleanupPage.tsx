@@ -41,13 +41,13 @@ export function ParcelCleanupPage() {
     try {
       const response = await requestApi<ParcelCleanupResponse>('/api/admin/parcels/cleanup-expired', undefined, { method: 'POST', body: payload });
       setResult(response); setConfirmDate(null); setAccepted(false);
-      message.success(response.decision === 'execute' ? `清理完成，已删除 ${response.executedCount.toLocaleString()} 条，操作记录已保存` : `本次${cleanupDecisionLabels[response.decision] ?? '操作完成'}，结果已保存至清理历史`);
+      message.success(response.decision === 'execute' ? `清理完成，已删除 ${response.executedCount.toLocaleString()} 票，操作记录已保存` : `本次${cleanupDecisionLabels[response.decision] ?? '操作完成'}，结果已保存至清理历史`);
     } catch (failure) { setPasswordError(failure instanceof Error ? failure.message : '清理请求失败，请查看清理历史确认执行结果'); }
     finally { submitting.current = false; setSaving(false); setHistoryRevision(value => value + 1); }
   };
   return <div className="cleanup-page">
     <PageIntro title="过期包裹清理" description="按创建时间清理包裹数据，释放存储空间，并保留完整的操作追溯记录。" />
-    <InfoAlert type="warning" message="清理会永久删除符合条件的包裹；提交前需验证当前用户的登录密码" description="清理历史仅永久保存操作汇总，不复制逐票包裹数据。单次最多清理 10,000 条，物理删除不支持撤销。" closable={false} />
+    <InfoAlert type="warning" message="清理会永久删除符合条件的包裹；提交前需验证当前用户的登录密码" description="清理历史仅永久保存操作汇总，不复制逐票包裹数据。单次最多清理 10,000 票，物理删除不支持撤销。" closable={false} />
     <SectionCard title="清理条件" className="cleanup-condition"><p className="text-muted" style={{ marginTop: -8 }}>选择清理日期并确认影响范围，再验证密码提交。</p>
       <div className="cleanup-form">
         <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}><b style={{ minWidth: 126 }}><span className="cleanup-required-inline">* </span>创建时间早于</b><DatePicker value={before} onChange={value => { setBefore(value); setAccepted(false); }} style={{ width: 405, maxWidth: '100%' }} placeholder="请选择日期" /></div>
@@ -58,7 +58,7 @@ export function ParcelCleanupPage() {
       </div>
     </SectionCard>
     <SectionCard title="最近执行结果" className="cleanup-result">
-      <div className="four-stats">{[['执行结果', result ? cleanupDecisionLabels[result.decision] ?? result.decision : '未提交'], ['计划处理数', result?.plannedCount.toLocaleString() ?? '未提交'], ['实际删除数', result?.executedCount.toLocaleString() ?? '未提交']].map(([label, value]) => <div className="stat-divider" key={label}><div className="text-muted">{label}</div><b>{value}</b></div>)}<div className="stat-divider"><div className="text-muted">操作追溯</div>{result?.cleanupRecordId ? <Button type="link" onClick={() => setSelectedId(result.cleanupRecordId!)}>查看本次清理记录</Button> : <b>未提交</b>}</div></div>
+      <div className="four-stats">{[['执行结果', result ? cleanupDecisionLabels[result.decision] ?? result.decision : '未提交'], ['计划票数', result?.plannedCount.toLocaleString() ?? '未提交'], ['删除票数', result?.executedCount.toLocaleString() ?? '未提交']].map(([label, value]) => <div className="stat-divider" key={label}><div className="text-muted">{label}</div><b>{value}</b></div>)}<div className="stat-divider"><div className="text-muted">操作追溯</div>{result?.cleanupRecordId ? <Button type="link" onClick={() => setSelectedId(result.cleanupRecordId!)}>查看本次清理记录</Button> : <b>未提交</b>}</div></div>
     </SectionCard>
     <SectionCard title="清理历史" className="cleanup-history"><ParcelCleanupHistory revision={historyRevision} selectedId={selectedId} onSelect={setSelectedId} /></SectionCard>
     <Modal title="验证密码并确认清理" open={confirmDate !== null} onCancel={() => { if (!saving) { setConfirmDate(null); passwordForm.resetFields(); setPasswordError(''); } }} onOk={confirmCleanup} okText="验证并清理" cancelText="取消" confirmLoading={saving} okButtonProps={{ danger: true }} cancelButtonProps={{ disabled: saving }} closable={!saving} maskClosable={false} keyboard={!saving} destroyOnHidden>

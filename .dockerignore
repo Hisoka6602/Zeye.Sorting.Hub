@@ -2,6 +2,9 @@
 .vs
 .agents
 .codex-artifacts
+# 浏览器验收快照不属于部署源码或后端运行配置。
+.playwright-cli
+output/playwright
 artifacts
 .config
 **/bin
@@ -15,5 +18,7 @@ deploy/.env
 deploy/fusion-ingestion.json
 fusion-images
 Zeye.Sorting.Hub.Host/fusion-images
+data
+Zeye.Sorting.Hub.Host/data
 *.user
 *.log

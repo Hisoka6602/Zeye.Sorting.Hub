@@ -38,6 +38,32 @@ public sealed class AutoTuningProductionControlTests {
     /// NLog 全局配置切换互斥锁：防止并行测试对全局 <see cref="NLog.LogManager.Configuration"/> 的竞争写入。
     /// </summary>
     private static readonly object NLogConfigLock = new();
+
+    /// <summary>时间选择器输出及旧版分钟格式应读取真实配置，不能静默回退。</summary>
+    [Theory]
+    [InlineData("12:15:30", 12, 15, 30)]
+    [InlineData("01:02", 1, 2, 0)]
+    [InlineData(" 23:59:59 ", 23, 59, 59)]
+    [InlineData("00:00:00", 0, 0, 0)]
+    public void TimeOfDayConfiguration_ShouldAcceptPickerValues(string value, int hour, int minute, int second) {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Time"] = value }).Build();
+        var actual = AutoTuningConfigurationReader.GetTimeOfDayOrDefault(configuration, "Time", new TimeSpan(2, 30, 0));
+        Assert.Equal(new TimeSpan(hour, minute, second), actual);
+    }
+
+    /// <summary>非法时刻和带偏移的输入继续按原规则回退，保持本地时间约束。</summary>
+    [Theory]
+    [InlineData("24:00:00")]
+    [InlineData("12:60:00")]
+    [InlineData("12:30:60")]
+    [InlineData("12:30:00+08:00")]
+    [InlineData("12:30:00.500")]
+    [InlineData("")]
+    public void TimeOfDayConfiguration_ShouldKeepInvalidValueFallback(string value) {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Time"] = value }).Build();
+        var fallback = new TimeSpan(2, 30, 0);
+        Assert.Equal(fallback, AutoTuningConfigurationReader.GetTimeOfDayOrDefault(configuration, "Time", fallback));
+    }
     /// <summary>
     /// 验证场景：ParcelStatus_ShouldOnlyContainThreeValues。
     /// </summary>

@@ -1,0 +1,18 @@
+{
+  // 开发环境日志级别配置；可填写 Trace、Debug、Information、Warning、Error、Critical 或 None。
+  "Logging": {
+    // 各日志分类的最低输出级别。
+    "LogLevel": {
+      // 默认日志最低级别。
+      "Default": "Information",
+      // 宿主生命周期日志最低级别。
+      "Microsoft.Hosting.Lifetime": "Information"
+    }
+  },
+  // 开发环境允许更高审计采样并保留正文，便于接口联调与问题回放。
+  "WebRequestAuditLog": {
+    "SampleRate": 1,
+    "IncludeRequestBody": true,
+    "IncludeResponseBody": true
+  }
+}

@@ -13,6 +13,7 @@ import { FilterActions } from '../../components/FilterActions';
 import { PageIntro } from '../../components/PageIntro';
 import { SectionCard } from '../../components/SectionCard';
 import { StatusTag } from '../../components/StatusTag';
+import { localDateTimeFormat, localTime } from '../../data/api/operationalTypes';
 import './rules.css';
 
 type RuleCategory = 'parcel' | 'exception';
@@ -115,7 +116,7 @@ export function RulesPage() {
     const previous = rules.find(item => item.id === editingId);
     const rule: Rule = {
       id, name: values.name.trim(), scope: values.scope.trim(), description: values.description.trim(),
-      version: previous?.version ?? 'v0.1.0', status: '草稿', modified: dayjs().format('YYYY-MM-DD HH:mm:ss'), editor: '张三',
+      version: previous?.version ?? 'v0.1.0', status: '草稿', modified: dayjs().format(localDateTimeFormat), editor: '张三',
       targetType: category === 'exception' ? exceptionTypeOptions.find(item => item.value === values.exceptionType)?.label : parcelTypes[values.parcelType!],
       exceptionType: category === 'exception' ? values.exceptionType : undefined,
       parcelType: category === 'parcel' ? values.parcelType : undefined,
@@ -163,7 +164,7 @@ export function RulesPage() {
       ...(category === 'exception' ? [{ title: '匹配条件', width: 220, render: (_: unknown, rule: Rule) => rule.systemRule === 'unknown-fallback' ? '其他规则均未匹配' : <div className="rule-condition-summary">{rule.conditions?.map((condition, index) => <span key={index}>{condition.field} {condition.operator} {formatConditionValue(condition)}</span>)}</div> }, { title: '异常类型', dataIndex: 'targetType', width: 158 }] : []),
       { title: '版本', dataIndex: 'version', width: 80 },
       { title: '状态', dataIndex: 'status', width: 86, render: (value: string) => <StatusTag value={value} /> },
-      { title: '适用范围', dataIndex: 'scope', width: 124 }, { title: '最近修改', dataIndex: 'modified', width: 170 }, { title: '修改人', dataIndex: 'editor', width: 75 },
+      { title: '适用范围', dataIndex: 'scope', width: 124 }, { title: '最近修改', dataIndex: 'modified', width: 210, render: localTime }, { title: '修改人', dataIndex: 'editor', width: 75 },
       { title: '操作', width: category === 'exception' ? 124 : 70, render: (_, item) => <Space size={4}><Button type="link" className="table-link" onClick={() => { setSelectedId(item.id); setDetailTab('conditions'); setDrawer('detail'); }}>查看</Button>{category === 'exception' && (item.systemRule === 'unknown-fallback' ? <Tooltip title="未知异常是系统兜底规则，不能删除"><Button type="link" disabled>删除</Button></Tooltip> : item.status === '草稿' && <Popconfirm title="删除此草稿？" description="已发布规则和系统规则不会受到影响。" okText="删除" cancelText="取消" onConfirm={() => removeRule(item)}><Button type="link" danger className="table-link">删除</Button></Popconfirm>)}</Space> },
     ]} /></SectionCard>
   </>;
@@ -185,7 +186,7 @@ export function RulesPage() {
           { key: 'category', label: '规则分类', children: categoryNames[category] },
           { key: 'target', label: category === 'exception' ? '异常类型' : '包裹分类', children: selected.targetType || '待配置' },
           { key: 'scope', label: '适用范围', children: selected.scope }, { key: 'version', label: '当前版本', children: selected.version },
-          { key: 'modified', label: '最后修改', children: selected.modified }, { key: 'editor', label: '修改人', children: selected.editor },
+          { key: 'modified', label: '最后修改', children: localTime(selected.modified) }, { key: 'editor', label: '修改人', children: selected.editor },
           { key: 'note', label: '备注', children: selected.note || selected.description },
         ]} /></div>
         <Tabs style={{ marginTop: 18 }} activeKey={detailTab} onChange={setDetailTab} items={[
@@ -200,7 +201,7 @@ export function RulesPage() {
             { key: 'actions', label: '处理动作', children: selected.actions?.length ? <ul className="rule-action-list">{selected.actions.map(action => <li key={action}>{action}</li>)}</ul> : '待配置' },
             { key: 'scope', label: '适用范围', children: selected.scope },
           ]} /> },
-          { key: 'history', label: '变更记录', children: <Timeline items={[{ children: `${selected.modified} ${selected.editor} 更新规则` }]} /> },
+          { key: 'history', label: '变更记录', children: <Timeline items={[{ children: `${localTime(selected.modified)} ${selected.editor} 更新规则` }]} /> },
         ]} />
       </>}
     </Drawer>

@@ -13,6 +13,7 @@
 .fusion-field-label strong { font-size:14px; font-weight:600; line-height:20px; color:var(--hub-text-heading); }
 .fusion-field-label small { font-size:13px; font-weight:400; color:var(--hub-text-secondary); line-height:18px; }
 .fusion-help { display:block; margin-top:6px; }
+.fusion-fixed-value { display:block; min-height:32px; line-height:32px; overflow-wrap:anywhere; }
 .fusion-advanced { margin-top:18px; }
 .fusion-form-footer { margin-top:20px; padding-top:18px; border-top:1px solid #edf1f7; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
 .fusion-form-footer>span,.fusion-source-toolbar>span { color:var(--hub-text-secondary); font-size:13px; }

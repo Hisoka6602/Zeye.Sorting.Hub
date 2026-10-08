@@ -8,4 +8,3 @@
 .parcel-processing-event{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:8px;padding:5px 0;border-top:1px solid var(--hub-border,#edf1f7)}
 .parcel-processing-event time{min-width:0;color:var(--hub-text-secondary);font-size:var(--hub-font-caption);overflow-wrap:anywhere}
 .parcel-processing-event .status-tag{margin-inline-end:0}
-.parcel-processing-details-summary{margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid var(--hub-border,#edf1f7)}

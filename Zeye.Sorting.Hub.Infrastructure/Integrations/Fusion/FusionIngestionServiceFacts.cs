@@ -1,8 +1,10 @@
 using System.Globalization;
+using System.Linq.Expressions;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Zeye.Sorting.Hub.Contracts.Models.Fusion;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.Processing;
+using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Fusion;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Integrations.Fusion;
@@ -27,9 +29,7 @@ public sealed partial class FusionIngestionService {
         var sourceFacts = db.Set<FusionFactReceipt>().AsNoTracking().Where(x => x.SourceInstanceId == connection.Source.SourceInstanceId
             && x.JournalId == connection.JournalId);
         // 分别按编号和来源序号走唯一索引，避免每次写入扫描整个来源日志。
-        // UNION 合并同一记录的双重命中，同时保留两条不同记录的身份冲突。
-        var previous = await sourceFacts.Where(x => x.RecordId == envelope.RecordId)
-            .Union(sourceFacts.Where(x => x.SourceSequence == sequence)).ToListAsync(cancellationToken);
+        var previous = await ReadExistingFactsAsync(sourceFacts, x => x.RecordId == envelope.RecordId, x => x.SourceSequence == sequence, cancellationToken);
         if (previous.Count > 0) return Receipt(previous, envelope);
         var fact = FusionProtocol.Decode(envelope, connection.Source.SourceInstanceId, connection.JournalId, connection.Source);
         var request = FusionProtocol.Map(fact, connection.Source);
@@ -61,6 +61,21 @@ public sealed partial class FusionIngestionService {
         return new(envelope.RecordId, envelope.SourceSequence, envelope.BodySha256, "stored");
     }
 
+    /// <summary>分别按两个唯一索引读取有界凭据，在内存合并，原文 LOB 不进入去重查询。</summary>
+    private static async Task<List<FusionFactReceipt>> ReadExistingFactsAsync(IQueryable<FusionFactReceipt> source,
+        Expression<Func<FusionFactReceipt, bool>> recordMatch, Expression<Func<FusionFactReceipt, bool>> sequenceMatch, CancellationToken token) {
+        // Oracle 会把 IN(UNION) 展开为来源历史上的重复子查询；两个有界索引读取避免随积压放大耗时。
+        Expression<Func<FusionFactReceipt, FusionFactReceipt>> identity = fact => new() {
+            Key = fact.Key, RecordId = fact.RecordId, SourceSequence = fact.SourceSequence, BodySha256 = fact.BodySha256
+        };
+        var records = await source.Where(recordMatch).Select(identity).ToListAsync(token);
+        var sequences = await source.Where(sequenceMatch).Select(identity).ToListAsync(token);
+        // 不可变凭据允许两次读取；同一行双重命中仍为重复，两条不同身份仍保留为冲突。
+        var keys = records.Select(fact => fact.Key).ToHashSet(StringComparer.Ordinal);
+        records.AddRange(sequences.Where(fact => keys.Add(fact.Key)));
+        return records;
+    }
+
     /// <summary>同编号、同序号和同原始字节摘要才是重复，任意身份内容变更都冲突。</summary>
     private static HubFactReceipt Receipt(IReadOnlyList<FusionFactReceipt> previous, HubFactEnvelope envelope) {
         var identical = previous.Count == 1 && previous[0].RecordId == envelope.RecordId
@@ -73,11 +88,7 @@ public sealed partial class FusionIngestionService {
     public async Task<IReadOnlyList<FusionProjectionItem>> ClaimProjectionsAsync(CancellationToken cancellationToken) {
         await using var db = await _factory.CreateDbContextAsync(cancellationToken);
         var now = DateTime.Now;
-        // 候选排序仅读取覆盖索引中的凭据键，避免原文大字段参与海量排序。
-        var keys = await db.Set<FusionFactReceipt>().AsNoTracking().Where(x => x.ProjectionState != "complete" && x.NextProjectionAt <= now
-            && (x.ProjectionClaimUntil == null || x.ProjectionClaimUntil <= now))
-            .OrderBy(x => x.ReceivedAt).ThenBy(x => x.SourceSequence).ThenBy(x => x.Key)
-            .Select(x => x.Key).Take(ProjectionBatchSize).ToArrayAsync(cancellationToken);
+        var keys = await BuildProjectionCandidateQuery(db, now).ToArrayAsync(cancellationToken);
         if (keys.Length == 0) return [];
         var claim = Guid.NewGuid().ToString("N");
         // 一次提交认领有界候选集；条件复核仍在数据库中原子执行。
@@ -98,6 +109,22 @@ public sealed partial class FusionIngestionService {
             if (request is not null) items.Add(new(row.Key, claim, request));
         }
         return items;
+    }
+
+    /// <summary>每种可处理状态最多取一批窄行，再按统一顺序裁剪，限制跨状态排序规模。</summary>
+    internal static IQueryable<string> BuildProjectionCandidateQuery(SortingHubDbContext db, DateTime now) {
+        // 按可处理状态分别走覆盖索引，各取有界候选后合并，完成历史和原文不参与全局排序。
+        var available = db.Set<FusionFactReceipt>().AsNoTracking().Where(x => x.NextProjectionAt <= now
+            && (x.ProjectionClaimUntil == null || x.ProjectionClaimUntil <= now));
+        var pending = available.Where(x => x.ProjectionState == "pending")
+            .OrderBy(x => x.ReceivedAt).ThenBy(x => x.SourceSequence).ThenBy(x => x.Key)
+            .Take(ProjectionBatchSize).Select(x => new { x.Key, x.ReceivedAt, x.SourceSequence });
+        var retry = available.Where(x => x.ProjectionState == "retry")
+            .OrderBy(x => x.ReceivedAt).ThenBy(x => x.SourceSequence).ThenBy(x => x.Key)
+            .Take(ProjectionBatchSize).Select(x => new { x.Key, x.ReceivedAt, x.SourceSequence });
+        return pending.Concat(retry)
+            .OrderBy(x => x.ReceivedAt).ThenBy(x => x.SourceSequence).ThenBy(x => x.Key)
+            .Take(ProjectionBatchSize).Select(x => x.Key);
     }
 
     /// <summary>幂等业务用例完成后才标记投影完成；崩溃在两者之间会安全重放同一业务凭据。</summary>

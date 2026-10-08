@@ -12,24 +12,19 @@ export function formatTrendCount(count: number): string {
   return count < 1_000 || !Number.isFinite(count) ? formatNumber(count) : compactFormatter.format(count);
 }
 
-/** 为相邻柱顶数字留出间距；高件量的 31 日图表可横向滚动。 */
-export function trendPlotWidth(counts: readonly number[]): number {
-  const baseWidth = 914;
-  const dayCount = Math.max(counts.length, 1);
-  let slotWidth = baseWidth / dayCount;
-  let previousIndex = -1;
-  let previousLabelWidth = 0;
+/** 在现有宽度内优先标注较高票数，避免相邻柱顶数字重叠，不扩大图表。 */
+export function trendValueLabelIndexes(counts: readonly number[], plotWidth: number): ReadonlySet<number> {
+  const indexes = new Set<number>();
+  const slotWidth = Math.max(plotWidth, 0) / Math.max(counts.length, 1);
+  const labels = counts.map((count, index) => ({ count, index, width: formatTrendCount(count).length * 7.4 }))
+    .filter(label => label.count > 0)
+    .sort((a, b) => b.count - a.count || a.index - b.index);
+  const selected: typeof labels = [];
 
-  counts.forEach((count, index) => {
-    if (count <= 0) return;
-    const labelWidth = formatTrendCount(count).length * 7.4;
-    if (previousIndex >= 0) {
-      const requiredGap = (previousLabelWidth + labelWidth) / 2 + 8;
-      slotWidth = Math.max(slotWidth, requiredGap / (index - previousIndex));
-    }
-    previousIndex = index;
-    previousLabelWidth = labelWidth;
-  });
-
-  return Math.max(baseWidth, Math.ceil(slotWidth * dayCount));
+  for (const label of labels) {
+    if (selected.some(other => Math.abs(other.index - label.index) * slotWidth < (other.width + label.width) / 2 + 8)) continue;
+    selected.push(label);
+    indexes.add(label.index);
+  }
+  return indexes;
 }

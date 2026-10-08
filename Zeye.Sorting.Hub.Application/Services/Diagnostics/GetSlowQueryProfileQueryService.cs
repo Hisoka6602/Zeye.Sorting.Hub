@@ -33,7 +33,15 @@ public sealed class GetSlowQueryProfileQueryService {
     public SlowQueryProfileListResponse Execute() {
         try {
             var (snapshots, totalFingerprintCount) = _profileReader.GetTopProfiles();
+            var status = _profileReader.GetCollectionStatus();
             return new SlowQueryProfileListResponse {
+                Collection = new() {
+                    Enabled = status.Enabled, ThresholdMilliseconds = status.ThresholdMilliseconds, WindowMinutes = status.WindowMinutes,
+                    CapacityEvictions = status.CapacityEvictions, ExpiredSamples = status.ExpiredSamples, CollectionFailures = status.CollectionFailures,
+                    ActiveOperations = status.ActiveOperations, OldestActiveMilliseconds = status.OldestActiveMilliseconds,
+                    OldestActiveTraceId = status.OldestActiveTraceId, ArchiveEnabled = status.ArchiveEnabled, ArchiveReady = status.ArchiveReady,
+                    ArchivePending = status.ArchivePending, ArchiveDropped = status.ArchiveDropped, RestoredSamples = status.RestoredSamples
+                },
                 GeneratedAtLocal = DateTime.Now,
                 TotalFingerprintCount = totalFingerprintCount,
                 Items = snapshots.Select(MapToResponse).ToArray()
@@ -78,6 +86,12 @@ public sealed class GetSlowQueryProfileQueryService {
     /// <returns>响应合同。</returns>
     private static SlowQueryProfileResponse MapToResponse(SlowQueryProfileReadModel snapshot) {
         return new SlowQueryProfileResponse {
+            Kind = snapshot.Kind, Provider = snapshot.Provider, DatabaseRole = snapshot.DatabaseRole, TraceId = snapshot.TraceId, SpanId = snapshot.SpanId,
+            CommandId = snapshot.CommandId, CanceledCount = snapshot.CanceledCount, PartialReadCount = snapshot.PartialReadCount,
+            AverageExecuteMilliseconds = snapshot.AverageExecuteMilliseconds, AverageReadMilliseconds = snapshot.AverageReadMilliseconds,
+            AverageConsumerMilliseconds = snapshot.AverageConsumerMilliseconds, AverageConnectionMilliseconds = snapshot.AverageConnectionMilliseconds,
+            TotalRowsRead = snapshot.TotalRowsRead, LatestCommandCount = snapshot.LatestCommandCount, ExceptionType = snapshot.ExceptionType,
+            StatusCode = snapshot.StatusCode,
             Fingerprint = snapshot.Fingerprint,
             NormalizedSql = snapshot.NormalizedSql,
             SampleSql = snapshot.SampleSql,

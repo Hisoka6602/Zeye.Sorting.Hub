@@ -20,6 +20,7 @@ using Zeye.Sorting.Hub.Domain.Enums.DataGovernance;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Management;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
+using Zeye.Sorting.Hub.Infrastructure.Configuration;
 
 namespace Zeye.Sorting.Hub.Tools.BusinessDataSimulator;
 
@@ -46,8 +47,7 @@ internal static class Program {
             if (address.Database != "zeye_sorting_hub" || address.Server is not ("mysql" or "localhost" or "127.0.0.1"))
                 throw new InvalidOperationException("模拟工具仅能访问本机Sorting Hub Docker数据库。");
             var configDirectory = Value(args, "--config-directory", "/app");
-            var configuration = new ConfigurationBuilder().AddJsonFile(Path.Combine(configDirectory, "appsettings.json"))
-                .AddJsonFile(Path.Combine(configDirectory, "appsettings.LocalDocker.json"), optional: true)
+            var configuration = new ConfigurationBuilder().AddInMemoryCollection(ConfigurationDocument.Flatten(ConfigurationReadOnlyLoader.Load(configDirectory, "LocalDocker")))
                 .AddInMemoryCollection(new[] { "Persistence:Sharding:Strategy:Time:Granularity", "Persistence:Sharding:WriteRouting:AllowTableCreation", "Persistence:Sharding:WriteRouting:DryRun" }.Select(key => new KeyValuePair<string, string?>(key, Environment.GetEnvironmentVariable(key.Replace(":", "__")))) .Where(p => p.Value is not null)).Build();
             var dbOptions = new DbContextOptionsBuilder<SortingHubDbContext>().UseMySql(connection, new MySqlServerVersion(new Version(8, 4, 0)), mysql => mysql.CommandTimeout(60)).Options;
             IDbContextFactory<SortingHubDbContext> factory = new PooledDbContextFactory<SortingHubDbContext>(dbOptions);
@@ -81,7 +81,7 @@ internal static class Program {
                         foreach (var chunk in group.Chunk(100)) inserted += await WriteChunkAsync(partitions, group.Key, chunk, bags);
                         Console.WriteLine($"分表 {group.Key}：{group.Count()} 票及关联明细已就绪。");
                     }
-                    await SeedManagementAsync(factory, options, data);
+                    await SeedManagementAsync(factory, options, data, configDirectory);
                 }
                 await VerifyAsync(factory, partitions, options, data);
                 PrintSummary(options, data, inserted, "数据库关联与业务一致性校验通过");
@@ -204,19 +204,27 @@ internal static class Program {
     }
 
     /// <summary>草稿与归档演练记录可供页面展示，不执行真实删除、归档或规则发布。</summary>
-    private static async Task SeedManagementAsync(IDbContextFactory<SortingHubDbContext> factory, SimulationOptions options, SimulationParcel[] data) {
+    private static async Task SeedManagementAsync(IDbContextFactory<SortingHubDbContext> factory, SimulationOptions options, SimulationParcel[] data, string configDirectory) {
         await using var db = await factory.CreateDbContextAsync();
+        var stored = ConfigurationReadOnlyLoader.Load(configDirectory, "LocalDocker");
+        var values = ConfigurationDocument.Flatten(stored);
+        var root = Path.GetFullPath(Environment.GetEnvironmentVariable("ZEYE_HUB_CONFIG_ROOT") ?? configDirectory);
+        var history = new ConfigurationHistoryStore(Path.GetFullPath(Environment.GetEnvironmentVariable("ConfigurationStorage__HistorySqlitePath")
+            ?? values.GetValueOrDefault("ConfigurationStorage:HistorySqlitePath") ?? "data/business-history/configuration-history.db", root));
+        using var configurations = new LiteDbConfigurationStore(Path.GetFullPath(Environment.GetEnvironmentVariable("ConfigurationStorage__LiteDbPath")
+            ?? values.GetValueOrDefault("ConfigurationStorage:LiteDbPath") ?? "data/configuration/settings.db", root), history, ConfigurationDocument.Defaults("LocalDocker"), stored);
+        configurations.Import(await db.Set<ManagedDocument>().AsNoTracking().Where(x => x.Key == "rules-parcel" || x.Key == "rules-exception").ToArrayAsync());
         foreach (var category in new[] { "parcel", "exception" }) {
             var key = "rules-" + category;
-            var document = await db.Set<ManagedDocument>().SingleOrDefaultAsync(d => d.Key == key);
+            var document = configurations.Read(key);
             var old = document is null ? category == "exception" ? ClassificationRuleDefaults.Create() : [] : JsonSerializer.Deserialize<ClassificationRule[]>(document.Json, Json)!;
             var examples = SimulationScenario.ExampleRules(category == "exception", options.AsOf);
             if (examples.Any(e => old.Any(r => r.Id == e.Id && r.Note != SimulationScenario.Marker))) throw new InvalidOperationException("规则示例编号与现有规则冲突。");
             var additions = examples.Where(e => old.All(r => r.Id != e.Id)).ToArray();
             if (additions.Length == 0) continue;
             if (old.Length + additions.Length > 200) throw new InvalidOperationException("现有规则达到上限，不能追加模拟草稿。");
-            if (document is null) { document = new() { Key = key }; db.Add(document); }
-            document.Json = JsonSerializer.Serialize(old.Concat(additions), Json); document.Revision++; document.ModifiedAt = DateTime.Now;
+            if (configurations.Write(key, JsonSerializer.Serialize(old.Concat(additions), Json), document?.Revision ?? 0) is null)
+                throw new InvalidOperationException("规则配置存在并发修改，请重试。");
         }
         for (var n = 1; n <= 6; n++) {
             var id = SimulationScenario.Id('3', options.End, n);
