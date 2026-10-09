@@ -19,7 +19,7 @@ public sealed class AdditionalDatabaseProviderTests {
     [InlineData("SqlServer", "Microsoft.EntityFrameworkCore.SqlServer", "Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations")]
     [InlineData("Oracle", "Oracle.EntityFrameworkCore", "Zeye.Sorting.Hub.Infrastructure.OracleMigrations")]
     [InlineData("SQLite", "Microsoft.EntityFrameworkCore.Sqlite", "Zeye.Sorting.Hub.Infrastructure.SqliteMigrations")]
-    public void RuntimeProvider_SelectsIndependentSnapshot(string provider, string driver, string migrationAssembly) {
+    public void RuntimeProviderSelectsIndependentSnapshot(string provider, string driver, string migrationAssembly) {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> {
             ["Persistence:Provider"] = provider, ["Persistence:MySql:ServerVersion"] = "8.4.0",
             ["ConnectionStrings:MySql"] = "Server=127.0.0.1;Database=design_time_only;User Id=design_time_only",
@@ -38,7 +38,7 @@ public sealed class AdditionalDatabaseProviderTests {
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task SqliteProbe_DoesNotCreateMissingDirectoryOrFile(bool parentExists) {
+    public async Task SqliteProbeDoesNotCreateMissingDirectoryOrFile(bool parentExists) {
         using var environment = new ConfigurationTestStorage();
         var directory = Path.Combine(environment.DirectoryPath, "nested");
         if (parentExists) Directory.CreateDirectory(directory);
@@ -57,7 +57,7 @@ public sealed class AdditionalDatabaseProviderTests {
     [Theory]
     [InlineData("ReadOnly")]
     [InlineData("ReadWrite")]
-    public async Task SqliteStartupProbe_RejectsMissingFileWhenCreationIsDisabled(string mode) {
+    public async Task SqliteStartupProbeRejectsMissingFileWhenCreationIsDisabled(string mode) {
         using var environment = new ConfigurationTestStorage();
         var path = Path.Combine(environment.DirectoryPath, "missing", "business.db");
         await Assert.ThrowsAsync<SqliteException>(() => DatabaseConnectionOpenCoordinator.ProbeAdministrationConnectionAsync(
@@ -67,7 +67,7 @@ public sealed class AdditionalDatabaseProviderTests {
 
     /// <summary>持久化业务数据拒绝内存模式，提供器名称兼容旧写法。</summary>
     [Fact]
-    public void ProviderValidation_RejectsVolatileBusinessStorage() {
+    public void ProviderValidationRejectsVolatileBusinessStorage() {
         Assert.Throws<InvalidOperationException>(() => AdditionalDbContextOptions.NormalizeSqliteConnectionString("Data Source=:memory:"));
         Assert.Equal("SqlServer", ConfiguredProviderNames.Normalize("mssql"));
         Assert.Equal("SQLite", ConfiguredProviderNames.Normalize("Sqlite"));
@@ -75,7 +75,7 @@ public sealed class AdditionalDatabaseProviderTests {
 
     /// <summary>只读连接遗漏 Mode 时也不能在健康探针中隐式创建业务文件。</summary>
     [Fact]
-    public async Task SqliteReadOnlyRoute_DoesNotCreateMissingFile() {
+    public async Task SqliteReadOnlyRouteDoesNotCreateMissingFile() {
         var directory = Path.Combine(Path.GetTempPath(), "zeye-readonly-probe-" + Guid.NewGuid().ToString("N"));
         var connection = "Data Source=" + Path.Combine(directory, "business.db");
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> {
@@ -92,7 +92,7 @@ public sealed class AdditionalDatabaseProviderTests {
 
     /// <summary>控制字符前缀必须按字节语义判断，文化比较不能导致所有正常字符串被扩长。</summary>
     [Fact]
-    public void OracleStringEncoding_PreservesBoundedIdentifiersAndEmptyValues() {
+    public void OracleStringEncodingPreservesBoundedIdentifiersAndEmptyValues() {
         var options = new DbContextOptionsBuilder<SortingHubDbContext>();
         AdditionalDbContextOptions.Configure(options, "Oracle", "User Id=design_time_only;Password=design_time_only;Data Source=localhost/FREEPDB1");
         using var database = new SortingHubDbContext(options.Options);

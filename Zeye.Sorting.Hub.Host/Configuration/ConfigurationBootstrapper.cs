@@ -9,6 +9,9 @@ namespace Zeye.Sorting.Hub.Host.Configuration;
 
 /// <summary>在监听地址、日志和 EF 工厂绑定之前建立 LiteDB 配置源。</summary>
 public static class ConfigurationBootstrapper {
+    /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+    private static readonly string[] CachedConfigurationStorageKestrelValues = new[] { "ConfigurationStorage", "Kestrel" };
+
     /// <summary>在其他宿主服务绑定前初始化配置存储。</summary>
     public static void Configure(WebApplicationBuilder builder) {
         var configuration = builder.Configuration;
@@ -50,7 +53,7 @@ public static class ConfigurationBootstrapper {
         builder.Services.AddHostedService<ConfigurationReloadHostedService>();
     }
     /// <summary>配置位置和 Kestrel 证书属于 JSON 启动配置。</summary>
-    private static bool IsBootstrap(string key) => new[] { "ConfigurationStorage", "Kestrel" }
+    private static bool IsBootstrap(string key) => CachedConfigurationStorageKestrelValues
         .Any(section => key.Equals(section, StringComparison.OrdinalIgnoreCase) || key.StartsWith(section + ":", StringComparison.OrdinalIgnoreCase));
     /// <summary>保留环境变量、命令行和用户密钥；旧 appsettings 只作为首次导入来源。</summary>
     private static bool IsOverride(IConfigurationSource source) => source is not JsonConfigurationSource json

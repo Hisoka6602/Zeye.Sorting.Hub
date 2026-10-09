@@ -20,7 +20,7 @@ public static class FusionConfigurationApi {
                 return Results.Problem(statusCode: 400, detail: exception.Message);
             }
         });
-        /// <summary>返回目录版本冲突，不覆盖他人的修改。</summary>
+        // 返回目录版本冲突，不覆盖已提交的修改。
         static IResult Conflict() => Results.Problem(statusCode: 409, detail: "配置已变更，请刷新后重试，未覆盖其他修改。");
         group.MapGet("", async (FusionConfigurationService service, CancellationToken ct) => Results.Ok(await service.ReadAsync(ct)))
             .WithSummary("读取 Fusion 接入配置与来源目录").WithDescription("返回 Hub 身份、工作台发现设置、来源目录及版本，供具有接入配置管理权限的用户查看和编辑；读取响应不包含机器认证密钥。");

@@ -23,7 +23,7 @@ public sealed class CreateArchiveTaskCommandService {
     /// <summary>
     /// NLog 日志器。
     /// </summary>
-    private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
+    private static readonly NLog.Logger Logger = LogManager.GetCurrentClassLogger();
 
     /// <summary>
     /// 归档任务仓储。

@@ -48,6 +48,6 @@ public sealed class SqliteDialect : EfModelDatabaseDialect {
         await DatabaseConnectionOpenCoordinator.EnsureOpenedAsync(administrationConnection, cancellationToken);
         await using var command = administrationConnection.CreateCommand();
         command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE name NOT GLOB 'sqlite_*'";
-        return Convert.ToInt64(await SlowQueryDbOperations.ExecuteScalarAsync(command, cancellationToken)) > 0;
+        return Convert.ToInt64(await SlowQueryDbOperations.ExecuteScalarAsync(command, cancellationToken), System.Globalization.CultureInfo.InvariantCulture) > 0;
     }
 }

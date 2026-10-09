@@ -25,7 +25,7 @@ public sealed class AuditReadOnlyApiTests {
     /// 验证场景：AuditReadOnlyApi:Enabled=true 时映射审计只读端点。
     /// </summary>
     [Fact]
-    public async Task AuditReadOnlyApiEnabled_WhenTrue_ShouldMapEndpoints() {
+    public async Task AuditReadOnlyApiEnabledWhenTrueShouldMapEndpoints() {
         var repository = new InMemoryWebRequestAuditLogRepository();
         SeedLogs(repository);
         await using var app = await BuildConditionalAuditRouteAppAsync(repository, enabled: true);
@@ -40,7 +40,7 @@ public sealed class AuditReadOnlyApiTests {
     /// 验证场景：AuditReadOnlyApi:Enabled=false 时不映射审计只读端点。
     /// </summary>
     [Fact]
-    public async Task AuditReadOnlyApiEnabled_WhenFalse_ShouldNotMapEndpoints() {
+    public async Task AuditReadOnlyApiEnabledWhenFalseShouldNotMapEndpoints() {
         var repository = new InMemoryWebRequestAuditLogRepository();
         SeedLogs(repository);
         await using var app = await BuildConditionalAuditRouteAppAsync(repository, enabled: false);
@@ -57,7 +57,7 @@ public sealed class AuditReadOnlyApiTests {
     /// 验证场景：默认分页查询返回列表。
     /// </summary>
     [Fact]
-    public async Task GetAuditWebRequests_ShouldReturnPagedList() {
+    public async Task GetAuditWebRequestsShouldReturnPagedList() {
         var repository = new InMemoryWebRequestAuditLogRepository();
         SeedLogs(repository);
         await using var app = await BuildTestAppAsync(repository);
@@ -78,7 +78,7 @@ public sealed class AuditReadOnlyApiTests {
     /// 验证场景：过滤条件组合生效。
     /// </summary>
     [Fact]
-    public async Task GetAuditWebRequests_WithFilters_ShouldReturnExpectedItems() {
+    public async Task GetAuditWebRequestsWithFiltersShouldReturnExpectedItems() {
         var repository = new InMemoryWebRequestAuditLogRepository();
         SeedLogs(repository);
         await using var app = await BuildTestAppAsync(repository);
@@ -98,7 +98,7 @@ public sealed class AuditReadOnlyApiTests {
     /// 验证场景：非法分页参数返回 400。
     /// </summary>
     [Fact]
-    public async Task GetAuditWebRequests_WithInvalidPaging_ShouldReturnBadRequest() {
+    public async Task GetAuditWebRequestsWithInvalidPagingShouldReturnBadRequest() {
         var repository = new InMemoryWebRequestAuditLogRepository();
         SeedLogs(repository);
         await using var app = await BuildTestAppAsync(repository);
@@ -113,7 +113,7 @@ public sealed class AuditReadOnlyApiTests {
     /// 验证场景：UTC/offset 时间参数返回 400。
     /// </summary>
     [Fact]
-    public async Task GetAuditWebRequests_WithUtcOrOffsetTime_ShouldReturnBadRequest() {
+    public async Task GetAuditWebRequestsWithUtcOrOffsetTimeShouldReturnBadRequest() {
         var repository = new InMemoryWebRequestAuditLogRepository();
         SeedLogs(repository);
         await using var app = await BuildTestAppAsync(repository);
@@ -130,7 +130,7 @@ public sealed class AuditReadOnlyApiTests {
     /// 验证场景：详情存在返回 200 且带冷表详情字段。
     /// </summary>
     [Fact]
-    public async Task GetAuditWebRequestById_WhenExists_ShouldReturnDetail() {
+    public async Task GetAuditWebRequestByIdWhenExistsShouldReturnDetail() {
         var repository = new InMemoryWebRequestAuditLogRepository();
         SeedLogs(repository);
         await using var app = await BuildTestAppAsync(repository);
@@ -211,7 +211,7 @@ public sealed class AuditReadOnlyApiTests {
     /// 验证场景：详情不存在返回 404。
     /// </summary>
     [Fact]
-    public async Task GetAuditWebRequestById_WhenNotFound_ShouldReturnNotFound() {
+    public async Task GetAuditWebRequestByIdWhenNotFoundShouldReturnNotFound() {
         var repository = new InMemoryWebRequestAuditLogRepository();
         SeedLogs(repository);
         await using var app = await BuildTestAppAsync(repository);
@@ -226,7 +226,7 @@ public sealed class AuditReadOnlyApiTests {
     /// 验证场景：与中间件写入链路联动后可查询写入数据。
     /// </summary>
     [Fact]
-    public async Task GetAuditWebRequests_AfterMiddlewareWrite_ShouldReadInsertedLog() {
+    public async Task GetAuditWebRequestsAfterMiddlewareWriteShouldReadInsertedLog() {
         var repository = new InMemoryWebRequestAuditLogRepository();
         await using var app = await BuildTestAppWithMiddlewareAsync(repository);
         using var client = app.GetTestClient();
@@ -288,7 +288,7 @@ public sealed class AuditReadOnlyApiTests {
         builder.Services.AddScoped<WriteWebRequestAuditLogCommandService>();
         builder.Services.AddScoped<GetWebRequestAuditLogPagedQueryService>();
         builder.Services.AddScoped<GetWebRequestAuditLogByIdQueryService>();
-        builder.Services.AddSingleton(new WebRequestAuditBackgroundQueue(256));
+        builder.Services.AddSingleton(new WebRequestAuditBuffer(256));
         builder.Services.AddHostedService<WebRequestAuditBackgroundWorkerHostedService>();
         builder.Services.Configure<WebRequestAuditLogOptions>(options => {
             options.Enabled = true;

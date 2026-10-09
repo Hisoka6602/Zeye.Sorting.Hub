@@ -40,13 +40,13 @@ public sealed class ParcelAnalysisReadService(IDbContextFactory<SortingHubDbCont
             Count = group.LongCount(),
             Completed = group.LongCount(parcel => parcel.Status == ParcelStatus.Completed),
             Exceptions = group.LongCount(parcel => parcel.Status == ParcelStatus.SortingException),
-            NoRead = group.LongCount(parcel => parcel.NoReadType != NoReadType.None || parcel.BarCodes.ToLower() == "noread"),
+            NoRead = group.LongCount(parcel => parcel.NoReadType != NoReadType.None || DatabaseTextFunctions.Lower(parcel.BarCodes) == "noread"),
             Blocked = group.LongCount(parcel => parcel.IsRoutingBlocked == true),
             Comparable = group.LongCount(parcel => parcel.TargetChuteCode != null && parcel.TargetChuteCode.Trim() != ""
                 && parcel.ActualChuteCode != null && parcel.ActualChuteCode.Trim() != ""),
             Mismatch = group.LongCount(parcel => parcel.TargetChuteCode != null && parcel.TargetChuteCode.Trim() != ""
                 && parcel.ActualChuteCode != null && parcel.ActualChuteCode.Trim() != ""
-                && parcel.TargetChuteCode.Trim().ToLower() != parcel.ActualChuteCode.Trim().ToLower()),
+                && DatabaseTextFunctions.Lower(parcel.TargetChuteCode.Trim()) != DatabaseTextFunctions.Lower(parcel.ActualChuteCode.Trim())),
             Fallback = group.LongCount(parcel => parcel.IsFallbackChuteAssigned == true),
             ActualChuteSamples = group.LongCount(parcel => parcel.ActualChuteCode != null && parcel.ActualChuteCode.Trim() != ""),
             TargetChuteSamples = group.LongCount(parcel => parcel.TargetChuteCode != null && parcel.TargetChuteCode.Trim() != "")
@@ -72,7 +72,7 @@ public sealed class ParcelAnalysisReadService(IDbContextFactory<SortingHubDbCont
                 Code = (int?)row.Type, Name = ExceptionName(row.Type), Count = row.Count
             }).ToArray() };
             details = request.Issue switch {
-                "noread" => details.Where(parcel => parcel.NoReadType != NoReadType.None || parcel.BarCodes.ToLower() == "noread"),
+                "noread" => details.Where(parcel => parcel.NoReadType != NoReadType.None || DatabaseTextFunctions.Lower(parcel.BarCodes) == "noread"),
                 "blocked" => details.Where(parcel => parcel.IsRoutingBlocked == true),
                 _ => details.Where(parcel => parcel.Status == ParcelStatus.SortingException)
             };
@@ -130,7 +130,7 @@ public sealed class ParcelAnalysisReadService(IDbContextFactory<SortingHubDbCont
             };
             if (request.MismatchOnly) details = details.Where(parcel => parcel.TargetChuteCode != null && parcel.TargetChuteCode.Trim() != ""
                 && parcel.ActualChuteCode != null && parcel.ActualChuteCode.Trim() != ""
-                && parcel.TargetChuteCode.Trim().ToLower() != parcel.ActualChuteCode.Trim().ToLower());
+                && DatabaseTextFunctions.Lower(parcel.TargetChuteCode.Trim()) != DatabaseTextFunctions.Lower(parcel.ActualChuteCode.Trim()));
             if (request.FallbackOnly) details = details.Where(parcel => parcel.IsFallbackChuteAssigned == true);
             if (request.TargetChuteCode is not null) details = details.Where(parcel => parcel.TargetChuteCode == request.TargetChuteCode);
             if (request.ActualChuteCode is not null) details = details.Where(parcel => parcel.ActualChuteCode == request.ActualChuteCode);

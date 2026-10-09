@@ -9,11 +9,11 @@ public sealed class ExceptionLoggingHubFilter(LogFactory factory) : IHubFilter {
     private readonly Logger _logger = factory.GetLogger(typeof(ExceptionLoggingHubFilter).FullName!);
 
     /// <summary>记录 Hub 方法调用异常并原样传播，保持现有客户端错误语义。</summary>
-    public async ValueTask<object?> InvokeMethodAsync(HubInvocationContext invocation,
+    public async ValueTask<object?> InvokeMethodAsync(HubInvocationContext invocationContext,
         Func<HubInvocationContext, ValueTask<object?>> next) {
-        try { return await next(invocation); }
+        try { return await next(invocationContext); }
         catch (Exception exception) {
-            _logger.Log(CreateFailure(exception, invocation.Context, invocation.Hub.GetType().Name, invocation.HubMethodName));
+            _logger.Log(CreateFailure(exception, invocationContext.Context, invocationContext.Hub.GetType().Name, invocationContext.HubMethodName));
             throw;
         }
     }

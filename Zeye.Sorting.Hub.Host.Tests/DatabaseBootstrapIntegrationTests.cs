@@ -36,7 +36,7 @@ public sealed class DatabaseBootstrapIntegrationTests {
         await using var administration = dialect.CreateAdministrationConnection(connection);
         // 只有已验证原本不存在的随机临时库允许在 finally 中清理。
         Assert.False(await dialect.DatabaseExistsAsync(administration, name, CancellationToken.None));
-        try {
+        await RunWithCleanupAsync(async () => {
             for (var startup = 0; startup < 3; startup++) {
                 var dryRun = startup == 0;
                 await using (var app = await DatabaseSetupTests.CreateInitializedDatabaseHostAsync(storage, provider, connection, dryRun,
@@ -54,8 +54,7 @@ public sealed class DatabaseBootstrapIntegrationTests {
                 if (dryRun && provider != "Oracle") await AssertExistingObjectsRemainProtectedAsync(storage, provider, connection);
             }
             if (provider == "SqlServer") await AssertBusinessOnlySqlServerUserCanStartAsync(storage, connection, (SqlConnection)administration, name);
-        }
-        finally {
+        }, async () => {
             if (!name.StartsWith("ZEYE_STARTUP_", StringComparison.Ordinal) || name.Length != 25 || !name.All(character => char.IsAsciiLetterOrDigit(character) || character == '_'))
                 throw new InvalidOperationException("数据库回归清理名称无效。");
             if (administration.State != System.Data.ConnectionState.Open) await administration.OpenAsync();
@@ -67,7 +66,7 @@ public sealed class DatabaseBootstrapIntegrationTests {
             };
             try { await command.ExecuteNonQueryAsync(); }
             catch (Exception exception) { NLog.LogManager.GetCurrentClassLogger().Error(exception, "独立启动回归临时库清理失败，Provider={Provider}, Database={Database}", provider, name); throw; }
-        }
+        });
     }
 
     /// <summary>未登记迁移但已有用户表的库不能被视为首次安装，已有记录必须保留。</summary>
@@ -77,14 +76,13 @@ public sealed class DatabaseBootstrapIntegrationTests {
         await using var command = database.CreateCommand();
         command.CommandText = "CREATE TABLE ZeyeStartupGuard (Id int NOT NULL); INSERT INTO ZeyeStartupGuard (Id) VALUES (42)";
         await command.ExecuteNonQueryAsync();
-        try {
+        await RunWithCleanupAsync(async () => {
             await using var app = await DatabaseSetupTests.CreateInitializedDatabaseHostAsync(storage, provider, connection, dryRun: false);
             Assert.True(app.Services.GetRequiredService<DatabaseStartupState>().RequiresConfiguration);
             Assert.False(app.Services.GetRequiredService<MigrationGovernanceStateStore>().GetLatestPlan()!.IsInitialDatabase);
             command.CommandText = "SELECT Id FROM ZeyeStartupGuard";
-            Assert.Equal(42, Convert.ToInt32(await command.ExecuteScalarAsync()));
-        }
-        finally { command.CommandText = "DROP TABLE ZeyeStartupGuard"; await command.ExecuteNonQueryAsync(); }
+            Assert.Equal(42, Convert.ToInt32(await command.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture));
+        }, async () => { command.CommandText = "DROP TABLE ZeyeStartupGuard"; await command.ExecuteNonQueryAsync(); });
     }
 
     /// <summary>只存在于临时业务库、无法连接 master 的包含数据库用户，已有库应正常启动。</summary>
@@ -93,8 +91,8 @@ public sealed class DatabaseBootstrapIntegrationTests {
         const string password = "StartupLimited20261009_ForTests";
         await using var command = administration.CreateCommand();
         command.CommandText = "SELECT CAST(value_in_use AS int) FROM sys.configurations WHERE name='contained database authentication'";
-        var authenticationWasEnabled = Convert.ToInt32(await command.ExecuteScalarAsync()) == 1;
-        try {
+        var authenticationWasEnabled = Convert.ToInt32(await command.ExecuteScalarAsync(), System.Globalization.CultureInfo.InvariantCulture) == 1;
+        await RunWithCleanupAsync(async () => {
             // 仅在固定的独立验收服务器临时启用包含用户，并在 finally 恢复原设置。
             if (!authenticationWasEnabled) {
                 command.CommandText = "EXEC sp_configure 'contained database authentication', 1; RECONFIGURE;";
@@ -108,13 +106,29 @@ public sealed class DatabaseBootstrapIntegrationTests {
             await using (var forbidden = new SqlConnection(master.ConnectionString)) await Assert.ThrowsAsync<SqlException>(() => forbidden.OpenAsync());
             await using var app = await DatabaseSetupTests.CreateInitializedDatabaseHostAsync(storage, "SqlServer", options.ConnectionString, dryRun: false);
             Assert.True(app.Services.GetRequiredService<DatabaseStartupState>().Ready);
-        }
-        finally {
+        }, async () => {
             if (!authenticationWasEnabled) {
                 command.CommandText = $"USE [{databaseName}]; IF DATABASE_PRINCIPAL_ID(N'{user}') IS NOT NULL DROP USER [{user}]; USE master; ALTER DATABASE [{databaseName}] SET CONTAINMENT=NONE; EXEC sp_configure 'contained database authentication', 0; RECONFIGURE;";
                 try { await command.ExecuteNonQueryAsync(); }
                 catch (Exception exception) { NLog.LogManager.GetCurrentClassLogger().Error(exception, "独立 SQL Server 包含用户设置恢复失败。"); throw; }
             }
+        });
+    }
+
+    /// <summary>始终清理独立回归资源；清理失败也保留原始测试异常，避免 finally 覆盖错误证据。</summary>
+    private static async Task RunWithCleanupAsync(Func<Task> action, Func<Task> cleanup) {
+        Exception? failure = null;
+        try { await action(); }
+        catch (Exception exception) {
+            NLog.LogManager.GetCurrentClassLogger().Error(exception, "独立数据库回归失败，继续清理临时资源。");
+            failure = exception;
         }
+        try { await cleanup(); }
+        catch (Exception exception) {
+            NLog.LogManager.GetCurrentClassLogger().Error(exception, "独立数据库回归资源清理失败。");
+            if (failure is not null) throw new AggregateException("数据库回归与资源清理均失败。", failure, exception);
+            throw;
+        }
+        if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
     }
 }

@@ -121,7 +121,6 @@ try {
     builder.Services.AddSingleton<MigrationGovernanceHostedService>();
     builder.Services.AddHostedService(static serviceProvider =>
         serviceProvider.GetRequiredService<MigrationGovernanceHostedService>());
-    builder.Services.AddSingleton<SafeExecutor>();
     builder.Services.AddSingleton<ConfigChangeHistoryStore<LogCleanupSettings>>();
     builder.Services.AddSortingHubPersistence(builder.Configuration);
     builder.Services.AddMinioObjectStorage(builder.Configuration);
@@ -285,7 +284,8 @@ try {
         .AttachQueryDiagnostics(app.Services.GetRequiredService<SlowQueryAutoTuningPipeline>());
     if (verifyLatestBackup) {
         var artifacts = app.Services.GetRequiredService<IDatabaseBackupArtifactService>();
-        var latest = (await artifacts.ListAsync(CancellationToken.None)).FirstOrDefault() ?? throw new InvalidOperationException("没有可用于隔离恢复核验的实际备份。");
+        var available = await artifacts.ListAsync(CancellationToken.None);
+        var latest = available.Count > 0 ? available[0] : throw new InvalidOperationException("没有可用于隔离恢复核验的实际备份。");
         var verified = await artifacts.RestoreIsolatedAsync(latest.Id, CancellationToken.None);
         Console.WriteLine($"备份隔离恢复核验完成：Id={verified.Id}, Tables={verified.TableRows.Count}, Rows={verified.TableRows.Values.Sum()}, Database={verified.RestoredDatabase}");
         await app.DisposeAsync();

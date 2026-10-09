@@ -45,7 +45,7 @@ public sealed partial class FusionIngestionService {
                         FusionImageUpload? image = null;
                         var newImage = false;
                         if (fact.Kind == "image.association" && FusionProtocol.Boolean(fact.Data, "associationConfirmed") == true
-                            && fact.SourceParcelId is not null && (FusionProtocol.Decimal(fact.Data, "candidateCount") ?? 1) <= 1) {
+                            && fact.SourceParcelId is not null && (FusionProtocol.ReadDecimal(fact.Data, "candidateCount") ?? 1) <= 1) {
                             var imageId = FusionProtocol.Text(fact.Data, "sourceImageId", 128) ?? throw new ArgumentException("MissingImageIdentity");
                             var imageKey = FusionProtocol.Key(fact.SourceInstanceId, imageId);
                             if (!images.TryGetValue(imageKey, out image)) {

@@ -158,7 +158,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
             CancellationToken cancellationToken,
             bool asNoTracking = true) {
             if (predicate is null) {
-                return RepositoryResult<List<TEntity>>.Fail("查询条件不能为空");
+                return RepositoryResult.Fail<List<TEntity>>("查询条件不能为空");
             }
 
             try {
@@ -167,15 +167,15 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
                     .Where(predicate)
                     .ToListAsync(cancellationToken);
 
-                return RepositoryResult<List<TEntity>>.Success(list);
+                return RepositoryResult.Success<List<TEntity>>(list);
             }
             catch (OperationCanceledException ex) {
                 Logger.Warn(ex, "查询列表操作被取消，实体类型={EntityType}", typeof(TEntity).Name);
-                return RepositoryResult<List<TEntity>>.Fail("操作已取消");
+                return RepositoryResult.Fail<List<TEntity>>("操作已取消");
             }
             catch (Exception ex) {
                 Logger.Error(ex, "查询失败，实体类型={EntityType}", typeof(TEntity).Name);
-                return RepositoryResult<List<TEntity>>.Fail("查询失败");
+                return RepositoryResult.Fail<List<TEntity>>("查询失败");
             }
         }
 
@@ -187,7 +187,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
             CancellationToken cancellationToken,
             bool asNoTracking = true) {
             if (predicate is null) {
-                return RepositoryResult<TEntity?>.Fail("查询条件不能为空");
+                return RepositoryResult.Fail<TEntity?>("查询条件不能为空");
             }
 
             try {
@@ -195,15 +195,15 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
                 var entity = await Query(db, asNoTracking)
                     .FirstOrDefaultAsync(predicate, cancellationToken);
 
-                return RepositoryResult<TEntity?>.Success(entity);
+                return RepositoryResult.Success<TEntity?>(entity);
             }
             catch (OperationCanceledException ex) {
                 Logger.Warn(ex, "查询单条操作被取消，实体类型={EntityType}", typeof(TEntity).Name);
-                return RepositoryResult<TEntity?>.Fail("操作已取消");
+                return RepositoryResult.Fail<TEntity?>("操作已取消");
             }
             catch (Exception ex) {
                 Logger.Error(ex, "查询单条失败，实体类型={EntityType}", typeof(TEntity).Name);
-                return RepositoryResult<TEntity?>.Fail("查询单条失败");
+                return RepositoryResult.Fail<TEntity?>("查询单条失败");
             }
         }
     }

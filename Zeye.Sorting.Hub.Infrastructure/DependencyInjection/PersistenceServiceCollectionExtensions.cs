@@ -212,8 +212,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         /// </summary>
         /// <param name="services">服务集合。</param>
         private static void RegisterMigrationGovernanceServices(IServiceCollection services) {
-            services.TryAddSingleton<MigrationSafetyEvaluator>();
-            services.TryAddSingleton<MigrationRollbackScriptProvider>();
             services.TryAddSingleton<MigrationScriptArchiveService>();
             services.TryAddSingleton<MigrationGovernanceStateStore>();
         }
@@ -232,7 +230,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
                 .ValidateOnStart();
 
             services.TryAddSingleton<BaselineDataValidator>();
-            services.TryAddSingleton<BaselineDataSeeder>();
         }
 
         /// <summary>
@@ -827,7 +824,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.DependencyInjection {
         }
 
         /// <summary>发现 Parcel 值对象目录下需要分表治理的候选类型。</summary>
-        private static IReadOnlyList<Type> DiscoverParcelAggregateShardingCandidates() {
+        private static System.Type[] DiscoverParcelAggregateShardingCandidates() {
             var valueObjectNamespace = typeof(BagInfo).Namespace;
             return typeof(Parcel).Assembly
                 .GetTypes()

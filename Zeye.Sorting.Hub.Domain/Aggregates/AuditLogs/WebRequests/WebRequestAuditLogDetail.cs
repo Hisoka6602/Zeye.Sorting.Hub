@@ -115,7 +115,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests {
         /// <summary>
         /// 是否有文件访问。
         /// </summary>
-        public bool HasFileAccess { get; set; } = false;
+        public bool HasFileAccess { get; set; }
 
         /// <summary>
         /// 文件操作类型。
@@ -125,12 +125,12 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests {
         /// <summary>
         /// 文件数量。
         /// </summary>
-        public int FileCount { get; set; } = 0;
+        public int FileCount { get; set; }
 
         /// <summary>
         /// 文件总字节数。
         /// </summary>
-        public long FileTotalBytes { get; set; } = 0;
+        public long FileTotalBytes { get; set; }
 
         /// <summary>
         /// 图片元数据 JSON。
@@ -140,12 +140,12 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests {
         /// <summary>
         /// 是否有图片访问。
         /// </summary>
-        public bool HasImageAccess { get; set; } = false;
+        public bool HasImageAccess { get; set; }
 
         /// <summary>
         /// 图片数量。
         /// </summary>
-        public int ImageCount { get; set; } = 0;
+        public int ImageCount { get; set; }
 
         /// <summary>
         /// 数据库操作摘要。
@@ -155,17 +155,17 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests {
         /// <summary>
         /// 是否有数据库访问。
         /// </summary>
-        public bool HasDatabaseAccess { get; set; } = false;
+        public bool HasDatabaseAccess { get; set; }
 
         /// <summary>
         /// 数据库访问次数。
         /// </summary>
-        public int DatabaseAccessCount { get; set; } = 0;
+        public int DatabaseAccessCount { get; set; }
 
         /// <summary>
         /// 数据库耗时毫秒。
         /// </summary>
-        public long DatabaseDurationMs { get; set; } = 0;
+        public long DatabaseDurationMs { get; set; }
 
         /// <summary>
         /// 资源编码。
@@ -180,12 +180,12 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests {
         /// <summary>
         /// Action 执行耗时毫秒。
         /// </summary>
-        public long ActionDurationMs { get; set; } = 0;
+        public long ActionDurationMs { get; set; }
 
         /// <summary>
         /// 中间件耗时毫秒。
         /// </summary>
-        public long MiddlewareDurationMs { get; set; } = 0;
+        public long MiddlewareDurationMs { get; set; }
 
         /// <summary>
         /// 审计标签。

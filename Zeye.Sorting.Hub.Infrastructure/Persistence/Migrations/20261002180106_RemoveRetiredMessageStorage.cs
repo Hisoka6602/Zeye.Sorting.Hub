@@ -9,6 +9,13 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
     /// <inheritdoc />
     public partial class RemoveRetiredMessageStorage : Migration
     {
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedEventTypeCreatedAtIdColumns = new[] { "EventType", "CreatedAt", "Id" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedStatusCreatedAtIdColumns = new[] { "Status", "CreatedAt", "Id" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedStatusLastAttemptedAtUpdatedAtIdColumns = new[] { "Status", "LastAttemptedAt", "UpdatedAt", "Id" };
+
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
@@ -55,17 +62,17 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_OutboxMessages_EventType_CreatedAt_Id",
                 table: "OutboxMessages",
-                columns: new[] { "EventType", "CreatedAt", "Id" });
+                columns: CachedEventTypeCreatedAtIdColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_OutboxMessages_Status_CreatedAt_Id",
                 table: "OutboxMessages",
-                columns: new[] { "Status", "CreatedAt", "Id" });
+                columns: CachedStatusCreatedAtIdColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_OutboxMessages_Status_LastAttemptedAt_UpdatedAt_Id",
                 table: "OutboxMessages",
-                columns: new[] { "Status", "LastAttemptedAt", "UpdatedAt", "Id" });
+                columns: CachedStatusLastAttemptedAtUpdatedAtIdColumns);
         }
     }
 }

@@ -34,7 +34,7 @@ public sealed class ParcelTimingTests {
         Assert.Equal(5, result.AfterCount);
         Assert.Equal(11, result.Items.Count);
         Assert.Equal(Enumerable.Range(2, 11).Select(index => (9007199254741000L + index).ToString(CultureInfo.InvariantCulture)), result.Items.Select(parcel => parcel.Id));
-        Assert.Single(result.Items.Where(parcel => parcel.Id == result.AnchorId));
+        Assert.Single(result.Items, parcel => parcel.Id == result.AnchorId);
         Assert.All(result.Items, parcel => Assert.Equal(scan, parcel.ScannedTime));
         Assert.All(result.Items, parcel => Assert.Single(parcel.ProcessingRecords));
     }
@@ -143,8 +143,8 @@ public sealed class ParcelTimingTests {
         Assert.DoesNotContain(item.ProcessingRecords, record => record.RecordId == "foreign");
         var request = Assert.Single(item.ApiRequests);
         Assert.Equal(25m, (request.ResponseTime!.Value - request.RequestTime).Ticks / 10000m);
-        var timingCall = Assert.Single(item.ProcessingRecords.Where(record => record.RecordId == "chute-call"));
-        Assert.Equal(fact.ErrorMessage, Assert.Single(item.ProcessingRecords.Where(record => record.RecordId == fact.RecordId)).ErrorMessage);
+        var timingCall = Assert.Single(item.ProcessingRecords, record => record.RecordId == "chute-call");
+        Assert.Equal(fact.ErrorMessage, Assert.Single(item.ProcessingRecords, record => record.RecordId == fact.RecordId).ErrorMessage);
         using var errorDiagnostic = JsonDocument.Parse(timingCall.ErrorMessage!);
         Assert.Equal("op1", errorDiagnostic.RootElement.GetProperty("operationId").GetString());
         using var diagnostic = JsonDocument.Parse(timingCall.RawPayload!);

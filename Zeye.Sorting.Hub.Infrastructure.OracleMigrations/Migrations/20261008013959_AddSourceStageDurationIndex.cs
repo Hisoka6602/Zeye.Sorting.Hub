@@ -7,13 +7,16 @@ namespace Zeye.Sorting.Hub.Infrastructure.OracleMigrations.Migrations
     /// <inheritdoc />
     public partial class AddSourceStageDurationIndex : Migration
     {
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedSourceInstanceIdStagePartitionTimeParcelIdColumns = new[] { "SourceInstanceId", "Stage", "PartitionTime", "ParcelId", "OccurredAt", "SourceRunId", "SourceParcelId", "RecordId", "IsSuccess", "HasReliableTimestamp" };
+
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.CreateIndex(
                 name: "IX_Processing_Source_Stage_Duration",
                 table: "Parcel_ProcessingRecords",
-                columns: new[] { "SourceInstanceId", "Stage", "PartitionTime", "ParcelId", "OccurredAt", "SourceRunId", "SourceParcelId", "RecordId", "IsSuccess", "HasReliableTimestamp" });
+                columns: CachedSourceInstanceIdStagePartitionTimeParcelIdColumns);
         }
 
         /// <inheritdoc />

@@ -15,7 +15,7 @@ public sealed class MinioObjectStorageServiceTests {
     /// 验证场景：单对象上传预签名会话会返回 PUT 地址与 Content-Type 头。
     /// </summary>
     [Fact]
-    public async Task CreateUploadSessionAsync_ShouldReturnPutSessionWithContentTypeHeader() {
+    public async Task CreateUploadSessionAsyncShouldReturnPutSessionWithContentTypeHeader() {
         var service = CreateService();
 
         var session = await service.CreateUploadSessionAsync(new CreateObjectStorageUploadSessionRequest {
@@ -35,7 +35,7 @@ public sealed class MinioObjectStorageServiceTests {
     /// 验证场景：对象读取预签名会话会返回 GET 地址且不附带额外请求头。
     /// </summary>
     [Fact]
-    public async Task CreateReadSessionAsync_ShouldReturnGetSessionWithoutHeaders() {
+    public async Task CreateReadSessionAsyncShouldReturnGetSessionWithoutHeaders() {
         var service = CreateService();
 
         var session = await service.CreateReadSessionAsync(new CreateObjectStorageReadSessionRequest {
@@ -52,7 +52,7 @@ public sealed class MinioObjectStorageServiceTests {
     /// 验证场景：包含非法字符的占位符不会在运行期被解析为环境变量。
     /// </summary>
     [Fact]
-    public void FromConfiguration_ShouldKeepInvalidPlaceholderCredentialLiteral() {
+    public void FromConfigurationShouldKeepInvalidPlaceholderCredentialLiteral() {
         Environment.SetEnvironmentVariable("MINIO-ACCESS-KEY", "runtime-access-key");
 
         try {
@@ -82,7 +82,7 @@ public sealed class MinioObjectStorageServiceTests {
     /// 验证场景：Multipart 分片预签名地址会携带 uploadId 与 partNumber 查询参数。
     /// </summary>
     [Fact]
-    public async Task CreateMultipartUploadPartSessionAsync_ShouldIncludeMultipartQueryParameters() {
+    public async Task CreateMultipartUploadPartSessionAsyncShouldIncludeMultipartQueryParameters() {
         var service = CreateService();
 
         var session = await service.CreateMultipartUploadPartSessionAsync(new CreateObjectStorageMultipartUploadPartRequest {
@@ -101,7 +101,7 @@ public sealed class MinioObjectStorageServiceTests {
     /// 验证场景：DI 可解析对象存储抽象。
     /// </summary>
     [Fact]
-    public void AddMinioObjectStorage_ShouldRegisterObjectStorageService() {
+    public void AddMinioObjectStorageShouldRegisterObjectStorageService() {
         var services = new ServiceCollection();
         var configuration = CreateConfiguration();
 

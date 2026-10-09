@@ -26,7 +26,7 @@ public sealed class DataArchiveTaskTests {
     /// 验证场景：创建任务后由 Worker 完成 dry-run 计划。
     /// </summary>
     [Fact]
-    public async Task CreateArchiveTask_AndWorkerRun_ShouldCompleteDryRunPlan() {
+    public async Task CreateArchiveTaskAndWorkerRunShouldCompleteDryRunPlan() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
         using var createResponse = await client.PostAsJsonAsync("/api/data-governance/archive-tasks", new ArchiveTaskCreateRequest {
@@ -63,7 +63,7 @@ public sealed class DataArchiveTaskTests {
     /// 验证场景：分页接口返回创建后的任务列表。
     /// </summary>
     [Fact]
-    public async Task GetArchiveTaskList_ShouldReturnCreatedTasks() {
+    public async Task GetArchiveTaskListShouldReturnCreatedTasks() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
         await client.PostAsJsonAsync("/api/data-governance/archive-tasks", new ArchiveTaskCreateRequest {
@@ -85,7 +85,7 @@ public sealed class DataArchiveTaskTests {
     /// 验证场景：已完成任务允许重试并回到 Pending。
     /// </summary>
     [Fact]
-    public async Task RetryArchiveTask_WhenCompleted_ShouldReturnPending() {
+    public async Task RetryArchiveTaskWhenCompletedShouldReturnPending() {
         await using var app = await BuildTestAppAsync();
         using var scope = app.Services.CreateScope();
         var repository = scope.ServiceProvider.GetRequiredService<IArchiveTaskRepository>();
@@ -108,7 +108,7 @@ public sealed class DataArchiveTaskTests {
     /// 验证场景：保留天数超过合同范围时返回 400。
     /// </summary>
     [Fact]
-    public async Task CreateArchiveTask_WithTooLargeRetentionDays_ShouldReturnBadRequest() {
+    public async Task CreateArchiveTaskWithTooLargeRetentionDaysShouldReturnBadRequest() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
 
@@ -124,7 +124,7 @@ public sealed class DataArchiveTaskTests {
     /// 验证场景：非法任务类型返回 400。
     /// </summary>
     [Fact]
-    public async Task CreateArchiveTask_WithInvalidTaskType_ShouldReturnBadRequest() {
+    public async Task CreateArchiveTaskWithInvalidTaskTypeShouldReturnBadRequest() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
 
@@ -140,7 +140,7 @@ public sealed class DataArchiveTaskTests {
     /// 验证场景：同一待执行任务只能被领取一次。
     /// </summary>
     [Fact]
-    public async Task TryAcquireNextPendingAsync_WhenCalledTwice_ShouldOnlyAcquireOnce() {
+    public async Task TryAcquireNextPendingAsyncWhenCalledTwiceShouldOnlyAcquireOnce() {
         await using var app = await BuildTestAppAsync();
         using var scope = app.Services.CreateScope();
         var repository = scope.ServiceProvider.GetRequiredService<IArchiveTaskRepository>();
@@ -163,7 +163,7 @@ public sealed class DataArchiveTaskTests {
     /// 验证场景：任务失败后仍记录终态完成时间。
     /// </summary>
     [Fact]
-    public void ArchiveTask_MarkFailed_ShouldSetTerminalCompletedAt() {
+    public void ArchiveTaskMarkFailedShouldSetTerminalCompletedAt() {
         var archiveTask = ArchiveTask.CreateDryRun(
             Zeye.Sorting.Hub.Domain.Enums.DataGovernance.ArchiveTaskType.WebRequestAuditLogHistory,
             7,
@@ -248,7 +248,7 @@ public sealed class DataArchiveTaskTests {
             UserName = "tester",
             RequestPayloadType = WebRequestPayloadType.Json,
             ResponsePayloadType = WebResponsePayloadType.Json,
-            ResourceId = id.ToString(),
+            ResourceId = id.ToString(System.Globalization.CultureInfo.InvariantCulture),
             AuditResourceType = AuditResourceType.BusinessObject,
             StartedAt = startedAt,
             EndedAt = startedAt.AddSeconds(1),

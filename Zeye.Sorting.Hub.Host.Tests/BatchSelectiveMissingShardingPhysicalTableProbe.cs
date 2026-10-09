@@ -10,7 +10,7 @@ internal sealed class BatchSelectiveMissingShardingPhysicalTableProbe : IBatchSh
     /// <summary>
     /// 存放需要模拟为缺失的物理表名集合，用于验证批量探测结果与守卫告警拼装。
     /// </summary>
-    private readonly IReadOnlySet<string> _missingPhysicalTables;
+    private readonly System.Collections.Generic.HashSet<string> _missingPhysicalTables;
 
     /// <summary>
     /// 收集 FindMissingTablesAsync 调用次数，用于断言批量探测路径被命中。

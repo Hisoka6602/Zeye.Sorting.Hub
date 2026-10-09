@@ -15,7 +15,7 @@ public sealed class UpdateParcelStatusCommandService {
     /// <summary>
     /// NLog 日志器。
     /// </summary>
-    private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
+    private static readonly NLog.Logger Logger = LogManager.GetCurrentClassLogger();
 
     /// <summary>
     /// Parcel 仓储。
@@ -41,9 +41,7 @@ public sealed class UpdateParcelStatusCommandService {
     public async Task<ParcelDetailResponse?> ExecuteAsync(long parcelId, ParcelUpdateRequest request, DateTime? completedTime, CancellationToken cancellationToken) {
         Guard.ThrowIfZeroOrNegative(parcelId, nameof(parcelId), "包裹 Id 必须大于 0。", "更新包裹状态");
 
-        if (request is null) {
-            throw new ArgumentNullException(nameof(request));
-        }
+        ArgumentNullException.ThrowIfNull(request);
 
         // 步骤 1：解析操作类型枚举，拒绝无效操作码。
         EnumGuard.ThrowIfUndefined<ParcelUpdateOperation>(request.Operation, nameof(request.Operation), "操作类型无效，请参阅 ParcelUpdateOperation 枚举定义。", "更新包裹状态");
@@ -114,14 +112,14 @@ public sealed class UpdateParcelStatusCommandService {
 
             case ParcelUpdateOperation.MarkSortingException:
                 if (request.ExceptionType is null) {
-                    throw new ArgumentException("MarkSortingException 操作必须提供 exceptionType 字段。", nameof(request.ExceptionType));
+                    throw new ArgumentException("MarkSortingException 操作必须提供 exceptionType 字段。", nameof(request));
                 }
 
                 break;
 
             case ParcelUpdateOperation.UpdateRequestStatus:
                 if (request.RequestStatus is null) {
-                    throw new ArgumentException("UpdateRequestStatus 操作必须提供 requestStatus 字段。", nameof(request.RequestStatus));
+                    throw new ArgumentException("UpdateRequestStatus 操作必须提供 requestStatus 字段。", nameof(request));
                 }
 
                 break;

@@ -8,6 +8,19 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
     /// <inheritdoc />
     public partial class AddFusionIngestion : Migration
     {
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedProjectionStateNextProjectionAtColumns = new[] { "ProjectionState", "NextProjectionAt" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedSourceInstanceIdJournalIdRecordIdColumns = new[] { "SourceInstanceId", "JournalId", "RecordId" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedSourceInstanceIdJournalIdSourceSequenceColumns = new[] { "SourceInstanceId", "JournalId", "SourceSequence" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedIsStoredModifiedAtColumns = new[] { "IsStored", "ModifiedAt" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedSourceInstanceIdSourceImageIdColumns = new[] { "SourceInstanceId", "SourceImageId" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedSourceInstanceIdJournalIdColumns = new[] { "SourceInstanceId", "JournalId" };
+
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
@@ -144,29 +157,29 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_FusionFactReceipts_ProjectionState_NextProjectionAt",
                 table: "FusionFactReceipts",
-                columns: new[] { "ProjectionState", "NextProjectionAt" });
+                columns: CachedProjectionStateNextProjectionAtColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_FusionFactReceipts_SourceInstanceId_JournalId_RecordId",
                 table: "FusionFactReceipts",
-                columns: new[] { "SourceInstanceId", "JournalId", "RecordId" },
+                columns: CachedSourceInstanceIdJournalIdRecordIdColumns,
                 unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_FusionFactReceipts_SourceInstanceId_JournalId_SourceSequence",
                 table: "FusionFactReceipts",
-                columns: new[] { "SourceInstanceId", "JournalId", "SourceSequence" },
+                columns: CachedSourceInstanceIdJournalIdSourceSequenceColumns,
                 unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_FusionImageUploads_IsStored_ModifiedAt",
                 table: "FusionImageUploads",
-                columns: new[] { "IsStored", "ModifiedAt" });
+                columns: CachedIsStoredModifiedAtColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_FusionImageUploads_SourceInstanceId_SourceImageId",
                 table: "FusionImageUploads",
-                columns: new[] { "SourceInstanceId", "SourceImageId" },
+                columns: CachedSourceInstanceIdSourceImageIdColumns,
                 unique: true);
 
             migrationBuilder.CreateIndex(
@@ -178,7 +191,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_FusionJournalHeartbeats_SourceInstanceId_JournalId",
                 table: "FusionJournalHeartbeats",
-                columns: new[] { "SourceInstanceId", "JournalId" },
+                columns: CachedSourceInstanceIdJournalIdColumns,
                 unique: true);
         }
 

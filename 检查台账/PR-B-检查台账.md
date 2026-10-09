@@ -58,8 +58,8 @@
 | 45 | `Zeye.Sorting.Hub.Domain/Enums/Sharding/ParcelVolumeThresholdAction.cs` | ✅ |
 | 46 | `Zeye.Sorting.Hub.Domain/Enums/VideoNodeType.cs` | ✅ |
 | 47 | `Zeye.Sorting.Hub.Domain/Enums/VolumeSourceType.cs` | ✅ |
-| 48 | `Zeye.Sorting.Hub.Domain/Events/Parcels/ParcelChuteAssignedEventArgs.cs` | ✅ |
-| 49 | `Zeye.Sorting.Hub.Domain/Events/Parcels/ParcelScannedEventArgs.cs` | ✅ |
+| 48 | `Zeye.Sorting.Hub.Domain/Events/Parcels/ParcelChuteAssignedEvent.cs` | ✅ |
+| 49 | `Zeye.Sorting.Hub.Domain/Events/Parcels/ParcelScannedEvent.cs` | ✅ |
 | 50 | `Zeye.Sorting.Hub.Domain/Options/LogCleanup/LogCleanupSettings.cs` | ✅ |
 | 51 | `Zeye.Sorting.Hub.Domain/Primitives/AuditableEntity.cs` | ✅ |
 | 52 | `Zeye.Sorting.Hub.Domain/Repositories/IParcelRepository.cs` | ✅ |
@@ -132,8 +132,8 @@
 | `Zeye.Sorting.Hub.Domain/Enums/Sharding/ParcelVolumeThresholdAction.cs` | 已检查 | 0/0/0 | 无 | — | — | 2026-04-09 / `18d5370` |
 | `Zeye.Sorting.Hub.Domain/Enums/VideoNodeType.cs` | 已检查 | 0/0/1 | 冗余 using | L1-5 | PR-FIX-B4 | 2026-04-09 / `18d5370` |
 | `Zeye.Sorting.Hub.Domain/Enums/VolumeSourceType.cs` | 已检查 | 0/0/1 | 冗余 using | L1-5 | PR-FIX-B4 | 2026-04-09 / `18d5370` |
-| `Zeye.Sorting.Hub.Domain/Events/Parcels/ParcelChuteAssignedEventArgs.cs` | 已检查 | 0/1/0 | 事件载荷声明为 `internal`，阻断 Application/Infrastructure 层消费 | L7 | PR-FIX-B2 | 2026-04-09 / `18d5370` |
-| `Zeye.Sorting.Hub.Domain/Events/Parcels/ParcelScannedEventArgs.cs` | 已检查 | 0/1/0 | 事件载荷声明为 `internal`，阻断 Application/Infrastructure 层消费 | L7 | PR-FIX-B2 | 2026-04-09 / `18d5370` |
+| `Zeye.Sorting.Hub.Domain/Events/Parcels/ParcelChuteAssignedEvent.cs` | 已检查 | 0/1/0 | 事件载荷声明为 `internal`，阻断 Application/Infrastructure 层消费 | L7 | PR-FIX-B2 | 2026-04-09 / `18d5370` |
+| `Zeye.Sorting.Hub.Domain/Events/Parcels/ParcelScannedEvent.cs` | 已检查 | 0/1/0 | 事件载荷声明为 `internal`，阻断 Application/Infrastructure 层消费 | L7 | PR-FIX-B2 | 2026-04-09 / `18d5370` |
 | `Zeye.Sorting.Hub.Domain/Options/LogCleanup/LogCleanupSettings.cs` | 已检查 | 0/0/1 | 日志清理配置不属于 Domain 层职责（应移至 Host/Options 或 Infrastructure） | 全文 | PR-FIX-B3 | 2026-04-09 / `18d5370` |
 | `Zeye.Sorting.Hub.Domain/Primitives/AuditableEntity.cs` | 已检查 | 0/2/1 | `ModifyTime`/`ModifyIp` 有 public setter（可伪造审计记录）；冗余 using | L30，L35；L1-5 | PR-FIX-B2，PR-FIX-B4 | 2026-04-09 / `18d5370` |
 | `Zeye.Sorting.Hub.Domain/Repositories/IParcelRepository.cs` | 已检查 | 0/1/0 | CQRS 混用：命令与查询方法共存于同一仓储接口 | L28-L94 | PR-FIX-B3 | 2026-04-09 / `18d5370` |
@@ -210,12 +210,12 @@
 
 #### [P1-B-004] 事件载荷声明为 `internal`，阻断 Application/Infrastructure 层消费
 
-- **影响文件**：`ParcelChuteAssignedEventArgs.cs`、`ParcelScannedEventArgs.cs`
-- **行号区间**：`ParcelChuteAssignedEventArgs.cs L7`、`ParcelScannedEventArgs.cs L7`
+- **影响文件**：`ParcelChuteAssignedEvent.cs`、`ParcelScannedEvent.cs`
+- **行号区间**：`ParcelChuteAssignedEvent.cs L7`、`ParcelScannedEvent.cs L7`
 - **证据描述**：
   ```csharp
-  internal readonly record struct ParcelChuteAssignedEventArgs { ... }
-  internal readonly record struct ParcelScannedEventArgs { ... }
+  internal readonly record struct ParcelChuteAssignedEvent { ... }
+  internal readonly record struct ParcelScannedEvent { ... }
   ```
   事件载荷的设计意图是跨层通知（通过 MediatR 或自研事件总线在 Application/Infrastructure 中订阅处理），`internal` 访问限制导致 Application/Infrastructure 层无法访问，违背事件设计初衷。`Domain.csproj` 中 `InternalsVisibleTo` 配置（`AssemblyAttribute` 节，参见 `Domain.csproj`）仅暴露给 `Host.Tests`，未授权 Application 层。
 - **分级**：P1（功能性隐患，跨层消费被阻断）

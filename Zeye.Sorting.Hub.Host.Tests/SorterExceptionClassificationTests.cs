@@ -46,7 +46,7 @@ public sealed class SorterExceptionClassificationTests {
         Assert.Equal(ParcelStatus.SortingException, parcel.Status);
         Assert.Equal(expected, parcel.ExceptionType);
         Assert.Equal(code, parcel.SourceExceptionCode);
-        var saved = Assert.Single(parcel.ProcessingRecords.Where(record => record.Stage == ParcelProcessingStage.ParcelException));
+        var saved = Assert.Single(parcel.ProcessingRecords, record => record.Stage == ParcelProcessingStage.ParcelException);
         Assert.Equal(code, saved.ExceptionCode);
         Assert.Equal("original-sorter-frame", saved.RawPayload);
         Assert.Equal("设备原始异常说明", saved.ErrorMessage);

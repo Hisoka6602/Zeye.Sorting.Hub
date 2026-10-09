@@ -7,6 +7,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations.Migrations
     /// <inheritdoc />
     public partial class AddSourceStageDurationIndex : Migration
     {
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedSourceInstanceIdStagePartitionTimeParcelIdColumns = new[] { "SourceInstanceId", "Stage", "PartitionTime", "ParcelId", "OccurredAt", "SourceRunId", "SourceParcelId", "RecordId", "IsSuccess", "HasReliableTimestamp" };
+
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
@@ -14,7 +17,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations.Migrations
                 name: "IX_Processing_Source_Stage_Duration",
                 schema: "dbo",
                 table: "Parcel_ProcessingRecords",
-                columns: new[] { "SourceInstanceId", "Stage", "PartitionTime", "ParcelId", "OccurredAt", "SourceRunId", "SourceParcelId", "RecordId", "IsSuccess", "HasReliableTimestamp" });
+                columns: CachedSourceInstanceIdStagePartitionTimeParcelIdColumns);
         }
 
         /// <inheritdoc />

@@ -24,7 +24,7 @@ public sealed class CreateParcelCommandService {
     /// <summary>
     /// NLog 日志器。
     /// </summary>
-    private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
+    private static readonly NLog.Logger Logger = LogManager.GetCurrentClassLogger();
 
     /// <summary>
     /// Parcel 仓储。
@@ -67,9 +67,7 @@ public sealed class CreateParcelCommandService {
         string operationName,
         string payloadHash,
         CancellationToken cancellationToken) {
-        if (request is null) {
-            throw new ArgumentNullException(nameof(request));
-        }
+        ArgumentNullException.ThrowIfNull(request);
 
         try {
             // 步骤 1：通过共享映射器构建聚合根，由领域层统一做字段合法性校验。
@@ -79,7 +77,7 @@ public sealed class CreateParcelCommandService {
             var executionResult = await _idempotencyGuardService.ExecuteAsync(
                 sourceSystem,
                 operationName,
-                request.Id.ToString(),
+                request.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 payloadHash,
                 async innerCancellationToken => {
                     var result = await _parcelRepository.AddAsync(parcel, innerCancellationToken);

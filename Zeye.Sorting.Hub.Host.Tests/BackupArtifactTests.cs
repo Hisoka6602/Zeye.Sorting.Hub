@@ -123,7 +123,7 @@ public sealed class BackupArtifactTests {
         };
         if (corrupt) bytes[0] ^= 1;
         await File.WriteAllBytesAsync(ArtifactPath(root, id), bytes);
-        await File.WriteAllTextAsync(Path.Combine(root, "MySql", id + ".manifest.json"), JsonSerializer.Serialize(artifact, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        await File.WriteAllTextAsync(Path.Combine(root, "MySql", id + ".manifest.json"), JsonSerializer.Serialize(artifact, JsonSerializerOptions.Web));
         return artifact;
     }
 

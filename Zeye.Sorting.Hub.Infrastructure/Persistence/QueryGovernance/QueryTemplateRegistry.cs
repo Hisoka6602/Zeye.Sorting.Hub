@@ -12,7 +12,7 @@ public sealed class QueryTemplateRegistry {
     /// <summary>
     /// 按模板名称建立的索引。
     /// </summary>
-    private readonly IReadOnlyDictionary<string, QueryTemplateDescriptor> _templatesByName;
+    private readonly System.Collections.Generic.Dictionary<string, Zeye.Sorting.Hub.Infrastructure.Persistence.QueryGovernance.QueryTemplateDescriptor> _templatesByName;
 
     /// <summary>
     /// 初始化查询模板注册表。

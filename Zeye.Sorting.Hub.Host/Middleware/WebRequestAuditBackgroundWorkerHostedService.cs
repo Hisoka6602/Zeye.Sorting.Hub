@@ -15,7 +15,7 @@ internal sealed class WebRequestAuditBackgroundWorkerHostedService : BackgroundS
     /// <summary>
     /// 后台队列实例。
     /// </summary>
-    private readonly WebRequestAuditBackgroundQueue _queue;
+    private readonly WebRequestAuditBuffer _queue;
     /// <summary>
     /// 服务作用域工厂。
     /// </summary>
@@ -30,8 +30,9 @@ internal sealed class WebRequestAuditBackgroundWorkerHostedService : BackgroundS
     /// </summary>
     /// <param name="queue">后台队列。</param>
     /// <param name="scopeFactory">服务作用域工厂。</param>
+    /// <param name="options">审计队列批次大小及等待配置。</param>
     public WebRequestAuditBackgroundWorkerHostedService(
-        WebRequestAuditBackgroundQueue queue,
+        WebRequestAuditBuffer queue,
         IServiceScopeFactory scopeFactory,
         IOptions<WebRequestAuditLogOptions> options) {
         _queue = queue;

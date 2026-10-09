@@ -5,7 +5,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels.Processing;
 /// <summary>按 Fusion 已对接的 ParcelException.ExceptionType 分类，未知编码保留原文并使用兜底类型。</summary>
 public static class SorterExceptionClassifier {
     // 来源：SortingFusionService 的 SorterEventParser、ParcelSessionStore 和协议回归测试。
-    private static readonly IReadOnlyDictionary<string, ParcelExceptionType> Mappings =
+    private static readonly System.Collections.Generic.Dictionary<string, Zeye.Sorting.Hub.Domain.Enums.ParcelExceptionType> Mappings =
         new Dictionary<string, ParcelExceptionType>(StringComparer.OrdinalIgnoreCase) {
             ["ParcelSpacingViolation"] = ParcelExceptionType.ParcelSpacingViolation,
             ["TargetChuteAssignmentRejected"] = ParcelExceptionType.TargetChuteAssignmentRejected,

@@ -275,8 +275,8 @@ Docker 使用 `host_configuration` 和 `host_configuration_history` 两个持久
 │   │           └── WeightInfo.cs（重量信息值对象）
 │   ├── Events（领域事件载荷目录）
 │   │   └── Parcels（包裹相关领域事件载荷目录）
-│   │       ├── ParcelChuteAssignedEventArgs.cs（包裹分配格口事件载荷，携带 ParcelId/TargetChuteId/ActualChuteId/ScannedTime 业务字段）
-│   │       └── ParcelScannedEventArgs.cs（包裹扫描事件载荷，携带 ParcelId/BarCodes/WorkstationName/ScannedTime/BagCode/TargetChuteId 业务字段）
+│   │       ├── ParcelChuteAssignedEvent.cs（包裹分配格口事件载荷，携带 ParcelId/TargetChuteId/ActualChuteId/ScannedTime 业务字段）
+│   │       └── ParcelScannedEvent.cs（包裹扫描事件载荷，携带 ParcelId/BarCodes/WorkstationName/ScannedTime/BagCode/TargetChuteId 业务字段）
 │   ├── Enums（领域枚举目录）
 │   │   ├── ActionType.cs（动作类型枚举）
 │   │   ├── ActionIsolationDecision.cs（自动调优危险动作隔离决策枚举）
@@ -416,7 +416,7 @@ Docker 使用 `host_configuration` 和 `host_configuration_history` 两个持久
 │   │   ├── ResponseCaptureResult.cs（响应采集结果值类型）
 │   │   ├── ResponseCaptureTeeStream.cs（响应双写有界采集流）
 │   │   ├── WebRequestAuditBackgroundEntry.cs（审计后台队列项值类型）
-│   │   ├── WebRequestAuditBackgroundQueue.cs（审计有界后台队列，含丢弃保护）
+│   │   ├── WebRequestAuditBuffer.cs（审计有界后台队列，含丢弃保护）
 │   │   ├── WebRequestAuditBackgroundWorkerHostedService.cs（审计后台消费者服务）
 │   │   ├── WebRequestAuditLogOptions.cs（Web 请求审计中间件配置模型）
 │   │   ├── WebRequestAuditLogMiddleware.cs（Web 请求审计中间件实现：主请求零阻塞，异步脱钩写审计，补齐 Body 与 Curl 采集）
@@ -454,7 +454,7 @@ Docker 使用 `host_configuration` 和 `host_configuration_history` 两个持久
 │   ├── DataRetentionTests.cs（数据保留治理测试：覆盖 dry-run、真实清理与健康检查状态）
 │   ├── BatchSelectiveMissingShardingPhysicalTableProbe.cs（批量物理表探测测试桩：选择性缺失与 schema 透传断言）
 │   ├── CountingPlanProbe.cs（执行计划探针测试桩：记录调用次数）
-│   ├── DomainEventArgsTests.cs（领域事件载荷单元测试：验证 ParcelScannedEventArgs/ParcelChuteAssignedEventArgs 业务字段赋值与值语义）
+│   ├── DomainEventArgsTests.cs（领域事件载荷单元测试：验证 ParcelScannedEvent/ParcelChuteAssignedEvent 业务字段赋值与值语义）
 │   ├── EmptyServiceScope.cs（最小服务作用域测试桩）
 │   ├── EmptyServiceScopeFactory.cs（最小服务作用域工厂测试桩）
 │   ├── FakeParcelRepository.cs（Parcel 只读/管理端 API 复用仓储测试替身）
@@ -474,6 +474,9 @@ Docker 使用 `host_configuration` 和 `host_configuration_history` 两个持久
 │   ├── AuditReadOnlyApiTests.cs（Web 请求审计日志只读 API 端点测试：分页、过滤、参数校验、详情全字段、写读联动）
 │   ├── ParcelReadOnlyApiTests.cs（Parcel 只读 API 端点测试：列表/详情/404/邻近参数异常）
 │   ├── DatabaseConnectionDiagnosticsTests.cs（数据库连接诊断测试：配置合法性、失败快照、健康检查阈值与 Data 输出）
+│   ├── DatabaseTextFunctionTests.cs（四种数据库及分表模型的文本运算翻译、SQLite 跨区域设置结果回归）
+│   ├── DisposeTrackingStream.cs（底层流同步、异步释放次数及异常传播测试桩）
+│   ├── DisposeTrackingTextReader.cs（底层文本读取器释放次数及异常传播测试桩）
 │   ├── ParcelQueryServicesTests.cs（Parcel 应用层查询服务测试：列表/详情/邻近查询映射与最小校验；多重过滤条件联合成功路径；ExceptionType 筛选覆盖）
 │   ├── ParcelRepositoryTests.cs（Parcel 仓储第一阶段能力测试：分页过滤、详情与邻近查询、写操作与过期清理；含阻断/dry-run/显式放开的危险动作治理回归）
 │   ├── SelectiveMissingShardingPhysicalTableProbe.cs（物理表探测测试桩：选择性缺失场景）
@@ -629,6 +632,7 @@ Docker 使用 `host_configuration` 和 `host_configuration_history` 两个持久
 │   │   │   ├── ParcelBatchWriteFlushService.cs（Parcel 缓冲写入后台批量 Flush 服务）
 │   │   │   └── ParcelBufferedWriteService.cs（Parcel 缓冲写入服务实现）
 │   │   ├── SortingHubDbContext.cs（EF Core DbContext）
+│   │   ├── DatabaseTextFunctions.cs（数据库 LOWER 与继续游标比较的统一服务端映射）
 │   │   ├── DbProviderNames.cs（EF Core 运行时/迁移 providerName 常量）
 │   │   ├── ConfiguredProviderNames.cs（配置层 provider key 常量：Persistence:Provider / ConnectionStrings key / CLI --provider）
 │   │   ├── DuplicateKeyExceptionDetector.cs（重复键异常检测工具：统一识别唯一键冲突）
@@ -717,6 +721,9 @@ Docker 使用 `host_configuration` 和 `host_configuration_history` 两个持久
 | Zeye.Sorting.Hub.Host.Tests | `RuntimeConfigurationTests.cs` | 自动建库、旧配置兼容、热更新、并发、原值快照和接口权限测试 |
 | Zeye.Sorting.Hub.Host.Tests | `DatabaseSetupTests.cs` | 无数据库启动、业务生命周期隔离、配置保存与本机访问限制回归 |
 | Zeye.Sorting.Hub.Host.Tests | `DatabaseBootstrapIntegrationTests.cs` | 独立 MySQL、SQL Server、Oracle 临时库的首次建库、预演与重复启动回归 |
+| Zeye.Sorting.Hub.Host.Tests | `DatabaseTextFunctionTests.cs` | 四种提供器与分表只读模型的服务端文本运算翻译及 SQLite 跨区域设置结果回归 |
+| Zeye.Sorting.Hub.Host.Tests | `DisposeTrackingStream.cs` | 记录同步、异步流释放次数并注入底层释放异常 |
+| Zeye.Sorting.Hub.Host.Tests | `DisposeTrackingTextReader.cs` | 记录文本读取器释放次数并注入底层释放异常 |
 | Zeye.Sorting.Hub.Host.Tests | `DatabaseIntegrationTheoryAttribute.cs` | 显式启用独立验收数据库时运行集成用例，普通测试环境跳过 |
 | Zeye.Sorting.Hub.Host.Tests | `HostRestartTests.cs` | 重启权限、来源与版本校验、重复请求及一次性访问码交接回归 |
 | Zeye.Sorting.Hub.Host.Tests | `LiteDbManagedConfigurationTests.cs` | 加密目录迁移、租约撤销、运维策略和只读工具验证 |
@@ -1265,8 +1272,8 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 #### `Zeye.Sorting.Hub.Domain/Events/`：领域事件载荷目录
 
 ##### `Zeye.Sorting.Hub.Domain/Events/Parcels/`：包裹相关领域事件载荷目录
-- `ParcelChuteAssignedEventArgs.cs`：包裹分配格口事件载荷（`readonly record struct`，不可变值语义；携带 ParcelId/TargetChuteId/ActualChuteId/ScannedTime 业务字段）。
-- `ParcelScannedEventArgs.cs`：包裹扫描事件载荷（`readonly record struct`，不可变值语义；携带 ParcelId/BarCodes/WorkstationName/ScannedTime/BagCode/TargetChuteId 业务字段）。
+- `ParcelChuteAssignedEvent.cs`：包裹分配格口事件载荷（`readonly record struct`，不可变值语义；携带 ParcelId/TargetChuteId/ActualChuteId/ScannedTime 业务字段）。
+- `ParcelScannedEvent.cs`：包裹扫描事件载荷（`readonly record struct`，不可变值语义；携带 ParcelId/BarCodes/WorkstationName/ScannedTime/BagCode/TargetChuteId 业务字段）。
 
 #### `Zeye.Sorting.Hub.Domain/Enums/`：领域枚举与业务语义常量目录
 - `ActionType.cs`：动作类型枚举定义。
@@ -1394,7 +1401,7 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 - `Middleware/WebRequestAuditLogOptions.cs`：Web 请求审计中间件配置模型。
 - `Middleware/WebRequestAuditLogMiddleware.cs`：Web 请求审计中间件实现（主请求零阻塞：仅负责采集与入队，不等待写库；补齐 Request/Response Body 采集与可回放 Curl 拼装）。
 - `Middleware/WebRequestAuditBackgroundEntry.cs`：审计后台队列项值类型。
-- `Middleware/WebRequestAuditBackgroundQueue.cs`：审计有界后台队列（超限丢弃保护与丢弃计数日志）。
+- `Middleware/WebRequestAuditBuffer.cs`：审计有界后台队列（超限丢弃保护与丢弃计数日志）。
 - `Middleware/WebRequestAuditBackgroundWorkerHostedService.cs`：审计后台消费服务（单消费者写库）。
 - `Middleware/WebRequestAuditLogMiddlewareExtensions.cs`：中间件依赖注册与管线接线扩展。
 - `Middleware/ResponseCaptureTeeStream.cs`：响应双写采集流。
@@ -1459,6 +1466,7 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 
 #### `Zeye.Sorting.Hub.Infrastructure/Persistence/`：持久化核心目录（DbContext、方言、设计时工厂）
 - `SortingHubDbContext.cs`：EF Core DbContext（实体集与模型构建入口）。
+- `DatabaseTextFunctions.cs`：统一映射数据库 `LOWER` 和继续游标比较，保留服务端排序规则与查询执行。
 - `DbProviderNames.cs`：四库 EF Core 运行时/迁移 providerName 常量，用于 `DbContext.Database.ProviderName` 识别与迁移分支判断。
 - `ConfiguredProviderNames.cs`：配置层 provider key 常量（`MySql` / `SqlServer` / `Oracle` / `SQLite`），用于 `Persistence:Provider`、`ConnectionStrings` key 与设计时 CLI `--provider` 参数值，兼容 MSSQL/Sqlite 旧命名。
 - `DuplicateKeyExceptionDetector.cs`：重复键异常检测工具，统一识别 MySQL/SQL Server 唯一键冲突并供多仓储复用。
@@ -1653,7 +1661,7 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 - `MigrationGovernanceTests.cs`：迁移治理测试，覆盖健康检查状态、危险 SQL、dry-run、脚本归档、SQL Server设计时/运行时迁移选路与快照一致性。
 - `BatchSelectiveMissingShardingPhysicalTableProbe.cs`：批量物理表探测测试桩，支持选择性缺失结果与 schema 透传断言。
 - `CountingPlanProbe.cs`：执行计划探针测试桩，记录探针调用次数并返回固定快照。
-- `DomainEventArgsTests.cs`：领域事件载荷单元测试，验证 `ParcelScannedEventArgs`/`ParcelChuteAssignedEventArgs` 业务字段赋值、值语义相等与不等、本地时间约束。
+- `DomainEventArgsTests.cs`：领域事件载荷单元测试，验证 `ParcelScannedEvent`/`ParcelChuteAssignedEvent` 业务字段赋值、值语义相等与不等、本地时间约束。
 - `EmptyServiceScope.cs`：最小服务作用域测试桩，提供基础 `ServiceProvider`。
 - `EmptyServiceScopeFactory.cs`：最小服务作用域工厂测试桩。
 - `FakeParcelRepository.cs`：Parcel 仓储测试替身，提供只读/写入/过期清理三态结果用于 API 回归测试。

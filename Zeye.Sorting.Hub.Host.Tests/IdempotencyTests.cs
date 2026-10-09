@@ -28,7 +28,7 @@ public sealed class IdempotencyTests {
     /// 相同载荷应生成稳定的 SHA256 哈希。
     /// </summary>
     [Fact]
-    public void IdempotencyKeyHasher_WhenPayloadIsSame_ShouldReturnStableHash() {
+    public void IdempotencyKeyHasherWhenPayloadIsSameShouldReturnStableHash() {
         var hasher = new IdempotencyKeyHasher();
         var payload = new {
             SourceSystem = ParcelCreateIdempotencySourceSystem,
@@ -49,7 +49,7 @@ public sealed class IdempotencyTests {
     /// </summary>
     /// <returns>异步任务。</returns>
     [Fact]
-    public async Task CreateParcelCommandService_WhenSameRequestRepeated_ShouldReplayExistingResponse() {
+    public async Task CreateParcelCommandServiceWhenSameRequestRepeatedShouldReplayExistingResponse() {
         var databaseName = $"idempotency-replay-{Guid.NewGuid():N}";
         try {
             var options = BuildOptions(databaseName);
@@ -86,7 +86,7 @@ public sealed class IdempotencyTests {
             await using var dbContext = new SortingHubDbContext(options);
             Assert.Equal(1, await dbContext.Set<Zeye.Sorting.Hub.Domain.Aggregates.Parcels.Parcel>().CountAsync());
             var record = await dbContext.Set<IdempotencyRecord>().SingleAsync();
-            Assert.Equal(request.Id.ToString(), record.BusinessKey);
+            Assert.Equal(request.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), record.BusinessKey);
             Assert.Equal(Zeye.Sorting.Hub.Domain.Enums.Idempotency.IdempotencyRecordStatus.Completed, record.Status);
         }
         finally {
@@ -99,7 +99,7 @@ public sealed class IdempotencyTests {
     /// </summary>
     /// <returns>异步任务。</returns>
     [Fact]
-    public async Task CreateParcelCommandService_WhenIdempotencyRecordIsPending_ShouldReject() {
+    public async Task CreateParcelCommandServiceWhenIdempotencyRecordIsPendingShouldReject() {
         var databaseName = $"idempotency-pending-{Guid.NewGuid():N}";
         try {
             var options = BuildOptions(databaseName);
@@ -114,7 +114,7 @@ public sealed class IdempotencyTests {
                 await dbContext.Set<IdempotencyRecord>().AddAsync(IdempotencyRecord.CreatePending(
                     ParcelCreateIdempotencySourceSystem,
                     ParcelCreateIdempotencyOperationName,
-                    request.Id.ToString(),
+                    request.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     payloadHash));
                 await dbContext.SaveChangesAsync();
             }
@@ -141,7 +141,7 @@ public sealed class IdempotencyTests {
     /// </summary>
     /// <returns>异步任务。</returns>
     [Fact]
-    public async Task CreateParcelCommandService_WhenFirstRequestIsCanceled_ShouldAllowLaterRetry() {
+    public async Task CreateParcelCommandServiceWhenFirstRequestIsCanceledShouldAllowLaterRetry() {
         var databaseName = $"idempotency-cancel-{Guid.NewGuid():N}";
         try {
             var options = BuildOptions(databaseName);
@@ -157,7 +157,7 @@ public sealed class IdempotencyTests {
             await Assert.ThrowsAsync<OperationCanceledException>(() => guardService.ExecuteAsync(
                 ParcelCreateIdempotencySourceSystem,
                 ParcelCreateIdempotencyOperationName,
-                request.Id.ToString(),
+                request.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 payloadHash,
                 innerCancellationToken => {
                     cancellationTokenSource.Cancel();
@@ -176,7 +176,7 @@ public sealed class IdempotencyTests {
             var retryResult = await guardService.ExecuteAsync(
                 ParcelCreateIdempotencySourceSystem,
                 ParcelCreateIdempotencyOperationName,
-                request.Id.ToString(),
+                request.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 payloadHash,
                 static _ => Task.FromResult("retry-success"),
                 static _ => Task.FromResult<string?>(null),
@@ -200,7 +200,7 @@ public sealed class IdempotencyTests {
     /// </summary>
     /// <returns>异步任务。</returns>
     [Fact]
-    public async Task CreateParcelCommandService_WhenPendingRecordAlreadyHasResult_ShouldReplayExistingResponse() {
+    public async Task CreateParcelCommandServiceWhenPendingRecordAlreadyHasResultShouldReplayExistingResponse() {
         var databaseName = $"idempotency-recover-pending-{Guid.NewGuid():N}";
         try {
             var options = BuildOptions(databaseName);
@@ -218,7 +218,7 @@ public sealed class IdempotencyTests {
                 await dbContext.Set<IdempotencyRecord>().AddAsync(IdempotencyRecord.CreatePending(
                     ParcelCreateIdempotencySourceSystem,
                     ParcelCreateIdempotencyOperationName,
-                    request.Id.ToString(),
+                    request.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     payloadHash));
                 await dbContext.SaveChangesAsync();
             }
@@ -332,8 +332,8 @@ public sealed class IdempotencyTests {
             request.BarCodes,
             request.Weight,
             request.WorkstationName,
-            ScannedTime = scannedTime.ToString("yyyy-MM-dd HH:mm:ss.fffffff"),
-            DischargeTime = dischargeTime.ToString("yyyy-MM-dd HH:mm:ss.fffffff"),
+            ScannedTime = scannedTime.ToString("yyyy-MM-dd HH:mm:ss.fffffff", System.Globalization.CultureInfo.InvariantCulture),
+            DischargeTime = dischargeTime.ToString("yyyy-MM-dd HH:mm:ss.fffffff", System.Globalization.CultureInfo.InvariantCulture),
             request.TargetChuteId,
             request.ActualChuteId,
             request.RequestStatus,

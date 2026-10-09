@@ -13,16 +13,22 @@ namespace Zeye.Sorting.Hub.Application.Services.Fusion;
 public sealed class FusionProjectionService(IFusionIngestionGateway ingress, ParcelProcessingApplicationService processing, int maximumParallelism = 32) {
     /// <summary>独立投影失败的审计日志。</summary>
     private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
+    /// <summary>只允许协议支持的有界并行预算。</summary>
+    private static int ValidateMaximumParallelism(int maximumParallelism) {
+        ArgumentOutOfRangeException.ThrowIfLessThan(maximumParallelism, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(maximumParallelism, 32);
+        return maximumParallelism;
+    }
     /// <summary>保留来源三元组和同票事实顺序；全部业务事务完成后才标记各原始凭据。</summary>
     public async Task<int> ProjectAsync(CancellationToken cancellationToken) {
-        if (maximumParallelism is < 1 or > 32) throw new ArgumentOutOfRangeException(nameof(maximumParallelism));
+        var concurrency = ValidateMaximumParallelism(maximumParallelism);
         var changed = 0;
         var results = new ConcurrentBag<(FusionProjectionItem Item, string? ParcelId, string? Error)>();
         var groups = (await ingress.ClaimProjectionsAsync(cancellationToken)).GroupBy(item =>
             (item.Request.SourceInstanceId, item.Request.SourceRunId,
              item.Request.SourceParcelId?.ToString(CultureInfo.InvariantCulture) ?? "unbound:" + item.Request.RecordId));
         await Parallel.ForEachAsync(groups, new ParallelOptions {
-            MaxDegreeOfParallelism = maximumParallelism, CancellationToken = cancellationToken
+            MaxDegreeOfParallelism = concurrency, CancellationToken = cancellationToken
         }, async (group, token) => {
             foreach (var chunk in group.Chunk(64)) {
                 IReadOnlyList<RepositoryResult<ParcelProcessingWriteResponse>> outcomes;
@@ -38,7 +44,7 @@ public sealed class FusionProjectionService(IFusionIngestionGateway ingress, Par
                         try { independent.Add(await processing.AppendAsync(item.Request, token)); }
                         catch (Exception failure) when (failure is not OperationCanceledException) {
                             Logger.Error(failure, "Fusion 事实投影失败，Key={Key}", item.Key);
-                            independent.Add(RepositoryResult<ParcelProcessingWriteResponse>.Fail("投影失败。", "ProjectionFailed"));
+                            independent.Add(RepositoryResult.Fail<ParcelProcessingWriteResponse>("投影失败。", "ProjectionFailed"));
                         }
                     }
                     outcomes = independent;

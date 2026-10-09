@@ -5,6 +5,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Configuration;
 
 /// <summary>LiteDB 唯一配置源，通知 options 管线；启动参数在重启前保持原有效值。</summary>
 public sealed class RuntimeConfigurationProvider(LiteDbConfigurationStore store) : ConfigurationProvider, IConfigurationSource {
+    /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+    private static readonly string[] CachedLogCleanupResourceThresholdsWebRequestAuditLogLoggingValues = new[] { "LogCleanup:", "ResourceThresholds:", "WebRequestAuditLog:", "Logging:", "Access:" };
+
     /// <summary>保护当前配置与启动配置的一致性。</summary>
     private readonly object _gate = new();
     /// <summary>最后读取并通过校验的持久化配置。</summary>
@@ -40,7 +43,7 @@ public sealed class RuntimeConfigurationProvider(LiteDbConfigurationStore store)
         if (key.StartsWith("WebRequestAuditLog:Background", StringComparison.OrdinalIgnoreCase)
             || key.Equals("WebRequestAuditLog:DropLogIntervalSeconds", StringComparison.OrdinalIgnoreCase)
             || key.Equals("ResourceThresholds:MaxConnectionPoolSize", StringComparison.OrdinalIgnoreCase)) return true;
-        return !new[] { "LogCleanup:", "ResourceThresholds:", "WebRequestAuditLog:", "Logging:", "Access:" }
+        return !CachedLogCleanupResourceThresholdsWebRequestAuditLogLoggingValues
             .Any(prefix => key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
     }
 

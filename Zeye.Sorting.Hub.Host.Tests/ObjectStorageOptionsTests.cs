@@ -14,7 +14,7 @@ public sealed class ObjectStorageOptionsTests {
     /// 验证场景：默认配置满足 MinIO PR-B 规划值。
     /// </summary>
     [Fact]
-    public void ObjectStorageOptions_ShouldExposeExpectedDefaults() {
+    public void ObjectStorageOptionsShouldExposeExpectedDefaults() {
         var options = new ObjectStorageOptions();
 
         Assert.Equal(ObjectStorageProvider.Minio, options.Provider);
@@ -38,7 +38,7 @@ public sealed class ObjectStorageOptionsTests {
     /// 验证场景：合法配置可通过启动期校验并成功绑定。
     /// </summary>
     [Fact]
-    public void AddObjectStorageOptions_ShouldBindValidConfiguration() {
+    public void AddObjectStorageOptionsShouldBindValidConfiguration() {
         var configuration = CreateConfiguration(new Dictionary<string, string?> {
             [$"{ObjectStorageOptions.SectionName}:Provider"] = "Minio",
             [$"{ObjectStorageOptions.SectionName}:Minio:Endpoint"] = "minio.zeye.local:9000",
@@ -70,7 +70,7 @@ public sealed class ObjectStorageOptionsTests {
     /// 验证场景：真实凭据文本会在启动期校验阶段被拒绝。
     /// </summary>
     [Fact]
-    public void AddObjectStorageOptions_ShouldRejectRealCredentialText() {
+    public void AddObjectStorageOptionsShouldRejectRealCredentialText() {
         var configuration = CreateConfiguration(new Dictionary<string, string?> {
             [$"{ObjectStorageOptions.SectionName}:Provider"] = "Minio",
             [$"{ObjectStorageOptions.SectionName}:Minio:AccessKey"] = "minio-access-key",
@@ -86,7 +86,7 @@ public sealed class ObjectStorageOptionsTests {
     /// 验证场景：危险启动期自检配置会在启动期校验阶段被拒绝。
     /// </summary>
     [Fact]
-    public void AddObjectStorageOptions_ShouldRejectUnsafeBootstrapConfiguration() {
+    public void AddObjectStorageOptionsShouldRejectUnsafeBootstrapConfiguration() {
         var configuration = CreateConfiguration(new Dictionary<string, string?> {
             [$"{ObjectStorageOptions.SectionName}:Provider"] = "Minio",
             [$"{ObjectStorageOptions.SectionName}:Minio:AccessKey"] = "${MINIO_ACCESS_KEY}",

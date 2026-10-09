@@ -4,7 +4,7 @@ namespace Zeye.Sorting.Hub.Domain.Events.Parcels;
 /// 包裹扫描事件载荷。
 /// 携带包裹首次进入分拣流水线时的关键业务字段，供下游处理程序使用。
 /// </summary>
-public readonly record struct ParcelScannedEventArgs {
+public readonly record struct ParcelScannedEvent {
     /// <summary>
     /// 包裹数据库主键 Id。
     /// </summary>

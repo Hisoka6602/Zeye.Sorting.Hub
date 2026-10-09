@@ -20,9 +20,9 @@ public sealed class ParcelTimingReadService(IDbContextFactory<SortingHubDbContex
     private const int CandidatePageSize = 20;
     /// <summary>数据库内只投影身份、状态与真实摘要时间。</summary>
     private static readonly Expression<Func<ParcelTimingSnapshot, ParcelTimingCandidateResponse>> Candidate = parcel => new() {
-        Id = parcel.Id.ToString(), BarCodes = parcel.BarCodes, WorkstationName = parcel.WorkstationName,
+        Id = parcel.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), BarCodes = parcel.BarCodes, WorkstationName = parcel.WorkstationName,
         SourceInstanceId = parcel.SourceInstanceId, SourceRunId = parcel.SourceRunId,
-        SourceParcelId = parcel.SourceParcelId.HasValue ? parcel.SourceParcelId.Value.ToString() : null,
+        SourceParcelId = parcel.SourceParcelId.HasValue ? parcel.SourceParcelId.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : null,
         Status = (int)parcel.Status, ScannedTime = parcel.ScannedTime, DetectedTime = parcel.DetectedTime, CreatedTime = parcel.CreatedTime,
         DischargeTime = parcel.DischargeTime, CompletedTime = parcel.CompletedTime
     };
@@ -82,7 +82,7 @@ public sealed class ParcelTimingReadService(IDbContextFactory<SortingHubDbContex
         var requested = selected.Select(id => id.ToString(CultureInfo.InvariantCulture)).ToArray();
         var ordered = requested.Where(byId.ContainsKey).Select(id => byId[id]).ToArray();
         var measurements = await parcels.Where(parcel => selected.Contains(parcel.Id)).Select(parcel => new {
-            Id = parcel.Id.ToString(), parcel.Weight, parcel.Length, parcel.Width, parcel.Height, parcel.Volume,
+            Id = parcel.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), parcel.Weight, parcel.Length, parcel.Width, parcel.Height, parcel.Volume,
             parcel.TargetChuteCode, parcel.ActualChuteCode
         }).ToDictionaryAsync(parcel => parcel.Id, cancellationToken);
         // 查询期间发生清理时，按缺失包裹返回，不能对已删除快照索引抛出异常。
@@ -111,7 +111,7 @@ public sealed class ParcelTimingReadService(IDbContextFactory<SortingHubDbContex
         // 报文正文、图片和量测集合不进入甘特查询，避免11次完整聚合读取。
         var records = await recordQuery.Where(record => record.ParcelId.HasValue && ids.Contains(record.ParcelId.Value))
             .OrderBy(record => record.OccurredAt).ThenBy(record => record.RecordId).Select(record => new ParcelProcessingRecordResponse {
-                RecordId = record.RecordId, ParcelId = record.ParcelId!.Value.ToString(),
+                RecordId = record.RecordId, ParcelId = record.ParcelId!.Value.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 SourceInstanceId = record.SourceInstanceId, SourceRunId = record.SourceRunId, SourceParcelId = record.SourceParcelId,
                 Stage = (int)record.Stage, OccurredAt = record.OccurredAt, RecordedAt = record.RecordedAt,
                 PartitionTime = record.PartitionTime, IsSuccess = record.IsSuccess, AttemptNumber = record.AttemptNumber,

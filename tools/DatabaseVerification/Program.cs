@@ -136,7 +136,7 @@ internal static class Program {
             for (var attempt = 0; attempt < 360 && await db.Set<FusionFactReceipt>().AnyAsync(fact => fact.ProjectionState != "complete"); attempt++)
                 await Task.Delay(500);
             var facts = await db.Set<FusionFactReceipt>().AsNoTracking().ToListAsync();
-            if (facts.Any(fact => fact.BodySha256 != Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(fact.BodyJson))).ToLowerInvariant())) throw new InvalidOperationException("Fusion 原始事实摘要不一致。");
+            if (facts.Any(fact => fact.BodySha256 != Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(fact.BodyJson))))) throw new InvalidOperationException("Fusion 原始事实摘要不一致。");
             var pending = facts.Count(fact => fact.ProjectionState != "complete");
             if (pending != 0) throw new InvalidOperationException($"Fusion 尚有 {pending} 条未完成投影。");
             var source = args.SkipWhile(argument => argument != "--source").Skip(1).FirstOrDefault();

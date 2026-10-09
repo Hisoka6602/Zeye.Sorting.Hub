@@ -14,6 +14,9 @@ namespace Zeye.Sorting.Hub.Tools.BusinessDataSimulator;
 
 /// <summary>确定性模拟分拣链路：工作日件量、到件批次、四台设备、失败重试和未知异常。</summary>
 public static class SimulationScenario {
+    /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+    private static readonly int[] Cached4507801080Values = new[] { 450, 780, 1080 };
+
     /// <summary>仅供造数工具使用的来源标记。</summary>
     public const string Marker = "zeye-business-simulation-v1";
     /// <summary>与现有8、9开头的演示编号隔离。</summary>
@@ -41,7 +44,7 @@ public static class SimulationScenario {
             for (var burst = 0; burst < 3; burst++) {
                 cursors[burst] = day == options.AsOf.Date
                     ? options.AsOf.AddMinutes(-4).AddMilliseconds(-(count + 10) * 1300).AddMilliseconds(burst * (count + 10) * 440)
-                    : day.AddMinutes(new[] { 450, 780, 1080 }[burst]);
+                    : day.AddMinutes(Cached4507801080Values[burst]);
                 if (cursors[burst] < day) cursors[burst] = day.AddMilliseconds(10000 + burst * (count + 10) * 440);
             }
             for (var n = 1; n <= count; n++) {

@@ -69,7 +69,7 @@ public sealed class ParcelDwsMeasurementProjectionTests {
             db.AddRange(detected, received, bound);
             await db.SaveChangesAsync();
             Assert.Equal(3, await db.Set<ParcelDwsMeasurementSnapshot>().CountAsync());
-            Assert.All(await db.Set<ParcelDwsMeasurementSnapshot>().ToListAsync(), row => Assert.True(row.Key.StartsWith("detected-") || row.Key.StartsWith("received-") || row.Key.StartsWith("bound-")));
+            Assert.All(await db.Set<ParcelDwsMeasurementSnapshot>().ToListAsync(), row => Assert.True(row.Key.StartsWith("detected-", StringComparison.Ordinal) || row.Key.StartsWith("received-", StringComparison.Ordinal) || row.Key.StartsWith("bound-", StringComparison.Ordinal)));
             // 模拟升级前的历史记录：只清除测试数据库中的派生读模型，原事实完整保留。
             await db.Set<ParcelDwsMeasurementSnapshot>().ExecuteDeleteAsync();
         }
@@ -100,7 +100,7 @@ public sealed class ParcelDwsMeasurementProjectionTests {
         var at = new DateTime(2026, 10, 6, 10, 0, 0);
         await database.Partitions.EnsureCreatedAsync(database.Partitions.Resolve(at), default);
         await using (var db = await database.Partitions.CreateContextAsync(database.Partitions.Resolve(at).Suffix, default)) {
-            db.AddRange(Enumerable.Range(0, 600).Select(index => Fact("record-" + index.ToString("D4"), 42, at.AddMilliseconds(index))));
+            db.AddRange(Enumerable.Range(0, 600).Select(index => Fact("record-" + index.ToString("D4", System.Globalization.CultureInfo.InvariantCulture), 42, at.AddMilliseconds(index))));
             await db.SaveChangesAsync();
         }
         var backfill = new ParcelDwsMeasurementBackfillService(database.Factory, database.Partitions);

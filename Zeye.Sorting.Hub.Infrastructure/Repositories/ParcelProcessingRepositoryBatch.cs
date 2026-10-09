@@ -65,7 +65,7 @@ public sealed partial class ParcelProcessingRepository {
                 List<ParcelProcessingRecord> history;
                 if (location is null) {
                     if (baseIdCollision || await db.Set<ParcelLocation>().AnyAsync(row => row.Id == newParcelId, cancellationToken))
-                        return records.Select(_ => RepositoryResult<ParcelProcessingWriteResult>.Fail("包裹来源身份与现有中心编号冲突。", "ParcelSourceConflict")).ToArray();
+                        return records.Select(_ => RepositoryResult.Fail<ParcelProcessingWriteResult>("包裹来源身份与现有中心编号冲突。", "ParcelSourceConflict")).ToArray();
                     firstNew = records.First(record => !known.ContainsKey(HashIdentity(record.SourceInstanceId, record.SourceRunId, record.RecordId)));
                     parcel = Parcel.CreateDetected(newParcelId, firstNew, firstNew.RecordedAt);
                     location = new ParcelLocation { Id = newParcelId, SourceKey = sourceKey, Suffix = suffix, CreatedTime = firstNew.RecordedAt };
@@ -86,7 +86,7 @@ public sealed partial class ParcelProcessingRepository {
                         continue;
                     }
                     if (record.Stage == ParcelProcessingStage.Detected && detected) {
-                        outcomes[index] = RepositoryResult<ParcelProcessingWriteResult>.Fail(
+                        outcomes[index] = RepositoryResult.Fail<ParcelProcessingWriteResult>(
                             "同一来源会话和包裹编号已存在检测记录；重试必须复用RecordId，设备计数重置必须更换SourceRunId。", "ParcelSourceConflict");
                         continue;
                     }
@@ -96,7 +96,7 @@ public sealed partial class ParcelProcessingRepository {
                     db.Add(stored); db.Add(receipt); known.Add(keys[index], receipt); history.Add(stored);
                     if (record.Stage == ParcelProcessingStage.Detected) detected = true;
                     appended++;
-                    outcomes[index] = RepositoryResult<ParcelProcessingWriteResult>.Success(new() { ParcelId = parcel.Id, PartitionSuffix = suffix });
+                    outcomes[index] = RepositoryResult.Success<ParcelProcessingWriteResult>(new() { ParcelId = parcel.Id, PartitionSuffix = suffix });
                 }
                 if (appended > 0) {
                     parcel.ApplyProcessingRecords(history, rules);
@@ -119,7 +119,7 @@ public sealed partial class ParcelProcessingRepository {
         }
         catch (Exception exception) {
             Logger.Error(exception, "包裹批次原子写入失败，Source={Source}, Parcel={Parcel}", first.SourceInstanceId, first.SourceParcelId);
-            return records.Select(_ => RepositoryResult<ParcelProcessingWriteResult>.Fail("处理记录批次写入失败。", "ParcelProcessingWriteFailed")).ToArray();
+            return records.Select(_ => RepositoryResult.Fail<ParcelProcessingWriteResult>("处理记录批次写入失败。", "ParcelProcessingWriteFailed")).ToArray();
         }
         finally { gate.Release(); }
     }

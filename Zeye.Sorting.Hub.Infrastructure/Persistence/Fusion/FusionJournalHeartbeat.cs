@@ -9,21 +9,21 @@ public sealed class FusionJournalHeartbeat {
     /// <summary>发送数据库身份。</summary>
     public string JournalId { get; set; } = "";
     /// <summary>中心本地接收时间。</summary>
-    public DateTime ReceivedAt { get; set; } = default;
+    public DateTime ReceivedAt { get; set; }
     /// <summary>来源本地发送时间。</summary>
-    public DateTime SentAt { get; set; } = default;
+    public DateTime SentAt { get; set; }
     /// <summary>待确认事实数。</summary>
-    public long PendingFacts { get; set; } = 0;
+    public long PendingFacts { get; set; }
     /// <summary>已拒绝事实数。</summary>
-    public long RejectedFacts { get; set; } = 0;
+    public long RejectedFacts { get; set; }
     /// <summary>待传图片数。</summary>
-    public long PendingImages { get; set; } = 0;
+    public long PendingImages { get; set; }
     /// <summary>累计舍弃事实数。</summary>
-    public long DroppedUnacknowledgedFacts { get; set; } = 0;
+    public long DroppedUnacknowledgedFacts { get; set; }
     /// <summary>累计舍弃图片数。</summary>
-    public long DroppedUnacknowledgedImages { get; set; } = 0;
+    public long DroppedUnacknowledgedImages { get; set; }
     /// <summary>保护未确认数据状态。</summary>
-    public bool ProtectUnacknowledgedData { get; set; } = false;
+    public bool ProtectUnacknowledgedData { get; set; }
     /// <summary>来源缓存字节数。</summary>
-    public long RetainedBytes { get; set; } = 0;
+    public long RetainedBytes { get; set; }
 }

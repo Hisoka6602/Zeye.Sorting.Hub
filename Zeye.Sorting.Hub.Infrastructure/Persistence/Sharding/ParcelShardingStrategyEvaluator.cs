@@ -430,7 +430,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding {
         /// <param name="mode">策略模式。</param>
         /// <param name="validationErrors">错误集合。</param>
         /// <returns>解析值；未配置返回 null。</returns>
-        private static long? ReadPositiveLong(string? raw, string key, ParcelShardingStrategyMode mode, ICollection<string> validationErrors) {
+        private static long? ReadPositiveLong(string? raw, string key, ParcelShardingStrategyMode mode, System.Collections.Generic.List<string> validationErrors) {
             if (string.IsNullOrWhiteSpace(raw)) {
                 if (mode is ParcelShardingStrategyMode.Volume or ParcelShardingStrategyMode.Hybrid) {
                     validationErrors.Add($"配置项 {key} 必填，且需为正整数。");

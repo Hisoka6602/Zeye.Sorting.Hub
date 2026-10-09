@@ -7,8 +7,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence;
 internal static class OracleModelCompatibility {
     /// <summary>Oracle 把空字符串存成 NULL；采用可逆前缀编码，保留空值与空字符串的区别。</summary>
     private static readonly ValueConverter<string, string> EmptyStringConverter = new(
-        value => value.Length == 0 ? "\u0001" : value.StartsWith("\u0001", StringComparison.Ordinal) ? "\u0001" + value : value,
-        value => value.StartsWith("\u0001", StringComparison.Ordinal) ? value.Substring(1) : value);
+        value => value.Length == 0 ? "\u0001" : value.StartsWith('\u0001') ? "\u0001" + value : value,
+        value => value.StartsWith('\u0001') ? value.Substring(1) : value);
 
     /// <summary>为 Oracle 配置空字符串编码及无长度上限的正文列；索引列使用受支持的有界字符类型。</summary>
     internal static void Configure(ModelBuilder builder) {

@@ -33,9 +33,9 @@ public sealed class ParcelImageApiTests {
         var images = (await response.Content.ReadFromJsonAsync<ParcelImagesResponse>())!;
         Assert.Equal(parcelId, images.ParcelId.ToString(System.Globalization.CultureInfo.InvariantCulture));
         Assert.True(images.HasImages); Assert.Equal(2, images.Images.Count);
-        var top = Assert.Single(images.Images.Where(x => x.CameraName == "顶部相机"));
+        var top = Assert.Single(images.Images, x => x.CameraName == "顶部相机");
         Assert.Equal("https://images.example.test/parcel-42.jpg", top.Url);
-        var side = Assert.Single(images.Images.Where(x => x.CameraName == "侧面相机"));
+        var side = Assert.Single(images.Images, x => x.CameraName == "侧面相机");
         Assert.Null(side.Url); Assert.Equal(@"D:\Fusion\images\42.jpg", side.SourcePath);
         Assert.Contains("来源尚未提供", side.UnavailableReason);
     }
@@ -62,7 +62,7 @@ public sealed class ParcelImageApiTests {
         var parcelId = (await created.Content.ReadFromJsonAsync<ParcelProcessingWriteResponse>())!.ParcelId;
         await client.PostAsJsonAsync("/api/admin/parcels/processing-records", Request(9, "local") with { ImagePath = "images/42.jpg" });
         using var scope = app.Services.CreateScope();
-        var original = (await scope.ServiceProvider.GetRequiredService<GetParcelByIdQueryService>().ExecuteAsync(long.Parse(parcelId!), default))!;
+        var original = (await scope.ServiceProvider.GetRequiredService<GetParcelByIdQueryService>().ExecuteAsync(long.Parse(parcelId!, System.Globalization.CultureInfo.InvariantCulture), default))!;
         var parcel = original with { ImageInfos = [new ImageInfoResponse { CameraName = "顶部相机", CustomName = "", CameraSerialNumber = "camera-01", ImageType = 0, CaptureType = 0, RelativePath = "images/42.jpg", StorageProvider = 1, BucketName = "parcel-images", ObjectKey = "sorter-01/42.jpg" }] };
         var signed = await ParcelImageCatalog.BuildAsync(parcel, (bucket, key, _) => {
             Assert.Equal("parcel-images", bucket); Assert.Equal("sorter-01/42.jpg", key);

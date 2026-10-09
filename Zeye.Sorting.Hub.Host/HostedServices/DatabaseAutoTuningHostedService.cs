@@ -732,19 +732,19 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             var sb = new System.Text.StringBuilder();
             sb.AppendLine("========================================");
             sb.AppendLine($"月度巡检报告");
-            sb.AppendLine($"生成时间：{result.GeneratedTime:yyyy-MM-dd HH:mm:ss}");
-            sb.AppendLine($"数据库提供者：{_dialect.ProviderName}");
+            sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"生成时间：{result.GeneratedTime:yyyy-MM-dd HH:mm:ss}");
+            sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"数据库提供者：{_dialect.ProviderName}");
             sb.AppendLine("----------------------------------------");
-            sb.AppendLine($"分析周期数：{_monthlyAnalysisCycles}");
-            sb.AppendLine($"尝试执行动作数：{_monthlyActionsAttempted}");
-            sb.AppendLine($"成功执行动作数：{_monthlyActionsSucceeded}");
-            sb.AppendLine($"失败执行动作数：{_monthlyActionsFailed}");
-            sb.AppendLine($"动作成功率：{actionSuccessRate:F1}%");
-            sb.AppendLine($"触发回滚次数：{_monthlyRollbackCount}");
-            sb.AppendLine($"告警次数：{_monthlyAlertCount}");
-            sb.AppendLine($"活跃热点表数：{_tableHeatByTable.Count(static pair => pair.Value > 0)}");
+            sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"分析周期数：{_monthlyAnalysisCycles}");
+            sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"尝试执行动作数：{_monthlyActionsAttempted}");
+            sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"成功执行动作数：{_monthlyActionsSucceeded}");
+            sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"失败执行动作数：{_monthlyActionsFailed}");
+            sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"动作成功率：{actionSuccessRate:F1}%");
+            sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"触发回滚次数：{_monthlyRollbackCount}");
+            sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"告警次数：{_monthlyAlertCount}");
+            sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"活跃热点表数：{_tableHeatByTable.Count(static pair => pair.Value > 0)}");
             if (result.Metrics.Count > 0) {
-                sb.AppendLine($"慢 SQL Top 快照数：{result.Metrics.Count}");
+                sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"慢 SQL Top 快照数：{result.Metrics.Count}");
             }
             sb.AppendLine("========================================");
             sb.AppendLine();
@@ -850,25 +850,25 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             var sb = new System.Text.StringBuilder();
             sb.AppendLine("========================================");
             sb.AppendLine($"年度运行看板");
-            sb.AppendLine($"生成时间：{result.GeneratedTime:yyyy-MM-dd HH:mm:ss}");
-            sb.AppendLine($"数据库提供者：{_dialect.ProviderName}");
+            sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"生成时间：{result.GeneratedTime:yyyy-MM-dd HH:mm:ss}");
+            sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"数据库提供者：{_dialect.ProviderName}");
             sb.AppendLine("----------------------------------------");
             sb.AppendLine("【稳定性】");
-            sb.AppendLine($"  年度分析周期数：{_annualAnalysisCycles}");
-            sb.AppendLine($"  年度尝试执行动作数：{_annualActionsAttempted}");
-            sb.AppendLine($"  年度成功执行动作数：{_annualActionsSucceeded}");
-            sb.AppendLine($"  年度失败执行动作数：{_annualActionsFailed}");
+            sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"  年度分析周期数：{_annualAnalysisCycles}");
+            sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"  年度尝试执行动作数：{_annualActionsAttempted}");
+            sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"  年度成功执行动作数：{_annualActionsSucceeded}");
+            sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"  年度失败执行动作数：{_annualActionsFailed}");
             sb.AppendLine("【容量】");
-            sb.AppendLine($"  当前活跃热点表数：{_tableHeatByTable.Count(static pair => pair.Value > 0)}");
-            sb.AppendLine($"  待回滚动作数（未消费）：{_pendingRollbackByFingerprint.Count}");
+            sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"  当前活跃热点表数：{_tableHeatByTable.Count(static pair => pair.Value > 0)}");
+            sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"  待回滚动作数（未消费）：{_pendingRollbackByFingerprint.Count}");
             sb.AppendLine("【告警质量】");
-            sb.AppendLine($"  年度累计告警次数：{_annualAlertCount}");
+            sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"  年度累计告警次数：{_annualAlertCount}");
             sb.AppendLine("【治理动作成功率】");
-            sb.AppendLine($"  年度动作成功率：{actionSuccessRate:F1}%");
+            sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"  年度动作成功率：{actionSuccessRate:F1}%");
             sb.AppendLine("【回滚成功率】");
-            sb.AppendLine($"  年度回滚次数：{_annualRollbackCount}");
+            sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"  年度回滚次数：{_annualRollbackCount}");
             if (result.Metrics.Count > 0) {
-                sb.AppendLine($"  慢 SQL Top 快照数（本次窗口）：{result.Metrics.Count}");
+                sb.AppendLine(System.Globalization.CultureInfo.InvariantCulture, $"  慢 SQL Top 快照数（本次窗口）：{result.Metrics.Count}");
             }
             sb.AppendLine("========================================");
             sb.AppendLine();
@@ -882,7 +882,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <param name="cancellationToken">取消令牌。</param>
         private async Task ExecuteAutoTuningActionsAsync(
             SlowQueryAnalysisResult result,
-            IReadOnlyDictionary<string, SlowQueryMetric> metricsByFingerprint,
+            System.Collections.Generic.Dictionary<string, Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning.SlowQueryMetric> metricsByFingerprint,
             CancellationToken cancellationToken) {
             // 步骤 1：先判断总开关与执行窗口。
             if (!_enableFullAutomation) {
@@ -995,7 +995,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <summary>对已执行动作执行延迟验证，必要时触发自动回滚。</summary>
         private async Task ValidateAutonomousActionsAsync(
             SlowQueryAnalysisResult result,
-            IReadOnlyDictionary<string, SlowQueryMetric> metricsByFingerprint,
+            System.Collections.Generic.Dictionary<string, Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning.SlowQueryMetric> metricsByFingerprint,
             CancellationToken cancellationToken) {
             // 步骤 1：检查验证开关与待验证池。
             if (!_enableFullAutomation || !_enableAutoValidation || _pendingRollbackByFingerprint.Count == 0) {
@@ -1241,8 +1241,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                             new Dictionary<string, string> {
                                 ["provider"] = _dialect.ProviderName,
                                 ["action_id"] = actionId,
-                                ["elapsed_cycles"] = _gradualSwitchElapsedCycles.ToString(),
-                                ["required_cycles"] = _gradualSwitchDryRunCycles.ToString(),
+                                ["elapsed_cycles"] = _gradualSwitchElapsedCycles.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                                ["required_cycles"] = _gradualSwitchDryRunCycles.ToString(System.Globalization.CultureInfo.InvariantCulture),
                                 ["observable"] = "true",
                                 ["abortable"] = "true",
                                 ["rollback_ready"] = "true"
@@ -1264,7 +1264,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                             promotionMessage,
                             new Dictionary<string, string> {
                                 ["provider"] = _dialect.ProviderName,
-                                ["gradual_switch_dry_run_cycles"] = _gradualSwitchDryRunCycles.ToString(),
+                                ["gradual_switch_dry_run_cycles"] = _gradualSwitchDryRunCycles.ToString(System.Globalization.CultureInfo.InvariantCulture),
                                 ["global_dry_run"] = _enableActionDryRun.ToString().ToLowerInvariant()
                             });
                         NLogLogger.Info(
@@ -1605,7 +1605,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         /// <summary>计算动作风险分（0~1）。</summary>
-        private decimal CalculateRiskScore(string actionSql, SlowQueryMetric? metric, bool inPeakWindow) {
+        private static decimal CalculateRiskScore(string actionSql, SlowQueryMetric? metric, bool inPeakWindow) {
             decimal riskScore = 0m;
             if (IsDangerousAction(actionSql)) {
                 riskScore += DangerousActionRiskWeight;
@@ -1757,7 +1757,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                         ["provider"] = _dialect.ProviderName,
                         ["hit_rate"] = hitRate.ToString("F3", CultureInfo.InvariantCulture),
                         ["threshold"] = _shardingGovernanceHitRateThreshold.ToString("F3", CultureInfo.InvariantCulture),
-                        ["blocked_count"] = shardingHitFingerprints.Count.ToString()
+                        ["blocked_count"] = shardingHitFingerprints.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)
                     });
             }
 
@@ -1823,8 +1823,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         /// <summary>判断候选索引是否已被模型静态索引覆盖或语义重复。</summary>
-        private bool IsCoveredByModelIndex(string tableKey, IReadOnlyList<string> candidateColumns) {
-            if (candidateColumns.Count == 0 || !_modelIndexColumnsByTable.TryGetValue(tableKey, out var existingIndexes)) {
+        private bool IsCoveredByModelIndex(string tableKey, string[] candidateColumns) {
+            if (candidateColumns.Length == 0 || !_modelIndexColumnsByTable.TryGetValue(tableKey, out var existingIndexes)) {
                 return false;
             }
 
@@ -1838,12 +1838,12 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         /// <summary>判断列序列是否为前缀匹配。</summary>
-        private static bool IsPrefixMatch(IReadOnlyList<string> source, IReadOnlyList<string> target) {
-            if (source.Count == 0 || target.Count == 0 || source.Count < target.Count) {
+        private static bool IsPrefixMatch(string[] source, string[] target) {
+            if (source.Length == 0 || target.Length == 0 || source.Length < target.Length) {
                 return false;
             }
 
-            for (var i = 0; i < target.Count; i++) {
+            for (var i = 0; i < target.Length; i++) {
                 if (!string.Equals(source[i], target[i], StringComparison.OrdinalIgnoreCase)) {
                     return false;
                 }
@@ -1880,8 +1880,8 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         /// <summary>构造统一索引签名（table + columns）。</summary>
-        private static string BuildIndexSignature(string tableKey, IReadOnlyList<string> indexColumns) {
-            if (string.IsNullOrWhiteSpace(tableKey) || indexColumns.Count == 0) {
+        private static string BuildIndexSignature(string tableKey, string[] indexColumns) {
+            if (string.IsNullOrWhiteSpace(tableKey) || indexColumns.Length == 0) {
                 return string.Empty;
             }
 
@@ -2155,7 +2155,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         /// <summary>识别是否为高风险 DDL 动作。</summary>
-        private bool IsDangerousAction(string actionSql) {
+        private static bool IsDangerousAction(string actionSql) {
             if (string.IsNullOrWhiteSpace(actionSql)) {
                 return false;
             }
@@ -2165,7 +2165,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         }
 
         /// <summary>尝试为自动创建索引动作生成回滚 SQL。</summary>
-        private string? BuildRollbackSql(string actionSql) {
+        private static string? BuildRollbackSql(string actionSql) {
             if (string.IsNullOrWhiteSpace(actionSql)) {
                 return null;
             }

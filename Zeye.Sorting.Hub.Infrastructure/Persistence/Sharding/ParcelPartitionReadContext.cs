@@ -84,6 +84,7 @@ internal sealed class ParcelPartitionReadContext<TReadModel> : DbContext, IParce
 
     /// <summary>仅注册读模型需要的列；列名、精度、转换及可空性沿用写入模型。</summary>
     protected override void OnModelCreating(ModelBuilder modelBuilder) {
+        DatabaseTextFunctions.Configure(modelBuilder);
         var table = SourceEntity.GetTableName() ?? throw new InvalidOperationException("未配置来源实体的物理表名。");
         var schema = SourceEntity.GetSchema();
         var storeObject = StoreObjectIdentifier.Table(table, schema);

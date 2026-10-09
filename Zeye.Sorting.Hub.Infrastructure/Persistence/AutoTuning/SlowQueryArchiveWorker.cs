@@ -103,7 +103,11 @@ public sealed class SlowQueryArchiveWorker : BackgroundService {
                 catch (Exception exception) {
                     lastFailure = exception; _store.ArchiveInitialized(false);
                     if (budget.IsCancellationRequested) break;
-                    if (attempt < 2) await Task.Delay(TimeSpan.FromMilliseconds(200));
+                    // 已出队样本使用独立预算完成归档，停机时也不会跳过完成计数。
+                    if (attempt < 2) {
+                        try { await Task.Delay(TimeSpan.FromMilliseconds(200), budget.Token); }
+                        catch (OperationCanceledException) when (budget.IsCancellationRequested) { break; }
+                    }
                 }
             }
             if (!success) Logger.Error(lastFailure, "慢查询历史归档重试失败，丢失数量={Count}。", batch.Count);

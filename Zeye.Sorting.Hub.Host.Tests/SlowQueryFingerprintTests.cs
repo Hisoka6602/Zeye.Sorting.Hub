@@ -12,7 +12,7 @@ public sealed class SlowQueryFingerprintTests {
     /// 验证场景：相同结构 SQL 在不同参数下应产生相同指纹。
     /// </summary>
     [Fact]
-    public void SlowQueryFingerprintAggregator_ShouldNormalizeParameterizedSql() {
+    public void SlowQueryFingerprintAggregatorShouldNormalizeParameterizedSql() {
         var first = SlowQueryFingerprintAggregator.Create("SELECT * FROM Parcels WHERE Id = @__id_0 AND BagCode = 'A-01'");
         var second = SlowQueryFingerprintAggregator.Create(" select  *  from parcels where id = @__id_1 and bagcode = 'B-02' ");
 
@@ -24,7 +24,7 @@ public sealed class SlowQueryFingerprintTests {
     /// 验证场景：字符串字面量归一化应正确处理 SQL 单引号转义。
     /// </summary>
     [Fact]
-    public void SlowQueryFingerprintAggregator_ShouldHandleEscapedQuoteLiteral() {
+    public void SlowQueryFingerprintAggregatorShouldHandleEscapedQuoteLiteral() {
         const string sql = "SELECT * FROM Parcels WHERE ReceiverName = 'O''Reilly' AND Id = 1";
         var fingerprint = SlowQueryFingerprintAggregator.Create(sql);
 
@@ -35,7 +35,7 @@ public sealed class SlowQueryFingerprintTests {
     /// 验证场景：画像存储应聚合同一指纹并输出 TopN 快照。
     /// </summary>
     [Fact]
-    public void SlowQueryProfileStore_ShouldAggregateMetricsByFingerprint() {
+    public void SlowQueryProfileStoreShouldAggregateMetricsByFingerprint() {
         var store = new SlowQueryProfileStore(BuildConfiguration());
 
         store.Record("SELECT * FROM Parcels WHERE Id = 123", TimeSpan.FromMilliseconds(600));
@@ -59,7 +59,7 @@ public sealed class SlowQueryFingerprintTests {
     /// 验证场景：超出最大指纹数量时应淘汰最久未更新项。
     /// </summary>
     [Fact]
-    public void SlowQueryProfileStore_ShouldEvictOldestFingerprint_WhenCapacityExceeded() {
+    public void SlowQueryProfileStoreShouldEvictOldestFingerprintWhenCapacityExceeded() {
         var store = new SlowQueryProfileStore(BuildConfiguration(new Dictionary<string, string?> {
             ["Persistence:AutoTuning:SlowQueryProfile:MaxFingerprintCount"] = "1",
             ["Persistence:AutoTuning:SlowQueryProfile:TopN"] = "1"
@@ -76,7 +76,7 @@ public sealed class SlowQueryFingerprintTests {
     /// 验证场景：查询服务应返回列表与详情快照。
     /// </summary>
     [Fact]
-    public void GetSlowQueryProfileQueryService_ShouldReturnListAndDetail() {
+    public void GetSlowQueryProfileQueryServiceShouldReturnListAndDetail() {
         var store = new SlowQueryProfileStore(BuildConfiguration());
         store.Record("SELECT * FROM Parcels WHERE Id = 99", TimeSpan.FromMilliseconds(700));
         var queryService = new GetSlowQueryProfileQueryService(store);
@@ -94,7 +94,7 @@ public sealed class SlowQueryFingerprintTests {
     /// 验证场景：单指纹样本数量超过上限时应裁剪最旧样本。
     /// </summary>
     [Fact]
-    public void SlowQueryProfileStore_ShouldTrimOldSamples_WhenPerFingerprintCapacityExceeded() {
+    public void SlowQueryProfileStoreShouldTrimOldSamplesWhenPerFingerprintCapacityExceeded() {
         var store = new SlowQueryProfileStore(BuildConfiguration(new Dictionary<string, string?> {
             ["Persistence:AutoTuning:SlowQueryProfile:MaxSampleCountPerFingerprint"] = "2"
         }));

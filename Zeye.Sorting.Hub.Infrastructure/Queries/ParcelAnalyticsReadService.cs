@@ -65,9 +65,9 @@ public sealed class ParcelAnalyticsReadService : IParcelAnalyticsReadService {
             DetectedCount = group.LongCount(),
             CompletedCount = group.LongCount(x => x.Status == ParcelStatus.Completed),
             ExceptionCount = group.LongCount(x => x.Status == ParcelStatus.SortingException),
-            NoReadCount = group.LongCount(x => x.NoReadType != NoReadType.None || x.BarCodes.ToLower() == "noread"),
+            NoReadCount = group.LongCount(x => x.NoReadType != NoReadType.None || DatabaseTextFunctions.Lower(x.BarCodes) == "noread"),
             ChuteMismatchCount = group.LongCount(x => x.TargetChuteCode != null && x.ActualChuteCode != null
-                && x.TargetChuteCode.ToLower() != x.ActualChuteCode.ToLower()),
+                && DatabaseTextFunctions.Lower(x.TargetChuteCode) != DatabaseTextFunctions.Lower(x.ActualChuteCode)),
             LifecycleSampleCount = group.LongCount(x => x.Status == ParcelStatus.Completed && x.LifecycleMilliseconds != null),
             LifecycleMilliseconds = group.Sum(x => x.Status == ParcelStatus.Completed && x.LifecycleMilliseconds != null
                 ? x.LifecycleMilliseconds.Value : 0L)

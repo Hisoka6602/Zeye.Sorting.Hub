@@ -5,6 +5,11 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 
 /// <summary>验证 EF Core 历史读写兼容版本一文件及 SQLite 隐式行号。</summary>
 public sealed class ConfigurationHistoryLinqTests {
+    /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+    private static readonly string[] CachedASecondZFirstValues = new[] { "a-second", "z-first" };
+    /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+    private static readonly string[] CachedValueValues = new[] { "value" };
+
     /// <summary>旧文件同毫秒历史按行号倒序，更新状态不改变排序，新记录仍使用既有九列结构。</summary>
     [Fact]
     public void ExistingHistoryKeepsInsertionOrderAndAcceptsLinqWrites() {
@@ -28,13 +33,13 @@ public sealed class ConfigurationHistoryLinqTests {
         }
 
         var history = new ConfigurationHistoryStore(path);
-        Assert.Equal(new[] { "a-second", "z-first" }, history.Read().Select(row => row.Id));
+        Assert.Equal(CachedASecondZFirstValues, history.Read().Select(row => row.Id));
         history.Complete("z-first", true);
         history.Complete("missing", false);
         var updated = history.Read();
-        Assert.Equal(new[] { "a-second", "z-first" }, updated.Select(row => row.Id));
+        Assert.Equal(CachedASecondZFirstValues, updated.Select(row => row.Id));
         Assert.Equal("Committed", updated[1].Status);
-        Assert.Equal(new[] { "value" }, updated[1].ChangedKeys);
+        Assert.Equal(CachedValueValues, updated[1].ChangedKeys);
 
         var id = history.Prepare("rules-parcel", "3", "4", ConfigurationDocument.Parse("{\"value\":3}"),
             ConfigurationDocument.Parse("{\"value\":4}"));

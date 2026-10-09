@@ -12,7 +12,7 @@ public sealed class DatabaseReadinessHealthCheck : IHealthCheck {
     /// <summary>
     /// NLog 静态日志器实例，用于输出健康检查异常。
     /// </summary>
-    private static readonly NLog.ILogger Logger = LogManager.GetCurrentClassLogger();
+    private static readonly NLog.Logger Logger = LogManager.GetCurrentClassLogger();
 
     /// <summary>
     /// DI 作用域工厂，用于按次解析 DbContext。

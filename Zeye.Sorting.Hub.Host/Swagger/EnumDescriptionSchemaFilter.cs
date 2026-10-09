@@ -17,7 +17,7 @@ public sealed class EnumDescriptionSchemaFilter : ISchemaFilter {
     /// <summary>
     /// 合同字段到枚举类型映射（用于 int 字段的枚举说明增强）。
     /// </summary>
-    private static readonly IReadOnlyDictionary<Type, IReadOnlyDictionary<string, Type>> IntEnumPropertyMappings =
+    private static readonly System.Collections.Generic.Dictionary<System.Type, System.Collections.Generic.IReadOnlyDictionary<string, System.Type>> IntEnumPropertyMappings =
         new Dictionary<Type, IReadOnlyDictionary<string, Type>> {
             [typeof(ParcelCreateRequest)] = new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase) {
                 ["type"] = typeof(ParcelType),
@@ -138,7 +138,7 @@ public sealed class EnumDescriptionSchemaFilter : ISchemaFilter {
         var lines = new string[fields.Length];
         for (var index = 0; index < fields.Length; index++) {
             var field = fields[index];
-            var value = Convert.ToInt64(field.GetRawConstantValue());
+            var value = Convert.ToInt64(field.GetRawConstantValue(), System.Globalization.CultureInfo.InvariantCulture);
             var description = ResolveEnumDescription(enumType, field);
             lines[index] = string.IsNullOrWhiteSpace(description)
                 ? $"{value} = {field.Name}"

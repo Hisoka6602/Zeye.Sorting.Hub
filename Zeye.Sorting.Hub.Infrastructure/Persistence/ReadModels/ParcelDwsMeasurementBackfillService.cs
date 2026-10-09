@@ -19,30 +19,30 @@ public sealed class ParcelDwsMeasurementBackfillService(IDbContextFactory<Sortin
     private static readonly ParcelProcessingStage[] Stages = [ParcelProcessingStage.Detected, ParcelProcessingStage.DwsReceived, ParcelProcessingStage.DwsBound];
 
     /// <summary>与耗时索引共用周期进度行和并发版本；不同投影保持独立游标。</summary>
-    public async Task<int> RunBatchAsync(CancellationToken token) {
-        var catalog = await partitions.GetReadCatalogAsync(token);
-        await using var template = await factory.CreateDbContextAsync(token);
+    public async Task<int> RunBatchAsync(CancellationToken cancellationToken) {
+        var catalog = await partitions.GetReadCatalogAsync(cancellationToken);
+        await using var template = await factory.CreateDbContextAsync(cancellationToken);
         var completed = (await template.Set<ParcelDurationBackfillState>().AsNoTracking().Where(row => row.DwsCompleted)
-            .Select(row => row.Suffix).ToListAsync(token)).ToHashSet(StringComparer.Ordinal);
+            .Select(row => row.Suffix).ToListAsync(cancellationToken)).ToHashSet(StringComparer.Ordinal);
         foreach (var suffix in catalog.Periods.OrderByDescending(period => period.Start).Select(period => period.Suffix).Append(string.Empty)) {
             if (completed.Contains(suffix)) continue;
             try {
                 return await template.Database.CreateExecutionStrategy().ExecuteAsync(async () => {
-                    await using var db = await partitions.CreateContextAsync(suffix, token);
-                    await using var transaction = await db.Database.BeginTransactionAsync(token);
-                    var state = await db.Set<ParcelDurationBackfillState>().AsTracking().SingleOrDefaultAsync(row => row.Suffix == suffix, token);
+                    await using var db = await partitions.CreateContextAsync(suffix, cancellationToken);
+                    await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+                    var state = await db.Set<ParcelDurationBackfillState>().AsTracking().SingleOrDefaultAsync(row => row.Suffix == suffix, cancellationToken);
                     if (state?.DwsCompleted == true) return 0;
                     if (state is null) { state = new() { Suffix = suffix }; db.Add(state); }
-                    var records = await BuildBatch(db.Set<ParcelProcessingRecord>().AsNoTracking(), state.DwsCursor).ToListAsync(token);
+                    var records = await BuildBatch(db.Set<ParcelProcessingRecord>().AsNoTracking(), state.DwsCursor).ToListAsync(cancellationToken);
                     if (records.Count > 0) {
                         var keys = records.Select(row => row.Key).ToArray();
                         var existing = (await db.Set<ParcelDwsMeasurementSnapshot>().Where(row => keys.Contains(row.Key)).Select(row => row.Key)
-                            .ToListAsync(token)).ToHashSet(StringComparer.Ordinal);
+                            .ToListAsync(cancellationToken)).ToHashSet(StringComparer.Ordinal);
                         db.AddRange(records.Where(row => !existing.Contains(row.Key)));
                         state.DwsCursor = records[^1].Key;
                     }
                     state.DwsCompleted = records.Count < BatchSize; state.Revision++; state.UpdatedAt = DateTime.Now;
-                    await db.SaveChangesAsync(token); await transaction.CommitAsync(token);
+                    await db.SaveChangesAsync(cancellationToken); await transaction.CommitAsync(cancellationToken);
                     return records.Count;
                 });
             }
@@ -57,7 +57,7 @@ public sealed class ParcelDwsMeasurementBackfillService(IDbContextFactory<Sortin
     /// <summary>按主键读取下一批窄字段，不搬运LOB或使用深分页。</summary>
     internal static IQueryable<ParcelDwsMeasurementSnapshot> BuildBatch(IQueryable<ParcelProcessingRecord> facts, string cursor) {
         facts = facts.Where(row => Stages.Contains(row.Stage));
-        if (cursor.Length > 0) facts = facts.Where(row => string.Compare(row.Key, cursor) > 0);
+        if (cursor.Length > 0) facts = facts.Where(row => DatabaseTextFunctions.IsAfter(row.Key, cursor));
         return facts.OrderBy(row => row.Key).Take(BatchSize).Select(ParcelDwsMeasurementSnapshot.Projection);
     }
 }

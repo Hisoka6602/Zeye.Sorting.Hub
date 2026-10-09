@@ -10,7 +10,7 @@ internal sealed class ConfigurableShardingPhysicalTableProbe : IBatchShardingPhy
     /// <summary>
     /// 缺失表名集合；为空且 AllRequestedTablesMissing 为 false 时表示无缺失。
     /// </summary>
-    private readonly IReadOnlySet<string> _missingTables;
+    private readonly System.Collections.Generic.HashSet<string> _missingTables;
 
     /// <summary>
     /// 缺失索引映射。

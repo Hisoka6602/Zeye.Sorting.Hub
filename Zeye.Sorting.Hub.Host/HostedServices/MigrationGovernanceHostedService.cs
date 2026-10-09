@@ -64,20 +64,12 @@ public sealed class MigrationGovernanceHostedService : IHostedService {
     /// </summary>
     private readonly IConfiguration _configuration;
 
-    /// <summary>
-    /// 危险 SQL 识别器。
-    /// </summary>
-    private readonly MigrationSafetyEvaluator _migrationSafetyEvaluator;
 
     /// <summary>
     /// 脚本归档服务。
     /// </summary>
     private readonly MigrationScriptArchiveService _migrationScriptArchiveService;
 
-    /// <summary>
-    /// 回滚参考脚本生成器。
-    /// </summary>
-    private readonly MigrationRollbackScriptProvider _migrationRollbackScriptProvider;
 
     /// <summary>
     /// 运行期状态存储。
@@ -91,26 +83,20 @@ public sealed class MigrationGovernanceHostedService : IHostedService {
     /// <param name="dialect">数据库方言。</param>
     /// <param name="hostEnvironment">宿主环境。</param>
     /// <param name="configuration">配置源。</param>
-    /// <param name="migrationSafetyEvaluator">危险 SQL 识别器。</param>
     /// <param name="migrationScriptArchiveService">脚本归档服务。</param>
-    /// <param name="migrationRollbackScriptProvider">回滚参考脚本生成器。</param>
     /// <param name="migrationGovernanceStateStore">运行期状态存储。</param>
     public MigrationGovernanceHostedService(
         IDbContextFactory<SortingHubDbContext> dbContextFactory,
         IDatabaseDialect dialect,
         IHostEnvironment hostEnvironment,
         IConfiguration configuration,
-        MigrationSafetyEvaluator migrationSafetyEvaluator,
         MigrationScriptArchiveService migrationScriptArchiveService,
-        MigrationRollbackScriptProvider migrationRollbackScriptProvider,
         MigrationGovernanceStateStore migrationGovernanceStateStore) {
         _dbContextFactory = dbContextFactory;
         _dialect = dialect;
         _hostEnvironment = hostEnvironment;
         _configuration = configuration;
-        _migrationSafetyEvaluator = migrationSafetyEvaluator;
         _migrationScriptArchiveService = migrationScriptArchiveService;
-        _migrationRollbackScriptProvider = migrationRollbackScriptProvider;
         _migrationGovernanceStateStore = migrationGovernanceStateStore;
     }
 
@@ -150,7 +136,7 @@ public sealed class MigrationGovernanceHostedService : IHostedService {
                 && CanInitializeEmptyDatabase(_configuration)
                 && !await _dialect.HasUserObjectsAsync(administration, _dialect.ExtractDatabaseName(connectionString), cancellationToken);
             var forwardScript = GenerateForwardScript(dbContext, appliedMigrations, pendingMigrations);
-            var dangerousOperations = _migrationSafetyEvaluator.EvaluateDangerousOperations(forwardScript);
+            var dangerousOperations = MigrationSafetyEvaluator.EvaluateDangerousOperations(forwardScript);
             var (shouldApplyMigrations, skipReason) = EvaluateShouldApplyMigrations(
                 pendingMigrations.Length > 0,
                 isDryRun,
@@ -187,7 +173,7 @@ public sealed class MigrationGovernanceHostedService : IHostedService {
                     SkipReason = skipReason,
                     ArchivedForwardScriptPath = archivedForwardScriptPath
                 };
-                var rollbackScript = _migrationRollbackScriptProvider.BuildManualRollbackScript(preArchivePlan);
+                var rollbackScript = MigrationRollbackScriptProvider.BuildManualRollbackScript(preArchivePlan);
                 archivedRollbackScriptPath = await _migrationScriptArchiveService.ArchiveRollbackScriptAsync(
                     archiveDirectory,
                     providerName,
@@ -288,6 +274,7 @@ public sealed class MigrationGovernanceHostedService : IHostedService {
     /// <param name="isProductionEnvironment">是否生产环境。</param>
     /// <param name="blockDangerousMigrationInProduction">生产环境是否阻断危险迁移。</param>
     /// <param name="dangerousOperations">危险操作列表。</param>
+    /// <param name="isInitialDatabase">是否为已确认没有用户对象的首次初始化数据库。</param>
     /// <returns>是否允许执行与阻断原因。</returns>
     internal static (bool ShouldApplyMigrations, string? SkipReason) EvaluateShouldApplyMigrations(
         bool hasPendingMigrations,
@@ -366,14 +353,14 @@ public sealed class MigrationGovernanceHostedService : IHostedService {
     /// <returns>脚本文本。</returns>
     private static string GenerateForwardScript(
         SortingHubDbContext dbContext,
-        IReadOnlyList<string> appliedMigrations,
-        IReadOnlyList<string> pendingMigrations) {
-        if (pendingMigrations.Count == 0) {
+        string[] appliedMigrations,
+        string[] pendingMigrations) {
+        if (pendingMigrations.Length == 0) {
             return string.Empty;
         }
 
         var migrator = dbContext.GetService<IMigrator>();
-        var fromMigration = appliedMigrations.Count == 0 ? null : appliedMigrations[^1];
+        var fromMigration = appliedMigrations.Length == 0 ? null : appliedMigrations[^1];
         var toMigration = pendingMigrations[^1];
         return migrator.GenerateScript(fromMigration, toMigration);
     }

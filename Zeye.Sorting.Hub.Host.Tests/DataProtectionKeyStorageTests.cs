@@ -7,7 +7,7 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 public sealed class DataProtectionKeyStorageTests {
     /// <summary>复制旧密钥后，新的保护器仍能解密原配置，重复启动也不覆盖密钥文件。</summary>
     [Fact]
-    public void LegacyKeyMigration_PreservesEncryptedConfiguration() {
+    public void LegacyKeyMigrationPreservesEncryptedConfiguration() {
         var root = Path.Combine(Path.GetTempPath(), "zeye-key-storage-test-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         try {

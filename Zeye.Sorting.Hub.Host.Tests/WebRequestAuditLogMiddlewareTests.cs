@@ -58,7 +58,7 @@ public sealed class WebRequestAuditLogMiddlewareTests {
     /// 验证场景：Enabled=false 时不写审计日志。
     /// </summary>
     [Fact]
-    public async Task Middleware_WithDisabledOption_ShouldNotWriteAuditLog() {
+    public async Task MiddlewareWithDisabledOptionShouldNotWriteAuditLog() {
         var repository = new InMemoryWebRequestAuditLogRepository();
         await using var app = await BuildTestAppAsync(
             new WebRequestAuditLogOptions {
@@ -82,7 +82,7 @@ public sealed class WebRequestAuditLogMiddlewareTests {
     /// 验证场景：SampleRate=0 不写、SampleRate=1 必写。
     /// </summary>
     [Fact]
-    public async Task Middleware_ShouldHonorSampleRateBoundaries() {
+    public async Task MiddlewareShouldHonorSampleRateBoundaries() {
         var repository = new InMemoryWebRequestAuditLogRepository();
 
         await using (var app = await BuildTestAppAsync(
@@ -125,7 +125,7 @@ public sealed class WebRequestAuditLogMiddlewareTests {
     /// 验证场景：正常请求写入热+冷模型关键字段。
     /// </summary>
     [Fact]
-    public async Task Middleware_WithNormalRequest_ShouldWriteHotAndColdModelFields() {
+    public async Task MiddlewareWithNormalRequestShouldWriteHotAndColdModelFields() {
         var repository = new InMemoryWebRequestAuditLogRepository();
         await using var app = await BuildTestAppAsync(
             new WebRequestAuditLogOptions {
@@ -195,7 +195,7 @@ public sealed class WebRequestAuditLogMiddlewareTests {
     /// 验证场景：异常请求仍写审计且异常字段非空。
     /// </summary>
     [Fact]
-    public async Task Middleware_WithExceptionRequest_ShouldWriteExceptionAuditFields() {
+    public async Task MiddlewareWithExceptionRequestShouldWriteExceptionAuditFields() {
         var repository = new InMemoryWebRequestAuditLogRepository();
         await using var app = await BuildTestAppAsync(
             new WebRequestAuditLogOptions {
@@ -227,7 +227,7 @@ public sealed class WebRequestAuditLogMiddlewareTests {
     /// 验证场景：请求/响应正文超长会截断并设置截断标记。
     /// </summary>
     [Fact]
-    public async Task Middleware_WithOversizedBodies_ShouldTruncateAndMarkFlags() {
+    public async Task MiddlewareWithOversizedBodiesShouldTruncateAndMarkFlags() {
         var repository = new InMemoryWebRequestAuditLogRepository();
         await using var app = await BuildTestAppAsync(
             new WebRequestAuditLogOptions {
@@ -265,7 +265,7 @@ public sealed class WebRequestAuditLogMiddlewareTests {
     /// 验证场景：multipart 二进制正文使用占位文本，且主请求成功。
     /// </summary>
     [Fact]
-    public async Task Middleware_WithMultipartRequest_ShouldRecordBinaryPlaceholder() {
+    public async Task MiddlewareWithMultipartRequestShouldRecordBinaryPlaceholder() {
         var repository = new InMemoryWebRequestAuditLogRepository();
         await using var app = await BuildTestAppAsync(
             new WebRequestAuditLogOptions {
@@ -298,7 +298,7 @@ public sealed class WebRequestAuditLogMiddlewareTests {
     /// 验证场景：Content-Type 为空且正文为文本时，仍按文本采集请求体。
     /// </summary>
     [Fact]
-    public async Task Middleware_WithEmptyContentType_ShouldCaptureJsonBodyAsText() {
+    public async Task MiddlewareWithEmptyContentTypeShouldCaptureJsonBodyAsText() {
         var repository = new InMemoryWebRequestAuditLogRepository();
         await using var app = await BuildTestAppAsync(
             new WebRequestAuditLogOptions {
@@ -328,7 +328,7 @@ public sealed class WebRequestAuditLogMiddlewareTests {
     /// 验证场景：请求体采集异常时主请求仍成功，且审计降级写入。
     /// </summary>
     [Fact]
-    public async Task Middleware_WhenRequestBodyCaptureThrows_ShouldKeepMainRequestSuccessful() {
+    public async Task MiddlewareWhenRequestBodyCaptureThrowsShouldKeepMainRequestSuccessful() {
         var middleware = new WebRequestAuditLogMiddleware(
             async context => {
                 context.Response.StatusCode = StatusCodes.Status200OK;
@@ -344,7 +344,7 @@ public sealed class WebRequestAuditLogMiddlewareTests {
                 MaxResponseBodyLength = 1024,
                 BackgroundQueueCapacity = 16
             }),
-            new WebRequestAuditBackgroundQueue(16));
+            new WebRequestAuditBuffer(16));
 
         var context = new DefaultHttpContext();
         context.Request.Method = HttpMethods.Post;
@@ -365,7 +365,7 @@ public sealed class WebRequestAuditLogMiddlewareTests {
     /// 验证场景：审计写入失败不影响主请求状态码与响应体。
     /// </summary>
     [Fact]
-    public async Task Middleware_WhenAuditWriteFails_ShouldNotAffectMainResponse() {
+    public async Task MiddlewareWhenAuditWriteFailsShouldNotAffectMainResponse() {
         var repository = new InMemoryWebRequestAuditLogRepository {
             ShouldThrowException = true
         };
@@ -393,7 +393,7 @@ public sealed class WebRequestAuditLogMiddlewareTests {
     /// 验证场景：审计仓储慢写不阻塞主请求返回。
     /// </summary>
     [Fact]
-    public async Task Middleware_WithSlowAuditWrite_ShouldNotBlockMainResponse() {
+    public async Task MiddlewareWithSlowAuditWriteShouldNotBlockMainResponse() {
         var repository = new InMemoryWebRequestAuditLogRepository {
             AddDelayMilliseconds = 1200
         };
@@ -423,7 +423,7 @@ public sealed class WebRequestAuditLogMiddlewareTests {
     /// 验证场景：中间件写入真实仓储时可落热表+冷表。
     /// </summary>
     [Fact]
-    public async Task Middleware_WithRealRepository_ShouldPersistHotAndColdTables() {
+    public async Task MiddlewareWithRealRepositoryShouldPersistHotAndColdTables() {
         var databaseName = $"web-request-auditlog-middleware-{Guid.NewGuid():N}";
         var options = BuildInMemoryDbOptions(databaseName);
         var contextFactory = new SortingHubTestDbContextFactory(options);
@@ -508,7 +508,7 @@ public sealed class WebRequestAuditLogMiddlewareTests {
         builder.Logging.AddNLog();
         builder.WebHost.UseTestServer();
         builder.Services.AddProblemDetails();
-        builder.Services.AddSingleton(new WebRequestAuditBackgroundQueue(Math.Max(1, options.BackgroundQueueCapacity)));
+        builder.Services.AddSingleton(new WebRequestAuditBuffer(Math.Max(1, options.BackgroundQueueCapacity)));
         builder.Services.AddHostedService<WebRequestAuditBackgroundWorkerHostedService>();
         configureServices(builder.Services);
         builder.Services.Configure<WebRequestAuditLogOptions>(configured => CopyOptions(options, configured));

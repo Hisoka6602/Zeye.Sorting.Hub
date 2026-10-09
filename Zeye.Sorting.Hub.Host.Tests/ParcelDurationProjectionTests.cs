@@ -15,6 +15,9 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 
 /// <summary>验证耐久耗时窄投影的兼容性、原子提交、历史恢复以及四库 EF 翻译。</summary>
 public sealed class ParcelDurationProjectionTests {
+    /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+    private static readonly string[] CachedScanUploadChuteAssignmentLandingImageUploadValues = new[] { "scan-upload", "chute-assignment", "landing", "image-upload", "other" };
+
     /// <summary>新事实即使在历史游标之前也与窄索引一起保存，失败和重试不产生孤立或重复索引。</summary>
     [Fact]
     public async Task NewFactsAndDurationIndexCommitAtomicallyAcrossPartitions() {
@@ -85,7 +88,7 @@ public sealed class ParcelDurationProjectionTests {
         await using (var db = await database.Factory.CreateDbContextAsync()) {
             db.Add(parcel);
             db.Add(first);
-            db.AddRange(new[] { "scan-upload", "chute-assignment", "landing", "image-upload", "other" }.Select((type, index) =>
+            db.AddRange(CachedScanUploadChuteAssignmentLandingImageUploadValues.Select((type, index) =>
                 Fact("call-" + index, at) with { RawPayload = JsonSerializer.Serialize(new { kind = "provider-call", category = type, name = "Provider", outcomeLevel = "transport" }) }));
             await db.SaveChangesAsync();
         }

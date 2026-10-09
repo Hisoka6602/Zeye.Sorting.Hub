@@ -68,7 +68,7 @@ public sealed class DataRetentionHealthCheck : IHealthCheck {
     /// </summary>
     /// <param name="record">审计记录。</param>
     /// <returns>附加数据。</returns>
-    private static IReadOnlyDictionary<string, object> BuildHealthData(DataRetentionAuditRecord? record) {
+    private static System.Collections.Generic.Dictionary<string, object> BuildHealthData(DataRetentionAuditRecord? record) {
         var data = new Dictionary<string, object> {
             ["hasAuditRecord"] = record is not null
         };
@@ -76,7 +76,7 @@ public sealed class DataRetentionHealthCheck : IHealthCheck {
             return data;
         }
 
-        data["recordedAtLocal"] = record.RecordedAtLocal.ToString(HealthCheckResponseWriter.LocalDateTimeFormat);
+        data["recordedAtLocal"] = record.RecordedAtLocal.ToString(HealthCheckResponseWriter.LocalDateTimeFormat, System.Globalization.CultureInfo.InvariantCulture);
         data["status"] = record.Status;
         data["isDryRun"] = record.IsDryRun;
         data["policyCount"] = record.PolicyCount;

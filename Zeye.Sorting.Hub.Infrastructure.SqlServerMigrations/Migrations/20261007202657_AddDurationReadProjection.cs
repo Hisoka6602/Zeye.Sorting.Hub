@@ -8,6 +8,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations.Migrations
     /// <inheritdoc />
     public partial class AddDurationReadProjection : Migration
     {
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedPartitionTimeParcelIdColumns = new[] { "PartitionTime", "ParcelId" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedSourceInstanceIdPartitionTimeParcelIdColumns = new[] { "SourceInstanceId", "PartitionTime", "ParcelId" };
+
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
@@ -65,13 +70,13 @@ namespace Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations.Migrations
                 name: "IX_Parcel_DurationFacts_PartitionTime_ParcelId",
                 schema: "dbo",
                 table: "Parcel_DurationFacts",
-                columns: new[] { "PartitionTime", "ParcelId" });
+                columns: CachedPartitionTimeParcelIdColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_DurationFacts_SourceInstanceId_PartitionTime_ParcelId",
                 schema: "dbo",
                 table: "Parcel_DurationFacts",
-                columns: new[] { "SourceInstanceId", "PartitionTime", "ParcelId" });
+                columns: CachedSourceInstanceIdPartitionTimeParcelIdColumns);
         }
 
         /// <inheritdoc />

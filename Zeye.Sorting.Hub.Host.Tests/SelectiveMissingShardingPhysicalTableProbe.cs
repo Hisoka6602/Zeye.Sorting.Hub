@@ -10,7 +10,7 @@ internal sealed class SelectiveMissingShardingPhysicalTableProbe : IBatchShardin
     /// <summary>
     /// 存放需要模拟为缺失的物理表名集合，用于构造“部分分表未预建”断言场景。
     /// </summary>
-    private readonly IReadOnlySet<string> _missingPhysicalTables;
+    private readonly System.Collections.Generic.HashSet<string> _missingPhysicalTables;
 
     /// <summary>
     /// 收集 ExistsAsync 被调用次数，用于断言守卫路径中的探测频率。

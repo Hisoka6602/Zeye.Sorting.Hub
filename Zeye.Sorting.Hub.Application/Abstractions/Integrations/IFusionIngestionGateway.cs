@@ -23,7 +23,7 @@ public interface IFusionIngestionGateway {
     /// <summary>有界认领待处理包裹事实，重启后恢复未完成认领。</summary>
     Task<IReadOnlyList<FusionProjectionItem>> ClaimProjectionsAsync(CancellationToken cancellationToken);
     /// <summary>记录包裹投影的耐久结果，失败保留重试任务。</summary>
-    Task FinishProjectionAsync(FusionProjectionItem item, string? parcelId, string? error, CancellationToken cancellationToken);
+    Task FinishProjectionAsync(FusionProjectionItem item, string? parcelId, string? errorMessage, CancellationToken cancellationToken);
     /// <summary>有界批量记录已提交用例的结果，使用认领身份阻止过期工作者覆盖。</summary>
     Task FinishProjectionsAsync(IReadOnlyList<(FusionProjectionItem Item, string? ParcelId, string? Error)> results, CancellationToken cancellationToken);
     /// <summary>读取无凭据的已登记来源及最新心跳状态。</summary>

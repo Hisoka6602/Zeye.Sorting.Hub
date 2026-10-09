@@ -167,7 +167,7 @@ public sealed class FusionProcessingApiTests {
         await using var app = await FusionApiTestHost.CreateAsync(database);
         using var client = app.GetTestClient();
         var replies = await Task.WhenAll(Enumerable.Range(0, 12).Select(_ => client.PostAsJsonAsync("/api/admin/parcels/processing-records", Request(0))));
-        Assert.Single(replies.Where(x => x.StatusCode == HttpStatusCode.Created));
+        Assert.Single(replies, x => x.StatusCode == HttpStatusCode.Created);
         Assert.Equal(11, replies.Count(x => x.StatusCode == HttpStatusCode.OK));
         var suffix = (await replies[0].Content.ReadFromJsonAsync<ParcelProcessingWriteResponse>())!.PartitionSuffix;
         Assert.Equal(1, await database.CountPhysicalAsync("Parcel_ProcessingRecords_" + suffix));

@@ -13,7 +13,7 @@ public sealed class GetAdjacentParcelsQueryService {
     /// <summary>
     /// NLog 日志器。
     /// </summary>
-    private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
+    private static readonly NLog.Logger Logger = LogManager.GetCurrentClassLogger();
 
     /// <summary>
     /// Parcel 仓储。
@@ -35,9 +35,7 @@ public sealed class GetAdjacentParcelsQueryService {
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>邻近查询响应。</returns>
     public async Task<ParcelAdjacentResponse> ExecuteAsync(ParcelAdjacentRequest request, CancellationToken cancellationToken) {
-        if (request is null) {
-            throw new ArgumentNullException(nameof(request));
-        }
+        ArgumentNullException.ThrowIfNull(request);
 
         Guard.ThrowIfZeroOrNegative(request.Id, nameof(request.Id), "包裹 Id 必须大于 0。", "查询 Parcel 邻近记录");
         Guard.ThrowIfNegative(request.BeforeCount, nameof(request.BeforeCount), "前向查询条数不能小于 0。", "查询 Parcel 邻近记录");

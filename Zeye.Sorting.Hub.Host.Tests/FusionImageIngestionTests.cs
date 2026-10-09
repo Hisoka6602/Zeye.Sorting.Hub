@@ -74,7 +74,7 @@ public sealed class FusionImageIngestionTests {
         Assert.Equal(2, await env.Projector().ProjectAsync(default));
         var rows = await env.Ingress.GetFactsAsync("fusion-line-01", null, 20, default);
         var id = rows.First(x => x.ParcelId is not null).ParcelId!;
-        var parcel = (await env.Database.Parcels.GetByIdAsync(long.Parse(id), default))!;
+        var parcel = (await env.Database.Parcels.GetByIdAsync(long.Parse(id, System.Globalization.CultureInfo.InvariantCulture), default))!;
         Assert.True(parcel.HasImages); Assert.Null(parcel.DetectedTime); Assert.Equal(2, parcel.ProcessingRecords.Count);
         await using var db = await env.Database.Factory.CreateDbContextAsync();
         Assert.Equal(2, await db.Set<FusionImageUpload>().CountAsync(x => x.SourceParcelId == 9007199254740993 && x.IsStored));

@@ -43,11 +43,11 @@ internal sealed class ParcelPartitionDdlCoordinator : IAsyncDisposable {
         try {
         if (coordinator._provider.Contains("MySql", StringComparison.OrdinalIgnoreCase)) {
             var result = await coordinator.ScalarAsync("SELECT GET_LOCK(@resource, 30)", token, ("@resource", coordinator._resource));
-            if (Convert.ToInt32(result) != 1) throw new InvalidOperationException("获取包裹分表建表锁超时。");
+            if (Convert.ToInt32(result, System.Globalization.CultureInfo.InvariantCulture) != 1) throw new InvalidOperationException("获取包裹分表建表锁超时。");
         }
         else if (coordinator._provider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase)) {
             var result = await coordinator.ScalarAsync("DECLARE @result int; EXEC @result = sys.sp_getapplock @Resource=@resource, @LockMode='Exclusive', @LockOwner='Session', @LockTimeout=30000; SELECT @result;", token, ("@resource", coordinator._resource));
-            if (Convert.ToInt32(result) < 0) throw new InvalidOperationException("获取包裹分表建表锁失败。");
+            if (Convert.ToInt32(result, System.Globalization.CultureInfo.InvariantCulture) < 0) throw new InvalidOperationException("获取包裹分表建表锁失败。");
         }
         else if (coordinator._provider == DbProviderNames.Oracle) {
             var result = await coordinator.OracleLockAsync("REQUEST(:id,6,30,FALSE)", token);
@@ -94,7 +94,7 @@ internal sealed class ParcelPartitionDdlCoordinator : IAsyncDisposable {
                 : _provider == DbProviderNames.Oracle
                     ? "SELECT COUNT(*) FROM ALL_INDEXES WHERE OWNER=NVL(:schemaName,SYS_CONTEXT('USERENV','CURRENT_SCHEMA')) AND TABLE_NAME=:tableName AND INDEX_NAME=:indexName"
                     : "SELECT COUNT(*) FROM sys.indexes i JOIN sys.tables t ON i.object_id=t.object_id JOIN sys.schemas s ON t.schema_id=s.schema_id WHERE s.name=@schema AND t.name=@table AND i.name=@index";
-        return Convert.ToInt32(await ScalarAsync(sql, token, ("@table", table), ("@schema", schema ?? (_provider == DbProviderNames.Oracle ? null : "dbo")), ("@index", index))) > 0;
+        return Convert.ToInt32(await ScalarAsync(sql, token, ("@table", table), ("@schema", schema ?? (_provider == DbProviderNames.Oracle ? null : "dbo")), ("@index", index)), System.Globalization.CultureInfo.InvariantCulture) > 0;
     }
 
     /// <summary>创建参数化命令，命令文本仅来自内部常量。</summary>
@@ -124,7 +124,7 @@ internal sealed class ParcelPartitionDdlCoordinator : IAsyncDisposable {
         await using var command = (OracleCommand)CreateCommand("BEGIN :result := DBMS_LOCK." + operation + "; END;", ("@id", _oracleLockId));
         var output = new OracleParameter("result", OracleDbType.Int32) { Direction = ParameterDirection.Output };
         command.Parameters.Add(output); await SlowQueryDbOperations.ExecuteNonQueryAsync(command, token);
-        return output.Value is OracleDecimal number ? number.ToInt32() : Convert.ToInt32(output.Value);
+        return output.Value is OracleDecimal number ? number.ToInt32() : Convert.ToInt32(output.Value, System.Globalization.CultureInfo.InvariantCulture);
     }
 
     /// <summary>释放会话锁；失败时记录日志且关闭连接，不覆盖原始DDL错误。</summary>

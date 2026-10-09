@@ -21,6 +21,9 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 
 /// <summary>验证耗时事实按包裹索引读取、批次边界和完整统计总体。</summary>
 public sealed class ParcelDurationFactQueryTests {
+    /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+    private static readonly string[] CachedDetected42LateDwsValues = new[] { "detected-42", "late-dws" };
+
     /// <summary>显式索引的建表与迁移重定位使用同一物理名称，回滚不会删除基础表索引。</summary>
     [Theory]
     [InlineData("IX_Processing_Stage_PartitionTime_Duration")]
@@ -102,7 +105,7 @@ public sealed class ParcelDurationFactQueryTests {
         capture.Commands.Clear();
         var result = await ParcelDurationAnalysisReader.BuildFactProjection(facts,
             [ParcelProcessingStage.Detected, ParcelProcessingStage.DwsBound], false, null, [42]).ToArrayAsync();
-        Assert.Equal(new[] { "detected-42", "late-dws" }, result.Select(row => row.RecordId).Order(StringComparer.Ordinal));
+        Assert.Equal(CachedDetected42LateDwsValues, result.Select(row => row.RecordId).Order(StringComparer.Ordinal));
         Assert.All(result, row => Assert.Null(row.RawPayload));
         var captured = Assert.Single(capture.Commands);
         await db.Database.OpenConnectionAsync();

@@ -7,7 +7,7 @@ public sealed class BrowserAutoOpenOptions {
     /// <summary>
     /// 是否启用自动打开浏览器。
     /// </summary>
-    public bool Enabled { get; init; } = false;
+    public bool Enabled { get; init; }
 
     /// <summary>
     /// 自动打开地址；为空时会按监听地址与 Swagger 前缀自动拼装。

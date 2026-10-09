@@ -20,6 +20,30 @@ public sealed class PartitionIndexMaintenanceTests {
     /// <summary>目标索引名称与当前 EF Core 模型保持一致。</summary>
     private const string DurationIndexName = "IX_Processing_Stage_PartitionTime_Duration";
 
+    /// <summary>完整迁移与混合命令保持顺序及事务边界，只有目标索引增加在线选项。</summary>
+    [Fact]
+    public void OnlineIndexAdapterPreservesBatchOrderAndMigrationScripts() {
+        using var db = MySqlContextFactory.CreateConfiguredContext(BuildConfiguration());
+        var generator = db.GetService<IMigrationsSqlGenerator>();
+        MigrationOperation[] operations = [
+            new SqlOperation { Sql = "SELECT 1;", SuppressTransaction = true },
+            new CreateIndexOperation { Table = "Parcel_ProcessingRecords", Name = DurationIndexName, Columns = ["Stage"] },
+            new CreateIndexOperation { Table = "Parcel_ProcessingRecords", Name = "IX_unmodified", Columns = ["RecordId"] },
+            new SqlOperation { Sql = "SELECT 2;" }
+        ];
+        var expected = Microsoft.Extensions.DependencyInjection.ActivatorUtilities.CreateInstance<Pomelo.EntityFrameworkCore.MySql.Migrations.MySqlMigrationsSqlGenerator>(db.GetInfrastructure())
+            .Generate(operations);
+        var actual = generator.Generate(operations);
+        Assert.Equal(expected.Count, actual.Count);
+        for (var index = 0; index < actual.Count; index++) {
+            Assert.Equal(expected[index].TransactionSuppressed, actual[index].TransactionSuppressed);
+            Assert.Equal(expected[index].CommandText, actual[index].CommandText.Replace(" ALGORITHM=INPLACE LOCK=NONE", "", StringComparison.Ordinal));
+        }
+        Assert.Single(actual, command => command.CommandText.Contains(" ALGORITHM=INPLACE LOCK=NONE", StringComparison.Ordinal));
+        var script = db.GetService<IMigrator>().GenerateScript();
+        Assert.Contains(" ALGORITHM=INPLACE LOCK=NONE;", script, StringComparison.Ordinal);
+    }
+
     /// <summary>基础表及两个历史分表使用同一 EF 生成器；运行期与设计时脚本均显式要求在线创建。</summary>
     [Theory]
     [InlineData(false, "", DurationIndexName)]
@@ -44,7 +68,7 @@ public sealed class PartitionIndexMaintenanceTests {
         var configuration = BuildConfiguration();
         using var services = new ServiceCollection().AddSingleton<IConfiguration>(configuration)
             .AddSortingHubPersistence(configuration).BuildServiceProvider();
-        using var template = designTime ? new MySqlContextFactory().CreateDbContext(configuration)
+        using var template = designTime ? MySqlContextFactory.CreateConfiguredContext(configuration)
             : services.GetRequiredService<IDbContextFactory<SortingHubDbContext>>().CreateDbContext();
         var options = new DbContextOptionsBuilder<SortingHubDbContext>((DbContextOptions<SortingHubDbContext>)template.GetService<IDbContextOptions>())
             .ReplaceService<IModelCacheKeyFactory, ParcelPartitionModelCacheKeyFactory>().Options;
@@ -67,7 +91,7 @@ public sealed class PartitionIndexMaintenanceTests {
     [InlineData(DurationIndexName, false, "MySql:FullTextIndex")]
     [InlineData(DurationIndexName, false, "MySql:SpatialIndex")]
     public void OtherIndexOperationsKeepProviderDefaults(string name, bool unique, string? annotation) {
-        using var db = new MySqlContextFactory().CreateDbContext(BuildConfiguration());
+        using var db = MySqlContextFactory.CreateConfiguredContext(BuildConfiguration());
         var operation = new CreateIndexOperation { Table = "Parcel_ProcessingRecords", Name = name, Columns = ["Stage"], IsUnique = unique };
         if (annotation is not null) operation[annotation] = true;
         var generator = db.GetService<IMigrationsSqlGenerator>();
@@ -88,8 +112,8 @@ public sealed class PartitionIndexMaintenanceTests {
         var october = database.Partitions.Resolve(new DateTime(2026, 10, 1));
         await database.Partitions.EnsureCreatedAsync(september, default);
         await database.Partitions.EnsureCreatedAsync(october, default);
-        Assert.Single(capture.Commands.Where(command => command.Contains(DurationIndexName + "_202609", StringComparison.Ordinal)));
-        Assert.Single(capture.Commands.Where(command => command.Contains(DurationIndexName + "_202610", StringComparison.Ordinal)));
+        Assert.Single(capture.Commands, command => command.Contains(DurationIndexName + "_202609", StringComparison.Ordinal));
+        Assert.Single(capture.Commands, command => command.Contains(DurationIndexName + "_202610", StringComparison.Ordinal));
         capture.Commands.Clear();
         await database.Partitions.EnsureCreatedAsync(september, default, verifyExisting: true);
         await database.Partitions.EnsureCreatedAsync(october, default, verifyExisting: true);

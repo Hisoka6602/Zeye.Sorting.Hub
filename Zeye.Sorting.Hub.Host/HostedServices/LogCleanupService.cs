@@ -18,11 +18,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <summary>
         /// NLog 静态日志器实例，用于输出日志清理服务执行状态。
         /// </summary>
-        private static readonly NLog.ILogger Logger = LogManager.GetCurrentClassLogger();
-        /// <summary>
-        /// 安全执行器实例，用于隔离并捕获日志清理过程中的异常。
-        /// </summary>
-        private readonly SafeExecutor _safeExecutor;
+        private static readonly NLog.Logger Logger = LogManager.GetCurrentClassLogger();
         /// <summary>
         /// 配置热加载监视器，支持运行时配置变更自动生效。
         /// </summary>
@@ -53,16 +49,13 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <summary>
         /// 初始化 <see cref="LogCleanupService"/>。
         /// </summary>
-        /// <param name="safeExecutor">安全执行器。</param>
         /// <param name="settingsMonitor">配置热加载监视器。</param>
         /// <param name="observability">可观测性指标输出器。</param>
         /// <param name="changeHistory">配置变更历史存储器。</param>
         public LogCleanupService(
-            SafeExecutor safeExecutor,
             IOptionsMonitor<LogCleanupSettings> settingsMonitor,
             IAutoTuningObservability observability,
             ConfigChangeHistoryStore<LogCleanupSettings> changeHistory) {
-            _safeExecutor = safeExecutor;
             _settingsMonitor = settingsMonitor;
             _observability = observability;
             _changeHistory = changeHistory;
@@ -80,6 +73,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         public override void Dispose() {
             _settingsChangeRegistration?.Dispose();
             base.Dispose();
+            GC.SuppressFinalize(this);
         }
 
         /// <summary>
@@ -109,20 +103,20 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                 Logger.Info("日志清理服务已禁用");
             }
 
-            Logger.Info("日志清理服务已启动，保留天数（有效值）: {EffectiveRetentionDays}天（配置原始值: {ConfiguredRetentionDays}），检查间隔（有效值）: {EffectiveCheckIntervalHours}小时（配置原始值: {ConfiguredCheckIntervalHours}）",
+            Logger.Info(System.Globalization.CultureInfo.CurrentCulture, "日志清理服务已启动，保留天数（有效值）: {EffectiveRetentionDays}天（配置原始值: {ConfiguredRetentionDays}），检查间隔（有效值）: {EffectiveCheckIntervalHours}小时（配置原始值: {ConfiguredCheckIntervalHours}）",
                 GetEffectiveRetentionDays(Settings), Settings.RetentionDays,
                 GetEffectiveCheckIntervalHours(Settings), Settings.CheckIntervalHours);
 
             // 首次启动时立即执行一次清理
             if (Settings.Enabled) {
-                _safeExecutor.Execute(() => CleanupOldLogs(stoppingToken), "首次日志清理");
+                SafeExecutor.Execute(() => CleanupOldLogs(stoppingToken), "首次日志清理");
             }
 
             while (!stoppingToken.IsCancellationRequested) {
                 try {
                     await _settingsChanged.WaitAsync(TimeSpan.FromHours(GetEffectiveCheckIntervalHours(Settings)), stoppingToken);
 
-                    _safeExecutor.Execute(
+                    SafeExecutor.Execute(
                         () => CleanupOldLogs(stoppingToken),
                         "定期日志清理");
                 }
@@ -192,7 +186,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <param name="cutoffDate">清理截止时间。</param>
         /// <param name="cancellationToken">取消令牌。</param>
         /// <returns>删除/失败统计。</returns>
-        private (int DeletedCount, int FailedCount) CleanupDirectoryRecursively(string rootDirectory, DateTime cutoffDate, CancellationToken cancellationToken) {
+        private static (int DeletedCount, int FailedCount) CleanupDirectoryRecursively(string rootDirectory, DateTime cutoffDate, CancellationToken cancellationToken) {
             var deletedCount = 0;
             var failedCount = 0;
             var directoryStack = new Stack<string>();
@@ -261,7 +255,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             // 步骤 2：基于捕获的旧值计算变更字段摘要（此后不再依赖共享状态）。
             var changedFields = BuildChangedFieldsSummary(prev, newSettings);
 
-            Logger.Info(
+            Logger.Info(System.Globalization.CultureInfo.CurrentCulture,
                 "日志清理配置已热加载更新（变更审计）：EffectiveTime={EffectiveTime}, ChangedFields=[{ChangedFields}], " +
                 "Before=[Enabled={PrevEnabled}, RetentionDays={PrevRetentionDays}, CheckIntervalHours={PrevCheckIntervalHours}, LogDirectory={PrevLogDirectory}], " +
                 "After=[Enabled={Enabled}, RetentionDays={RetentionDays}, CheckIntervalHours={CheckIntervalHours}, LogDirectory={LogDirectory}]",

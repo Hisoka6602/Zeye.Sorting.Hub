@@ -17,7 +17,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.SqliteMigrations.Migrations
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
-#pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.14");
 
             modelBuilder.Entity("Zeye.Sorting.Hub.Domain.Aggregates.AuditLogs.WebRequests.WebRequestAuditLog", b =>
@@ -2052,7 +2051,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.SqliteMigrations.Migrations
                 {
                     b.Navigation("Detail");
                 });
-#pragma warning restore 612, 618
         }
     }
 }

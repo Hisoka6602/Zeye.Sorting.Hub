@@ -35,7 +35,9 @@ public sealed class AdministratorBootstrapTests {
             var allowed = permissions.GetAccessRules(true, true, typeof(SecurityIdentifier)).Cast<FileSystemAccessRule>().ToArray();
             using var identity = WindowsIdentity.GetCurrent();
             var administrators = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
-            Assert.All(allowed, rule => Assert.True(rule.IdentityReference.Equals(identity.User) || rule.IdentityReference.Equals(administrators)));
+            foreach (var rule in allowed) {
+                Assert.True(rule.IdentityReference.Equals(identity.User) || rule.IdentityReference.Equals(administrators));
+            }
         }
         else Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(keys.KeyPath));
         var created = await client.PostAsJsonAsync("/api/access/bootstrap", new { username = "first-admin", name = "测试管理员", password = "test-admin-password", bootstrapKey = key });

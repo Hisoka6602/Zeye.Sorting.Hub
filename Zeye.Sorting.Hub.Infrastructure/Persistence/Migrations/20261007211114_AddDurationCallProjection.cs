@@ -8,6 +8,21 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
     /// <inheritdoc />
     public partial class AddDurationCallProjection : Migration
     {
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedProjectedParcelIdColumns = new[] { "Projected", "ParcelId" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedPartitionTimeParcelIdColumns = new[] { "PartitionTime", "ParcelId" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedSourceInstanceIdPartitionTimeParcelIdColumns = new[] { "SourceInstanceId", "PartitionTime", "ParcelId" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedTypePartitionTimeMillisecondsColumns = new[] { "Type", "PartitionTime", "Milliseconds" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedParcelIdStageColumns = new[] { "ParcelId", "Stage" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedPartitionTimeStageColumns = new[] { "PartitionTime", "Stage" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedSourceInstanceIdPartitionTimeStageColumns = new[] { "SourceInstanceId", "PartitionTime", "Stage" };
+
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
@@ -116,7 +131,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_DurationFacts_Projected_ParcelId",
                 table: "Parcel_DurationFacts",
-                columns: new[] { "Projected", "ParcelId" });
+                columns: CachedProjectedParcelIdColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_DurationCalls_ParcelId",
@@ -126,32 +141,32 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_DurationCalls_PartitionTime_ParcelId",
                 table: "Parcel_DurationCalls",
-                columns: new[] { "PartitionTime", "ParcelId" });
+                columns: CachedPartitionTimeParcelIdColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_DurationCalls_SourceInstanceId_PartitionTime_ParcelId",
                 table: "Parcel_DurationCalls",
-                columns: new[] { "SourceInstanceId", "PartitionTime", "ParcelId" });
+                columns: CachedSourceInstanceIdPartitionTimeParcelIdColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_DurationCalls_Type_PartitionTime_Milliseconds",
                 table: "Parcel_DurationCalls",
-                columns: new[] { "Type", "PartitionTime", "Milliseconds" });
+                columns: CachedTypePartitionTimeMillisecondsColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_DwsMeasurements_ParcelId_Stage",
                 table: "Parcel_DwsMeasurements",
-                columns: new[] { "ParcelId", "Stage" });
+                columns: CachedParcelIdStageColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_DwsMeasurements_PartitionTime_Stage",
                 table: "Parcel_DwsMeasurements",
-                columns: new[] { "PartitionTime", "Stage" });
+                columns: CachedPartitionTimeStageColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_DwsMeasurements_SourceInstanceId_PartitionTime_Stage",
                 table: "Parcel_DwsMeasurements",
-                columns: new[] { "SourceInstanceId", "PartitionTime", "Stage" });
+                columns: CachedSourceInstanceIdPartitionTimeStageColumns);
         }
 
         /// <inheritdoc />

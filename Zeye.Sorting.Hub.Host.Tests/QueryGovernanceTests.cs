@@ -14,7 +14,7 @@ public sealed class QueryGovernanceTests {
     /// 必须登记的查询模板应全部存在。
     /// </summary>
     [Fact]
-    public void QueryTemplateRegistry_ShouldContainMandatoryTemplates() {
+    public void QueryTemplateRegistryShouldContainMandatoryTemplates() {
         var registry = new QueryTemplateRegistry();
         var templates = registry.GetAll();
 
@@ -35,7 +35,7 @@ public sealed class QueryGovernanceTests {
     /// 已登记模板命中慢查询画像时应输出索引建议。
     /// </summary>
     [Fact]
-    public void QueryIndexRecommendationService_WhenObservedTemplateIsSlow_ShouldReturnRecommendation() {
+    public void QueryIndexRecommendationServiceWhenObservedTemplateIsSlowShouldReturnRecommendation() {
         var configuration = BuildConfiguration(new Dictionary<string, string?> {
             ["Persistence:AutoTuning:QueryGovernance:RecommendationP99Milliseconds"] = "800",
             ["Persistence:AutoTuning:QueryGovernance:MinimumCallCount"] = "1"
@@ -57,7 +57,7 @@ public sealed class QueryGovernanceTests {
     /// 未登记模板覆盖的慢查询应进入待补登记列表。
     /// </summary>
     [Fact]
-    public void QueryIndexRecommendationService_WhenObservedSqlIsUnmatched_ShouldExposeFingerprintGap() {
+    public void QueryIndexRecommendationServiceWhenObservedSqlIsUnmatchedShouldExposeFingerprintGap() {
         var configuration = BuildConfiguration(new Dictionary<string, string?> {
             ["Persistence:AutoTuning:QueryGovernance:RecommendationP99Milliseconds"] = "800",
             ["Persistence:AutoTuning:QueryGovernance:MinimumCallCount"] = "1"
@@ -79,7 +79,7 @@ public sealed class QueryGovernanceTests {
     /// </summary>
     /// <returns>异步任务。</returns>
     [Fact]
-    public async Task QueryGovernanceReportHostedService_WhenCancellationRequested_ShouldCompleteGracefully() {
+    public async Task QueryGovernanceReportHostedServiceWhenCancellationRequestedShouldCompleteGracefully() {
         var configuration = BuildConfiguration();
         var store = new SlowQueryProfileStore(configuration);
         var hostedService = new QueryGovernanceReportHostedService(

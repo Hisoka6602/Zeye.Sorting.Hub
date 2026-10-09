@@ -47,11 +47,11 @@ public sealed class MigrationGovernanceTests {
     }
     /// <summary>SQL Server必须使用专用迁移与快照，且快照应与当前模型一致。</summary>
     [Fact]
-    public void SqlServerMigrationAssembly_ShouldContainProviderModelSnapshot() {
+    public void SqlServerMigrationAssemblyShouldContainProviderModelSnapshot() {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> {
             ["ConnectionStrings:SqlServer"] = "Server=127.0.0.1;Database=design_time_only;Integrated Security=True;Encrypt=False;"
         }).Build();
-        using var context = new SqlServerContextFactory().CreateDbContext(configuration);
+        using var context = SqlServerContextFactory.CreateDbContext(configuration);
 
         var migrations = context.GetService<IMigrationsAssembly>();
         Assert.Equal(SqlServerMigrationAssembly.Name, migrations.Assembly.GetName().Name);
@@ -61,7 +61,7 @@ public sealed class MigrationGovernanceTests {
 
     /// <summary>运行时注册的SQL Server上下文也必须选用专用迁移程序集。</summary>
     [Fact]
-    public void SqlServerRuntimeOptions_ShouldSelectProviderMigrationAssembly() {
+    public void SqlServerRuntimeOptionsShouldSelectProviderMigrationAssembly() {
         var configuration = new ConfigurationBuilder().Build();
         var profiles = new SlowQueryProfileStore(configuration);
         var pipeline = new SlowQueryAutoTuningPipeline(configuration, new NullAutoTuningObservability(), profiles);
@@ -81,7 +81,7 @@ public sealed class MigrationGovernanceTests {
     /// </summary>
     /// <returns>异步任务。</returns>
     [Fact]
-    public async Task MigrationGovernanceHealthCheck_WhenNoPendingMigrations_ShouldReturnHealthy() {
+    public async Task MigrationGovernanceHealthCheckWhenNoPendingMigrationsShouldReturnHealthy() {
         var store = new MigrationGovernanceStateStore();
         var plan = CreatePlan(
             pendingMigrations: [],
@@ -102,7 +102,7 @@ public sealed class MigrationGovernanceTests {
     /// </summary>
     /// <returns>异步任务。</returns>
     [Fact]
-    public async Task MigrationGovernanceHealthCheck_WhenPendingMigrationsSkipped_ShouldReturnDegraded() {
+    public async Task MigrationGovernanceHealthCheckWhenPendingMigrationsSkippedShouldReturnDegraded() {
         var store = new MigrationGovernanceStateStore();
         var plan = CreatePlan(
             pendingMigrations: ["202605050001_AddDangerousMigration"],
@@ -122,7 +122,7 @@ public sealed class MigrationGovernanceTests {
     /// 危险 SQL 识别器应覆盖路线图要求的关键类型。
     /// </summary>
     [Fact]
-    public void MigrationSafetyEvaluator_ShouldDetectDangerousSqlPatterns() {
+    public void MigrationSafetyEvaluatorShouldDetectDangerousSqlPatterns() {
         var sqlScript = """
             DROP TABLE ArchiveTasks;
             ALTER TABLE ArchiveTasks DROP COLUMN FailureMessage;
@@ -132,9 +132,8 @@ public sealed class MigrationGovernanceTests {
             DELETE FROM ArchiveTasks;
             UPDATE ArchiveTasks SET RetryCount = RetryCount + 1;
             """;
-        var evaluator = new MigrationSafetyEvaluator();
 
-        var dangerousOperations = evaluator.EvaluateDangerousOperations(sqlScript);
+        var dangerousOperations = MigrationSafetyEvaluator.EvaluateDangerousOperations(sqlScript);
 
         Assert.Contains(dangerousOperations, static item => item.StartsWith("DROP TABLE", StringComparison.Ordinal));
         Assert.Contains(dangerousOperations, static item => item.StartsWith("DROP COLUMN", StringComparison.Ordinal));
@@ -149,7 +148,7 @@ public sealed class MigrationGovernanceTests {
     /// dry-run 模式下应阻断真实迁移执行。
     /// </summary>
     [Fact]
-    public void MigrationGovernanceHostedService_EvaluateShouldApplyMigrations_WhenDryRun_ShouldSkipExecution() {
+    public void MigrationGovernanceHostedServiceEvaluateShouldApplyMigrationsWhenDryRunShouldSkipExecution() {
         var (shouldApplyMigrations, skipReason) = MigrationGovernanceHostedService.EvaluateShouldApplyMigrations(
             hasPendingMigrations: true,
             isDryRun: true,
@@ -166,7 +165,7 @@ public sealed class MigrationGovernanceTests {
     /// </summary>
     /// <returns>异步任务。</returns>
     [Fact]
-    public async Task MigrationScriptArchiveService_ShouldWriteArtifactUnderConfiguredDirectory() {
+    public async Task MigrationScriptArchiveServiceShouldWriteArtifactUnderConfiguredDirectory() {
         var tempRootPath = Path.Combine(Path.GetTempPath(), $"migration-governance-archive-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempRootPath);
         try {
@@ -197,7 +196,7 @@ public sealed class MigrationGovernanceTests {
     /// </summary>
     /// <returns>异步任务。</returns>
     [Fact]
-    public async Task MigrationGovernanceHostedService_StartAsync_WhenInspectionThrows_ShouldRecordFailure() {
+    public async Task MigrationGovernanceHostedServiceStartAsyncWhenInspectionThrowsShouldRecordFailure() {
         var tempRootPath = Path.Combine(Path.GetTempPath(), $"migration-governance-failure-{Guid.NewGuid():N}");
         Directory.CreateDirectory(tempRootPath);
         try {
@@ -223,9 +222,7 @@ public sealed class MigrationGovernanceTests {
                 new TestSqlServerDialect(),
                 hostEnvironment,
                 configuration,
-                new MigrationSafetyEvaluator(),
                 new MigrationScriptArchiveService(hostEnvironment),
-                new MigrationRollbackScriptProvider(),
                 store);
 
             await service.StartAsync(CancellationToken.None);

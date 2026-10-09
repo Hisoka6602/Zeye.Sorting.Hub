@@ -39,7 +39,7 @@ public sealed class MessageStorageRemovalTests {
     public void UpgradeOnlyCleansEmptyRetiredMessageStorage(bool sqlServer) {
         using var context = CreateContext(sqlServer);
         var assembly = context.GetService<IMigrationsAssembly>();
-        var entry = Assert.Single(assembly.Migrations.Where(item => item.Key.Contains("RemoveRetiredMessageStorage", StringComparison.Ordinal)));
+        var entry = Assert.Single(assembly.Migrations, item => item.Key.Contains("RemoveRetiredMessageStorage", StringComparison.Ordinal));
         var migration = assembly.CreateMigration(entry.Value, context.Database.ProviderName!);
         var operation = Assert.IsType<SqlOperation>(Assert.Single(migration.UpOperations));
         Assert.Contains("OutboxMessages", operation.Sql, StringComparison.Ordinal);
@@ -68,7 +68,7 @@ public sealed class MessageStorageRemovalTests {
             "IX_Parcels_CreatedTime_Id_SourceParcelId_DetectedTime",
             "IX_Parcels_CompletedTime_Status_SourceParcelId_DetectedTime",
             "IX_Parcel_ProcessingRecords_OccurredAt_IsSuccess_ParcelId_Stage"
-        }) Assert.Single(operations.Where(index => index.Name == name));
+        }) Assert.Single(operations, index => index.Name == name);
     }
 
     /// <summary>创建不连接任何业务库的数据库模型上下文。</summary>
@@ -77,6 +77,6 @@ public sealed class MessageStorageRemovalTests {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> {
             ["ConnectionStrings:SqlServer"] = "Server=127.0.0.1;Database=design_time_only;Integrated Security=True;Encrypt=False;"
         }).Build();
-        return new SqlServerContextFactory().CreateDbContext(configuration);
+        return SqlServerContextFactory.CreateDbContext(configuration);
     }
 }

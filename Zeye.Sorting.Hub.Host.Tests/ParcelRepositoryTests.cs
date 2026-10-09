@@ -23,10 +23,10 @@ public sealed class ParcelRepositoryTests {
     /// </summary>
     private static long _testParcelIdSequence = 2000;
     /// <summary>
-    /// 验证场景：IParcelRepository_ShouldResolveFromDependencyInjection。
+    /// 验证场景：IParcelRepositoryShouldResolveFromDependencyInjection。
     /// </summary>
     [Fact]
-    public void IParcelRepository_ShouldResolveFromDependencyInjection() {
+    public void IParcelRepositoryShouldResolveFromDependencyInjection() {
         var databaseName = $"parcel-repo-di-test-{Guid.NewGuid():N}";
         var options = BuildOptions(databaseName);
         var services = new ServiceCollection();
@@ -40,10 +40,10 @@ public sealed class ParcelRepositoryTests {
     }
 
     /// <summary>
-    /// 验证场景：GetPagedAsync_ShouldReturnSummaryWithExpectedFilterAndPaging。
+    /// 验证场景：GetPagedAsyncShouldReturnSummaryWithExpectedFilterAndPaging。
     /// </summary>
     [Fact]
-    public async Task GetPagedAsync_ShouldReturnSummaryWithExpectedFilterAndPaging() {
+    public async Task GetPagedAsyncShouldReturnSummaryWithExpectedFilterAndPaging() {
         var databaseName = $"parcel-repo-test-{Guid.NewGuid():N}";
         var baseTime = DateTime.Now;
         try {
@@ -81,10 +81,10 @@ public sealed class ParcelRepositoryTests {
     }
 
     /// <summary>
-    /// 验证场景：GetByIdAsync_AndAdjacent_ShouldReturnAggregateAndNeighbors。
+    /// 验证场景：GetByIdAsyncAndAdjacentShouldReturnAggregateAndNeighbors。
     /// </summary>
     [Fact]
-    public async Task GetByIdAsync_AndAdjacent_ShouldReturnAggregateAndNeighbors() {
+    public async Task GetByIdAsyncAndAdjacentShouldReturnAggregateAndNeighbors() {
         var databaseName = $"parcel-repo-test-{Guid.NewGuid():N}";
         var baseTime = DateTime.Now.AddHours(-1);
         try {
@@ -122,7 +122,7 @@ public sealed class ParcelRepositoryTests {
     /// 验证场景：ImageInfo 对象存储元数据应可持久化并正确回读。
     /// </summary>
     [Fact]
-    public async Task GetByIdAsync_ShouldRoundTripImageObjectStorageMetadata() {
+    public async Task GetByIdAsyncShouldRoundTripImageObjectStorageMetadata() {
         var databaseName = $"parcel-repo-image-storage-test-{Guid.NewGuid():N}";
         var uploadedAtLocal = DateTime.Now.AddMinutes(-15);
         try {
@@ -168,10 +168,10 @@ public sealed class ParcelRepositoryTests {
     }
 
     /// <summary>
-    /// 验证场景：GetBySpecificFilters_ShouldRequireTimeRangeAndWork。
+    /// 验证场景：GetBySpecificFiltersShouldRequireTimeRangeAndWork。
     /// </summary>
     [Fact]
-    public async Task GetBySpecificFilters_ShouldRequireTimeRangeAndWork() {
+    public async Task GetBySpecificFiltersShouldRequireTimeRangeAndWork() {
         var databaseName = $"parcel-repo-test-{Guid.NewGuid():N}";
         var baseTime = DateTime.Now;
         try {
@@ -205,7 +205,7 @@ public sealed class ParcelRepositoryTests {
     /// 验证当 actualChuteId 与 targetChuteId 同时为 null 时，仓储边界应拒绝调用并抛出包含“至少提供一个格口 Id”的参数异常。
     /// </summary>
     [Fact]
-    public async Task GetByChuteAsync_WhenActualAndTargetBothNull_ShouldThrowArgumentException() {
+    public async Task GetByChuteAsyncWhenActualAndTargetBothNullShouldThrowArgumentException() {
         var databaseName = $"parcel-repo-test-{Guid.NewGuid():N}";
         var baseTime = DateTime.Now;
         try {
@@ -230,7 +230,7 @@ public sealed class ParcelRepositoryTests {
     /// 验证当仅提供 actualChuteId 时，查询仍可执行且只返回实际格口匹配的数据。
     /// </summary>
     [Fact]
-    public async Task GetByChuteAsync_WhenOnlyActualChuteIdProvided_ShouldFilterByActualChuteId() {
+    public async Task GetByChuteAsyncWhenOnlyActualChuteIdProvidedShouldFilterByActualChuteId() {
         var databaseName = $"parcel-repo-test-{Guid.NewGuid():N}";
         var baseTime = DateTime.Now;
         try {
@@ -261,7 +261,7 @@ public sealed class ParcelRepositoryTests {
     /// 验证当仅提供 targetChuteId 时，查询仍可执行且只返回目标格口匹配的数据。
     /// </summary>
     [Fact]
-    public async Task GetByChuteAsync_WhenOnlyTargetChuteIdProvided_ShouldFilterByTargetChuteId() {
+    public async Task GetByChuteAsyncWhenOnlyTargetChuteIdProvidedShouldFilterByTargetChuteId() {
         var databaseName = $"parcel-repo-test-{Guid.NewGuid():N}";
         var baseTime = DateTime.Now;
         try {
@@ -289,10 +289,10 @@ public sealed class ParcelRepositoryTests {
     }
 
     /// <summary>
-    /// 验证场景：GetPagedAsync_ShouldRejectTimeRangeExceedingThreeMonths。
+    /// 验证场景：GetPagedAsyncShouldRejectTimeRangeExceedingThreeMonths。
     /// </summary>
     [Fact]
-    public async Task GetPagedAsync_ShouldRejectTimeRangeExceedingThreeMonths() {
+    public async Task GetPagedAsyncShouldRejectTimeRangeExceedingThreeMonths() {
         var databaseName = $"parcel-repo-test-{Guid.NewGuid():N}";
         var baseTime = DateTime.Now;
         try {
@@ -313,14 +313,14 @@ public sealed class ParcelRepositoryTests {
     }
 
     /// <summary>
-    /// 验证场景：GetPagedAsync_BarCodeKeyword_ShouldMatchViaFallbackContains。
+    /// 验证场景：GetPagedAsyncBarCodeKeywordShouldMatchViaFallbackContains。
     /// InMemory Provider（非 MySQL）走 Contains() 回退路径（子串匹配）。
     /// 覆盖含 - 的条码关键词（BC-001）在回退路径下的正确匹配行为。
     /// MySQL FULLTEXT phrase 搜索分支（EF.Functions.IsMatch）需真实 MySQL 环境，
     /// 超出当前 InMemory 测试基础设施范围，由集成测试覆盖。
     /// </summary>
     [Fact]
-    public async Task GetPagedAsync_BarCodeKeyword_ShouldMatchViaFallbackContains() {
+    public async Task GetPagedAsyncBarCodeKeywordShouldMatchViaFallbackContains() {
         var databaseName = $"parcel-repo-barcode-kw-{Guid.NewGuid():N}";
         var baseTime = DateTime.Now;
         try {
@@ -424,15 +424,16 @@ public sealed class ParcelRepositoryTests {
     }
 
     /// <summary>
-    /// 验证场景：WriteOperations_ShouldAddUpdateRemoveAndCleanupExpired。
+    /// 验证场景：WriteOperationsShouldAddUpdateRemoveAndCleanupExpired。
     /// </summary>
     [Fact]
-    public async Task WriteOperations_ShouldAddUpdateRemoveAndCleanupExpired() {
+    public async Task WriteOperationsShouldAddUpdateRemoveAndCleanupExpired() {
         var databaseName = $"parcel-repo-test-{Guid.NewGuid():N}";
         var baseTime = DateTime.Now;
         try {
             var repository = CreateRepository(databaseName);
-            var contractRepository = (IParcelRepository)repository;
+            using var services = new ServiceCollection().AddSingleton<IParcelRepository>(repository).BuildServiceProvider();
+            var contractRepository = services.GetRequiredService<IParcelRepository>();
 
             var parcel = CreateParcel("BC-W-1", "BAG-W", "WS-W", ParcelStatus.Pending, baseTime.AddMinutes(-10), 501, 601);
             var addResult = await contractRepository.AddAsync(parcel, CancellationToken.None);
@@ -508,7 +509,7 @@ public sealed class ParcelRepositoryTests {
     /// 验证场景：GetAdjacentByIdAsync 在同一 ScannedTime 下按 Id 保持稳定排序。
     /// </summary>
     [Fact]
-    public async Task GetAdjacentByIdAsync_WithSameScannedTime_ShouldKeepStableOrder() {
+    public async Task GetAdjacentByIdAsyncWithSameScannedTimeShouldKeepStableOrder() {
         var databaseName = $"parcel-repo-test-{Guid.NewGuid():N}";
         var sameTime = DateTime.Now.AddHours(-2);
         try {
@@ -533,7 +534,7 @@ public sealed class ParcelRepositoryTests {
     /// 验证场景：GetAdjacentByIdAsync 锚点不存在返回失败结果。
     /// </summary>
     [Fact]
-    public async Task GetAdjacentByIdAsync_WhenAnchorNotFound_ShouldReturnFailResult() {
+    public async Task GetAdjacentByIdAsyncWhenAnchorNotFoundShouldReturnFailResult() {
         var databaseName = $"parcel-repo-test-{Guid.NewGuid():N}";
         try {
             var repository = CreateRepository(databaseName);
@@ -550,7 +551,7 @@ public sealed class ParcelRepositoryTests {
     /// 验证场景：新增重复 Id 返回明确冲突错误。
     /// </summary>
     [Fact]
-    public async Task AddAsync_WithDuplicateId_ShouldReturnDuplicateError() {
+    public async Task AddAsyncWithDuplicateIdShouldReturnDuplicateError() {
         var databaseName = $"parcel-repo-test-{Guid.NewGuid():N}";
         var scannedTime = DateTime.Now.AddHours(-3);
         try {

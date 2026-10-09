@@ -99,7 +99,7 @@ public sealed class FusionIngestionTests {
         await env.Ingress.PublishAsync("a", FusionIngressTestEnvironment.Batch(lease, exception), default);
         Assert.Equal(1, await env.Projector().ProjectAsync(default));
         var stored = Assert.Single(await env.Ingress.GetFactsAsync("fusion-line-01", null, 20, default));
-        var id = long.Parse(stored.ParcelId!);
+        var id = long.Parse(stored.ParcelId!, System.Globalization.CultureInfo.InvariantCulture);
         Assert.Null((await env.Database.Parcels.GetByIdAsync(id, default))!.DetectedTime);
         var landed = FusionIngressTestEnvironment.Fact("parcel.landed", 4, data: new { actualLandingConfirmed = true, actualChute = "0007" }, time: detected.AddSeconds(5));
         var measurement = FusionIngressTestEnvironment.Fact("parcel.measurement", 3, data: new { barcode = "SAME-BARCODE", weightGrams = 1200m,
@@ -127,7 +127,7 @@ public sealed class FusionIngestionTests {
         Assert.Equal(3, await env.Projector().ProjectAsync(default));
         var facts = (await env.Ingress.GetFactsAsync("fusion-line-01", null, 20, default)).Concat(await env.Ingress.GetFactsAsync("fusion-line-02", null, 20, default));
         Assert.Equal(3, facts.Select(x => x.ParcelId).Distinct().Count());
-        foreach (var item in facts) Assert.Equal(9007199254740993, (await env.Database.Parcels.GetByIdAsync(long.Parse(item.ParcelId!), default))!.SourceParcelId);
+        foreach (var item in facts) Assert.Equal(9007199254740993, (await env.Database.Parcels.GetByIdAsync(long.Parse(item.ParcelId!, System.Globalization.CultureInfo.InvariantCulture), default))!.SourceParcelId);
     }
     /// <summary>Provider 的 HTTP 成功和 completed 不能代替业务接受，实际落格才完成包裹。</summary>
     [Fact]
@@ -141,7 +141,7 @@ public sealed class FusionIngestionTests {
         Assert.All((await env.Ingress.PublishAsync("a", FusionIngressTestEnvironment.Batch(lease, frames), default)).Records, x => Assert.Equal("stored", x.Status));
         Assert.Equal(3, await env.Projector().ProjectAsync(default));
         var id = (await env.Ingress.GetFactsAsync("fusion-line-01", null, 20, default)).First(x => x.ParcelId is not null).ParcelId!;
-        var parcel = (await env.Database.Parcels.GetByIdAsync(long.Parse(id), default))!;
+        var parcel = (await env.Database.Parcels.GetByIdAsync(long.Parse(id, System.Globalization.CultureInfo.InvariantCulture), default))!;
         Assert.Equal(0, (int)parcel.Status); Assert.Equal(0, (int)parcel.RequestStatus); Assert.Null(parcel.CompletedTime);
     }
     /// <summary>来源业务投影失败仍保留已经确认的原文，重建服务后恢复同一幂等任务。</summary>

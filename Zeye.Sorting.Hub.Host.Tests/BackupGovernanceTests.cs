@@ -57,7 +57,7 @@ public sealed class BackupGovernanceTests {
     /// </summary>
     /// <returns>异步任务。</returns>
     [Fact]
-    public async Task BackupVerificationService_WhenRecentBackupExists_ShouldReturnHealthyAndWriteArtifacts() {
+    public async Task BackupVerificationServiceWhenRecentBackupExistsShouldReturnHealthyAndWriteArtifacts() {
         var rootPath = CreateTempDirectory();
         try {
             var serviceProvider = BuildServiceProvider(rootPath, MySqlProvider, isEnabled: true, dryRun: true);
@@ -93,7 +93,7 @@ public sealed class BackupGovernanceTests {
     /// </summary>
     /// <returns>异步任务。</returns>
     [Fact]
-    public async Task BackupHealthCheck_WhenBackupMissing_ShouldReturnDegraded() {
+    public async Task BackupHealthCheckWhenBackupMissingShouldReturnDegraded() {
         var rootPath = CreateTempDirectory();
         try {
             var serviceProvider = BuildServiceProvider(rootPath, MySqlProvider, isEnabled: true, dryRun: true);
@@ -116,7 +116,7 @@ public sealed class BackupGovernanceTests {
     /// SQL Server Provider 应生成 .bak 备份文件与 BACKUP DATABASE 命令。
     /// </summary>
     [Fact]
-    public void SqlServerBackupProvider_BuildPlan_ShouldUseBakFileAndSqlcmdCommand() {
+    public void SqlServerBackupProviderBuildPlanShouldUseBakFileAndSqlcmdCommand() {
         var provider = new SqlServerBackupProvider();
         var options = new BackupOptions {
             BackupFilePrefix = "sorting-hub"
@@ -136,7 +136,7 @@ public sealed class BackupGovernanceTests {
     /// 用于验证命令生成链路不会把危险字符直接拼接到 shell 命令中。
     /// </summary>
     [Fact]
-    public void MySqlBackupProvider_BuildPlan_WhenDatabaseNameUnsafe_ShouldThrow() {
+    public void MySqlBackupProviderBuildPlanWhenDatabaseNameUnsafeShouldThrow() {
         var provider = new MySqlBackupProvider();
         var options = new BackupOptions {
             BackupFilePrefix = "sorting-hub"
@@ -149,7 +149,7 @@ public sealed class BackupGovernanceTests {
     /// SQL Server 命令应转义路径中的单引号。
     /// </summary>
     [Fact]
-    public void SqlServerBackupProvider_BuildPlan_WhenPathContainsQuote_ShouldEscapeLiteral() {
+    public void SqlServerBackupProviderBuildPlanWhenPathContainsQuoteShouldEscapeLiteral() {
         var provider = new SqlServerBackupProvider();
         var options = new BackupOptions {
             BackupFilePrefix = "sorting-hub"
@@ -165,7 +165,7 @@ public sealed class BackupGovernanceTests {
     /// </summary>
     /// <returns>异步任务。</returns>
     [Fact]
-    public async Task BackupHealthCheck_WhenBackupDisabled_ShouldReturnHealthy() {
+    public async Task BackupHealthCheckWhenBackupDisabledShouldReturnHealthy() {
         var rootPath = CreateTempDirectory();
         try {
             var serviceProvider = BuildServiceProvider(rootPath, SqlServerProvider, isEnabled: false, dryRun: true, includeConnectionStrings: false);

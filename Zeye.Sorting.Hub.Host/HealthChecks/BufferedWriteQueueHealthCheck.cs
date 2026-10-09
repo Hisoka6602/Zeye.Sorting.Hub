@@ -59,7 +59,7 @@ public sealed class BufferedWriteQueueHealthCheck : IHealthCheck {
     /// </summary>
     /// <param name="snapshot">指标快照。</param>
     /// <returns>附加数据字典。</returns>
-    private IReadOnlyDictionary<string, object> BuildHealthData(BatchWriteMetricsSnapshot snapshot) {
+    private System.Collections.Generic.Dictionary<string, object> BuildHealthData(BatchWriteMetricsSnapshot snapshot) {
         var data = new Dictionary<string, object> {
             ["isEnabled"] = snapshot.IsEnabled,
             ["queueDepth"] = snapshot.QueueDepth,
@@ -77,11 +77,11 @@ public sealed class BufferedWriteQueueHealthCheck : IHealthCheck {
             ["deadLetterCapacity"] = _options.DeadLetterCapacity
         };
         if (snapshot.LastSuccessfulFlushAtLocal.HasValue) {
-            data["lastSuccessfulFlushAtLocal"] = snapshot.LastSuccessfulFlushAtLocal.Value.ToString("yyyy-MM-dd HH:mm:ss");
+            data["lastSuccessfulFlushAtLocal"] = snapshot.LastSuccessfulFlushAtLocal.Value.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
         }
 
         if (snapshot.LastFailedFlushAtLocal.HasValue) {
-            data["lastFailedFlushAtLocal"] = snapshot.LastFailedFlushAtLocal.Value.ToString("yyyy-MM-dd HH:mm:ss");
+            data["lastFailedFlushAtLocal"] = snapshot.LastFailedFlushAtLocal.Value.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
         }
 
         if (!string.IsNullOrWhiteSpace(snapshot.LastFailureMessage)) {

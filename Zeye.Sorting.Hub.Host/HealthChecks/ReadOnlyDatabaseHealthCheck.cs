@@ -42,7 +42,7 @@ public sealed class ReadOnlyDatabaseHealthCheck : IHealthCheck {
     /// </summary>
     /// <param name="probe">探测结果。</param>
     /// <returns>附加数据。</returns>
-    private static IReadOnlyDictionary<string, object> BuildHealthData(ReadOnlyRouteProbeResult probe) {
+    private static System.Collections.Generic.Dictionary<string, object> BuildHealthData(ReadOnlyRouteProbeResult probe) {
         return new Dictionary<string, object> {
             ["isEnabled"] = probe.IsEnabled,
             ["isReadOnlyConfigured"] = probe.IsReadOnlyConfigured,

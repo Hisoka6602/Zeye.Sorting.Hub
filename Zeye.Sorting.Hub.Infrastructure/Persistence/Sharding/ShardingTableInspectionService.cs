@@ -192,7 +192,7 @@ public sealed class ShardingTableInspectionService {
     /// <param name="plannedTableNames">计划物理表集合。</param>
     /// <param name="missingPhysicalTables">缺失物理表集合。</param>
     /// <returns>一致性风险集合。</returns>
-    private static IReadOnlyList<string> BuildWebRequestAuditLogPairWarnings(
+    private static System.Collections.Generic.List<string> BuildWebRequestAuditLogPairWarnings(
         IReadOnlyList<string> plannedTableNames,
         IReadOnlyList<string> missingPhysicalTables) {
         var plannedSet = plannedTableNames.ToHashSet(StringComparer.Ordinal);

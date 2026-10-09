@@ -163,10 +163,4 @@ public sealed class ResponseCaptureTeeStream : Stream {
         base.Dispose(disposing);
     }
 
-    /// <inheritdoc />
-    public override ValueTask DisposeAsync() {
-        Dispose(true);
-        GC.SuppressFinalize(this);
-        return ValueTask.CompletedTask;
-    }
 }

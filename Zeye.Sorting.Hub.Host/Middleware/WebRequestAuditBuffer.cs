@@ -7,7 +7,7 @@ namespace Zeye.Sorting.Hub.Host.Middleware;
 /// <summary>
 /// Web 请求审计后台队列（有界，含丢弃保护）。
 /// </summary>
-public sealed class WebRequestAuditBackgroundQueue {
+public sealed class WebRequestAuditBuffer {
     /// <summary>
     /// NLog 记录器。
     /// </summary>
@@ -37,7 +37,7 @@ public sealed class WebRequestAuditBackgroundQueue {
     /// 创建后台队列。
     /// </summary>
     /// <param name="capacity">容量上限。</param>
-    public WebRequestAuditBackgroundQueue(int capacity)
+    public WebRequestAuditBuffer(int capacity)
         : this(capacity, TimeSpan.FromSeconds(30)) {
     }
 
@@ -46,7 +46,7 @@ public sealed class WebRequestAuditBackgroundQueue {
     /// </summary>
     /// <param name="capacity">容量上限。</param>
     /// <param name="dropLogInterval">丢弃日志聚合间隔。</param>
-    public WebRequestAuditBackgroundQueue(int capacity, TimeSpan dropLogInterval) {
+    public WebRequestAuditBuffer(int capacity, TimeSpan dropLogInterval) {
         var normalizedCapacity = Math.Max(1, capacity);
         _dropLogInterval = dropLogInterval <= TimeSpan.Zero ? TimeSpan.FromSeconds(30) : dropLogInterval;
         _channel = Channel.CreateBounded<WebRequestAuditBackgroundEntry>(new BoundedChannelOptions(normalizedCapacity) {

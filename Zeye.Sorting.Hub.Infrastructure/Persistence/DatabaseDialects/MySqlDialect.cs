@@ -134,7 +134,7 @@ SELECT (SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA=@name)
 """;
             var parameter = command.CreateParameter(); parameter.ParameterName = "@name";
             parameter.Value = DatabaseIdentifierPolicy.NormalizeDatabaseName(databaseName, nameof(databaseName)); command.Parameters.Add(parameter);
-            return Convert.ToInt64(await SlowQueryDbOperations.ExecuteScalarAsync(command, cancellationToken)) > 0;
+            return Convert.ToInt64(await SlowQueryDbOperations.ExecuteScalarAsync(command, cancellationToken), System.Globalization.CultureInfo.InvariantCulture) > 0;
         }
 
         /// <summary>

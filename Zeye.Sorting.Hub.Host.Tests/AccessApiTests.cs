@@ -16,6 +16,13 @@ using Zeye.Sorting.Hub.Host.Routing;
 namespace Zeye.Sorting.Hub.Host.Tests;
 /// <summary>真实密码认证、权限保护、会话失效及账号目录持久化的回归测试。</summary>
 public sealed class AccessApiTests {
+    /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+    private static readonly string[] CachedParcelsReadParcelsWriteValues = new[] { "parcels.read", "parcels.write" };
+    /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+    private static readonly string[] CachedParcelsReadValues = new[] { "parcels.read" };
+    /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+    private static readonly string[] CachedInvalidValues = new[] { "invalid" };
+
     /// <summary>普通角色即使拥有全部权限或同名角色，也不能访问三个敏感版块。</summary>
     [Theory]
     [InlineData(true)]
@@ -97,7 +104,7 @@ public sealed class AccessApiTests {
         admin.DefaultRequestHeaders.Add("X-Zeye-Client", "web"); writer.DefaultRequestHeaders.Add("X-Zeye-Client", "web");
         machine.DefaultRequestHeaders.Add("X-Sorting-Api-Key", "test-machine-key");
         UseCookie(admin, await admin.PostAsJsonAsync("/api/access/bootstrap", new { username = "admin", name = "管理员", password = "test-admin-password", bootstrapKey = "test-bootstrap-key" }));
-        Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync("/api/access/roles", new { expectedRevision = 1, name = "包裹业务员", permissions = new[] { "parcels.read", "parcels.write" } })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync("/api/access/roles", new { expectedRevision = 1, name = "包裹业务员", permissions = CachedParcelsReadParcelsWriteValues })).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync("/api/access/users", new { expectedRevision = 2, account = "writer", name = "包裹业务员", password = "test-writer-password", roleId = 2, enabled = true })).StatusCode);
         UseCookie(writer, await writer.PostAsJsonAsync("/api/access/login", new { username = "writer", password = "test-writer-password" }));
         foreach (var path in new[] { "/api/admin/parcels", "/api/admin/parcels/batch-buffer", "/API/ADMIN/PARCELS/" }) {
@@ -137,9 +144,9 @@ public sealed class AccessApiTests {
         Assert.DoesNotContain("test-admin-password", directory.GetRawText(), StringComparison.Ordinal);
         var stored = await new ManagedDocumentService(db.Factory).ReadAsync("access-directory", default);
         Assert.DoesNotContain("test-admin-password", stored!.Json); Assert.Contains("passwordHash", stored.Json);
-        var role = await client.PostAsJsonAsync("/api/access/roles", new { expectedRevision = 1, name = "查询员", description = "只读权限", permissions = new[] { "parcels.read" } });
+        var role = await client.PostAsJsonAsync("/api/access/roles", new { expectedRevision = 1, name = "查询员", description = "只读权限", permissions = CachedParcelsReadValues });
         Assert.Equal(HttpStatusCode.OK, role.StatusCode);
-        Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsJsonAsync("/api/access/roles", new { expectedRevision = 1, name = "过时", permissions = new[] { "parcels.read" } })).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await client.PostAsJsonAsync("/api/access/roles", new { expectedRevision = 1, name = "过时", permissions = CachedParcelsReadValues })).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/operations/rules/exception")).StatusCode);
         client.DefaultRequestHeaders.Remove("X-Zeye-Client");
         Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsJsonAsync("/api/access/logout", new { })).StatusCode);
@@ -147,7 +154,7 @@ public sealed class AccessApiTests {
         Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsJsonAsync("/api/access/logout", new { })).StatusCode);
         client.DefaultRequestHeaders.Remove("Cookie");
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.PostAsJsonAsync("/api/access/login", new { username = "admin", password = "incorrect" })).StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/access/login", new[] { "invalid" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/access/login", CachedInvalidValues)).StatusCode);
         var login = await client.PostAsJsonAsync("/api/access/login", new { username = "admin", password = "test-admin-password" });
         Assert.Equal(HttpStatusCode.OK, login.StatusCode);
         Assert.Contains("httponly", login.Headers.GetValues("Set-Cookie").Single(), StringComparison.OrdinalIgnoreCase);
@@ -159,7 +166,7 @@ public sealed class AccessApiTests {
         await using var app = await CreateAsync(db); using var admin = app.GetTestClient(); using var reader = app.GetTestClient();
         admin.DefaultRequestHeaders.Add("X-Zeye-Client", "web"); reader.DefaultRequestHeaders.Add("X-Zeye-Client", "web");
         UseCookie(admin, await admin.PostAsJsonAsync("/api/access/bootstrap", new { username = "admin", name = "管理员", password = "test-admin-password", bootstrapKey = "test-bootstrap-key" }));
-        await admin.PostAsJsonAsync("/api/access/roles", new { expectedRevision = 1, name = "查询员", permissions = new[] { "parcels.read" } });
+        await admin.PostAsJsonAsync("/api/access/roles", new { expectedRevision = 1, name = "查询员", permissions = CachedParcelsReadValues });
         var created = await admin.PostAsJsonAsync("/api/access/users", new { expectedRevision = 2, account = "reader", name = "查询员", password = "test-reader-password", roleId = 2, enabled = true });
         Assert.Equal(HttpStatusCode.OK, created.StatusCode);
         UseCookie(reader, await reader.PostAsJsonAsync("/api/access/login", new { username = "reader", password = "test-reader-password" }));
@@ -188,7 +195,7 @@ public sealed class AccessApiTests {
         await using var app = await CreateAsync(db); using var admin = app.GetTestClient(); using var reader = app.GetTestClient();
         admin.DefaultRequestHeaders.Add("X-Zeye-Client", "web"); reader.DefaultRequestHeaders.Add("X-Zeye-Client", "web");
         UseCookie(admin, await admin.PostAsJsonAsync("/api/access/bootstrap", new { username = "admin", name = "管理员", password = "test-admin-password", bootstrapKey = "test-bootstrap-key" }));
-        await admin.PostAsJsonAsync("/api/access/roles", new { expectedRevision = 1, name = "查询员", permissions = new[] { "parcels.read" } });
+        await admin.PostAsJsonAsync("/api/access/roles", new { expectedRevision = 1, name = "查询员", permissions = CachedParcelsReadValues });
         Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync("/api/access/users", new { expectedRevision = 2, account = "reader", name = "查询员", password = "test-reader-password", roleId = 2 })).StatusCode);
         UseCookie(reader, await reader.PostAsJsonAsync("/api/access/login", new { username = "reader", password = "test-reader-password" }));
         var original = await reader.GetFromJsonAsync<JsonElement>("/api/access/profile");

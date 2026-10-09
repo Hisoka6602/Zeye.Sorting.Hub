@@ -6,6 +6,8 @@ namespace Zeye.Sorting.Hub.Tools.DatabaseVerification;
 
 /// <summary>独立性能验收按需保留 EF 生成语句与执行计时，不记录参数值。</summary>
 internal sealed class QueryCommandTraceInterceptor : DbCommandInterceptor {
+    /// <summary>复用查询证据的驼峰命名序列化配置。</summary>
+    private static readonly JsonSerializerOptions TraceJsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     /// <summary>仅记录当前验收进程发出的命令，正式宿主不注册此拦截器。</summary>
     private readonly List<CommandTrace> _commands = [];
     /// <summary>按 EF 命令编号关联读取结束事件，区分服务器执行和结果消费。</summary>
@@ -36,7 +38,7 @@ internal sealed class QueryCommandTraceInterceptor : DbCommandInterceptor {
         Directory.CreateDirectory(directory);
         CommandTrace[] snapshot;
         lock (_commands) snapshot = _commands.ToArray();
-        await File.WriteAllTextAsync(Path.Combine(directory, "query-command-trace.json"), JsonSerializer.Serialize(snapshot, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+        await File.WriteAllTextAsync(Path.Combine(directory, "query-command-trace.json"), JsonSerializer.Serialize(snapshot, TraceJsonOptions));
     }
 
 }

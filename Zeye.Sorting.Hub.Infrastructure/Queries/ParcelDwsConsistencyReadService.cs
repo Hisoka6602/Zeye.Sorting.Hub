@@ -158,7 +158,7 @@ public sealed class ParcelDwsConsistencyReadService(IDbContextFactory<SortingHub
         && !string.IsNullOrWhiteSpace(row.SourceRunId) && !string.IsNullOrWhiteSpace(row.MessageIdentity);
 
     /// <summary>仅通过完整来源身份复用包裹条码，NoRead和空条码不进入一致性分组。</summary>
-    private static string? Barcode(ParcelDwsMeasurementSnapshot row, IReadOnlyDictionary<long, ParcelDwsParcelIdentitySnapshot> parcels) {
+    private static string? Barcode(ParcelDwsMeasurementSnapshot row, System.Collections.Generic.Dictionary<long, Zeye.Sorting.Hub.Infrastructure.Queries.ParcelDwsParcelIdentitySnapshot> parcels) {
         var value = row.Barcode;
         if (string.IsNullOrWhiteSpace(value) && row.ParcelId is { } id && parcels.TryGetValue(id, out var parcel)
             && parcel.SourceInstanceId == row.SourceInstanceId && parcel.SourceRunId == row.SourceRunId && parcel.SourceParcelId == row.SourceParcelId) value = parcel.BarCodes;
@@ -198,7 +198,7 @@ public sealed class ParcelDwsConsistencyReadService(IDbContextFactory<SortingHub
 
     /// <summary>按条码先比较来源中位数，再汇总偏差，不用不同大小包裹的总平均混淆设备差异。</summary>
     private static DwsConsistencySource[] Sources(DwsMeasurementSample[] samples, ParcelDwsConsistencyRequest request,
-        IReadOnlyDictionary<string, DwsConsistencyGroup> overall) {
+        System.Collections.Generic.Dictionary<string, Zeye.Sorting.Hub.Contracts.Models.Parcels.Dws.DwsConsistencyGroup> overall) {
         return samples.GroupBy(sample => sample.SourceInstanceId, StringComparer.Ordinal).Select(source => {
             // 单一来源的条码复用已计算的总体，跨来源条码才另外计算来源中位数。
             var groups = source.GroupBy(sample => sample.Barcode, StringComparer.Ordinal).Where(group => overall.ContainsKey(group.Key))

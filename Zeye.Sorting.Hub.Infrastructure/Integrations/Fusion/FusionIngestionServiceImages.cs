@@ -95,25 +95,25 @@ public sealed partial class FusionIngestionService {
     }
 
     /// <summary>完整大小和摘要再次验证，原子移动后的对象存在且元数据提交才返回完成。</summary>
-    public Task<HubImageStoredReceipt> CompleteImageAsync(string connectionId, HubImageComplete complete, CancellationToken cancellationToken) {
+    public Task<HubImageStoredReceipt> CompleteImageAsync(string connectionId, HubImageComplete image, CancellationToken cancellationToken) {
         var connection = Connection(connectionId);
         return LockedAsync(connection.Source.SourceInstanceId, async () => {
             await using var db = await _factory.CreateDbContextAsync(cancellationToken);
-            var image = await AuthorizedImageAsync(connectionId, complete.UploadId, db, cancellationToken);
-            if (complete.SourceImageId != image.SourceImageId || complete.SizeBytes != image.SizeBytes
-                || complete.ContentSha256 != image.ContentSha256 || image.NextOffset != image.SizeBytes)
+            var storedImage = await AuthorizedImageAsync(connectionId, image.UploadId, db, cancellationToken);
+            if (image.SourceImageId != storedImage.SourceImageId || image.SizeBytes != storedImage.SizeBytes
+                || image.ContentSha256 != storedImage.ContentSha256 || storedImage.NextOffset != storedImage.SizeBytes)
                 throw new InvalidOperationException("IncompleteImageOrContentConflict");
-            var target = ImagePath(image.Key, true); var partial = ImagePath(image.Key, false);
+            var target = ImagePath(storedImage.Key, true); var partial = ImagePath(storedImage.Key, false);
             var path = File.Exists(target) ? target : partial;
             await using (var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None, 65536, FileOptions.Asynchronous)) {
-                if (file.Length != image.SizeBytes || Convert.ToHexStringLower(await SHA256.HashDataAsync(file, cancellationToken)) != image.ContentSha256)
+                if (file.Length != storedImage.SizeBytes || Convert.ToHexStringLower(await SHA256.HashDataAsync(file, cancellationToken)) != storedImage.ContentSha256)
                     throw new InvalidOperationException("ImageContentHashMismatch");
             }
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             if (path != target) File.Move(partial, target);
-            image.IsStored = true; image.ModifiedAt = DateTime.Now; image.Revision++;
+            storedImage.IsStored = true; storedImage.ModifiedAt = DateTime.Now; storedImage.Revision++;
             await db.SaveChangesAsync(cancellationToken);
-            return Stored(image);
+            return Stored(storedImage);
         }, cancellationToken);
     }
 

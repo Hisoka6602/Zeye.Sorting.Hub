@@ -44,7 +44,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
         /// <summary>
         /// NLog 日志器，用于设计时警告落盘。
         /// </summary>
-        private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
+        private static readonly NLog.Logger Logger = LogManager.GetCurrentClassLogger();
 
         /// <summary>
         /// 设计时兜底占位连接字符串，仅在无法从 <c>appsettings.json</c> 读取时使用。
@@ -56,16 +56,15 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
         /// <inheritdoc />
         public SortingHubDbContext CreateDbContext(string[] args) {
             var config = DesignTimeConfigurationLocator.LoadConfiguration();
-            return CreateDbContext(config, args);
+            return CreateConfiguredContext(config, args);
         }
 
         /// <summary>根据给定配置构建设计时上下文，便于离线验证与运行期采用相同的索引生成策略。</summary>
-        internal SortingHubDbContext CreateDbContext(IConfiguration config, params string[] args) {
+        internal static SortingHubDbContext CreateConfiguredContext(IConfiguration config, params string[] args) {
             var provider = ResolveProvider(args, config);
 
             if (string.Equals(provider, ConfiguredProviderNames.SqlServer, StringComparison.OrdinalIgnoreCase)) {
-                var factory = new SqlServerContextFactory();
-                return factory.CreateDbContext(config);
+                return SqlServerContextFactory.CreateDbContext(config);
             }
 
             if (provider is ConfiguredProviderNames.Oracle or ConfiguredProviderNames.SQLite) {

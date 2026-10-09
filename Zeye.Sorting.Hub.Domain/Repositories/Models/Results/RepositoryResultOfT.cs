@@ -25,25 +25,4 @@ public readonly record struct RepositoryResult<T> {
     /// </summary>
     public string? ErrorMessage { get; init; }
 
-    /// <summary>
-    /// 创建表示操作成功的泛型结果对象，并返回指定值。
-    /// </summary>
-    public static RepositoryResult<T> Success(T value) => new() { IsSuccess = true, Value = value };
-
-    /// <summary>
-    /// 创建表示操作失败的泛型结果对象，并附带错误消息。
-    /// </summary>
-    public static RepositoryResult<T> Fail(string errorMessage) => new() {
-        IsSuccess = false,
-        ErrorMessage = string.IsNullOrWhiteSpace(errorMessage) ? RepositoryResult.DefaultFailMessage : errorMessage
-    };
-
-    /// <summary>
-    /// 创建表示操作失败的泛型结果对象，并附带错误消息与稳定错误码。
-    /// </summary>
-    public static RepositoryResult<T> Fail(string errorMessage, string errorCode) => new() {
-        IsSuccess = false,
-        ErrorMessage = string.IsNullOrWhiteSpace(errorMessage) ? RepositoryResult.DefaultFailMessage : errorMessage,
-        ErrorCode = string.IsNullOrWhiteSpace(errorCode) ? null : errorCode
-    };
 }

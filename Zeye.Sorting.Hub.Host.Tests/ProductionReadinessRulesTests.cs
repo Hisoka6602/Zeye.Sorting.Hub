@@ -8,7 +8,7 @@ public sealed class ProductionReadinessRulesTests {
     /// 生产运行 Runbook 应覆盖 PR-T 要求的 20 个故障场景。
     /// </summary>
     [Fact]
-    public void ProductionRunbook_ShouldCoverAllRequiredFailureScenarios() {
+    public void ProductionRunbookShouldCoverAllRequiredFailureScenarios() {
         var runbook = RepositoryFileReader.ReadAllText("生产运行Runbook.md");
 
         Assert.Contains("服务启动失败", runbook, StringComparison.Ordinal);
@@ -38,7 +38,7 @@ public sealed class ProductionReadinessRulesTests {
     /// 应急、分表、备份文档应引用现有底座实现与演练资产。
     /// </summary>
     [Fact]
-    public void OperationalDocuments_ShouldReferenceExistingGovernanceAssets() {
+    public void OperationalDocumentsShouldReferenceExistingGovernanceAssets() {
         var emergencyPlan = RepositoryFileReader.ReadAllText("数据库故障应急预案.md");
         var shardingRunbook = RepositoryFileReader.ReadAllText("分表治理Runbook.md");
         var backupRunbook = RepositoryFileReader.ReadAllText("备份恢复演练Runbook.md");
@@ -59,7 +59,7 @@ public sealed class ProductionReadinessRulesTests {
     /// 最终验收清单应反映从 PR-A 到 PR-T 的完成状态与最终放行条件。
     /// </summary>
     [Fact]
-    public void AcceptanceChecklist_ShouldReflectPrAToPrTCompletion() {
+    public void AcceptanceChecklistShouldReflectPrAToPrTCompletion() {
         var checklist = RepositoryFileReader.ReadAllText("业务接入前底座验收清单.md");
 
         Assert.Contains("PR-A 数据库连接诊断与就绪状态增强", checklist, StringComparison.Ordinal);
@@ -75,7 +75,7 @@ public sealed class ProductionReadinessRulesTests {
     /// 稳定性门禁与无人值守检查清单应纳入 PR-T 新增运行资料。
     /// </summary>
     [Fact]
-    public void StabilityWorkflowAndChecklist_ShouldIncludeProductionReadinessArtifacts() {
+    public void StabilityWorkflowAndChecklistShouldIncludeProductionReadinessArtifacts() {
         var workflowContent = RepositoryFileReader.ReadAllText(".github", "workflows", "stability-gates.yml");
         var unattendedChecklist = RepositoryFileReader.ReadAllText("无人值守运行检查清单.md");
 

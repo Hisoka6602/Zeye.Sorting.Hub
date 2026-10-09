@@ -10,7 +10,7 @@ public sealed class HostingOptionsTests {
     /// 验证场景：监听地址可按分号拆分并去重。
     /// </summary>
     [Fact]
-    public void GetUrlBindings_ShouldSplitAndDistinct() {
+    public void GetUrlBindingsShouldSplitAndDistinct() {
         var options = new HostingOptions {
             Urls = "http://localhost:5078; http://localhost:5078 ;https://localhost:7078"
         };
@@ -26,7 +26,7 @@ public sealed class HostingOptionsTests {
     /// 验证场景：浏览器自动打开地址可由监听地址与 Swagger 前缀组合，且 0.0.0.0 自动归一化为 localhost。
     /// </summary>
     [Fact]
-    public void BuildBrowserAutoOpenUrl_ShouldUseLocalhostAndRoutePrefix() {
+    public void BuildBrowserAutoOpenUrlShouldUseLocalhostAndRoutePrefix() {
         var options = new HostingOptions {
             Urls = "http://0.0.0.0:5078",
             Swagger = new SwaggerOptions {
@@ -43,7 +43,7 @@ public sealed class HostingOptionsTests {
     /// 验证场景：显式配置 BrowserAutoOpen.Url 时优先使用配置值。
     /// </summary>
     [Fact]
-    public void BuildBrowserAutoOpenUrl_ShouldPreferConfiguredUrl() {
+    public void BuildBrowserAutoOpenUrlShouldPreferConfiguredUrl() {
         var options = new HostingOptions {
             Urls = "http://0.0.0.0:5078",
             BrowserAutoOpen = new BrowserAutoOpenOptions {
@@ -61,7 +61,7 @@ public sealed class HostingOptionsTests {
     /// 验证场景：未配置可解析监听地址时返回 null，交由托管服务跳过副作用。
     /// </summary>
     [Fact]
-    public void BuildBrowserAutoOpenUrl_ShouldReturnNull_WhenBindingsAreInvalid() {
+    public void BuildBrowserAutoOpenUrlShouldReturnNullWhenBindingsAreInvalid() {
         var options = new HostingOptions {
             Urls = "not-a-valid-url"
         };

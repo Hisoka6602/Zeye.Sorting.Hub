@@ -16,7 +16,7 @@ public sealed class DatabaseConnectionDiagnosticsTests {
     /// 验证场景：默认配置满足约束并保留规划默认值。
     /// </summary>
     [Fact]
-    public void DiagnosticsOptions_ShouldExposeExpectedDefaults() {
+    public void DiagnosticsOptionsShouldExposeExpectedDefaults() {
         var options = new DatabaseConnectionDiagnosticsOptions();
 
         Assert.True(options.IsWarmupEnabled);
@@ -30,7 +30,7 @@ public sealed class DatabaseConnectionDiagnosticsTests {
     /// 验证场景：非法配置会在选项校验阶段被拒绝。
     /// </summary>
     [Fact]
-    public void DiagnosticsOptions_ShouldRejectInvalidConfiguration() {
+    public void DiagnosticsOptionsShouldRejectInvalidConfiguration() {
         var services = new ServiceCollection();
         services.AddOptions<DatabaseConnectionDiagnosticsOptions>()
             .Configure(options => {
@@ -55,7 +55,7 @@ public sealed class DatabaseConnectionDiagnosticsTests {
     /// 验证场景：连接探测失败时不会向外抛出异常，而是转为失败快照。
     /// </summary>
     [Fact]
-    public async Task ProbeAsync_WhenConnectionFails_ShouldReturnFailureSnapshotWithoutThrowing() {
+    public async Task ProbeAsyncWhenConnectionFailsShouldReturnFailureSnapshotWithoutThrowing() {
         var service = CreateDiagnosticsService(
             CreateSqlServerFailureFactory(),
             new DatabaseConnectionDiagnosticsOptions {
@@ -76,7 +76,7 @@ public sealed class DatabaseConnectionDiagnosticsTests {
     /// 验证场景：连续失败达到阈值后，详细健康检查返回 Unhealthy。
     /// </summary>
     [Fact]
-    public async Task DetailedHealthCheck_WhenFailuresReachThreshold_ShouldReturnUnhealthy() {
+    public async Task DetailedHealthCheckWhenFailuresReachThresholdShouldReturnUnhealthy() {
         var options = new DatabaseConnectionDiagnosticsOptions {
             ProbeTimeoutMilliseconds = 1000,
             FailureThreshold = 2,
@@ -96,7 +96,7 @@ public sealed class DatabaseConnectionDiagnosticsTests {
     /// 验证场景：连续成功探测会维持 Healthy，并更新成功计数。
     /// </summary>
     [Fact]
-    public async Task DetailedHealthCheck_WhenProbesKeepSucceeding_ShouldReturnHealthy() {
+    public async Task DetailedHealthCheckWhenProbesKeepSucceedingShouldReturnHealthy() {
         var options = new DatabaseConnectionDiagnosticsOptions {
             ProbeTimeoutMilliseconds = 1000,
             FailureThreshold = 2,
@@ -120,7 +120,7 @@ public sealed class DatabaseConnectionDiagnosticsTests {
     /// 验证场景：成功快照时间保持本地时间语义。
     /// </summary>
     [Fact]
-    public async Task ProbeAsync_WhenProbeSucceeds_ShouldKeepLocalTimeSemantics() {
+    public async Task ProbeAsyncWhenProbeSucceedsShouldKeepLocalTimeSemantics() {
         var diagnostics = CreateDiagnosticsService(
             CreateInMemoryFactory($"diagnostics-local-time-{Guid.NewGuid():N}"),
             new DatabaseConnectionDiagnosticsOptions());
@@ -135,7 +135,7 @@ public sealed class DatabaseConnectionDiagnosticsTests {
     /// 验证场景：详细健康检查附带关键诊断数据。
     /// </summary>
     [Fact]
-    public async Task DetailedHealthCheck_ShouldContainKeyDataFields() {
+    public async Task DetailedHealthCheckShouldContainKeyDataFields() {
         var options = new DatabaseConnectionDiagnosticsOptions();
         var diagnostics = CreateDiagnosticsService(CreateInMemoryFactory($"diagnostics-health-{Guid.NewGuid():N}"), options);
         var healthCheck = new DatabaseConnectionDetailedHealthCheck(diagnostics, Microsoft.Extensions.Options.Options.Create(options));
@@ -168,7 +168,7 @@ public sealed class DatabaseConnectionDiagnosticsTests {
     /// </summary>
     /// <param name="databaseName">数据库名称。</param>
     /// <returns>InMemory 数据库工厂。</returns>
-    private static IDbContextFactory<SortingHubDbContext> CreateInMemoryFactory(string databaseName) {
+    private static Zeye.Sorting.Hub.Host.Tests.SortingHubTestDbContextFactory CreateInMemoryFactory(string databaseName) {
         var options = new DbContextOptionsBuilder<SortingHubDbContext>()
             .UseInMemoryDatabase(databaseName)
             .Options;
@@ -179,7 +179,7 @@ public sealed class DatabaseConnectionDiagnosticsTests {
     /// 创建必然失败的 SQL Server 数据库工厂。
     /// </summary>
     /// <returns>失败数据库工厂。</returns>
-    private static IDbContextFactory<SortingHubDbContext> CreateSqlServerFailureFactory() {
+    private static Zeye.Sorting.Hub.Host.Tests.SortingHubTestDbContextFactory CreateSqlServerFailureFactory() {
         var options = new DbContextOptionsBuilder<SortingHubDbContext>()
             .UseSqlServer("Server=127.0.0.1,1;Database=DiagnosticsFailure;User Id=sa;Password=Password123!;TrustServerCertificate=True;Connect Timeout=1")
             .Options;

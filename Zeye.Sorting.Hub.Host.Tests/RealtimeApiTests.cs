@@ -18,6 +18,9 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 
 /// <summary>使用生产认证与正式实时入口验证握手、读取、变更推送、取消和权限撤销。</summary>
 public sealed class RealtimeApiTests {
+    /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+    private static readonly string[] CachedParcelsReadValues = new[] { "parcels.read" };
+
     /// <summary>三个敏感版块的列表、明细及深度诊断实时读取入口。</summary>
     private static readonly string[] RestrictedReadPaths = ["/api/audit/web-requests", "/api/audit/web-requests/123",
         "/api/diagnostics/slow-queries", "/api/diagnostics/slow-queries/test", "/api/data-governance/archive-tasks",
@@ -188,7 +191,7 @@ public sealed class RealtimeApiTests {
     public async Task ExistingConnectionRevalidatesRolesAndAccountDisable() {
         await using var db = new RelationalParcelTestDatabase(); await db.InitializeAsync();
         await using var app = await CreateAsync(db); using var admin = app.GetTestClient(); await LoginAsync(admin);
-        Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync("/api/access/roles", new { expectedRevision = 1, name = "查询员", permissions = new[] { "parcels.read" } })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync("/api/access/roles", new { expectedRevision = 1, name = "查询员", permissions = CachedParcelsReadValues })).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync("/api/access/users", new { expectedRevision = 2, account = "reader", name = "查询员", password = "test-reader-password", roleId = 2, enabled = true })).StatusCode);
         using var reader = app.GetTestClient(); reader.DefaultRequestHeaders.Add("X-Zeye-Client", "web");
         AccessApiTests.UseCookie(reader, await reader.PostAsJsonAsync("/api/access/login", new { username = "reader", password = "test-reader-password" }));
@@ -223,7 +226,7 @@ public sealed class RealtimeApiTests {
         configureServices: builder => {
             builder.Services.AddSortingRealtime();
             builder.Services.Configure<WebRequestAuditLogOptions>(options => options.Enabled = false);
-            builder.Services.AddSingleton(new WebRequestAuditBackgroundQueue(32, TimeSpan.FromSeconds(30)));
+            builder.Services.AddSingleton(new WebRequestAuditBuffer(32, TimeSpan.FromSeconds(30)));
         }, configureRoutes: app => {
             app.UseSortingRealtime();
             app.MapGet("/api/parcels", (HttpContext context) => Results.Ok(new { id = 9223372036854775806L, query = context.Request.Query["barCodeKeyword"].ToString() }));

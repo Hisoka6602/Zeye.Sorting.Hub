@@ -14,11 +14,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 /// <summary>新增关系库共用的 Code First 索引生成与批量结构探测；业务 DDL 由 EF 提供器生成。</summary>
 public abstract class EfModelDatabaseDialect : IDatabaseDialect, IBatchShardingPhysicalTableProbe {
     /// <summary>运行配置，仅用于构建无拦截器的模型上下文，避免工厂与调优管线循环依赖。</summary>
-    protected readonly IConfiguration Configuration;
+    protected IConfiguration Configuration { get; }
     /// <summary>SQLite 相对路径的内容根目录。</summary>
-    protected readonly string BaseDirectory;
+    protected string BaseDirectory { get; }
     /// <summary>启动和结构探测的诊断管线，不参与创建只读设计时模型。</summary>
-    protected readonly SlowQueryAutoTuningPipeline? Telemetry;
+    protected SlowQueryAutoTuningPipeline? Telemetry { get; }
     /// <summary>保存配置与内容根目录。</summary>
     protected EfModelDatabaseDialect(IConfiguration configuration, IHostEnvironment? environment = null, SlowQueryAutoTuningPipeline? telemetry = null) {
         Configuration = configuration; BaseDirectory = environment?.ContentRootPath ?? Directory.GetCurrentDirectory(); Telemetry = telemetry;

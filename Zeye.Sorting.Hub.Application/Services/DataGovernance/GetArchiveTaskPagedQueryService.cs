@@ -13,7 +13,7 @@ public sealed class GetArchiveTaskPagedQueryService {
     /// <summary>
     /// NLog 日志器。
     /// </summary>
-    private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
+    private static readonly NLog.Logger Logger = LogManager.GetCurrentClassLogger();
 
     /// <summary>
     /// 归档任务仓储。
@@ -37,11 +37,11 @@ public sealed class GetArchiveTaskPagedQueryService {
     public async Task<ArchiveTaskListResponse> ExecuteAsync(ArchiveTaskListRequest request, CancellationToken cancellationToken) {
         ArgumentNullException.ThrowIfNull(request);
         if (request.PageNumber <= 0) {
-            throw new ArgumentOutOfRangeException(nameof(request.PageNumber), "pageNumber 必须大于 0。");
+            throw new ArgumentOutOfRangeException(nameof(request), "pageNumber 必须大于 0。");
         }
 
         if (request.PageSize <= 0 || request.PageSize > 200) {
-            throw new ArgumentOutOfRangeException(nameof(request.PageSize), "pageSize 必须在 1~200 之间。");
+            throw new ArgumentOutOfRangeException(nameof(request), "pageSize 必须在 1~200 之间。");
         }
 
         var status = ParseOptionalEnum<ArchiveTaskStatus>(request.Status, nameof(request.Status), "status 仅支持 Pending / Running / Completed / Failed。");

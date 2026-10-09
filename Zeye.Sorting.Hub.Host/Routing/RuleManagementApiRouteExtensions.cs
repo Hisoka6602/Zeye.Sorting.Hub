@@ -43,7 +43,7 @@ public static class RuleManagementApiRouteExtensions {
             }
             if (request.Rules.Any(x => x.SystemRule is not null && !ClassificationRuleDefaults.Create().Any(s => s.Id == x.Id)))
                 return Results.Problem(statusCode: 400, detail: "不能伪造系统规则。");
-            var rules = request.Rules.Select(x => x.SystemRule is null ? x with { Modified = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"), Editor = context.User.Identity?.Name ?? "操作员" } : x).ToArray();
+            var rules = request.Rules.Select(x => x.SystemRule is null ? x with { Modified = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture), Editor = context.User.Identity?.Name ?? "操作员" } : x).ToArray();
             var saved = await store.WriteAsync("rules-" + category, JsonSerializer.Serialize(rules, JsonOptions), request.ExpectedRevision, ct);
             return saved is null ? Results.Problem(statusCode: 409, detail: "规则已被其他操作更新，请刷新后重试。") : Results.Ok(new { revision = saved.Revision, rules });
         }).WithSummary("保存包裹或异常分类规则")

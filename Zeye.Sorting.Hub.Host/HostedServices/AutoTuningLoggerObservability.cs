@@ -8,7 +8,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <summary>
         /// NLog 静态日志器实例，用于输出自动调优观测指标与事件。
         /// </summary>
-        private static readonly NLog.ILogger Logger = LogManager.GetCurrentClassLogger();
+        private static readonly NLog.Logger Logger = LogManager.GetCurrentClassLogger();
 
         /// <summary>
         /// 将指标数值写入 NLog Info 日志，确保指标落盘（所有业务日志必须落盘）。

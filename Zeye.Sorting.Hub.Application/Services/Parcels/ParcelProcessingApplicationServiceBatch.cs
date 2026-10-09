@@ -14,8 +14,8 @@ public sealed partial class ParcelProcessingApplicationService {
         var records = requests.Select(request => ParcelProcessingContractMapper.ToDomain(request, recordedAt)).ToArray();
         var outcomes = await _repository.AppendBatchAsync(records, cancellationToken);
         return outcomes.Select(result => result.IsSuccess && result.Value is not null
-            ? RepositoryResult<ParcelProcessingWriteResponse>.Success(new() { ParcelId = result.Value.ParcelId?.ToString(CultureInfo.InvariantCulture),
+            ? RepositoryResult.Success<ParcelProcessingWriteResponse>(new() { ParcelId = result.Value.ParcelId?.ToString(CultureInfo.InvariantCulture),
                 IsDuplicate = result.Value.IsDuplicate, PartitionSuffix = result.Value.PartitionSuffix })
-            : RepositoryResult<ParcelProcessingWriteResponse>.Fail(result.ErrorMessage ?? "保存处理记录失败。", result.ErrorCode ?? "ParcelProcessingWriteFailed")).ToArray();
+            : RepositoryResult.Fail<ParcelProcessingWriteResponse>(result.ErrorMessage ?? "保存处理记录失败。", result.ErrorCode ?? "ParcelProcessingWriteFailed")).ToArray();
     }
 }

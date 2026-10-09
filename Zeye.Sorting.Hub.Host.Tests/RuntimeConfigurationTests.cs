@@ -26,6 +26,11 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 
 /// <summary>真实文件存储验证自动初始化、旧配置迁移、热更新及版本隔离。</summary>
 public sealed class RuntimeConfigurationTests {
+    /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+    private static readonly string[] CachedNewValues = new[] { "/new" };
+    /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+    private static readonly string[] Cached718Values = new[] { "7", "18" };
+
     /// <summary>崩溃后分别确认已提交、未提交及已被后续版本替代的历史，避免误报失败。</summary>
     [Fact]
     public void PendingHistoryIsRecoveredWithoutGuessingNewerRevisions() {
@@ -72,14 +77,14 @@ public sealed class RuntimeConfigurationTests {
             Assert.Equal("9", builder.Configuration["LogCleanup:RetentionDays"]);
             Assert.Equal("true", builder.Configuration["LegacyExtra:Flag"]);
             source.Save(source.Capture().Revision, ConfigurationDocument.Parse("{\"WebRequestAuditLog\":{\"ExcludedPathPrefixes\":[\"/new\"]}}"));
-            Assert.Equal(new[] { "/new" }, builder.Configuration.GetSection("WebRequestAuditLog:ExcludedPathPrefixes").Get<string[]>());
+            Assert.Equal(CachedNewValues, builder.Configuration.GetSection("WebRequestAuditLog:ExcludedPathPrefixes").Get<string[]>());
         }
         File.WriteAllText(Path.Combine(env.DirectoryPath, "appsettings.json"), "{\"LogCleanup\":{\"RetentionDays\":1}}");
         var restarted = WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = env.DirectoryPath, EnvironmentName = "Test", Args = [] });
         ConfigurationBootstrapper.Configure(restarted);
         using var second = restarted.Build();
         Assert.Equal("9", restarted.Configuration["LogCleanup:RetentionDays"]);
-        Assert.Equal(new[] { "/new" }, restarted.Configuration.GetSection("WebRequestAuditLog:ExcludedPathPrefixes").Get<string[]>());
+        Assert.Equal(CachedNewValues, restarted.Configuration.GetSection("WebRequestAuditLog:ExcludedPathPrefixes").Get<string[]>());
     }
 
     /// <summary>热更新通知 options；启动参数只在重启后生效，历史跨服务实例保留。</summary>
@@ -118,10 +123,10 @@ public sealed class RuntimeConfigurationTests {
         var next = env.Store.ReadRuntime(); next["LogCleanup"]!["RetentionDays"] = 7;
         var other = env.Store.ReadRuntime(); other["LogCleanup"]!["RetentionDays"] = 18;
         var results = await Task.WhenAll(Task.Run(() => env.Store.WriteRuntime(revision, next)), Task.Run(() => second.WriteRuntime(revision, other)));
-        Assert.Single(results.Where(x => x));
+        Assert.Single(results, x => x);
         Assert.Single(env.History.Read());
         Assert.True(env.Source.TryReload());
-        Assert.Contains(env.Configuration["LogCleanup:RetentionDays"], new[] { "7", "18" });
+        Assert.Contains(env.Configuration["LogCleanup:RetentionDays"], Cached718Values);
     }
 
     /// <summary>保存前校验失败与外部无效变更都不会污染当前 options。</summary>

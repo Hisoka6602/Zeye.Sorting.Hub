@@ -26,7 +26,7 @@ public sealed class SwaggerDocumentationTests {
     /// 验证场景：枚举型 int 字段会在 Swagger 中输出“数值 + 枚举名 + 中文描述”。
     /// </summary>
     [Fact]
-    public async Task SwaggerJson_ShouldContainChineseEnumDescriptions_ForIntEnumFields() {
+    public async Task SwaggerJsonShouldContainChineseEnumDescriptionsForIntEnumFields() {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
         builder.Services.AddEndpointsApiExplorer();
@@ -60,7 +60,7 @@ public sealed class SwaggerDocumentationTests {
     /// 验证场景：值对象响应中的枚举型 int 字段会在 Swagger 中输出中文枚举说明。
     /// </summary>
     [Fact]
-    public async Task SwaggerJson_ShouldContainChineseEnumDescriptions_ForValueObjectIntEnumFields() {
+    public async Task SwaggerJsonShouldContainChineseEnumDescriptionsForValueObjectIntEnumFields() {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
         builder.Services.AddEndpointsApiExplorer();
@@ -109,7 +109,7 @@ public sealed class SwaggerDocumentationTests {
     /// 验证场景：Swagger 文档包含审计日志只读端点与响应声明。
     /// </summary>
     [Fact]
-    public async Task SwaggerJson_ShouldContainAuditReadOnlyEndpoints_AndResponses() {
+    public async Task SwaggerJsonShouldContainAuditReadOnlyEndpointsAndResponses() {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
         builder.Services.AddProblemDetails();

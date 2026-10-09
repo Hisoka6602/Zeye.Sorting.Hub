@@ -37,7 +37,7 @@ public sealed class ParcelAdminApiTests {
     /// 验证场景：新增 Parcel 成功，返回 201 Created 及详情。
     /// </summary>
     [Fact]
-    public async Task CreateParcel_WithValidRequest_ShouldReturn201() {
+    public async Task CreateParcelWithValidRequestShouldReturn201() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
 
@@ -60,7 +60,7 @@ public sealed class ParcelAdminApiTests {
     /// 验证场景：新增时传入 UTC 时间（Z 后缀），返回 400 Bad Request。
     /// </summary>
     [Fact]
-    public async Task CreateParcel_WithUtcScannedTime_ShouldReturn400() {
+    public async Task CreateParcelWithUtcScannedTimeShouldReturn400() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
 
@@ -80,7 +80,7 @@ public sealed class ParcelAdminApiTests {
     /// 验证场景：新增时传入带 offset 的时间（+08:00），返回 400 Bad Request（字符串解析可严格拒绝 offset）。
     /// </summary>
     [Fact]
-    public async Task CreateParcel_WithOffsetScannedTime_ShouldReturn400() {
+    public async Task CreateParcelWithOffsetScannedTimeShouldReturn400() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
 
@@ -100,7 +100,7 @@ public sealed class ParcelAdminApiTests {
     /// 验证场景：更新时传入带 offset 的 completedTime（+08:00），返回 400 Bad Request（字符串解析可严格拒绝 offset）。
     /// </summary>
     [Fact]
-    public async Task UpdateParcelStatus_MarkCompleted_WithOffsetCompletedTime_ShouldReturn400() {
+    public async Task UpdateParcelStatusMarkCompletedWithOffsetCompletedTimeShouldReturn400() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
 
@@ -120,7 +120,7 @@ public sealed class ParcelAdminApiTests {
     /// 验证场景：新增时 BarCodes 为空字符串，域层抛 ArgumentException，返回 400 Bad Request。
     /// </summary>
     [Fact]
-    public async Task CreateParcel_WithEmptyBarCodes_ShouldReturn400() {
+    public async Task CreateParcelWithEmptyBarCodesShouldReturn400() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
 
@@ -139,7 +139,7 @@ public sealed class ParcelAdminApiTests {
     /// 验证场景：新增时 id 小于等于 0，返回 400 Bad Request。
     /// </summary>
     [Fact]
-    public async Task CreateParcel_WithNonPositiveId_ShouldReturn400() {
+    public async Task CreateParcelWithNonPositiveIdShouldReturn400() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
 
@@ -157,7 +157,7 @@ public sealed class ParcelAdminApiTests {
     /// 验证场景：新增时重复 id，返回 409 Conflict。
     /// </summary>
     [Fact]
-    public async Task CreateParcel_WithDuplicateId_ShouldReturn409() {
+    public async Task CreateParcelWithDuplicateIdShouldReturn409() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
 
@@ -181,7 +181,7 @@ public sealed class ParcelAdminApiTests {
     /// 验证场景：仓储写入失败（ShouldFailOnAdd=true），返回 500 Internal Server Error（覆盖写接口失败路径日志链路）。
     /// </summary>
     [Fact]
-    public async Task CreateParcel_WhenRepositoryFails_ShouldReturn500() {
+    public async Task CreateParcelWhenRepositoryFailsShouldReturn500() {
         var fakeRepo = new FakeParcelRepository { ShouldFailOnAdd = true };
         await using var app = await BuildTestAppAsync(fakeRepo);
         using var client = app.GetTestClient();
@@ -205,7 +205,7 @@ public sealed class ParcelAdminApiTests {
     /// 验证场景：UpdateRequestStatus 操作成功，返回 200 OK 及更新后详情。
     /// </summary>
     [Fact]
-    public async Task UpdateParcelStatus_UpdateRequestStatus_ShouldReturn200() {
+    public async Task UpdateParcelStatusUpdateRequestStatusShouldReturn200() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
 
@@ -227,7 +227,7 @@ public sealed class ParcelAdminApiTests {
     /// 验证场景：MarkCompleted 操作成功，返回 200 OK。
     /// </summary>
     [Fact]
-    public async Task UpdateParcelStatus_MarkCompleted_ShouldReturn200() {
+    public async Task UpdateParcelStatusMarkCompletedShouldReturn200() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
 
@@ -246,7 +246,7 @@ public sealed class ParcelAdminApiTests {
     /// 验证场景：目标包裹不存在，返回 404 Not Found。
     /// </summary>
     [Fact]
-    public async Task UpdateParcelStatus_WhenNotFound_ShouldReturn404() {
+    public async Task UpdateParcelStatusWhenNotFoundShouldReturn404() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
 
@@ -264,7 +264,7 @@ public sealed class ParcelAdminApiTests {
     /// 验证场景：Operation 无效值，返回 400 Bad Request。
     /// </summary>
     [Fact]
-    public async Task UpdateParcelStatus_WithInvalidOperation_ShouldReturn400() {
+    public async Task UpdateParcelStatusWithInvalidOperationShouldReturn400() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
 
@@ -284,7 +284,7 @@ public sealed class ParcelAdminApiTests {
     /// 验证场景：MarkCompleted 操作但未提供 completedTime，返回 400 Bad Request。
     /// </summary>
     [Fact]
-    public async Task UpdateParcelStatus_MarkCompleted_WithoutCompletedTime_ShouldReturn400() {
+    public async Task UpdateParcelStatusMarkCompletedWithoutCompletedTimeShouldReturn400() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
 
@@ -308,7 +308,7 @@ public sealed class ParcelAdminApiTests {
     /// 验证场景：删除存在的包裹成功，返回 204 No Content。
     /// </summary>
     [Fact]
-    public async Task DeleteParcel_WhenExists_ShouldReturn204() {
+    public async Task DeleteParcelWhenExistsShouldReturn204() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
 
@@ -321,7 +321,7 @@ public sealed class ParcelAdminApiTests {
     /// 验证场景：删除不存在的包裹，返回 404 Not Found。
     /// </summary>
     [Fact]
-    public async Task DeleteParcel_WhenNotFound_ShouldReturn404() {
+    public async Task DeleteParcelWhenNotFoundShouldReturn404() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
 
@@ -338,7 +338,7 @@ public sealed class ParcelAdminApiTests {
     /// 验证场景：cleanup-expired - 守卫阻断（blocked），返回 200 + decision=blocked + executedCount=0。
     /// </summary>
     [Fact]
-    public async Task CleanupExpired_WhenBlockedByGuard_ShouldReturnBlockedDecision() {
+    public async Task CleanupExpiredWhenBlockedByGuardShouldReturnBlockedDecision() {
         var fakeRepo = new FakeParcelRepository {
             CleanupDecision = ActionIsolationDecision.BlockedByGuard,
             CleanupPlannedCount = 10,
@@ -368,7 +368,7 @@ public sealed class ParcelAdminApiTests {
     /// 验证场景：cleanup-expired - 演练模式（dry-run），返回 200 + decision=dry-run + executedCount=0。
     /// </summary>
     [Fact]
-    public async Task CleanupExpired_WhenDryRun_ShouldReturnDryRunDecision() {
+    public async Task CleanupExpiredWhenDryRunShouldReturnDryRunDecision() {
         var fakeRepo = new FakeParcelRepository {
             CleanupDecision = ActionIsolationDecision.DryRunOnly,
             CleanupPlannedCount = 8
@@ -397,7 +397,7 @@ public sealed class ParcelAdminApiTests {
     /// 验证场景：cleanup-expired - 正常执行（execute），返回 200 + decision=execute + executedCount 有值。
     /// </summary>
     [Fact]
-    public async Task CleanupExpired_WhenExecute_ShouldReturnExecuteDecision() {
+    public async Task CleanupExpiredWhenExecuteShouldReturnExecuteDecision() {
         var fakeRepo = new FakeParcelRepository {
             CleanupDecision = ActionIsolationDecision.Execute,
             CleanupPlannedCount = 6,
@@ -428,7 +428,7 @@ public sealed class ParcelAdminApiTests {
     /// 验证场景：cleanup-expired 传入 UTC 时间字符串（含 Z），返回 400 Bad Request。
     /// </summary>
     [Fact]
-    public async Task CleanupExpired_WithUtcCreatedBefore_ShouldReturn400() {
+    public async Task CleanupExpiredWithUtcCreatedBeforeShouldReturn400() {
         await using var app = await BuildTestAppAsync();
         using var client = await CleanupClientAsync(app);
 
@@ -448,7 +448,7 @@ public sealed class ParcelAdminApiTests {
     /// 验证场景：cleanup-expired 传入非法时间字符串，返回 400 Bad Request。
     /// </summary>
     [Fact]
-    public async Task CleanupExpired_WithInvalidCreatedBefore_ShouldReturn400() {
+    public async Task CleanupExpiredWithInvalidCreatedBeforeShouldReturn400() {
         await using var app = await BuildTestAppAsync();
         using var client = await CleanupClientAsync(app);
 

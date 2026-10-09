@@ -4,6 +4,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 
 /// <summary>计量顺序读取大字段的实际流调用，不将消费方等待计入提供器读取。</summary>
 internal sealed class SlowQueryReaderStream : Stream {
+    /// <summary>防止基类异步释放回调再次释放提供器流。</summary>
+    private int _disposeStarted;
     /// <summary>提供器返回的原始流。</summary>
     private readonly Stream _inner;
     /// <summary>所属命令的计量状态。</summary>
@@ -46,15 +48,24 @@ internal sealed class SlowQueryReaderStream : Stream {
     public override void Write(byte[] buffer, int offset, int count) => _inner.Write(buffer, offset, count);
     /// <inheritdoc />
     protected override void Dispose(bool disposing) {
-        if (!disposing) return;
-        var start = Stopwatch.GetTimestamp();
-        try { _inner.Dispose(); _execution.ReadFinished(start); }
-        catch (Exception exception) { _execution.ReadFinished(start); _execution.Complete(exception, true); throw; }
+        try {
+            if (disposing && Interlocked.Exchange(ref _disposeStarted, 1) == 0) {
+                var start = Stopwatch.GetTimestamp();
+                try { _inner.Dispose(); _execution.ReadFinished(start); }
+                catch (Exception exception) { _execution.ReadFinished(start); _execution.Complete(exception, true); throw; }
+            }
+        }
+        finally { base.Dispose(disposing); }
     }
     /// <inheritdoc />
     public override async ValueTask DisposeAsync() {
-        var start = Stopwatch.GetTimestamp();
-        try { await _inner.DisposeAsync().ConfigureAwait(false); _execution.ReadFinished(start); }
-        catch (Exception exception) { _execution.ReadFinished(start); _execution.Complete(exception, true); throw; }
+        try {
+            if (Interlocked.Exchange(ref _disposeStarted, 1) == 0) {
+                var start = Stopwatch.GetTimestamp();
+                try { await _inner.DisposeAsync().ConfigureAwait(false); _execution.ReadFinished(start); }
+                catch (Exception exception) { _execution.ReadFinished(start); _execution.Complete(exception, true); throw; }
+            }
+        }
+        finally { await base.DisposeAsync().ConfigureAwait(false); }
     }
 }

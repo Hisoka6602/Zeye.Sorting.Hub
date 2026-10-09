@@ -20,10 +20,10 @@ public sealed class ParcelQueryServicesTests {
     /// </summary>
     private static long _testParcelIdSequence = 1000;
     /// <summary>
-    /// 验证场景：GetParcelPagedQueryService_ShouldMapAndValidate。
+    /// 验证场景：GetParcelPagedQueryServiceShouldMapAndValidate。
     /// </summary>
     [Fact]
-    public async Task GetParcelPagedQueryService_ShouldMapAndValidate() {
+    public async Task GetParcelPagedQueryServiceShouldMapAndValidate() {
         var databaseName = $"parcel-query-service-test-{Guid.NewGuid():N}";
         var baseTime = new DateTime(2026, 3, 20, 10, 0, 0, DateTimeKind.Local);
         try {
@@ -64,10 +64,10 @@ public sealed class ParcelQueryServicesTests {
     }
 
     /// <summary>
-    /// 验证场景：GetParcelByIdQueryService_ShouldReturnDetailOrNull。
+    /// 验证场景：GetParcelByIdQueryServiceShouldReturnDetailOrNull。
     /// </summary>
     [Fact]
-    public async Task GetParcelByIdQueryService_ShouldReturnDetailOrNull() {
+    public async Task GetParcelByIdQueryServiceShouldReturnDetailOrNull() {
         var databaseName = $"parcel-query-service-test-{Guid.NewGuid():N}";
         var baseTime = new DateTime(2026, 3, 20, 11, 0, 0, DateTimeKind.Local);
         try {
@@ -117,10 +117,10 @@ public sealed class ParcelQueryServicesTests {
     }
 
     /// <summary>
-    /// 验证场景：GetAdjacentParcelsQueryService_ShouldMapAndNormalize。
+    /// 验证场景：GetAdjacentParcelsQueryServiceShouldMapAndNormalize。
     /// </summary>
     [Fact]
-    public async Task GetAdjacentParcelsQueryService_ShouldMapAndNormalize() {
+    public async Task GetAdjacentParcelsQueryServiceShouldMapAndNormalize() {
         var databaseName = $"parcel-query-service-test-{Guid.NewGuid():N}";
         var baseTime = new DateTime(2026, 3, 20, 9, 0, 0, DateTimeKind.Local);
         try {
@@ -161,7 +161,7 @@ public sealed class ParcelQueryServicesTests {
     /// 验证场景：邻近查询锚点不存在时抛出 KeyNotFoundException。
     /// </summary>
     [Fact]
-    public async Task GetAdjacentParcelsQueryService_WhenAnchorNotFound_ShouldThrowKeyNotFoundException() {
+    public async Task GetAdjacentParcelsQueryServiceWhenAnchorNotFoundShouldThrowKeyNotFoundException() {
         var databaseName = $"parcel-query-service-test-{Guid.NewGuid():N}";
         try {
             var repository = CreateRepository(databaseName);
@@ -184,7 +184,7 @@ public sealed class ParcelQueryServicesTests {
     /// 覆盖 bagCode、workstationName、actualChuteId、status 多参数组合路径。
     /// </summary>
     [Fact]
-    public async Task GetParcelPagedQueryService_WithMultipleFilters_ShouldReturnOnlyMatchingParcels() {
+    public async Task GetParcelPagedQueryServiceWithMultipleFiltersShouldReturnOnlyMatchingParcels() {
         var databaseName = $"parcel-multifilter-test-{Guid.NewGuid():N}";
         var baseTime = LocalTimeTestConstraint.CreateLocalTime(2026, 3, 20, 12, 0, 0);
         try {
@@ -229,7 +229,7 @@ public sealed class ParcelQueryServicesTests {
     /// 验证场景：ExceptionType 过滤条件可以单独筛选出对应异常类型的包裹。
     /// </summary>
     [Fact]
-    public async Task GetParcelPagedQueryService_WithExceptionTypeFilter_ShouldReturnOnlyMatchingParcels() {
+    public async Task GetParcelPagedQueryServiceWithExceptionTypeFilterShouldReturnOnlyMatchingParcels() {
         var databaseName = $"parcel-exceptiontype-test-{Guid.NewGuid():N}";
         var baseTime = LocalTimeTestConstraint.CreateLocalTime(2026, 3, 20, 13, 0, 0);
         try {
@@ -265,7 +265,7 @@ public sealed class ParcelQueryServicesTests {
     /// 验证场景：传入非法 ExceptionType 时，GetParcelPagedQueryService 应抛出 ArgumentOutOfRangeException。
     /// </summary>
     [Fact]
-    public async Task GetParcelPagedQueryService_WithInvalidExceptionType_ShouldThrow() {
+    public async Task GetParcelPagedQueryServiceWithInvalidExceptionTypeShouldThrow() {
         var databaseName = $"parcel-exceptiontype-invalid-{Guid.NewGuid():N}";
         try {
             var service = new GetParcelPagedQueryService(CreateRepository(databaseName));

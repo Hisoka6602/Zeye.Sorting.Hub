@@ -41,7 +41,7 @@ public sealed class ParcelAnalyticsTests {
         Assert.Equal(1, report.FailedAttemptCount);
         Assert.Equal(1, report.UnboundDwsEventCount);
         Assert.Equal(2, report.Daily.Count);
-        Assert.Equal(first.Date.ToString("yyyy-MM-dd"), Assert.Single(report.DailySorting).Date);
+        Assert.Equal(first.Date.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture), Assert.Single(report.DailySorting).Date);
         Assert.Equal(1, Assert.Single(report.DailySorting).SortedCount);
         Assert.Equal("包裹间距违规", Assert.Single(report.ExceptionTypes).Name);
         Assert.Contains(report.Workstations, x => x.Name == "W-B" && x.Count == 1);

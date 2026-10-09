@@ -85,13 +85,13 @@ public sealed class ShardingGovernanceHealthCheck : IHealthCheck {
     /// <param name="report">巡检报告。</param>
     /// <param name="plan">预建计划。</param>
     /// <returns>附加数据。</returns>
-    private static IReadOnlyDictionary<string, object> BuildHealthData(ShardingInspectionReport? report, ShardingPrebuildPlan? plan) {
+    private static System.Collections.Generic.Dictionary<string, object> BuildHealthData(ShardingInspectionReport? report, ShardingPrebuildPlan? plan) {
         var data = new Dictionary<string, object> {
             ["hasInspectionReport"] = report is not null,
             ["hasPrebuildPlan"] = plan is not null
         };
         if (report is not null) {
-            data["checkedAtLocal"] = report.CheckedAtLocal.ToString("yyyy-MM-dd HH:mm:ss");
+            data["checkedAtLocal"] = report.CheckedAtLocal.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
             data["provider"] = report.ProviderName;
             data["missingPhysicalTableCount"] = report.MissingPhysicalTables.Count;
             data["missingIndexCount"] = report.MissingIndexes.Count;
@@ -101,7 +101,7 @@ public sealed class ShardingGovernanceHealthCheck : IHealthCheck {
         }
 
         if (plan is not null) {
-            data["prebuildGeneratedAtLocal"] = plan.GeneratedAtLocal.ToString("yyyy-MM-dd HH:mm:ss");
+            data["prebuildGeneratedAtLocal"] = plan.GeneratedAtLocal.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
             data["prebuildDryRun"] = plan.IsDryRun;
             data["prebuildPlannedTableCount"] = plan.PlannedPhysicalTables.Count;
             data["prebuildMissingTableCount"] = plan.MissingPhysicalTables.Count;

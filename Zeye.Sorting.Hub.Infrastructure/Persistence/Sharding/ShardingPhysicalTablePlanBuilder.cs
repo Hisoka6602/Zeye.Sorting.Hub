@@ -70,7 +70,7 @@ public sealed class ShardingPhysicalTablePlanBuilder {
     /// <param name="dbContext">数据库上下文。</param>
     /// <param name="entityTypes">实体类型集合。</param>
     /// <returns>基础表名集合。</returns>
-    private static IReadOnlyList<string> ResolveBaseTableNames(SortingHubDbContext dbContext, IReadOnlyList<Type> entityTypes) {
+    private static string[] ResolveBaseTableNames(SortingHubDbContext dbContext, IReadOnlyList<Type> entityTypes) {
         var baseTableNames = new List<string>(entityTypes.Count);
         foreach (var entityType in entityTypes) {
             var tableName = dbContext.Model
@@ -120,7 +120,7 @@ public sealed class ShardingPhysicalTablePlanBuilder {
     /// <param name="endAtLocal">结束时间。</param>
     /// <param name="shouldIncludeNextPeriod">是否包含下一周期。</param>
     /// <returns>后缀集合。</returns>
-    private static IReadOnlyList<string> BuildDateSuffixes(
+    private static System.Collections.Generic.List<string> BuildDateSuffixes(
         ExpandByDateMode dateMode,
         DateTime startAtLocal,
         DateTime endAtLocal,
@@ -139,7 +139,7 @@ public sealed class ShardingPhysicalTablePlanBuilder {
     /// <param name="endAtLocal">结束时间。</param>
     /// <param name="shouldIncludeNextPeriod">是否包含下一天。</param>
     /// <returns>按日后缀集合。</returns>
-    private static IReadOnlyList<string> BuildDailySuffixes(DateTime startAtLocal, DateTime endAtLocal, bool shouldIncludeNextPeriod) {
+    private static System.Collections.Generic.List<string> BuildDailySuffixes(DateTime startAtLocal, DateTime endAtLocal, bool shouldIncludeNextPeriod) {
         var endDate = endAtLocal.Date;
         if (shouldIncludeNextPeriod && endDate <= startAtLocal.Date) {
             endDate = startAtLocal.Date.AddDays(1);
@@ -147,7 +147,7 @@ public sealed class ShardingPhysicalTablePlanBuilder {
 
         var suffixes = new List<string>();
         for (var date = startAtLocal.Date; date <= endDate; date = date.AddDays(1)) {
-            suffixes.Add(date.ToString("yyyyMMdd"));
+            suffixes.Add(date.ToString("yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture));
         }
 
         return suffixes;
@@ -160,7 +160,7 @@ public sealed class ShardingPhysicalTablePlanBuilder {
     /// <param name="endAtLocal">结束时间。</param>
     /// <param name="shouldIncludeNextPeriod">是否包含下一月。</param>
     /// <returns>按月后缀集合。</returns>
-    private static IReadOnlyList<string> BuildMonthlySuffixes(DateTime startAtLocal, DateTime endAtLocal, bool shouldIncludeNextPeriod) {
+    private static System.Collections.Generic.List<string> BuildMonthlySuffixes(DateTime startAtLocal, DateTime endAtLocal, bool shouldIncludeNextPeriod) {
         var startMonth = new DateTime(startAtLocal.Year, startAtLocal.Month, 1, 0, 0, 0, DateTimeKind.Local);
         var endMonth = new DateTime(endAtLocal.Year, endAtLocal.Month, 1, 0, 0, 0, DateTimeKind.Local);
         if (shouldIncludeNextPeriod && endMonth <= startMonth) {
@@ -169,7 +169,7 @@ public sealed class ShardingPhysicalTablePlanBuilder {
 
         var suffixes = new List<string>();
         for (var date = startMonth; date <= endMonth; date = date.AddMonths(1)) {
-            suffixes.Add(date.ToString("yyyyMM"));
+            suffixes.Add(date.ToString("yyyyMM", System.Globalization.CultureInfo.InvariantCulture));
         }
 
         return suffixes;

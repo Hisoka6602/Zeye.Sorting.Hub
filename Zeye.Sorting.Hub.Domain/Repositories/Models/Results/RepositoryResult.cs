@@ -29,6 +29,22 @@ public readonly record struct RepositoryResult {
     /// </summary>
     public static RepositoryResult Success() => new() { IsSuccess = true };
 
+    /// <summary>创建携带指定返回值的成功结果。</summary>
+    public static RepositoryResult<T> Success<T>(T value) => new() { IsSuccess = true, Value = value };
+
+    /// <summary>创建携带错误消息的泛型失败结果。</summary>
+    public static RepositoryResult<T> Fail<T>(string errorMessage) => new() {
+        IsSuccess = false,
+        ErrorMessage = string.IsNullOrWhiteSpace(errorMessage) ? DefaultFailMessage : errorMessage
+    };
+
+    /// <summary>创建携带错误消息与稳定错误码的泛型失败结果。</summary>
+    public static RepositoryResult<T> Fail<T>(string errorMessage, string errorCode) => new() {
+        IsSuccess = false,
+        ErrorMessage = string.IsNullOrWhiteSpace(errorMessage) ? DefaultFailMessage : errorMessage,
+        ErrorCode = string.IsNullOrWhiteSpace(errorCode) ? null : errorCode
+    };
+
     /// <summary>
     /// 创建表示操作失败的结果对象，并附带错误消息。
     /// </summary>

@@ -20,10 +20,6 @@ public sealed class DevelopmentBrowserLauncherHostedService : IHostedService {
     /// </summary>
     private readonly IOptions<HostingOptions> _hostingOptions;
 
-    /// <summary>
-    /// 安全执行器（用于隔离副作用异常）。
-    /// </summary>
-    private readonly SafeExecutor _safeExecutor;
 
     /// <summary>
     /// 应用生命周期（用于在应用真正启动后执行副作用）。
@@ -51,16 +47,13 @@ public sealed class DevelopmentBrowserLauncherHostedService : IHostedService {
     /// <param name="environment">宿主环境。</param>
     /// <param name="hostingOptions">Host 配置。</param>
     /// <param name="applicationLifetime">应用生命周期。</param>
-    /// <param name="safeExecutor">安全执行器。</param>
     public DevelopmentBrowserLauncherHostedService(
         IHostEnvironment environment,
         IOptions<HostingOptions> hostingOptions,
-        IHostApplicationLifetime applicationLifetime,
-        SafeExecutor safeExecutor) {
+        IHostApplicationLifetime applicationLifetime) {
         _environment = environment;
         _hostingOptions = hostingOptions;
         _applicationLifetime = applicationLifetime;
-        _safeExecutor = safeExecutor;
     }
 
     /// <summary>
@@ -125,7 +118,7 @@ public sealed class DevelopmentBrowserLauncherHostedService : IHostedService {
     /// 在应用已启动后尝试打开本机浏览器。
     /// </summary>
     /// <param name="options">Host 配置。</param>
-    private void TryLaunchBrowser(HostingOptions options) {
+    private static void TryLaunchBrowser(HostingOptions options) {
         var targetUrl = options.BuildBrowserAutoOpenUrl();
         if (string.IsNullOrWhiteSpace(targetUrl)) {
             Logger.Warn("跳过自动打开浏览器：未能从配置推导有效地址。");
@@ -142,7 +135,7 @@ public sealed class DevelopmentBrowserLauncherHostedService : IHostedService {
             return;
         }
 
-        var launchSuccess = _safeExecutor.Execute(
+        var launchSuccess = SafeExecutor.Execute(
             () => {
                 var startInfo = new ProcessStartInfo {
                     FileName = targetUrl,

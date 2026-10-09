@@ -14,6 +14,11 @@ namespace Zeye.Sorting.Hub.Tools.DatabaseVerification;
 
 /// <summary>在已隔离的真实关系库验证坏消息、唯一身份冲突、分块损坏和恢复，不使用内存提供器。</summary>
 internal static class FusionProtocolFaultScenario {
+    /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+    private static readonly string[] CachedStoredDuplicateRejectedRejectedValues = new[] { "stored", "duplicate", "rejected", "rejected", "rejected" };
+    /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+    private static readonly string[] CachedStoredStoredRejectedValues = new[] { "stored", "stored", "rejected" };
+
     /// <summary>异常验证日志，只输出错误编码，不输出凭据和正文。</summary>
     private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
     /// <summary>协议序列化格式与服务端一致。</summary>
@@ -48,7 +53,7 @@ internal static class FusionProtocolFaultScenario {
         var invalidKind = Fact(hello, 2, protocolTimestamp, kind: "future.unknown");
         var invalidSource = Fact(hello with { SourceInstanceId = source + "-other" }, 3, protocolTimestamp);
         var reply = await ingress.PublishAsync("protocol-initial", Batch(registration, first, first, invalidHash, invalidKind, invalidSource), default);
-        Ensure(reply.Records.Select(item => item.Status).SequenceEqual(new[] { "stored", "duplicate", "rejected", "rejected", "rejected" }), "mixed-batch-isolation", checks);
+        Ensure(reply.Records.Select(item => item.Status).SequenceEqual(CachedStoredDuplicateRejectedRejectedValues), "mixed-batch-isolation", checks);
         Ensure((await ingress.PublishAsync("protocol-initial", Batch(registration, first), default)).Records.Single().Status == "duplicate", "exact-replay-idempotency", checks);
         var changedJson = first.BodyJson.Replace("protocol-raw-text", "changed-raw-text", StringComparison.Ordinal);
         var changed = first with { BodyJson = changedJson, BodySha256 = Hash(Encoding.UTF8.GetBytes(changedJson)) };
@@ -59,7 +64,7 @@ internal static class FusionProtocolFaultScenario {
         var maximum = Fact(hello, long.MaxValue, protocolTimestamp, new { reason = "Int64 maximum" });
         var overflow = Fact(hello, 5, protocolTimestamp) with { SourceSequence = "9223372036854775808" };
         reply = await ingress.PublishAsync("protocol-initial", Batch(registration, maximum, late, overflow), default);
-        Ensure(reply.Records.Select(item => item.Status).SequenceEqual(new[] { "stored", "stored", "rejected" }), "int64-boundary-and-out-of-order", checks);
+        Ensure(reply.Records.Select(item => item.Status).SequenceEqual(CachedStoredStoredRejectedValues), "int64-boundary-and-out-of-order", checks);
         await RejectAsync(() => ingress.PublishAsync("protocol-initial", Batch(registration, Enumerable.Repeat(first, options.MaxBatchRecords + 1).ToArray()), default), "InvalidBatchLimits", checks);
         var oversized = first with { BodyJson = new string('x', options.MaxBatchBytes + 1) };
         await RejectAsync(() => ingress.PublishAsync("protocol-initial", Batch(registration, oversized), default), "InvalidBatchLimits", checks);

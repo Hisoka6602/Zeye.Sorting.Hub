@@ -30,6 +30,8 @@ namespace Zeye.Sorting.Hub.Performance.ParcelAnalyticsBenchmark;
 
 /// <summary>在强制隔离的本机数据库中生成确定性来源事实并测量真实仓储与报表查询。</summary>
 internal static class Program {
+    /// <summary>复用基准结果的缩进序列化配置。</summary>
+    private static readonly JsonSerializerOptions ResultJsonOptions = new() { WriteIndented = true };
     /// <summary>工具异常日志。</summary>
     private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
     /// <summary>基准来源实例标识。</summary>
@@ -295,8 +297,8 @@ internal static class Program {
                 Sample = new { ParcelCount = days * parcelsPerDay, FactCount = records.Count, PhysicalPeriods = periods.Length, DuplicateCount = duplicateCount },
                 PrebuildMilliseconds = ElapsedMilliseconds(prebuildClock),
                 Writes = new { Count = writeSamples.Count, ElapsedSeconds = ElapsedMilliseconds(writeClock) / 1000m,
-                    WritesPerSecond = writeSamples.Count == 0 ? 0m : writeSamples.Count * 1000m / ElapsedMilliseconds(writeClock),
-                    LatencyMs = writeSamples.Count == 0 ? (BenchmarkLatency?)null : Stats(writeSamples.ToArray()) },
+                    WritesPerSecond = writeSamples.IsEmpty ? 0m : writeSamples.Count * 1000m / ElapsedMilliseconds(writeClock),
+                    LatencyMs = writeSamples.IsEmpty ? (BenchmarkLatency?)null : Stats(writeSamples.ToArray()) },
                 Reports = queryResults,
                 ParcelQueries = parcelQueries,
                 ParallelCursorReads = parallelReads,
@@ -304,7 +306,7 @@ internal static class Program {
                 ExplainAnalyze = plans
             };
             Directory.CreateDirectory(Path.GetDirectoryName(output)!);
-            await File.WriteAllTextAsync(output, JsonSerializer.Serialize(resultDocument, new JsonSerializerOptions { WriteIndented = true }));
+            await File.WriteAllTextAsync(output, JsonSerializer.Serialize(resultDocument, ResultJsonOptions));
             Console.WriteLine($"BENCH_OK database={database} parcels={days * parcelsPerDay} facts={records.Count} periods={periods.Length} writes={writeSamples.Count} result={output}");
             return 0;
         }

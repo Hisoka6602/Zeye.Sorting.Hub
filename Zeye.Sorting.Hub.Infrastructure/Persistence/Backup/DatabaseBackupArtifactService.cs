@@ -15,7 +15,9 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Backup;
 /// <summary>跨平台导出 MySQL 事务快照，并仅在新数据库进行恢复及逐表核验。</summary>
-public sealed class DatabaseBackupArtifactService(IConfiguration configuration, IHostEnvironment environment, IOptions<BackupOptions> options, SlowQueryAutoTuningPipeline? telemetry = null) : IDatabaseBackupArtifactService {
+public sealed class DatabaseBackupArtifactService(IConfiguration configuration, IHostEnvironment environment, IOptions<BackupOptions> options, SlowQueryAutoTuningPipeline? telemetry = null) : IDatabaseBackupArtifactService, IDisposable {
+    /// <summary>容器结束备份服务生命周期时释放串行操作闸门。</summary>
+    public void Dispose() => _gate.Dispose();
     /// <summary>备份及恢复串行执行，限制数据库和磁盘压力。</summary>
     private readonly SemaphoreSlim _gate = new(1, 1);
     /// <summary>清单合同采用驼峰字段及本地时间。</summary>
@@ -27,23 +29,23 @@ public sealed class DatabaseBackupArtifactService(IConfiguration configuration, 
     /// <summary>解析部署指定的持久化目录。</summary>
     private string DirectoryPath => Path.Combine(Path.IsPathRooted(options.Value.BackupDirectory) ? options.Value.BackupDirectory : Path.Combine(environment.ContentRootPath, options.Value.BackupDirectory), "MySql");
     /// <summary>读取已经完整写入的备份清单。</summary>
-    public async Task<IReadOnlyList<DatabaseBackupArtifact>> ListAsync(CancellationToken ct) {
+    public async Task<IReadOnlyList<DatabaseBackupArtifact>> ListAsync(CancellationToken cancellationToken) {
         if (!Directory.Exists(DirectoryPath)) return [];
         var artifacts = new List<DatabaseBackupArtifact>();
         foreach (var path in Directory.EnumerateFiles(DirectoryPath, "*.manifest.json").OrderByDescending(File.GetLastWriteTime).Take(200)) {
-            var item = await ReadManifestAsync(path, ct);
+            var item = await ReadManifestAsync(path, cancellationToken);
             if (item is not null && File.Exists(ResolvePath(item.Id, ".zeye.zip"))) artifacts.Add(LocalTimes(item));
         }
         return artifacts.OrderByDescending(x => x.CreatedAtLocal).ToArray();
     }
     /// <summary>备份全库基础表与所有物理分表，使用可重复读事务保持数据一致。</summary>
-    public async Task<DatabaseBackupArtifact> CreateAsync(string actor, CancellationToken ct) {
+    public async Task<DatabaseBackupArtifact> CreateAsync(string actor, CancellationToken cancellationToken) {
         EnsureSupported();
         if (!options.Value.IsEnabled) throw new InvalidOperationException("备份治理已禁用。");
-        using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         budget.CancelAfter(TimeSpan.FromMinutes(options.Value.OperationTimeoutMinutes));
-        ct = budget.Token;
-        if (!await _gate.WaitAsync(0, ct)) throw new InvalidOperationException("已有备份或恢复正在执行。");
+        cancellationToken = budget.Token;
+        if (!await _gate.WaitAsync(0, cancellationToken)) throw new InvalidOperationException("已有备份或恢复正在执行。");
         var id = Guid.NewGuid().ToString("N");
         string? pendingPath = null;
         string? completedPath = null;
@@ -53,12 +55,12 @@ public sealed class DatabaseBackupArtifactService(IConfiguration configuration, 
             pendingPath = ResolvePath(id, ".partial");
             await using var connection = new MySqlConnection(configuration.GetConnectionString("MySql"));
             SlowQueryDbOperations.Attach(connection, telemetry);
-            await SlowQueryDbOperations.OpenAsync(connection, ct);
+            await SlowQueryDbOperations.OpenAsync(connection, cancellationToken);
             // 仅备份本项目的事务表；视图、触发器或非事务表需要原生全库备份。
-            var unsupported = await ScalarAsync(connection, null, "SELECT (SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND (TABLE_TYPE<>'BASE TABLE' OR ENGINE<>'InnoDB')) + (SELECT COUNT(*) FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA=DATABASE()) + (SELECT COUNT(*) FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA=DATABASE()) + (SELECT COUNT(*) FROM information_schema.EVENTS WHERE EVENT_SCHEMA=DATABASE())", ct);
+            var unsupported = await ScalarAsync(connection, null, "SELECT (SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND (TABLE_TYPE<>'BASE TABLE' OR ENGINE<>'InnoDB')) + (SELECT COUNT(*) FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA=DATABASE()) + (SELECT COUNT(*) FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA=DATABASE()) + (SELECT COUNT(*) FROM information_schema.EVENTS WHERE EVENT_SCHEMA=DATABASE())", cancellationToken);
             if (Convert.ToInt64(unsupported, CultureInfo.InvariantCulture) != 0) throw new InvalidOperationException("数据库包含非事务表、视图或存储程序，请使用原生全库备份工具。");
-            var tables = await ReadTablesAsync(connection, null, ct);
-            await using var transaction = await SlowQueryDbOperations.BeginTransactionAsync(connection, () => connection.BeginTransactionAsync(IsolationLevel.RepeatableRead, ct));
+            var tables = await ReadTablesAsync(connection, null, cancellationToken);
+            await using var transaction = await SlowQueryDbOperations.BeginTransactionAsync(connection, () => connection.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken));
             var rows = new Dictionary<string, long>();
             long exportedBytes = 0;
             await using (var output = new FileStream(pendingPath, FileMode.CreateNew, FileAccess.Write, FileShare.None)) {
@@ -66,41 +68,41 @@ public sealed class DatabaseBackupArtifactService(IConfiguration configuration, 
                 foreach (var table in tables) {
                     var quoted = Quote(table);
                     using var schemaCommand = new MySqlCommand("SHOW CREATE TABLE " + quoted, connection, transaction);
-                    await using var schemaReader = await SlowQueryDbOperations.ExecuteReaderAsync(schemaCommand, ct);
-                    if (!await schemaReader.ReadAsync(ct)) throw new InvalidOperationException("无法读取表结构。");
+                    await using var schemaReader = await SlowQueryDbOperations.ExecuteReaderAsync(schemaCommand, cancellationToken);
+                    if (!await schemaReader.ReadAsync(cancellationToken)) throw new InvalidOperationException("无法读取表结构。");
                     var ddl = schemaReader.GetString(1);
                     await schemaReader.DisposeAsync();
                     var columns = new List<string>();
                     using (var columnsCommand = new MySqlCommand("SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=@table AND EXTRA NOT LIKE '%VIRTUAL GENERATED%' AND EXTRA NOT LIKE '%STORED GENERATED%' ORDER BY ORDINAL_POSITION", connection, transaction)) {
                         columnsCommand.Parameters.AddWithValue("@table", table);
-                        await using var columnsReader = await SlowQueryDbOperations.ExecuteReaderAsync(columnsCommand, ct);
-                        while (await columnsReader.ReadAsync(ct)) columns.Add(columnsReader.GetString(0));
+                        await using var columnsReader = await SlowQueryDbOperations.ExecuteReaderAsync(columnsCommand, cancellationToken);
+                        while (await columnsReader.ReadAsync(cancellationToken)) columns.Add(columnsReader.GetString(0));
                     }
                     var entry = archive.CreateEntry(table + ".jsonl", CompressionLevel.Fastest);
                     await using var entryStream = entry.Open();
                     await using var writer = new StreamWriter(entryStream, new UTF8Encoding(false));
-                    await writer.WriteLineAsync(JsonSerializer.Serialize(ddl).AsMemory(), ct);
+                    await writer.WriteLineAsync(JsonSerializer.Serialize(ddl).AsMemory(), cancellationToken);
                     var columnList = string.Join(',', columns.Select(Quote));
                     using var command = new MySqlCommand($"SELECT {columnList} FROM {quoted}", connection, transaction) { CommandTimeout = 300 };
-                    await using var reader = await SlowQueryDbOperations.ExecuteReaderAsync(command, CommandBehavior.SequentialAccess, ct);
+                    await using var reader = await SlowQueryDbOperations.ExecuteReaderAsync(command, CommandBehavior.SequentialAccess, cancellationToken);
                     long count = 0;
-                    while (await reader.ReadAsync(ct)) {
+                    while (await reader.ReadAsync(cancellationToken)) {
                         var values = new string[reader.FieldCount];
                         for (var i = 0; i < values.Length; i++) values[i] = SqlLiteral(reader.GetValue(i));
                         var sql = $"INSERT INTO {quoted} ({columnList}) VALUES ({string.Join(',', values)})";
                         exportedBytes += Encoding.UTF8.GetByteCount(sql);
                         if (exportedBytes > (long)options.Value.MaxExportGiB * 1024 * 1024 * 1024) throw new InvalidOperationException("备份超过配置的导出容量上限，请调整 MaxExportGiB 或使用原生备份工具。");
-                        await writer.WriteLineAsync(JsonSerializer.Serialize(sql).AsMemory(), ct); count++;
+                        await writer.WriteLineAsync(JsonSerializer.Serialize(sql).AsMemory(), cancellationToken); count++;
                     }
                     rows[table] = count;
                 }
             }
-            var afterTables = await ReadTablesAsync(connection, transaction, ct);
+            var afterTables = await ReadTablesAsync(connection, transaction, cancellationToken);
             if (!tables.SequenceEqual(afterTables)) throw new InvalidOperationException("备份过程中表目录发生变化，请重试。");
-            await SlowQueryDbOperations.CommitAsync(transaction, ct);
+            await SlowQueryDbOperations.CommitAsync(transaction, cancellationToken);
             var path = ResolvePath(id, ".zeye.zip"); File.Move(pendingPath, path); completedPath = path;
-            var artifact = new DatabaseBackupArtifact { Id = id, Database = connection.Database, CreatedAtLocal = DateTime.SpecifyKind(DateTime.Now, DateTimeKind.Unspecified), RequestedBy = actor, TableRows = rows, SizeBytes = new FileInfo(path).Length, Sha256 = await HashAsync(path, ct) };
-            await SaveAsync(artifact, ct); published = true;
+            var artifact = new DatabaseBackupArtifact { Id = id, Database = connection.Database, CreatedAtLocal = DateTime.SpecifyKind(DateTime.Now, DateTimeKind.Unspecified), RequestedBy = actor, TableRows = rows, SizeBytes = new FileInfo(path).Length, Sha256 = await HashAsync(path, cancellationToken) };
+            await SaveAsync(artifact, cancellationToken); published = true;
             return artifact;
         }
         catch (Exception exception) { Logger.Error(exception, "数据库事务快照备份失败，Id={Id}", id); throw; }
@@ -112,45 +114,47 @@ public sealed class DatabaseBackupArtifactService(IConfiguration configuration, 
         }
     }
     /// <summary>只恢复到服务端生成的新数据库，不能接收目标库名或覆盖当前业务库。</summary>
-    public async Task<DatabaseBackupArtifact> RestoreIsolatedAsync(string id, CancellationToken ct) {
+    public async Task<DatabaseBackupArtifact> RestoreIsolatedAsync(string id, CancellationToken cancellationToken) {
         EnsureSupported();
-        using var budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         budget.CancelAfter(TimeSpan.FromMinutes(options.Value.OperationTimeoutMinutes));
-        ct = budget.Token;
-        if (!await _gate.WaitAsync(0, ct)) throw new InvalidOperationException("已有备份或恢复正在执行。");
+        cancellationToken = budget.Token;
+        if (!await _gate.WaitAsync(0, cancellationToken)) throw new InvalidOperationException("已有备份或恢复正在执行。");
         try {
-            var artifact = await FindVerifiedAsync(id, ct);
-            var builder = new MySqlConnectionStringBuilder(configuration.GetConnectionString("MySql")) { Database = string.Empty };
+            var artifact = await FindVerifiedAsync(id, cancellationToken);
+            var connectionString = configuration.GetConnectionString("MySql");
+            if (string.IsNullOrWhiteSpace(connectionString)) throw new InvalidOperationException("未配置 MySQL 连接字符串，无法执行隔离恢复。");
+            var builder = new MySqlConnectionStringBuilder(connectionString) { Database = string.Empty };
             await using var connection = new MySqlConnection(builder.ConnectionString);
-            SlowQueryDbOperations.Attach(connection, telemetry); await SlowQueryDbOperations.OpenAsync(connection, ct);
+            SlowQueryDbOperations.Attach(connection, telemetry); await SlowQueryDbOperations.OpenAsync(connection, cancellationToken);
             var target = "zeye_restore_" + Guid.NewGuid().ToString("N")[..20];
-            await ExecuteAsync(connection, "CREATE DATABASE " + Quote(target) + " CHARACTER SET utf8mb4", ct);
+            await ExecuteAsync(connection, "CREATE DATABASE " + Quote(target) + " CHARACTER SET utf8mb4", cancellationToken);
             try {
-            await connection.ChangeDatabaseAsync(target, ct);
-            await ExecuteAsync(connection, "SET FOREIGN_KEY_CHECKS=0", ct);
+            await connection.ChangeDatabaseAsync(target, cancellationToken);
+            await ExecuteAsync(connection, "SET FOREIGN_KEY_CHECKS=0", cancellationToken);
             using var archive = ZipFile.OpenRead(ResolvePath(id, ".zeye.zip"));
             // 先建全体表，再插入数据，恢复所有关联表及全局定位索引。
             foreach (var table in artifact.TableRows.Keys) {
                 var entry = archive.GetEntry(table + ".jsonl") ?? throw new InvalidOperationException("备份缺少表结构。");
                 using var reader = new StreamReader(entry.Open());
-                var line = await reader.ReadLineAsync(ct) ?? throw new InvalidOperationException("表结构为空。");
-                await ExecuteAsync(connection, JsonSerializer.Deserialize<string>(line)!, ct);
+                var line = await reader.ReadLineAsync(cancellationToken) ?? throw new InvalidOperationException("表结构为空。");
+                await ExecuteAsync(connection, JsonSerializer.Deserialize<string>(line)!, cancellationToken);
             }
-            await using var transaction = await SlowQueryDbOperations.BeginTransactionAsync(connection, () => connection.BeginTransactionAsync(ct));
+            await using var transaction = await SlowQueryDbOperations.BeginTransactionAsync(connection, () => connection.BeginTransactionAsync(cancellationToken));
             foreach (var table in artifact.TableRows.Keys) {
                 using var reader = new StreamReader(archive.GetEntry(table + ".jsonl")!.Open());
-                _ = await reader.ReadLineAsync(ct);
-                while (await reader.ReadLineAsync(ct) is string line) {
+                _ = await reader.ReadLineAsync(cancellationToken);
+                while (await reader.ReadLineAsync(cancellationToken) is string line) {
                     using var command = new MySqlCommand(JsonSerializer.Deserialize<string>(line), connection, transaction) { CommandTimeout = 300 };
-                    await SlowQueryDbOperations.ExecuteNonQueryAsync(command, ct);
+                    await SlowQueryDbOperations.ExecuteNonQueryAsync(command, cancellationToken);
                 }
-                var count = Convert.ToInt64(await ScalarAsync(connection, transaction, "SELECT COUNT(*) FROM " + Quote(table), ct), CultureInfo.InvariantCulture);
+                var count = Convert.ToInt64(await ScalarAsync(connection, transaction, "SELECT COUNT(*) FROM " + Quote(table), cancellationToken), CultureInfo.InvariantCulture);
                 if (count != artifact.TableRows[table]) throw new InvalidOperationException("恢复后表行数与备份清单不一致。");
             }
-            await SlowQueryDbOperations.CommitAsync(transaction, ct);
-            await ExecuteAsync(connection, "SET FOREIGN_KEY_CHECKS=1", ct);
+            await SlowQueryDbOperations.CommitAsync(transaction, cancellationToken);
+            await ExecuteAsync(connection, "SET FOREIGN_KEY_CHECKS=1", cancellationToken);
             var verified = artifact with { RestoredDatabase = target, VerifiedAtLocal = DateTime.SpecifyKind(DateTime.Now, DateTimeKind.Unspecified) };
-            await SaveAsync(verified, ct); return verified;
+            await SaveAsync(verified, cancellationToken); return verified;
             }
             catch (Exception exception) {
                 Logger.Error(exception, "隔离恢复失败，BackupId={BackupId}, IsolatedDatabase={IsolatedDatabase}", id, target);
@@ -167,7 +171,7 @@ public sealed class DatabaseBackupArtifactService(IConfiguration configuration, 
         finally { _gate.Release(); }
     }
     /// <summary>下载前验证清单、长度和摘要，禁止路径穿越及缺失文件。</summary>
-    public async Task<string> DownloadPathAsync(string id, CancellationToken ct) { await FindVerifiedAsync(id, ct); return ResolvePath(id, ".zeye.zip"); }
+    public async Task<string> DownloadPathAsync(string id, CancellationToken cancellationToken) { await FindVerifiedAsync(id, cancellationToken); return ResolvePath(id, ".zeye.zip"); }
     /// <summary>从服务器清单读取并校验完整文件。</summary>
     private async Task<DatabaseBackupArtifact> FindVerifiedAsync(string id, CancellationToken ct) {
         var manifest = ResolvePath(id, ".manifest.json");
@@ -195,7 +199,7 @@ public sealed class DatabaseBackupArtifactService(IConfiguration configuration, 
     }
 
     /// <summary>读取单份有界清单，损坏文件被隔离并记录日志，不阻断其余有效备份。</summary>
-    private async Task<DatabaseBackupArtifact?> ReadManifestAsync(string path, CancellationToken ct) {
+    private static async Task<DatabaseBackupArtifact?> ReadManifestAsync(string path, CancellationToken ct) {
         try {
             if (new FileInfo(path).Length > 8 * 1024 * 1024) throw new InvalidDataException("备份清单超过八 MiB 上限。");
             await using var stream = File.OpenRead(path);

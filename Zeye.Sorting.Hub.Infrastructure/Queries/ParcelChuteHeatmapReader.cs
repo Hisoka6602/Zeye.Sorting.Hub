@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.Analysis;
 
 namespace Zeye.Sorting.Hub.Infrastructure.Queries;
@@ -19,7 +20,7 @@ internal static class ParcelChuteHeatmapReader {
                 ChuteCode = group.Key.ChuteCode!, Count = group.LongCount(),
                 MismatchCount = group.LongCount(parcel => parcel.TargetChuteCode != null && parcel.TargetChuteCode.Trim() != ""
                     && parcel.ActualChuteCode != null && parcel.ActualChuteCode.Trim() != ""
-                    && parcel.TargetChuteCode.Trim().ToLower() != parcel.ActualChuteCode.Trim().ToLower()),
+                    && DatabaseTextFunctions.Lower(parcel.TargetChuteCode.Trim()) != DatabaseTextFunctions.Lower(parcel.ActualChuteCode.Trim())),
                 FallbackCount = group.LongCount(parcel => parcel.IsFallbackChuteAssigned == true)
             }).OrderByDescending(cell => cell.Count).ThenBy(cell => cell.SourceInstanceId).ThenBy(cell => cell.WorkstationName)
             .ThenBy(cell => cell.ChuteCode).Take(rowLimit + 1).ToArrayAsync(cancellationToken);

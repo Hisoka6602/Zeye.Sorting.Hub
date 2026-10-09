@@ -7,6 +7,13 @@ namespace Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations.Migrations
     /// <inheritdoc />
     public partial class AddAnalyticsCoveringIndexesSqlServer : Migration
     {
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedCompletedTimeStatusSourceParcelIdDetectedTimeColumns = new[] { "CompletedTime", "Status", "SourceParcelId", "DetectedTime" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedCreatedTimeIdSourceParcelIdDetectedTimeColumns = new[] { "CreatedTime", "Id", "SourceParcelId", "DetectedTime" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedOccurredAtIsSuccessParcelIdStageColumns = new[] { "OccurredAt", "IsSuccess", "ParcelId", "Stage" };
+
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
@@ -14,19 +21,19 @@ namespace Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations.Migrations
                 name: "IX_Parcels_CompletedTime_Status_SourceParcelId_DetectedTime",
                 schema: "dbo",
                 table: "Parcels",
-                columns: new[] { "CompletedTime", "Status", "SourceParcelId", "DetectedTime" });
+                columns: CachedCompletedTimeStatusSourceParcelIdDetectedTimeColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcels_CreatedTime_Id_SourceParcelId_DetectedTime",
                 schema: "dbo",
                 table: "Parcels",
-                columns: new[] { "CreatedTime", "Id", "SourceParcelId", "DetectedTime" });
+                columns: CachedCreatedTimeIdSourceParcelIdDetectedTimeColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_ProcessingRecords_OccurredAt_IsSuccess_ParcelId_Stage",
                 schema: "dbo",
                 table: "Parcel_ProcessingRecords",
-                columns: new[] { "OccurredAt", "IsSuccess", "ParcelId", "Stage" });
+                columns: CachedOccurredAtIsSuccessParcelIdStageColumns);
         }
 
         /// <inheritdoc />

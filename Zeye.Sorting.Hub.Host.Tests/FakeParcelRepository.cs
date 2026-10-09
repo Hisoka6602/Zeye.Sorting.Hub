@@ -177,7 +177,7 @@ internal sealed class FakeParcelRepository : IParcelRepository {
     public Task<RepositoryResult<IReadOnlyList<ParcelSummaryReadModel>>> GetAdjacentByIdAsync(long id, int beforeCount, int afterCount, CancellationToken cancellationToken) {
         var baseTime = new DateTime(2026, 3, 20, 10, 0, 0, DateTimeKind.Local);
         if (id == 999) {
-            return Task.FromResult(RepositoryResult<IReadOnlyList<ParcelSummaryReadModel>>.Fail("未找到 Id 为 999 的资源。"));
+            return Task.FromResult(RepositoryResult.Fail<IReadOnlyList<ParcelSummaryReadModel>>("未找到 Id 为 999 的资源。"));
         }
 
         if (id == StableOrderAnchorId) {
@@ -186,14 +186,14 @@ internal sealed class FakeParcelRepository : IParcelRepository {
                 CreateSummary(12, "BC-SAME-12", "BAG-ADJ", baseTime),
                 CreateSummary(13, "BC-SAME-13", "BAG-ADJ", baseTime.AddMinutes(1))
             ];
-            return Task.FromResult(RepositoryResult<IReadOnlyList<ParcelSummaryReadModel>>.Success(stableItems));
+            return Task.FromResult(RepositoryResult.Success<IReadOnlyList<ParcelSummaryReadModel>>(stableItems));
         }
 
         IReadOnlyList<ParcelSummaryReadModel> items = [
             CreateSummary(1, "BC-ADJ-1", "BAG-ADJ", baseTime.AddSeconds(-2)),
             CreateSummary(3, "BC-ADJ-2", "BAG-ADJ", baseTime.AddSeconds(2))
         ];
-        return Task.FromResult(RepositoryResult<IReadOnlyList<ParcelSummaryReadModel>>.Success(items));
+        return Task.FromResult(RepositoryResult.Success<IReadOnlyList<ParcelSummaryReadModel>>(items));
     }
 
     /// <summary>
@@ -274,7 +274,7 @@ internal sealed class FakeParcelRepository : IParcelRepository {
             IsBlockedByGuard = CleanupDecision == ActionIsolationDecision.BlockedByGuard,
             CompensationBoundary = "此操作不可逆，回滚需从备份恢复。"
         };
-        return Task.FromResult(RepositoryResult<DangerousBatchActionResult>.Success(result));
+        return Task.FromResult(RepositoryResult.Success<DangerousBatchActionResult>(result));
     }
 
     /// <summary>

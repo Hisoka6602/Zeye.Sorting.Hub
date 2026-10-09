@@ -65,7 +65,7 @@ public sealed class BackupHealthCheck : IHealthCheck {
     /// </summary>
     /// <param name="record">执行记录。</param>
     /// <returns>附加数据。</returns>
-    private static IReadOnlyDictionary<string, object> BuildHealthData(BackupExecutionRecord? record) {
+    private static System.Collections.Generic.Dictionary<string, object> BuildHealthData(BackupExecutionRecord? record) {
         var data = new Dictionary<string, object> {
             ["hasExecutionRecord"] = record is not null
         };
@@ -73,7 +73,7 @@ public sealed class BackupHealthCheck : IHealthCheck {
             return data;
         }
 
-        data["recordedAtLocal"] = record.RecordedAtLocal.ToString(HealthCheckResponseWriter.LocalDateTimeFormat);
+        data["recordedAtLocal"] = record.RecordedAtLocal.ToString(HealthCheckResponseWriter.LocalDateTimeFormat, System.Globalization.CultureInfo.InvariantCulture);
         data["status"] = record.Status;
         data["provider"] = record.ProviderName;
         data["database"] = record.DatabaseName;
@@ -81,7 +81,7 @@ public sealed class BackupHealthCheck : IHealthCheck {
         data["hasBackupFile"] = record.HasBackupFile;
         data["isBackupFileFresh"] = record.IsBackupFileFresh;
         if (record.VerifiedBackupAtLocal.HasValue) {
-            data["verifiedBackupAtLocal"] = record.VerifiedBackupAtLocal.Value.ToString(HealthCheckResponseWriter.LocalDateTimeFormat);
+            data["verifiedBackupAtLocal"] = record.VerifiedBackupAtLocal.Value.ToString(HealthCheckResponseWriter.LocalDateTimeFormat, System.Globalization.CultureInfo.InvariantCulture);
         }
 
         if (!string.IsNullOrWhiteSpace(record.VerifiedBackupFilePath)) {

@@ -8,7 +8,15 @@ using Zeye.Sorting.Hub.Infrastructure.Configuration;
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Management;
 
 /// <summary>分类配置低频加载及提交后发布，高频事实处理只复用不可变规则快照。</summary>
-public sealed class ClassificationRuleSnapshotCache {
+public sealed class ClassificationRuleSnapshotCache : IDisposable {
+    /// <summary>缓存生命周期结束后只回收一次工厂关联及刷新资源。</summary>
+    private int _disposed;
+    /// <summary>宿主后台刷新停止后释放缓存，使下一次使用同一工厂可获得新缓存。</summary>
+    public void Dispose() {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        Caches.Remove(_factory);
+        _refreshGate.Dispose();
+    }
     /// <summary>按上下文工厂隔离缓存，避免不同数据库或测试环境共享规则。</summary>
     private static readonly ConditionalWeakTable<IDbContextFactory<SortingHubDbContext>, ClassificationRuleSnapshotCache> Caches = new();
     /// <summary>与管理端一致的规则序列化设置。</summary>

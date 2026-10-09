@@ -64,7 +64,7 @@ public sealed class LiteDbConfigurationStore : IConfigurationDocumentStore, IDis
                 metadata.Upsert(new BsonDocument { ["_id"] = "current", ["version"] = SchemaVersion });
                 return true;
             });
-            _history.Recover(key => key == "runtime" ? ConfigurationDocument.Revision(ReadRuntime()) : Read(key)?.Revision.ToString());
+            _history.Recover(key => key == "runtime" ? ConfigurationDocument.Revision(ReadRuntime()) : Read(key)?.Revision.ToString(System.Globalization.CultureInfo.InvariantCulture));
         } catch { _database.Dispose(); throw; }
     }
 
@@ -121,7 +121,7 @@ public sealed class LiteDbConfigurationStore : IConfigurationDocumentStore, IDis
             var record = _documents.FindById(key);
             if ((record?["revision"].AsInt32 ?? 0) != expectedRevision) return null;
             var saved = new ManagedDocument { Key = key, Json = json, Revision = checked(expectedRevision + 1), ModifiedAt = DateTime.Now };
-            AuditWrite(key, expectedRevision.ToString(), saved.Revision.ToString(), record is null ? new JsonObject() : JsonNode.Parse(record["json"].AsString)!, after,
+            AuditWrite(key, expectedRevision.ToString(System.Globalization.CultureInfo.InvariantCulture), saved.Revision.ToString(System.Globalization.CultureInfo.InvariantCulture), record is null ? new JsonObject() : JsonNode.Parse(record["json"].AsString)!, after,
                 () => _documents.Upsert(ToRecord(saved)));
             return saved;
         });

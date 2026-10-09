@@ -28,7 +28,7 @@ public sealed class ReportingQueryIsolationTests {
     /// 报表查询时间范围超限时应拒绝执行。
     /// </summary>
     [Fact]
-    public void ReportingQueryBudgetPlanner_WhenTimeRangeExceeded_ShouldThrow() {
+    public void ReportingQueryBudgetPlannerWhenTimeRangeExceededShouldThrow() {
         var planner = CreatePlanner(maxReportTimeRangeDays: DefaultMaxReportTimeRangeDays, maxReportRows: DefaultMaxReportRows);
 
         Assert.Throws<InvalidOperationException>(() => planner.BuildBudget(
@@ -42,7 +42,7 @@ public sealed class ReportingQueryIsolationTests {
     /// 报表查询预算应裁剪行数并关闭总数统计。
     /// </summary>
     [Fact]
-    public void ReportingQueryBudgetPlanner_WhenRequestedRowsExceedBudget_ShouldClampRowsAndDisableTotalCount() {
+    public void ReportingQueryBudgetPlannerWhenRequestedRowsExceedBudgetShouldClampRowsAndDisableTotalCount() {
         var planner = CreatePlanner(maxReportTimeRangeDays: 31, maxReportRows: 5000);
 
         var budget = planner.BuildBudget(
@@ -60,7 +60,7 @@ public sealed class ReportingQueryIsolationTests {
     /// </summary>
     /// <returns>异步任务。</returns>
     [Fact]
-    public async Task ReadOnlyDatabaseHealthCheck_WhenDisabled_ShouldReturnHealthy() {
+    public async Task ReadOnlyDatabaseHealthCheckWhenDisabledShouldReturnHealthy() {
         var serviceProvider = BuildServiceProvider(isEnabled: false, fallbackToPrimaryWhenUnavailable: false, includeReadOnlyConnectionString: false);
         var selector = serviceProvider.GetRequiredService<ReadOnlyDbContextFactorySelector>();
         var healthCheck = serviceProvider.GetRequiredService<ReadOnlyDatabaseHealthCheck>();
@@ -79,7 +79,7 @@ public sealed class ReportingQueryIsolationTests {
     /// </summary>
     /// <returns>异步任务。</returns>
     [Fact]
-    public async Task ReadOnlyDatabaseHealthCheck_WhenConnectionStringMissingAndFallbackEnabled_ShouldReturnDegraded() {
+    public async Task ReadOnlyDatabaseHealthCheckWhenConnectionStringMissingAndFallbackEnabledShouldReturnDegraded() {
         var serviceProvider = BuildServiceProvider(isEnabled: true, fallbackToPrimaryWhenUnavailable: true, includeReadOnlyConnectionString: false);
         var selector = serviceProvider.GetRequiredService<ReadOnlyDbContextFactorySelector>();
         var healthCheck = serviceProvider.GetRequiredService<ReadOnlyDatabaseHealthCheck>();
@@ -97,7 +97,7 @@ public sealed class ReportingQueryIsolationTests {
     /// </summary>
     /// <returns>异步任务。</returns>
     [Fact]
-    public async Task ReadOnlyDbContextFactorySelector_WhenConnectionStringMissingAndFallbackDisabled_ShouldThrow() {
+    public async Task ReadOnlyDbContextFactorySelectorWhenConnectionStringMissingAndFallbackDisabledShouldThrow() {
         var serviceProvider = BuildServiceProvider(isEnabled: true, fallbackToPrimaryWhenUnavailable: false, includeReadOnlyConnectionString: false);
         var selector = serviceProvider.GetRequiredService<ReadOnlyDbContextFactorySelector>();
         var healthCheck = serviceProvider.GetRequiredService<ReadOnlyDatabaseHealthCheck>();
@@ -117,7 +117,7 @@ public sealed class ReportingQueryIsolationTests {
     /// </summary>
     /// <returns>异步任务。</returns>
     [Fact]
-    public async Task ReadOnlyDbContextFactorySelector_WhenReadOnlyConnectionStringConfigured_ShouldCreateContextWithoutProbe() {
+    public async Task ReadOnlyDbContextFactorySelectorWhenReadOnlyConnectionStringConfiguredShouldCreateContextWithoutProbe() {
         var serviceProvider = BuildServiceProvider(isEnabled: true, fallbackToPrimaryWhenUnavailable: false, includeReadOnlyConnectionString: true);
         var selector = serviceProvider.GetRequiredService<ReadOnlyDbContextFactorySelector>();
 
@@ -152,8 +152,8 @@ public sealed class ReportingQueryIsolationTests {
             ["Persistence:Provider"] = "MySql",
             ["Persistence:ReadOnlyDatabase:IsEnabled"] = isEnabled.ToString(),
             ["Persistence:ReadOnlyDatabase:FallbackToPrimaryWhenUnavailable"] = fallbackToPrimaryWhenUnavailable.ToString(),
-            ["Persistence:ReadOnlyDatabase:MaxReportTimeRangeDays"] = DefaultMaxReportTimeRangeDays.ToString(),
-            ["Persistence:ReadOnlyDatabase:MaxReportRows"] = DefaultMaxReportRows.ToString()
+            ["Persistence:ReadOnlyDatabase:MaxReportTimeRangeDays"] = DefaultMaxReportTimeRangeDays.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            ["Persistence:ReadOnlyDatabase:MaxReportRows"] = DefaultMaxReportRows.ToString(System.Globalization.CultureInfo.InvariantCulture)
         };
         if (includeReadOnlyConnectionString) {
             settings["ConnectionStrings:MySqlReadOnly"] = "server=127.0.0.1;port=3306;database=zeye_sorting_hub_ro;uid=reader;pwd=<readonly-password>;SslMode=None;";

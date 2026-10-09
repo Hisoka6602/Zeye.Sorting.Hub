@@ -27,7 +27,7 @@ public sealed class DataRetentionTests {
     /// </summary>
     /// <returns>异步任务。</returns>
     [Fact]
-    public async Task DataRetentionExecutor_WhenDryRunEnabled_ShouldOnlyPlanWithoutDeletingData() {
+    public async Task DataRetentionExecutorWhenDryRunEnabledShouldOnlyPlanWithoutDeletingData() {
         var serviceProvider = BuildServiceProvider(enableGuard: false, dryRun: true, allowDangerousActionExecution: false);
         await SeedRetentionDataAsync(serviceProvider, includeFreshRecords: false);
         var executor = serviceProvider.GetRequiredService<DataRetentionExecutor>();
@@ -55,7 +55,7 @@ public sealed class DataRetentionTests {
     /// </summary>
     /// <returns>异步任务。</returns>
     [Fact]
-    public async Task DataRetentionExecutor_WhenExecutionAllowed_ShouldDeleteExpiredDataOnly() {
+    public async Task DataRetentionExecutorWhenExecutionAllowedShouldDeleteExpiredDataOnly() {
         var serviceProvider = BuildServiceProvider(dryRun: false, allowDangerousActionExecution: true);
         await SeedRetentionDataAsync(serviceProvider, includeFreshRecords: true);
         var executor = serviceProvider.GetRequiredService<DataRetentionExecutor>();
@@ -84,7 +84,7 @@ public sealed class DataRetentionTests {
     /// </summary>
     /// <returns>异步任务。</returns>
     [Fact]
-    public async Task DataRetentionHealthCheck_WhenRetentionDisabled_ShouldReturnHealthy() {
+    public async Task DataRetentionHealthCheckWhenRetentionDisabledShouldReturnHealthy() {
         var serviceProvider = BuildServiceProvider(isEnabled: false, dryRun: true, allowDangerousActionExecution: false);
         var executor = serviceProvider.GetRequiredService<DataRetentionExecutor>();
         var healthCheck = serviceProvider.GetRequiredService<DataRetentionHealthCheck>();
@@ -256,7 +256,7 @@ public sealed class DataRetentionTests {
             UserName = "tester",
             RequestPayloadType = WebRequestPayloadType.Json,
             ResponsePayloadType = WebResponsePayloadType.Json,
-            ResourceId = id.ToString(),
+            ResourceId = id.ToString(System.Globalization.CultureInfo.InvariantCulture),
             AuditResourceType = AuditResourceType.Api,
             StartedAt = createdAt,
             EndedAt = createdAt.AddSeconds(1),
@@ -355,7 +355,7 @@ public sealed class DataRetentionTests {
             id: id,
             parcelTimestamp: Math.Abs(scannedTime.Ticks),
             type: ParcelType.Normal,
-            barCodes: id.ToString(),
+            barCodes: id.ToString(System.Globalization.CultureInfo.InvariantCulture),
             weight: 1.2m,
             workstationName: "WS-01",
             scannedTime: scannedTime,

@@ -138,7 +138,7 @@ WHERE s.name = @p0
             await DatabaseConnectionOpenCoordinator.EnsureOpenedAsync(target, cancellationToken);
             await using var command = target.CreateCommand();
             command.CommandText = "SELECT COUNT(*) FROM sys.objects WHERE is_ms_shipped=0";
-            return Convert.ToInt64(await SlowQueryDbOperations.ExecuteScalarAsync(command, cancellationToken)) > 0;
+            return Convert.ToInt64(await SlowQueryDbOperations.ExecuteScalarAsync(command, cancellationToken), System.Globalization.CultureInfo.InvariantCulture) > 0;
         }
 
         /// <summary>

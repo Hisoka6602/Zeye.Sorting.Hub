@@ -40,14 +40,14 @@ public static class AutoTuningVerificationResultBuilder {
                     Name: "deadlock",
                     Status: deadlockIncreaseCount > 0 ? "regressed" : "pass",
                     Baseline: "0",
-                    Current: deadlockIncreaseCount.ToString(),
-                    Delta: deadlockIncreaseCount.ToString(),
+                    Current: deadlockIncreaseCount.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    Delta: deadlockIncreaseCount.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     Reason: deadlockIncreaseCount > 0 ? "deadlock increased" : "stable"),
                 new AutoTuningVerificationMetricDiff(
                     Name: "lock-wait",
                     Status: lockWaitStatus,
-                    Baseline: lockWaitBaseline?.ToString() ?? "unavailable",
-                    Current: lockWaitCurrent?.ToString() ?? "unavailable",
+                    Baseline: lockWaitBaseline?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "unavailable",
+                    Current: lockWaitCurrent?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "unavailable",
                     Delta: CalculateLockWaitDelta(lockWaitBaseline, lockWaitCurrent, lockWaitUnavailable),
                     Reason: lockWaitReason),
                 new AutoTuningVerificationMetricDiff(
@@ -90,7 +90,7 @@ public static class AutoTuningVerificationResultBuilder {
             return "unavailable";
         }
 
-        return (lockWaitCurrent.Value - lockWaitBaseline.Value).ToString();
+        return (lockWaitCurrent.Value - lockWaitBaseline.Value).ToString(System.Globalization.CultureInfo.InvariantCulture);
     }
 
     /// <summary>

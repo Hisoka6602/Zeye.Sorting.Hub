@@ -51,7 +51,7 @@ internal sealed class TestObservability : IAutoTuningObservability {
     /// <summary>
     /// 验证场景：CloneTags。
     /// </summary>
-    private static IReadOnlyDictionary<string, string> CloneTags(IReadOnlyDictionary<string, string>? tags) {
+    private static System.Collections.Generic.Dictionary<string, string> CloneTags(IReadOnlyDictionary<string, string>? tags) {
         return tags is null
             ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             : new Dictionary<string, string>(tags, StringComparer.OrdinalIgnoreCase);

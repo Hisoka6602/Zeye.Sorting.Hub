@@ -52,7 +52,7 @@ public sealed class BaselineDataHealthCheck : IHealthCheck {
     /// </summary>
     /// <param name="result">校验结果。</param>
     /// <returns>附加数据。</returns>
-    private static IReadOnlyDictionary<string, object> BuildHealthData(BaselineDataValidationResult? result) {
+    private static System.Collections.Generic.Dictionary<string, object> BuildHealthData(BaselineDataValidationResult? result) {
         var data = new Dictionary<string, object> {
             ["hasValidationResult"] = result is not null
         };
@@ -60,7 +60,7 @@ public sealed class BaselineDataHealthCheck : IHealthCheck {
             return data;
         }
 
-        data["validatedAtLocal"] = result.ValidatedAtLocal.ToString(HealthCheckResponseWriter.LocalDateTimeFormat);
+        data["validatedAtLocal"] = result.ValidatedAtLocal.ToString(HealthCheckResponseWriter.LocalDateTimeFormat, System.Globalization.CultureInfo.InvariantCulture);
         data["failureMode"] = result.FailureMode.ToString();
         data["isValid"] = result.IsValid;
         data["errorCount"] = result.Errors.Count;

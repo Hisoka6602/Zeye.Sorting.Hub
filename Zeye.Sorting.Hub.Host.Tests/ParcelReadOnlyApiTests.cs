@@ -24,7 +24,7 @@ public sealed class ParcelReadOnlyApiTests {
     /// 验证场景：正常获取列表。
     /// </summary>
     [Fact]
-    public async Task GetParcels_ShouldReturnPagedList() {
+    public async Task GetParcelsShouldReturnPagedList() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
         var response = await client.GetAsync("/api/parcels?pageNumber=1&pageSize=10&bagCode=BAG-LIST");
@@ -43,7 +43,7 @@ public sealed class ParcelReadOnlyApiTests {
     /// 验证场景：正常获取详情。
     /// </summary>
     [Fact]
-    public async Task GetParcelById_ShouldReturnDetail() {
+    public async Task GetParcelByIdShouldReturnDetail() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
         var response = await client.GetAsync("/api/parcels/1");
@@ -59,7 +59,7 @@ public sealed class ParcelReadOnlyApiTests {
     /// 验证场景：详情不存在返回 404。
     /// </summary>
     [Fact]
-    public async Task GetParcelById_WhenNotFound_ShouldReturnNotFound() {
+    public async Task GetParcelByIdWhenNotFoundShouldReturnNotFound() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
         var response = await client.GetAsync("/api/parcels/404");
@@ -70,7 +70,7 @@ public sealed class ParcelReadOnlyApiTests {
     /// 验证场景：邻近查询 id 缺失返回 400。
     /// </summary>
     [Fact]
-    public async Task GetAdjacentParcels_WithMissingId_ShouldReturnBadRequest() {
+    public async Task GetAdjacentParcelsWithMissingIdShouldReturnBadRequest() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
         var response = await client.GetAsync("/api/parcels/adjacent?beforeCount=1&afterCount=1");
@@ -84,7 +84,7 @@ public sealed class ParcelReadOnlyApiTests {
     /// 验证场景：列表查询拒绝 UTC/offset 时间参数。
     /// </summary>
     [Fact]
-    public async Task GetParcels_WithUtcOrOffsetTime_ShouldReturnBadRequest() {
+    public async Task GetParcelsWithUtcOrOffsetTimeShouldReturnBadRequest() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
 
@@ -99,7 +99,7 @@ public sealed class ParcelReadOnlyApiTests {
     /// 验证场景：邻近查询 id 非法返回 400。
     /// </summary>
     [Fact]
-    public async Task GetAdjacentParcels_WithInvalidId_ShouldReturnBadRequest() {
+    public async Task GetAdjacentParcelsWithInvalidIdShouldReturnBadRequest() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
         var response = await client.GetAsync("/api/parcels/adjacent?id=0&beforeCount=1&afterCount=1");
@@ -113,7 +113,7 @@ public sealed class ParcelReadOnlyApiTests {
     /// 验证场景：邻近查询锚点不存在返回 404。
     /// </summary>
     [Fact]
-    public async Task GetAdjacentParcels_WhenAnchorNotFound_ShouldReturnNotFound() {
+    public async Task GetAdjacentParcelsWhenAnchorNotFoundShouldReturnNotFound() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
         var response = await client.GetAsync("/api/parcels/adjacent?id=999&beforeCount=2&afterCount=2");
@@ -124,7 +124,7 @@ public sealed class ParcelReadOnlyApiTests {
     /// 验证场景：邻近查询按 id 正常返回前后记录。
     /// </summary>
     [Fact]
-    public async Task GetAdjacentParcels_WithValidId_ShouldReturnAdjacentItems() {
+    public async Task GetAdjacentParcelsWithValidIdShouldReturnAdjacentItems() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
 
@@ -145,7 +145,7 @@ public sealed class ParcelReadOnlyApiTests {
     /// 验证场景：同一 ScannedTime 下按 Id 保持稳定排序。
     /// </summary>
     [Fact]
-    public async Task GetAdjacentParcels_WithSameScannedTime_ShouldKeepStableOrder() {
+    public async Task GetAdjacentParcelsWithSameScannedTimeShouldKeepStableOrder() {
         await using var app = await BuildTestAppAsync();
         using var client = app.GetTestClient();
         var response = await client.GetAsync($"/api/parcels/adjacent?id={StableOrderAnchorId}&beforeCount=1&afterCount=2");

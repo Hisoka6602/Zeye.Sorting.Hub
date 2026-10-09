@@ -22,7 +22,7 @@ public sealed class HostingOptions {
     /// <summary>
     /// 是否启用 HTTPS 重定向。
     /// </summary>
-    public bool EnableHttpsRedirection { get; init; } = false;
+    public bool EnableHttpsRedirection { get; init; }
 
     /// <summary>
     /// Swagger 配置。
@@ -93,7 +93,7 @@ public sealed class HostingOptions {
         var endpoint = string.IsNullOrWhiteSpace(Swagger.JsonEndpoint)
             ? "/swagger/{documentName}/swagger.json"
             : Swagger.JsonEndpoint.Trim();
-        if (!endpoint.StartsWith("/", StringComparison.Ordinal)) {
+        if (!endpoint.StartsWith('/')) {
             endpoint = $"/{endpoint}";
         }
 
@@ -109,7 +109,8 @@ public sealed class HostingOptions {
             return BrowserAutoOpen.Url.Trim();
         }
 
-        var firstBinding = GetUrlBindings().FirstOrDefault();
+        var bindings = GetUrlBindings();
+        var firstBinding = bindings.Count > 0 ? bindings[0] : null;
         if (string.IsNullOrWhiteSpace(firstBinding)
             || !Uri.TryCreate(firstBinding, UriKind.Absolute, out var uri)) {
             return null;

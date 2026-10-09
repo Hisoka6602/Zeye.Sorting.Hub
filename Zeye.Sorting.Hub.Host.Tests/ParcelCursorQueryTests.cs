@@ -24,7 +24,7 @@ public sealed class ParcelCursorQueryTests {
     /// 验证场景：游标分页首页返回第一页数据与下一页游标。
     /// </summary>
     [Fact]
-    public async Task GetParcelCursorList_ShouldReturnFirstPageAndNextCursor() {
+    public async Task GetParcelCursorListShouldReturnFirstPageAndNextCursor() {
         var repository = new FakeParcelRepository();
         await using var app = await BuildCursorTestAppAsync(repository);
         using var client = app.GetTestClient();
@@ -44,7 +44,7 @@ public sealed class ParcelCursorQueryTests {
     /// 验证场景：带下一页游标可继续查询第二页。
     /// </summary>
     [Fact]
-    public async Task GetParcelCursorList_WithNextCursor_ShouldReturnSecondPage() {
+    public async Task GetParcelCursorListWithNextCursorShouldReturnSecondPage() {
         var repository = new FakeParcelRepository();
         await using var app = await BuildCursorTestAppAsync(repository);
         using var client = app.GetTestClient();
@@ -66,7 +66,7 @@ public sealed class ParcelCursorQueryTests {
     /// 验证场景：非法游标返回 400。
     /// </summary>
     [Fact]
-    public async Task GetParcelCursorList_WithInvalidCursor_ShouldReturnBadRequest() {
+    public async Task GetParcelCursorListWithInvalidCursorShouldReturnBadRequest() {
         var repository = new FakeParcelRepository();
         await using var app = await BuildCursorTestAppAsync(repository);
         using var client = app.GetTestClient();
@@ -80,7 +80,7 @@ public sealed class ParcelCursorQueryTests {
     /// 验证场景：游标分页页大小超过上限时会归一化到 200。
     /// </summary>
     [Fact]
-    public async Task GetParcelCursorList_WithOversizedPageSize_ShouldNormalizeToMaxPageSize() {
+    public async Task GetParcelCursorListWithOversizedPageSizeShouldNormalizeToMaxPageSize() {
         var repository = new FakeParcelRepository();
         await using var app = await BuildCursorTestAppAsync(repository);
         using var client = app.GetTestClient();
@@ -95,7 +95,7 @@ public sealed class ParcelCursorQueryTests {
     /// 验证场景：游标查询未指定时间范围时默认仅查询最近 24 小时。
     /// </summary>
     [Fact]
-    public async Task GetParcelCursorPagedQueryService_WithoutTimeRange_ShouldDefaultRecentTwentyFourHours() {
+    public async Task GetParcelCursorPagedQueryServiceWithoutTimeRangeShouldDefaultRecentTwentyFourHours() {
         var repository = new FakeParcelRepository();
         var service = new GetParcelCursorPagedQueryService(repository);
         var startBoundary = DateTime.Now;
@@ -120,7 +120,7 @@ public sealed class ParcelCursorQueryTests {
     /// 验证场景：普通分页页码超过 10000 时拒绝执行。
     /// </summary>
     [Fact]
-    public async Task GetParcelPagedQueryService_WithTooLargePageNumber_ShouldThrowArgumentOutOfRangeException() {
+    public async Task GetParcelPagedQueryServiceWithTooLargePageNumberShouldThrowArgumentOutOfRangeException() {
         var repository = new FakeParcelRepository();
         var service = new GetParcelPagedQueryService(repository);
 
@@ -136,7 +136,7 @@ public sealed class ParcelCursorQueryTests {
     /// 验证场景：仓储游标分页保持 ScannedTime DESC, Id DESC 的稳定排序。
     /// </summary>
     [Fact]
-    public async Task ParcelRepository_GetCursorPagedAsync_ShouldKeepStableSortAcrossPages() {
+    public async Task ParcelRepositoryGetCursorPagedAsyncShouldKeepStableSortAcrossPages() {
         var databaseName = $"parcel-cursor-repository-{Guid.NewGuid():N}";
         var options = new DbContextOptionsBuilder<SortingHubDbContext>()
             .UseInMemoryDatabase(databaseName)

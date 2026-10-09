@@ -17,7 +17,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
         /// <summary>
         /// NLog 日志器（静态，无需 DI 注入；日志来源类名为 WebRequestAuditLogRepository）。
         /// </summary>
-        private static readonly ILogger NLogLogger = LogManager.GetCurrentClassLogger();
+        private static readonly NLog.Logger NLogLogger = LogManager.GetCurrentClassLogger();
 
         /// <summary>
         /// 创建 WebRequestAuditLogRepository。
@@ -59,14 +59,14 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
         }
 
         /// <inheritdoc />
-        public async Task<RepositoryResult> AddRangeAsync(
-            IReadOnlyCollection<WebRequestAuditLog> auditLogs,
+        public override async Task<RepositoryResult> AddRangeAsync(
+            IReadOnlyCollection<WebRequestAuditLog> entities,
             CancellationToken cancellationToken) {
-            if (auditLogs is null || auditLogs.Count == 0) {
+            if (entities is null || entities.Count == 0) {
                 return RepositoryResult.Success();
             }
 
-            foreach (var auditLog in auditLogs) {
+            foreach (var auditLog in entities) {
                 if (auditLog.Detail is not null && auditLog.Detail.StartedAt == default) {
                     auditLog.Detail.StartedAt = auditLog.StartedAt;
                 }
@@ -74,16 +74,16 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
 
             try {
                 await using var db = await ContextFactory.CreateDbContextAsync(cancellationToken);
-                db.Set<WebRequestAuditLog>().AddRange(auditLogs);
+                db.Set<WebRequestAuditLog>().AddRange(entities);
                 await db.SaveChangesAsync(cancellationToken);
                 return RepositoryResult.Success();
             }
             catch (OperationCanceledException exception) when (cancellationToken.IsCancellationRequested) {
-                NLogLogger.Debug(exception, "批量写入 Web 请求审计日志已取消，Count={Count}", auditLogs.Count);
+                NLogLogger.Debug(exception, "批量写入 Web 请求审计日志已取消，Count={Count}", entities.Count);
                 return RepositoryResult.Fail("操作已取消");
             }
             catch (Exception exception) {
-                NLogLogger.Error(exception, "批量写入 Web 请求审计日志失败，Count={Count}", auditLogs.Count);
+                NLogLogger.Error(exception, "批量写入 Web 请求审计日志失败，Count={Count}", entities.Count);
                 return RepositoryResult.Fail("批量写入 Web 请求审计日志失败");
             }
         }
@@ -99,13 +99,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Repositories {
             WebRequestAuditLogQueryFilter filter,
             PageRequest pageRequest,
             CancellationToken cancellationToken) {
-            if (filter is null) {
-                throw new ArgumentNullException(nameof(filter));
-            }
+            ArgumentNullException.ThrowIfNull(filter);
 
-            if (pageRequest is null) {
-                throw new ArgumentNullException(nameof(pageRequest));
-            }
+            ArgumentNullException.ThrowIfNull(pageRequest);
 
             var pageNumber = pageRequest.NormalizePageNumber();
             var pageSize = pageRequest.NormalizePageSize();

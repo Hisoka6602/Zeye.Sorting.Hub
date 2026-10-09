@@ -7,13 +7,16 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
     /// <inheritdoc />
     public partial class AddDwsWindowBoundaryIndex : Migration
     {
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedPartitionTimeStageIsSuccessColumns = new[] { "PartitionTime", "Stage", "IsSuccess" };
+
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.CreateIndex(
                 name: "IX_Dws_Time_Stage_Success",
                 table: "Parcel_DwsMeasurements",
-                columns: new[] { "PartitionTime", "Stage", "IsSuccess" });
+                columns: CachedPartitionTimeStageIsSuccessColumns);
         }
 
         /// <inheritdoc />

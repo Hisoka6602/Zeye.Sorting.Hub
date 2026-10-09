@@ -17,7 +17,7 @@ public sealed class ShardingInspectionTests {
     /// 验证场景：规划构建器按 PerDay 生成 Parcel 与 WebRequestAuditLog 物理表名。
     /// </summary>
     [Fact]
-    public void ShardingPhysicalTablePlanBuilder_WithPerDay_ShouldBuildParcelAndAuditTables() {
+    public void ShardingPhysicalTablePlanBuilderWithPerDayShouldBuildParcelAndAuditTables() {
         using var dbContext = CreateDbContext();
         var decision = CreatePerDayDecision();
         var builder = new ShardingPhysicalTablePlanBuilder(decision);
@@ -35,7 +35,7 @@ public sealed class ShardingInspectionTests {
     /// 验证场景：预建计划服务在 dry-run 模式下只输出计划与缺失项，不执行 DDL。
     /// </summary>
     [Fact]
-    public async Task ShardingTablePrebuildService_WhenDryRun_ShouldReturnMissingPlan() {
+    public async Task ShardingTablePrebuildServiceWhenDryRunShouldReturnMissingPlan() {
         var probe = new ConfigurableShardingPhysicalTableProbe(allRequestedTablesMissing: true);
         var service = CreatePrebuildService(probe);
 
@@ -52,7 +52,7 @@ public sealed class ShardingInspectionTests {
     /// 验证场景：索引巡检可发现 Parcel 关键索引缺失。
     /// </summary>
     [Fact]
-    public async Task ShardingIndexInspectionService_WhenParcelIndexMissing_ShouldReportMissingIndex() {
+    public async Task ShardingIndexInspectionServiceWhenParcelIndexMissingShouldReportMissingIndex() {
         using var dbContext = CreateDbContext();
         var probe = new ConfigurableShardingPhysicalTableProbe(
             missingIndexesByTable: new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal) {
@@ -68,7 +68,7 @@ public sealed class ShardingInspectionTests {
 
     /// <summary>当前物理模型的稳定排序索引存在时，不因缺少旧索引名误报。</summary>
     [Fact]
-    public async Task ShardingIndexInspectionService_CurrentModelIndexesSatisfyRequiredAccessPaths() {
+    public async Task ShardingIndexInspectionServiceCurrentModelIndexesSatisfyRequiredAccessPaths() {
         using var dbContext = CreateDbContext();
         var probe = new ConfigurableShardingPhysicalTableProbe(
             missingIndexesByTable: new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal) {
@@ -80,7 +80,7 @@ public sealed class ShardingInspectionTests {
 
     /// <summary>审计日表采用日期后缀索引时满足访问路径，继续兼容旧索引名。</summary>
     [Fact]
-    public async Task ShardingIndexInspectionService_DailyAuditIndexesSatisfyRequiredAccessPaths() {
+    public async Task ShardingIndexInspectionServiceDailyAuditIndexesSatisfyRequiredAccessPaths() {
         using var dbContext = CreateDbContext();
         var probe = new ConfigurableShardingPhysicalTableProbe(missingIndexesByTable: new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal) {
             ["WebRequestAuditLogs_20261003"] = ["IX_WebRequestAuditLogs_StartedAt", "IX_WebRequestAuditLogs_StatusCode_StartedAt", "IX_WebRequestAuditLogs_IsSuccess_StartedAt"],
@@ -94,7 +94,7 @@ public sealed class ShardingInspectionTests {
     /// 验证场景：表巡检发现缺表时报告不健康。
     /// </summary>
     [Fact]
-    public async Task ShardingTableInspectionService_WhenMissingTables_ShouldReturnUnhealthyReport() {
+    public async Task ShardingTableInspectionServiceWhenMissingTablesShouldReturnUnhealthyReport() {
         var probe = new ConfigurableShardingPhysicalTableProbe(allRequestedTablesMissing: true);
         var service = CreateInspectionService(probe, shouldCheckIndexes: false, shouldCheckCapacity: false);
 
@@ -109,7 +109,7 @@ public sealed class ShardingInspectionTests {
     /// 验证场景：健康检查在巡检报告不健康时返回 Unhealthy。
     /// </summary>
     [Fact]
-    public async Task ShardingGovernanceHealthCheck_WhenInspectionUnhealthy_ShouldReturnUnhealthy() {
+    public async Task ShardingGovernanceHealthCheckWhenInspectionUnhealthyShouldReturnUnhealthy() {
         var probe = new ConfigurableShardingPhysicalTableProbe(allRequestedTablesMissing: true);
         var inspectionService = CreateInspectionService(probe, shouldCheckIndexes: false, shouldCheckCapacity: false);
         var prebuildService = CreatePrebuildService(new ConfigurableShardingPhysicalTableProbe());

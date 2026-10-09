@@ -13,7 +13,7 @@ public sealed class CleanupExpiredParcelsCommandService {
     /// <summary>
     /// NLog 日志器。
     /// </summary>
-    private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
+    private static readonly NLog.Logger Logger = LogManager.GetCurrentClassLogger();
 
     /// <summary>
     /// Parcel 仓储。
@@ -32,6 +32,7 @@ public sealed class CleanupExpiredParcelsCommandService {
     /// 执行过期包裹清理（必须经过仓储内置隔离器，由隔离器决策 blocked / dry-run / execute）。
     /// </summary>
     /// <param name="createdBefore">过期时间上界（本地时间，早于此时间创建的包裹为过期候选）。</param>
+    /// <param name="auditOperator">触发清理的操作者，用于保存审计身份。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>清理治理响应合同（含决策、计划量、执行量、补偿边界）。</returns>
     public async Task<ParcelCleanupExpiredResponse> ExecuteAsync(DateTime createdBefore, CancellationToken cancellationToken, ParcelCleanupOperator? auditOperator = null) {

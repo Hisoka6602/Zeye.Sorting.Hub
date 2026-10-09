@@ -12,7 +12,7 @@ public sealed class GetWebRequestAuditLogByIdQueryService {
     /// <summary>
     /// NLog 日志器。
     /// </summary>
-    private static readonly ILogger NLogLogger = LogManager.GetCurrentClassLogger();
+    private static readonly NLog.Logger NLogLogger = LogManager.GetCurrentClassLogger();
 
     /// <summary>
     /// 审计日志查询仓储。

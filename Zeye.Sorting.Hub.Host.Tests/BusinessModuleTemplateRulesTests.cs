@@ -23,7 +23,7 @@ public sealed class BusinessModuleTemplateRulesTests {
     /// 应用层统一结果模型应输出稳定错误码与状态码。
     /// </summary>
     [Fact]
-    public void ApplicationResult_WhenUsingCommonFactories_ShouldExposeStableCodes() {
+    public void ApplicationResultWhenUsingCommonFactoriesShouldExposeStableCodes() {
         var validation = ApplicationResult.ValidationFailed("名称不能为空");
         var conflict = ApplicationResult.Conflict("业务键冲突");
         var notFound = ApplicationResult.NotFound("未找到任务");
@@ -41,7 +41,7 @@ public sealed class BusinessModuleTemplateRulesTests {
     /// 应用层统一结果模型应为引用类型，避免值类型默认值陷阱。
     /// </summary>
     [Fact]
-    public void ApplicationResult_ShouldBeReferenceType() {
+    public void ApplicationResultShouldBeReferenceType() {
         Assert.False(typeof(ApplicationResult).IsValueType);
     }
 
@@ -50,7 +50,7 @@ public sealed class BusinessModuleTemplateRulesTests {
     /// </summary>
     /// <returns>异步任务。</returns>
     [Fact]
-    public async Task ToProblemResult_WhenResultIsUninitialized_ShouldFallbackToInternalServerError() {
+    public async Task ToProblemResultWhenResultIsUninitializedShouldFallbackToInternalServerError() {
         var uninitializedResult = (ApplicationResult)RuntimeHelpers.GetUninitializedObject(typeof(ApplicationResult));
         var httpResult = uninitializedResult.ToProblemResult();
         var httpContext = new DefaultHttpContext();
@@ -75,7 +75,7 @@ public sealed class BusinessModuleTemplateRulesTests {
     /// </summary>
     /// <returns>异步任务。</returns>
     [Fact]
-    public async Task EndpointRouteBuilderConventionExtensions_ShouldApplyModuleConventions() {
+    public async Task EndpointRouteBuilderConventionExtensionsShouldApplyModuleConventions() {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
         builder.Services.AddProblemDetails();
@@ -128,7 +128,7 @@ public sealed class BusinessModuleTemplateRulesTests {
     /// </summary>
     /// <returns>异步任务。</returns>
     [Fact]
-    public async Task EndpointRouteBuilderConventionExtensions_WhenProblemStatusCodesIsNull_ShouldTreatAsEmptyDeclarations() {
+    public async Task EndpointRouteBuilderConventionExtensionsWhenProblemStatusCodesIsNullShouldTreatAsEmptyDeclarations() {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseTestServer();
         builder.Services.AddProblemDetails();
@@ -164,7 +164,7 @@ public sealed class BusinessModuleTemplateRulesTests {
     /// 文档模板应覆盖业务模块接入的关键治理要求。
     /// </summary>
     [Fact]
-    public void BusinessModuleTemplateDocuments_ShouldContainRequiredRules() {
+    public void BusinessModuleTemplateDocumentsShouldContainRequiredRules() {
         var moduleConvention = RepositoryFileReader.ReadAllText("业务模块接入规范.md");
         var copilotTemplate = RepositoryFileReader.ReadAllText("Copilot-业务模块新增模板.md");
 

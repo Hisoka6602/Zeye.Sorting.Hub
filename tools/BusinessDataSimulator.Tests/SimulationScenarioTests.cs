@@ -67,7 +67,7 @@ public sealed class SimulationScenarioTests {
         var options = new SimulationOptions(7, 2100, new DateTime(2026, 10, 3, 10, 0, 0), "http://127.0.0.1:4187");
         var data = SimulationScenario.Generate(options);
         Assert.All(data, s => {
-            var measurement = Assert.Single(s.Records.Where(r => r.Stage == ParcelProcessingStage.DwsBound));
+            var measurement = Assert.Single(s.Records, r => r.Stage == ParcelProcessingStage.DwsBound);
             Assert.Equal(s.Parcel.Weight * 1000, measurement.WeightGrams);
             Assert.Equal(s.Parcel.Length * s.Parcel.Width * s.Parcel.Height, measurement.VolumeMm3);
             Assert.Equal(s.Parcel.Volume, s.Parcel.VolumeInfo!.FormattedVolume);

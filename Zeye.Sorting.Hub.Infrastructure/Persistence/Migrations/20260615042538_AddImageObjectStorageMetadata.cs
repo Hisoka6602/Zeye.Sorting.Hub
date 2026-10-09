@@ -8,6 +8,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
     /// <inheritdoc />
     public partial class AddImageObjectStorageMetadata : Migration
     {
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedBucketNameObjectKeyColumns = new[] { "BucketName", "ObjectKey" };
+
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
@@ -88,7 +91,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                 migrationBuilder.CreateIndex(
                     name: "IX_Parcel_ImageInfos_BucketName_ObjectKey",
                     table: "Parcel_ImageInfos",
-                    columns: new[] { "BucketName", "ObjectKey" });
+                    columns: CachedBucketNameObjectKeyColumns);
             }
 
             migrationBuilder.CreateIndex(

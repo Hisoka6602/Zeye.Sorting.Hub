@@ -26,7 +26,7 @@ public static class WebRequestAuditLogMiddlewareExtensions {
             .ValidateOnStart();
         var queueCapacity = configuration.GetValue<int?>($"{WebRequestAuditLogOptions.SectionName}:BackgroundQueueCapacity") ?? 1024;
         var dropLogIntervalSeconds = configuration.GetValue<int?>($"{WebRequestAuditLogOptions.SectionName}:DropLogIntervalSeconds") ?? 30;
-        services.AddSingleton(new WebRequestAuditBackgroundQueue(queueCapacity, TimeSpan.FromSeconds(Math.Max(1, dropLogIntervalSeconds))));
+        services.AddSingleton(new WebRequestAuditBuffer(queueCapacity, TimeSpan.FromSeconds(Math.Max(1, dropLogIntervalSeconds))));
         services.AddHostedService<WebRequestAuditBackgroundWorkerHostedService>();
 
         return services;

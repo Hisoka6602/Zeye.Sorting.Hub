@@ -29,7 +29,7 @@ public sealed class WebRequestAuditLogMiddleware {
     /// <summary>
     /// NLog 日志器。
     /// </summary>
-    private static readonly NLog.ILogger NLogLogger = LogManager.GetCurrentClassLogger();
+    private static readonly NLog.Logger NLogLogger = LogManager.GetCurrentClassLogger();
 
     /// <summary>
     /// 下一个中间件委托。
@@ -43,7 +43,7 @@ public sealed class WebRequestAuditLogMiddleware {
     /// <summary>
     /// 后台审计队列（有界队列+背压保护）。
     /// </summary>
-    private readonly WebRequestAuditBackgroundQueue _backgroundQueue;
+    private readonly WebRequestAuditBuffer _backgroundQueue;
     /// <summary>共享查询诊断管线，审计采样关闭时也保留数据库性能观测。</summary>
     private readonly SlowQueryAutoTuningPipeline? _slowQueries;
 
@@ -64,7 +64,7 @@ public sealed class WebRequestAuditLogMiddleware {
     public WebRequestAuditLogMiddleware(
         RequestDelegate next,
         IOptions<WebRequestAuditLogOptions> options,
-        WebRequestAuditBackgroundQueue backgroundQueue,
+        WebRequestAuditBuffer backgroundQueue,
         SlowQueryAutoTuningPipeline? slowQueries = null) {
         _next = next ?? throw new ArgumentNullException(nameof(next));
         _options = options ?? throw new ArgumentNullException(nameof(options));
@@ -453,8 +453,8 @@ public sealed class WebRequestAuditLogMiddleware {
     /// <param name="path">请求路径。</param>
     /// <param name="excludedPathPrefixes">排除前缀集合。</param>
     /// <returns>命中排除规则返回 true。</returns>
-    private static bool ShouldExclude(PathString path, IReadOnlyCollection<string>? excludedPathPrefixes) {
-        if (excludedPathPrefixes is null || excludedPathPrefixes.Count == 0) {
+    private static bool ShouldExclude(PathString path, string[]? excludedPathPrefixes) {
+        if (excludedPathPrefixes is null || excludedPathPrefixes.Length == 0) {
             return false;
         }
 

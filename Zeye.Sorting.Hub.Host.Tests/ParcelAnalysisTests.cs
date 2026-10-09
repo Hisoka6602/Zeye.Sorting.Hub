@@ -15,6 +15,9 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 
 /// <summary>以真实SQLite分表验证分析总体、分位数、来源隔离和HTTP校验。</summary>
 public sealed class ParcelAnalysisTests {
+    /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+    private static readonly int[] Cached010000Values = new[] { 0, 10000 };
+
     /// <summary>异常下钻、NoRead及路由阻断共享完整入库总体，不把当前页当作统计总体。</summary>
     [Fact]
     public async Task ExceptionsUseIntakeCohortAndSourceFiltersAcrossPartitions() {
@@ -55,7 +58,7 @@ public sealed class ParcelAnalysisTests {
         await using var database = new RelationalParcelTestDatabase();
         await database.InitializeAsync();
         var start = new DateTime(2026, 10, 1, 10, 0, 0);
-        var values = new[] { 0, 10000 }.Concat(Enumerable.Range(1, 20).Select(index => index * 100)).ToArray();
+        var values = Cached010000Values.Concat(Enumerable.Range(1, 20).Select(index => index * 100)).ToArray();
         for (var index = 0; index < values.Length; index++) {
             var at = start.AddSeconds(index * 20);
             await SaveAsync(database, Fact("0-detect-" + index, index + 1, at));

@@ -44,11 +44,11 @@ public sealed class OracleDialect : EfModelDatabaseDialect {
         await using var command = (OracleCommand)administrationConnection.CreateCommand();
         command.BindByName = true; command.CommandText = "SELECT COUNT(*) FROM ALL_USERS WHERE USERNAME=:name";
         command.Parameters.Add(new OracleParameter("name", ExtractSchema(databaseName)));
-        if (Convert.ToInt32(await SlowQueryDbOperations.ExecuteScalarAsync(command, cancellationToken)) == 0) return false;
+        if (Convert.ToInt32(await SlowQueryDbOperations.ExecuteScalarAsync(command, cancellationToken), System.Globalization.CultureInfo.InvariantCulture) == 0) return false;
         if (string.IsNullOrWhiteSpace(Configuration.GetConnectionString("OracleAdministration"))) return true;
         // 兼容已创建用户但授权尚未完成的旧部署，补齐授权仍走自动建库隔离器。
         command.CommandText = "SELECT COUNT(*) FROM ALL_TAB_PRIVS WHERE GRANTEE=:name AND TABLE_SCHEMA='SYS' AND TABLE_NAME='DBMS_LOCK' AND PRIVILEGE='EXECUTE'";
-        return Convert.ToInt32(await SlowQueryDbOperations.ExecuteScalarAsync(command, cancellationToken)) > 0;
+        return Convert.ToInt32(await SlowQueryDbOperations.ExecuteScalarAsync(command, cancellationToken), System.Globalization.CultureInfo.InvariantCulture) > 0;
     }
     /// <inheritdoc />
     public override async Task CreateDatabaseAsync(DbConnection administrationConnection, string databaseName, CancellationToken cancellationToken) {
@@ -65,7 +65,7 @@ public sealed class OracleDialect : EfModelDatabaseDialect {
             // 此处只验证用户存在，不能把尚未补齐的权限当成用户不存在。
             command.CommandText = "SELECT COUNT(*) FROM ALL_USERS WHERE USERNAME=:name";
             command.Parameters.Add(new OracleParameter("name", schema));
-            if (Convert.ToInt32(await SlowQueryDbOperations.ExecuteScalarAsync(command, cancellationToken)) == 0) throw;
+            if (Convert.ToInt32(await SlowQueryDbOperations.ExecuteScalarAsync(command, cancellationToken), System.Globalization.CultureInfo.InvariantCulture) == 0) throw;
             command.Parameters.Clear();
             NLog.LogManager.GetCurrentClassLogger().Warn(exception, "Oracle 业务用户已存在，继续补齐启动授权。");
         }
@@ -82,7 +82,7 @@ public sealed class OracleDialect : EfModelDatabaseDialect {
         // 即使现有 schema 缺少 DBMS_LOCK 授权，也不能把已有对象误认成新库。
         command.CommandText = "SELECT COUNT(*) FROM ALL_OBJECTS WHERE OWNER=:name";
         command.Parameters.Add(new OracleParameter("name", ExtractSchema(databaseName)));
-        return Convert.ToInt64(await SlowQueryDbOperations.ExecuteScalarAsync(command, cancellationToken)) > 0;
+        return Convert.ToInt64(await SlowQueryDbOperations.ExecuteScalarAsync(command, cancellationToken), System.Globalization.CultureInfo.InvariantCulture) > 0;
     }
     /// <summary>Oracle 未加引号的业务用户名统一规范成大写，阻止标识符注入。</summary>
     private static string ExtractSchema(string name) => DatabaseIdentifierPolicy.NormalizeDatabaseName(name, nameof(name)).ToUpperInvariant();

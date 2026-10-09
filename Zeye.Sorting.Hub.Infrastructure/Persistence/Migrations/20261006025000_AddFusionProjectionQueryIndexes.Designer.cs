@@ -17,7 +17,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
     {
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
-#pragma warning disable 612, 618
             modelBuilder
                 .HasAnnotation("ProductVersion", "9.0.14")
                 .HasAnnotation("Relational:MaxIdentifierLength", 64);
@@ -2094,7 +2093,6 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
                 {
                     b.Navigation("Detail");
                 });
-#pragma warning restore 612, 618
         }
     }
 }

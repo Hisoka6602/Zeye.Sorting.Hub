@@ -26,6 +26,9 @@ namespace Zeye.Sorting.Hub.Tools.BusinessDataSimulator;
 
 /// <summary>仅显式执行的本机造数入口，复用EF映射及物理分表能力。</summary>
 internal static class Program {
+    /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+    private static readonly string[] CachedPersistenceShardingStrategyTimeGranularityPersistenceShardingWriteRoutingAllowTableCreationPer = new[] { "Persistence:Sharding:Strategy:Time:Granularity", "Persistence:Sharding:WriteRouting:AllowTableCreation", "Persistence:Sharding:WriteRouting:DryRun" };
+
     /// <summary>可查看的模拟批次和草稿文档序列化格式。</summary>
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
@@ -48,7 +51,7 @@ internal static class Program {
                 throw new InvalidOperationException("模拟工具仅能访问本机Sorting Hub Docker数据库。");
             var configDirectory = Value(args, "--config-directory", "/app");
             var configuration = new ConfigurationBuilder().AddInMemoryCollection(ConfigurationDocument.Flatten(ConfigurationReadOnlyLoader.Load(configDirectory, "LocalDocker")))
-                .AddInMemoryCollection(new[] { "Persistence:Sharding:Strategy:Time:Granularity", "Persistence:Sharding:WriteRouting:AllowTableCreation", "Persistence:Sharding:WriteRouting:DryRun" }.Select(key => new KeyValuePair<string, string?>(key, Environment.GetEnvironmentVariable(key.Replace(":", "__")))) .Where(p => p.Value is not null)).Build();
+                .AddInMemoryCollection(CachedPersistenceShardingStrategyTimeGranularityPersistenceShardingWriteRoutingAllowTableCreationPer.Select(key => new KeyValuePair<string, string?>(key, Environment.GetEnvironmentVariable(key.Replace(":", "__")))) .Where(p => p.Value is not null)).Build();
             var dbOptions = new DbContextOptionsBuilder<SortingHubDbContext>().UseMySql(connection, new MySqlServerVersion(new Version(8, 4, 0)), mysql => mysql.CommandTimeout(60)).Options;
             IDbContextFactory<SortingHubDbContext> factory = new PooledDbContextFactory<SortingHubDbContext>(dbOptions);
             await using var batchLock = await factory.CreateDbContextAsync();
@@ -295,7 +298,7 @@ internal static class Program {
     }
     /// <summary>输出模拟批次汇总，不输出部署秘密。</summary>
     private static void PrintSummary(SimulationOptions options, SimulationParcel[] data, int inserted, string result) => Console.WriteLine(JsonSerializer.Serialize(new {
-        result, batch = options.BatchKey, start = options.Start.ToString("yyyy-MM-dd"), end = options.End.ToString("yyyy-MM-dd"), parcelCount = data.Length, inserted,
+        result, batch = options.BatchKey, start = options.Start.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture), end = options.End.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture), parcelCount = data.Length, inserted,
         completed = data.Count(s => s.Parcel.Status == ParcelStatus.Completed), exceptions = data.Count(s => s.Parcel.Status == ParcelStatus.SortingException), pending = data.Count(s => s.Parcel.Status == ParcelStatus.Pending), noRead = data.Count(s => s.NoRead != NoReadType.None),
         workstations = data.Select(s => s.Parcel.SourceInstanceId).Distinct().Count(), processingRecords = data.Sum(s => s.Records.Length), images = data.Sum(s => s.Parcel.ImageInfos.Count), apiRequests = data.Sum(s => s.Parcel.ApiRequests.Count), commands = data.Sum(s => s.Parcel.CommandInfos.Count), videoMetadata = data.Sum(s => s.Parcel.VideoInfos.Count)
     }, Json));

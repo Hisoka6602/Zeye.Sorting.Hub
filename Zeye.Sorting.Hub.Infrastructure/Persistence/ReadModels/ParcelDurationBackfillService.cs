@@ -55,7 +55,7 @@ public sealed class ParcelDurationBackfillService(IDbContextFactory<SortingHubDb
     /// <summary>按主键继续而非 OFFSET；一次只搬运有界分类前部，不加载请求或响应正文。</summary>
     internal static IQueryable<ParcelProcessingRecord> BuildBatch(IQueryable<ParcelProcessingRecord> facts, string cursor) {
         facts = facts.Where(row => Stages.Contains(row.Stage));
-        if (cursor.Length > 0) facts = facts.Where(row => string.Compare(row.Key, cursor) > 0);
+        if (cursor.Length > 0) facts = facts.Where(row => DatabaseTextFunctions.IsAfter(row.Key, cursor));
         return facts.OrderBy(row => row.Key).Take(BatchSize).Select(row => new ParcelProcessingRecord {
             Key = row.Key, RecordId = row.RecordId, ParcelId = row.ParcelId, SourceInstanceId = row.SourceInstanceId,
             SourceRunId = row.SourceRunId, SourceParcelId = row.SourceParcelId, PartitionTime = row.PartitionTime,

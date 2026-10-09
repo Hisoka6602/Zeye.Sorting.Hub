@@ -15,7 +15,9 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 
 /// <summary>实际物理分表路由、目录查询与受隔离器保护的建表。</summary>
-public sealed class ParcelPartitionStore {
+public sealed class ParcelPartitionStore : IDisposable {
+    /// <summary>所有目录刷新任务停止后释放实例闸门；进程级建表闸门仍由进程共享。</summary>
+    public void Dispose() => _catalogRefreshGate.Dispose();
     /// <summary>基础模型上下文工厂。</summary>
     private readonly IDbContextFactory<SortingHubDbContext> _factory;
     /// <summary>复用分表上下文配置，模型仍按实际后缀隔离，不在每次查询时重建选项。</summary>

@@ -16,9 +16,9 @@ public sealed class FusionConfigurationTests {
     /// <summary>工作台登记及编辑请求。</summary>
     private static FusionSourceWrite Source(string id = "fusion-new") => new(id, "分拣工作台", true, "default", "default", "line-01", "", "", "Asia/Shanghai");
 
-    /// <summary>维护接入目录的 NewSourceIsImmediatelyAuthenticated_EncryptedAtRest_AndSurvivesRestart 配置与生命周期。</summary>
+    /// <summary>维护接入目录的 NewSourceIsImmediatelyAuthenticatedEncryptedAtRestAndSurvivesRestart 配置与生命周期。</summary>
     [Fact]
-    public async Task NewSourceIsImmediatelyAuthenticated_EncryptedAtRest_AndSurvivesRestart() {
+    public async Task NewSourceIsImmediatelyAuthenticatedEncryptedAtRestAndSurvivesRestart() {
         await using var env = new FusionIngressTestEnvironment(); await env.InitializeAsync();
         var protection = new EphemeralDataProtectionProvider();
         var service = new FusionConfigurationService(env.Database.Factory, MsOptions.Create(env.Options), protection);
@@ -40,9 +40,9 @@ public sealed class FusionConfigurationTests {
         Assert.True(rebuilt.Authenticate("fusion-new", created.Pairing.MachineApiKey));
     }
 
-    /// <summary>维护接入目录的 RotationRevokesExistingLease_StaleWritesAreRejected_AndOtherSourcesKeepWorking 配置与生命周期。</summary>
+    /// <summary>维护接入目录的 RotationRevokesExistingLeaseStaleWritesAreRejectedAndOtherSourcesKeepWorking 配置与生命周期。</summary>
     [Fact]
-    public async Task RotationRevokesExistingLease_StaleWritesAreRejected_AndOtherSourcesKeepWorking() {
+    public async Task RotationRevokesExistingLeaseStaleWritesAreRejectedAndOtherSourcesKeepWorking() {
         await using var env = new FusionIngressTestEnvironment(); await env.InitializeAsync();
         var service = new FusionConfigurationService(env.Database.Factory, MsOptions.Create(env.Options), new EphemeralDataProtectionProvider());
         await service.InitializeAsync(default);
@@ -64,9 +64,9 @@ public sealed class FusionConfigurationTests {
         Assert.False(ingress.Authenticate(source.SourceInstanceId, rotated.Pairing.MachineApiKey));
     }
 
-    /// <summary>维护接入目录的 UsedIdentityCannotBeRetargeted_EmptyOptionalCodesMatch_AndProbeDoesNotAcquireLease 配置与生命周期。</summary>
+    /// <summary>维护接入目录的 UsedIdentityCannotBeRetargetedEmptyOptionalCodesMatchAndProbeDoesNotAcquireLease 配置与生命周期。</summary>
     [Fact]
-    public async Task UsedIdentityCannotBeRetargeted_EmptyOptionalCodesMatch_AndProbeDoesNotAcquireLease() {
+    public async Task UsedIdentityCannotBeRetargetedEmptyOptionalCodesMatchAndProbeDoesNotAcquireLease() {
         await using var env = new FusionIngressTestEnvironment(); await env.InitializeAsync();
         var service = new FusionConfigurationService(env.Database.Factory, MsOptions.Create(env.Options), new EphemeralDataProtectionProvider());
         await service.InitializeAsync(default);

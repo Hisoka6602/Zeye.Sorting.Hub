@@ -46,7 +46,7 @@ public sealed partial class FusionIngestionService {
         db.Add(stored);
         // 步骤2：明确关联与上传描述可先后到达；仅保存明确来源三元组，绝不按条码猜测。
         if (fact.Kind is "image.association" && FusionProtocol.Boolean(fact.Data, "associationConfirmed") == true
-            && fact.SourceParcelId is not null && (FusionProtocol.Decimal(fact.Data, "candidateCount") ?? 1) <= 1) {
+            && fact.SourceParcelId is not null && (FusionProtocol.ReadDecimal(fact.Data, "candidateCount") ?? 1) <= 1) {
             var imageId = FusionProtocol.Text(fact.Data, "sourceImageId", 128) ?? throw new ArgumentException("MissingImageIdentity");
             var key = FusionProtocol.Key(fact.SourceInstanceId, imageId);
             var image = await db.Set<FusionImageUpload>().AsTracking().SingleOrDefaultAsync(x => x.Key == key, cancellationToken);
@@ -77,7 +77,7 @@ public sealed partial class FusionIngestionService {
     }
 
     /// <summary>同编号、同序号和同原始字节摘要才是重复，任意身份内容变更都冲突。</summary>
-    private static HubFactReceipt Receipt(IReadOnlyList<FusionFactReceipt> previous, HubFactEnvelope envelope) {
+    private static HubFactReceipt Receipt(System.Collections.Generic.List<Zeye.Sorting.Hub.Infrastructure.Persistence.Fusion.FusionFactReceipt> previous, HubFactEnvelope envelope) {
         var identical = previous.Count == 1 && previous[0].RecordId == envelope.RecordId
             && previous[0].SourceSequence == FusionProtocol.Number(envelope.SourceSequence, true) && previous[0].BodySha256 == envelope.BodySha256;
         return new(envelope.RecordId, envelope.SourceSequence, envelope.BodySha256, identical ? "duplicate" : "conflict",
@@ -128,12 +128,12 @@ public sealed partial class FusionIngestionService {
     }
 
     /// <summary>幂等业务用例完成后才标记投影完成；崩溃在两者之间会安全重放同一业务凭据。</summary>
-    public async Task FinishProjectionAsync(FusionProjectionItem item, string? parcelId, string? error, CancellationToken cancellationToken) {
+    public async Task FinishProjectionAsync(FusionProjectionItem item, string? parcelId, string? errorMessage, CancellationToken cancellationToken) {
         await using var db = await _factory.CreateDbContextAsync(cancellationToken);
         await db.Set<FusionFactReceipt>().Where(x => x.Key == item.Key && x.ProjectionClaimId == item.ClaimId)
-            .ExecuteUpdateAsync(p => p.SetProperty(x => x.ProjectionState, error == null ? "complete" : "retry")
-                .SetProperty(x => x.ParcelId, parcelId).SetProperty(x => x.ProjectionError, error)
-                .SetProperty(x => x.NextProjectionAt, DateTime.Now.AddSeconds(error == null ? 0 : 15))
+            .ExecuteUpdateAsync(p => p.SetProperty(x => x.ProjectionState, errorMessage == null ? "complete" : "retry")
+                .SetProperty(x => x.ParcelId, parcelId).SetProperty(x => x.ProjectionError, errorMessage)
+                .SetProperty(x => x.NextProjectionAt, DateTime.Now.AddSeconds(errorMessage == null ? 0 : 15))
                 .SetProperty(x => x.ProjectionClaimId, (string?)null).SetProperty(x => x.ProjectionClaimUntil, (DateTime?)null), cancellationToken);
     }
 

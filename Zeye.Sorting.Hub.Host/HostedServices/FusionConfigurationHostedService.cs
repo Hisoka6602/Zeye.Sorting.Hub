@@ -7,16 +7,16 @@ public sealed class FusionConfigurationHostedService(FusionConfigurationService 
     /// <summary>记录刷新异常及堆栈，不输出配置正文或凭据。</summary>
     private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
     /// <summary>在数据库初始化后加载接入目录。</summary>
-    public override async Task StartAsync(CancellationToken ct) { await configuration.InitializeAsync(ct); await base.StartAsync(ct); }
+    public override async Task StartAsync(CancellationToken cancellationToken) { await configuration.InitializeAsync(cancellationToken); await base.StartAsync(cancellationToken); }
     /// <summary>刷新其他实例修改的配置并通知实时订阅。</summary>
-    protected override async Task ExecuteAsync(CancellationToken ct) {
-        while (!ct.IsCancellationRequested) {
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
+        while (!stoppingToken.IsCancellationRequested) {
             try {
-                await Task.Delay(TimeSpan.FromSeconds(5), ct);
+                await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
                 var revision = configuration.Snapshot.Revision;
-                await configuration.RefreshAsync(ct);
+                await configuration.RefreshAsync(stoppingToken);
                 if (configuration.Snapshot.Revision != revision) changes.Notify();
-            } catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
+            } catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
             catch (Exception exception) { Logger.Warn(exception, "Fusion 登记目录刷新失败，保留最后有效配置。"); }
         }
     }

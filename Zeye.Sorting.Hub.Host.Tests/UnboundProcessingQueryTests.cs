@@ -11,6 +11,11 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 
 /// <summary>未关联处理记录的跨分表排序、旧数据兼容、有界报文加载和索引修复回归。</summary>
 public sealed class UnboundProcessingQueryTests {
+    /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+    private static readonly string[] CachedDailyALegacyCMonthlyBValues = new[] { "daily-a", "legacy-c", "monthly-b" };
+    /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+    private static readonly string[] CachedParcelIdRecordedAtKeyValues = new[] { "ParcelId", "RecordedAt", "Key" };
+
     /// <summary>旧基础表、月分表和日分表中的同时间记录统一排序，原始报文完整返回。</summary>
     [Fact]
     public async Task LatestRecordsAcrossMixedPartitionsIncludeLegacyRowsWithoutReceipts() {
@@ -35,7 +40,7 @@ public sealed class UnboundProcessingQueryTests {
 
         var records = await database.Processing.GetUnboundAsync(3, default);
 
-        Assert.Equal(new[] { "daily-a", "legacy-c", "monthly-b" }, records.Select(record => record.Key));
+        Assert.Equal(CachedDailyALegacyCMonthlyBValues, records.Select(record => record.Key));
         Assert.All(records, record => { Assert.Null(record.ParcelId); Assert.Equal(payload, record.RawPayload); });
         var narrow = capture.Commands.Where(command => !command.Sql.Contains("RawPayload", StringComparison.Ordinal)).ToArray();
         Assert.Equal(3, narrow.Length);
@@ -85,7 +90,7 @@ public sealed class UnboundProcessingQueryTests {
         await using (var db = await database.Partitions.CreateContextAsync(period.Suffix, default)) {
             name = db.Model.FindEntityType(typeof(ParcelProcessingRecord))!.GetIndexes()
                 .Single(index => index.Properties.Select(property => property.Name)
-                    .SequenceEqual(new[] { "ParcelId", "RecordedAt", "Key" })).GetDatabaseName()!;
+                    .SequenceEqual(CachedParcelIdRecordedAtKeyValues)).GetDatabaseName()!;
             var drop = new DropIndexOperation { Name = name, Table = "Parcel_ProcessingRecords_" + period.Suffix };
             foreach (var command in db.GetService<IMigrationsSqlGenerator>().Generate([drop]))
                 await db.Database.ExecuteSqlRawAsync(command.CommandText);

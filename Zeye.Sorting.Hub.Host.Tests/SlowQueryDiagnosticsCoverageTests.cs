@@ -17,12 +17,56 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 
 /// <summary>验证执行后流式读取、错误、取消、连接、累计请求和归档恢复的实际采集覆盖。</summary>
 public sealed class SlowQueryDiagnosticsCoverageTests : IDisposable {
+    /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+    private static readonly string[] CachedMissingTableValues = new[] { "missing_table" };
+
     /// <summary>测试专用临时目录根，不接触本地业务数据库。</summary>
     private readonly string _root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "zeye-slow-query-tests"));
     /// <summary>本测试实例专用目录。</summary>
     private readonly string _directory;
     /// <summary>创建与其他测试隔离的目标路径。</summary>
     public SlowQueryDiagnosticsCoverageTests() => _directory = Path.Combine(_root, Guid.NewGuid().ToString("N"));
+
+    /// <summary>同步与异步交叉释放也只关闭底层流一次，释放异常原样返回且观测恰好结束一次。</summary>
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task StreamDisposalForwardsOnceAndPreservesFailures(bool asyncFirst, bool fail) {
+        var (_, _, pipeline) = Build();
+        using var scope = SlowQueryRequestScope.Begin("stream-disposal");
+        var failure = fail ? new IOException("disposal-failure") : null;
+        var inner = new DisposeTrackingStream(failure);
+        var execution = new SlowQueryExecution(pipeline, "SELECT Payload", TimeSpan.FromTicks(1), "", "stream-disposal");
+        var stream = new SlowQueryReaderStream(inner, execution);
+        var caught = asyncFirst ? await Record.ExceptionAsync(async () => await stream.DisposeAsync()) : Record.Exception(stream.Dispose);
+        Assert.Same(failure, caught);
+        stream.Dispose();
+        await stream.DisposeAsync();
+        Assert.Equal(1, inner.DisposeCount);
+        Assert.Equal(asyncFirst ? 1 : 0, inner.AsyncDisposeCount);
+        execution.Complete();
+        Assert.Equal(1, scope.Snapshot("stream-disposal").CommandCount);
+    }
+
+    /// <summary>文本大字段释放始终走完整基类链，重入不重复释放或覆盖错误。</summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TextReaderDisposalForwardsOnceAndPreservesFailures(bool fail) {
+        var (_, _, pipeline) = Build();
+        using var scope = SlowQueryRequestScope.Begin("text-disposal");
+        var failure = fail ? new IOException("text-disposal-failure") : null;
+        var inner = new DisposeTrackingTextReader(failure);
+        var execution = new SlowQueryExecution(pipeline, "SELECT Payload", TimeSpan.FromTicks(1), "", "text-disposal");
+        var reader = new SlowQueryTextReader(inner, execution);
+        Assert.Same(failure, Record.Exception(reader.Dispose));
+        reader.Dispose();
+        Assert.Equal(1, inner.DisposeCount);
+        execution.Complete();
+        Assert.Equal(1, scope.Snapshot("text-disposal").CommandCount);
+    }
 
     /// <summary>真实 EF SQLite 流式读取：第一行返回较快，后续逐行读取仍必须命中慢阈值。</summary>
     [Theory]
@@ -111,7 +155,7 @@ public sealed class SlowQueryDiagnosticsCoverageTests : IDisposable {
         Exception failure = cancel ? new OperationCanceledException("模拟取消") : new TimeoutException("模拟大字段超时");
         var execution = new SlowQueryExecution(pipeline, "SELECT Payload FROM parcels", TimeSpan.FromTicks(1), "", "large-field");
         using var stream = new SlowQueryReaderStream(new SlowQueryFailingStream(failure), execution);
-        var caught = await Record.ExceptionAsync(async () => { await stream.ReadAsync(new byte[10]); });
+        var caught = await Record.ExceptionAsync(async () => { await stream.ReadExactlyAsync(new byte[10]); });
         Assert.Same(failure, caught);
         execution.Complete();
         var profile = Assert.Single(profiles.GetTopProfiles().Items);
@@ -152,7 +196,7 @@ public sealed class SlowQueryDiagnosticsCoverageTests : IDisposable {
                 await Task.Delay(25);
                 pipeline.CommandCompleted("SELECT Value FROM parcels", TimeSpan.FromMilliseconds(25), "SqliteConnection", index.ToString(System.Globalization.CultureInfo.InvariantCulture));
             }
-        }, OptionValues.Create(new WebRequestAuditLogOptions { Enabled = false }), new WebRequestAuditBackgroundQueue(4), pipeline);
+        }, OptionValues.Create(new WebRequestAuditLogOptions { Enabled = false }), new WebRequestAuditBuffer(4), pipeline);
         await middleware.InvokeAsync(context);
         var profile = Assert.Single(profiles.GetTopProfiles().Items);
         Assert.Equal("request", profile.Kind);
@@ -169,7 +213,7 @@ public sealed class SlowQueryDiagnosticsCoverageTests : IDisposable {
         var (_, profiles, pipeline) = Build(600000);
         var context = new DefaultHttpContext(); context.Request.Path = "/api/parcels/analysis";
         var middleware = new WebRequestAuditLogMiddleware(http => { http.Response.StatusCode = 500; return Task.CompletedTask; },
-            OptionValues.Create(new WebRequestAuditLogOptions { Enabled = false }), new WebRequestAuditBackgroundQueue(4), pipeline);
+            OptionValues.Create(new WebRequestAuditLogOptions { Enabled = false }), new WebRequestAuditBuffer(4), pipeline);
         await middleware.InvokeAsync(context);
         var profile = Assert.Single(profiles.GetTopProfiles().Items);
         Assert.Equal("request", profile.Kind); Assert.Equal(1, profile.ErrorCount); Assert.Equal(500, profile.StatusCode);
@@ -451,7 +495,7 @@ public sealed class SlowQueryDiagnosticsCoverageTests : IDisposable {
             .AddInterceptors(new SlowQueryCommandInterceptor(pipeline, profiles)).Options);
         using var scope = SlowQueryRequestScope.Begin("external-open");
         var missing = await new SqliteDialect(config).FindMissingTablesAsync(db, null, ["missing_table"], default);
-        Assert.Equal(new[] { "missing_table" }, missing); Assert.Equal(1, scope.Snapshot("external-open").CommandCount);
+        Assert.Equal(CachedMissingTableValues, missing); Assert.Equal(1, scope.Snapshot("external-open").CommandCount);
         Assert.Equal(ConnectionState.Open, connection.State); Assert.Empty(profiles.GetTopProfiles().Items);
     }
 

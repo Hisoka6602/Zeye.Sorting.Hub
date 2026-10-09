@@ -160,7 +160,7 @@ public sealed class FusionPersistenceTests {
 
     /// <summary>长窗口并行读取跨周期稳定排序，保留扫码日晚于入库日的包裹与精确总数。</summary>
     [Fact]
-    public async Task LongWindowQuery_MergesTopRowsWithoutPruningLateScans() {
+    public async Task LongWindowQueryMergesTopRowsWithoutPruningLateScans() {
         await using var database = new RelationalParcelTestDatabase("PerDay");
         await database.InitializeAsync();
         var first = Fact("fanout-first", 11) with { Barcode = "FANOUT-11" };

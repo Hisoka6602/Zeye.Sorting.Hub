@@ -16,10 +16,10 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 /// </summary>
 public sealed class WebRequestAuditLogRepositoryTests {
     /// <summary>
-    /// 验证场景：IWebRequestAuditLogRepository_ShouldResolveFromDependencyInjection。
+    /// 验证场景：IWebRequestAuditLogRepositoryShouldResolveFromDependencyInjection。
     /// </summary>
     [Fact]
-    public void IWebRequestAuditLogRepository_ShouldResolveFromDependencyInjection() {
+    public void IWebRequestAuditLogRepositoryShouldResolveFromDependencyInjection() {
         var databaseName = $"web-request-auditlog-repo-di-{Guid.NewGuid():N}";
         var options = BuildOptions(databaseName);
         var services = new ServiceCollection();
@@ -35,10 +35,10 @@ public sealed class WebRequestAuditLogRepositoryTests {
     }
 
     /// <summary>
-    /// 验证场景：AddAsync_ShouldPersistHotAndColdInSingleWritePath。
+    /// 验证场景：AddAsyncShouldPersistHotAndColdInSingleWritePath。
     /// </summary>
     [Fact]
-    public async Task AddAsync_ShouldPersistHotAndColdInSingleWritePath() {
+    public async Task AddAsyncShouldPersistHotAndColdInSingleWritePath() {
         var databaseName = $"web-request-auditlog-repo-{Guid.NewGuid():N}";
         var repository = CreateRepository(databaseName);
         var startedAt = DateTime.Now;
@@ -65,10 +65,10 @@ public sealed class WebRequestAuditLogRepositoryTests {
     }
 
     /// <summary>
-    /// 验证场景：WriteService_ShouldCallRepositoryAndPersist。
+    /// 验证场景：WriteServiceShouldCallRepositoryAndPersist。
     /// </summary>
     [Fact]
-    public async Task WriteService_ShouldCallRepositoryAndPersist() {
+    public async Task WriteServiceShouldCallRepositoryAndPersist() {
         var databaseName = $"web-request-auditlog-service-{Guid.NewGuid():N}";
         var options = BuildOptions(databaseName);
         var services = new ServiceCollection();
@@ -98,10 +98,10 @@ public sealed class WebRequestAuditLogRepositoryTests {
     }
 
     /// <summary>
-    /// 验证场景：GetWebRequestAuditLogPerDayShardingEntityTypes_ShouldContainHotAndColdTypes。
+    /// 验证场景：GetWebRequestAuditLogPerDayShardingEntityTypesShouldContainHotAndColdTypes。
     /// </summary>
     [Fact]
-    public void GetWebRequestAuditLogPerDayShardingEntityTypes_ShouldContainHotAndColdTypes() {
+    public void GetWebRequestAuditLogPerDayShardingEntityTypesShouldContainHotAndColdTypes() {
         var entityTypes = PersistenceServiceCollectionExtensions.GetWebRequestAuditLogPerDayShardingEntityTypes();
         Assert.Contains(typeof(WebRequestAuditLog), entityTypes);
         Assert.Contains(typeof(WebRequestAuditLogDetail), entityTypes);

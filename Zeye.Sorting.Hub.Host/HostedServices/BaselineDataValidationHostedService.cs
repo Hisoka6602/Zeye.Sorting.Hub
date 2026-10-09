@@ -19,10 +19,6 @@ public sealed class BaselineDataValidationHostedService : IHostedService {
     /// </summary>
     private readonly BaselineDataValidator _baselineDataValidator;
 
-    /// <summary>
-    /// 种子入口。
-    /// </summary>
-    private readonly BaselineDataSeeder _baselineDataSeeder;
 
     /// <summary>
     /// 配置选项。
@@ -33,14 +29,11 @@ public sealed class BaselineDataValidationHostedService : IHostedService {
     /// 初始化基线数据校验后台服务。
     /// </summary>
     /// <param name="baselineDataValidator">基线校验器。</param>
-    /// <param name="baselineDataSeeder">种子入口。</param>
     /// <param name="baselineDataOptions">配置选项。</param>
     public BaselineDataValidationHostedService(
         BaselineDataValidator baselineDataValidator,
-        BaselineDataSeeder baselineDataSeeder,
         IOptions<BaselineDataOptions> baselineDataOptions) {
         _baselineDataValidator = baselineDataValidator;
-        _baselineDataSeeder = baselineDataSeeder;
         _baselineDataOptions = baselineDataOptions;
     }
 
@@ -63,7 +56,7 @@ public sealed class BaselineDataValidationHostedService : IHostedService {
             var validationResult = await _baselineDataValidator.ValidateAsync(cancellationToken);
             var finalResult = validationResult;
             if (validationResult.IsValid && options.IsSeedEnabled) {
-                finalResult = await _baselineDataSeeder.SeedAsync(validationResult, cancellationToken);
+                finalResult = await BaselineDataSeeder.SeedAsync(validationResult, cancellationToken);
                 _baselineDataValidator.SetLatestResult(finalResult);
             }
 

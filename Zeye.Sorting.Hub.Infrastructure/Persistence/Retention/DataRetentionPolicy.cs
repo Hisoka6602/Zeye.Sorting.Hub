@@ -47,7 +47,7 @@ public sealed record class DataRetentionPolicy {
     /// <summary>
     /// 支持的策略名称集合。
     /// </summary>
-    private static readonly IReadOnlySet<string> SupportedNames = new HashSet<string>(StringComparer.Ordinal) {
+    private static readonly System.Collections.Generic.HashSet<string> SupportedNames = new HashSet<string>(StringComparer.Ordinal) {
         WebRequestAuditLogName,
         InboxMessageName,
         IdempotencyRecordName,

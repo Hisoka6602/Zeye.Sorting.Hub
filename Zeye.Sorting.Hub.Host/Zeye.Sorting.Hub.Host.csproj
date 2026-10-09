@@ -7,7 +7,6 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<UserSecretsId>dotnet-Zeye.Sorting.Hub.Host-6c5f01b5-c5a0-403c-b3c3-bf396b712902</UserSecretsId>
 		<GenerateDocumentationFile>true</GenerateDocumentationFile>
-		<NoWarn>$(NoWarn);1591</NoWarn>
 		<!-- 发布默认包含同源前端；仅 API 镜像可显式设为 false。 -->
 		<BundleWebUi Condition="'$(BundleWebUi)' == ''">true</BundleWebUi>
 		<RestoreWebDependencies Condition="'$(RestoreWebDependencies)' == ''">true</RestoreWebDependencies>

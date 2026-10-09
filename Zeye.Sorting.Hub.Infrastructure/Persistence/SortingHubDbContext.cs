@@ -34,6 +34,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence {
         /// 应用程序集内全部实体类型配置。
         /// </summary>
         protected override void OnModelCreating(ModelBuilder modelBuilder) {
+            DatabaseTextFunctions.Configure(modelBuilder);
             if (Database.ProviderName == DbProviderNames.SqlServer) {
                 modelBuilder.HasDefaultSchema(SqlServerDefaultSchema);
             }

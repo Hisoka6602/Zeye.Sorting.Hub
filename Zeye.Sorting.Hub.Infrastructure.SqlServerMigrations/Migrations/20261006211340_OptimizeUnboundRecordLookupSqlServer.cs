@@ -7,6 +7,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations.Migrations
     /// <inheritdoc />
     public partial class OptimizeUnboundRecordLookupSqlServer : Migration
     {
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedParcelIdRecordedAtKeyColumns = new[] { "ParcelId", "RecordedAt", "Key" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly bool[] CachedFalseTrueFalseDescending = new[] { false, true, false };
+
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
@@ -14,8 +19,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations.Migrations
                 name: "IX_Parcel_ProcessingRecords_ParcelId_RecordedAt_Key",
                 schema: "dbo",
                 table: "Parcel_ProcessingRecords",
-                columns: new[] { "ParcelId", "RecordedAt", "Key" },
-                descending: new[] { false, true, false });
+                columns: CachedParcelIdRecordedAtKeyColumns,
+                descending: CachedFalseTrueFalseDescending);
         }
 
         /// <inheritdoc />

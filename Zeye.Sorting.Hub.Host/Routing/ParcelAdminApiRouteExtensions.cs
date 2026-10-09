@@ -160,8 +160,8 @@ public static class ParcelAdminApiRouteExtensions {
                 request.BarCodes,
                 request.Weight,
                 request.WorkstationName,
-                ScannedTime = scannedTime.ToString("yyyy-MM-dd HH:mm:ss.fffffff"),
-                DischargeTime = dischargeTime.ToString("yyyy-MM-dd HH:mm:ss.fffffff"),
+                ScannedTime = scannedTime.ToString("yyyy-MM-dd HH:mm:ss.fffffff", System.Globalization.CultureInfo.InvariantCulture),
+                DischargeTime = dischargeTime.ToString("yyyy-MM-dd HH:mm:ss.fffffff", System.Globalization.CultureInfo.InvariantCulture),
                 request.TargetChuteId,
                 request.ActualChuteId,
                 request.RequestStatus,
@@ -359,6 +359,7 @@ public static class ParcelAdminApiRouteExtensions {
     /// </summary>
     /// <param name="request">清理请求合同（JSON body，含 createdBefore 本地时间字符串）。</param>
     /// <param name="commandService">过期清理应用服务。</param>
+    /// <param name="context">当前请求及已认证操作者信息。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>200 OK + 清理治理响应（含决策/计划量/执行量/补偿边界），或 400 Bad Request。</returns>
     private static async Task<IResult> CleanupExpiredParcelsAsync(

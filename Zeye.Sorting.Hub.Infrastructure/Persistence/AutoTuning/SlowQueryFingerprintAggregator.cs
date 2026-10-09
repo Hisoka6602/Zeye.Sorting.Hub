@@ -154,13 +154,13 @@ public static partial class SlowQueryFingerprintAggregator {
     /// <param name="sortedValues">升序耗时数组。</param>
     /// <param name="percentile">分位点。</param>
     /// <returns>分位点值。</returns>
-    private static decimal CalculatePercentile(IReadOnlyList<decimal> sortedValues, int percentile) {
-        if (sortedValues.Count == 0) {
+    private static decimal CalculatePercentile(decimal[] sortedValues, int percentile) {
+        if (sortedValues.Length == 0) {
             return 0m;
         }
 
-        var rank = (int)Math.Ceiling(percentile / 100m * sortedValues.Count);
-        var index = Math.Clamp(rank - 1, 0, sortedValues.Count - 1);
+        var rank = (int)Math.Ceiling(percentile / 100m * sortedValues.Length);
+        var index = Math.Clamp(rank - 1, 0, sortedValues.Length - 1);
         return sortedValues[index];
     }
 }

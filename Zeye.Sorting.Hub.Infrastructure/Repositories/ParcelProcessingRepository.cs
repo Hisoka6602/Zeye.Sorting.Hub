@@ -84,7 +84,7 @@ public sealed partial class ParcelProcessingRepository : IParcelProcessingReposi
                         var id = newParcelId;
                         // 步骤3：碰撞显式失败，禁止覆盖其他来源或历史基础表的同编号包裹。
                         if (baseIdCollision || await db.Set<ParcelLocation>().AnyAsync(x => x.Id == id, cancellationToken))
-                            return RepositoryResult<ParcelProcessingWriteResult>.Fail("包裹来源身份与现有中心编号冲突。", "ParcelSourceConflict");
+                            return RepositoryResult.Fail<ParcelProcessingWriteResult>("包裹来源身份与现有中心编号冲突。", "ParcelSourceConflict");
                         parcel = Parcel.CreateDetected(id, record, record.RecordedAt);
                         location = new ParcelLocation { Id = id, SourceKey = sourceKey, Suffix = suffix, CreatedTime = record.RecordedAt };
                         db.Add(location); db.Add(parcel);
@@ -97,7 +97,7 @@ public sealed partial class ParcelProcessingRepository : IParcelProcessingReposi
                             && await db.Set<ParcelProcessingRecord>().AsNoTracking().AnyAsync(
                                 x => x.ParcelId == parcel.Id && x.Stage == ParcelProcessingStage.Detected,
                                 cancellationToken)) {
-                            return RepositoryResult<ParcelProcessingWriteResult>.Fail(
+                            return RepositoryResult.Fail<ParcelProcessingWriteResult>(
                                 "同一来源会话和包裹编号已存在检测记录；重试必须复用RecordId，设备计数重置必须更换SourceRunId。",
                                 "ParcelSourceConflict");
                         }
@@ -113,7 +113,7 @@ public sealed partial class ParcelProcessingRepository : IParcelProcessingReposi
                 }
                 await db.SaveChangesAsync(cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
-                return RepositoryResult<ParcelProcessingWriteResult>.Success(new() { ParcelId = parcel?.Id, PartitionSuffix = suffix });
+                return RepositoryResult.Success<ParcelProcessingWriteResult>(new() { ParcelId = parcel?.Id, PartitionSuffix = suffix });
             }
             for (var conflictAttempt = 0; ; conflictAttempt++) {
                 try { return await strategy.ExecuteAsync(AppendOnceAsync); }
@@ -126,7 +126,7 @@ public sealed partial class ParcelProcessingRepository : IParcelProcessingReposi
         catch (OperationCanceledException ex) { Logger.Warn(ex, "处理记录写入已取消，RecordId={RecordId}", record.RecordId); throw; }
         catch (Exception ex) {
             Logger.Error(ex, "处理记录原子写入失败，SourceInstanceId={Source}, RecordId={RecordId}", record.SourceInstanceId, record.RecordId);
-            return RepositoryResult<ParcelProcessingWriteResult>.Fail("处理记录写入失败。", "ParcelProcessingWriteFailed");
+            return RepositoryResult.Fail<ParcelProcessingWriteResult>("处理记录写入失败。", "ParcelProcessingWriteFailed");
         }
         finally { gate.Release(); }
     }
@@ -175,8 +175,8 @@ public sealed partial class ParcelProcessingRepository : IParcelProcessingReposi
 
     /// <summary>相同记录内容重试返回首次结果，相同身份不同内容返回稳定冲突。</summary>
     private static RepositoryResult<ParcelProcessingWriteResult> CheckReceipt(ParcelProcessingReceipt receipt, string hash) => receipt.PayloadHash == hash
-        ? RepositoryResult<ParcelProcessingWriteResult>.Success(new() { ParcelId = receipt.ParcelId, PartitionSuffix = receipt.Suffix, IsDuplicate = true })
-        : RepositoryResult<ParcelProcessingWriteResult>.Fail("相同RecordId已保存不同内容，禁止覆盖历史记录。", "ParcelProcessingConflict");
+        ? RepositoryResult.Success<ParcelProcessingWriteResult>(new() { ParcelId = receipt.ParcelId, PartitionSuffix = receipt.Suffix, IsDuplicate = true })
+        : RepositoryResult.Fail<ParcelProcessingWriteResult>("相同RecordId已保存不同内容，禁止覆盖历史记录。", "ParcelProcessingConflict");
 
     /// <summary>通过不改变值的 EF 更新锁住来源定位行，使跨进程的历史读取和快照刷新顺序提交。</summary>
     private static Task<int> LockParcelLocationAsync(SortingHubDbContext db, string sourceKey, CancellationToken cancellationToken) =>

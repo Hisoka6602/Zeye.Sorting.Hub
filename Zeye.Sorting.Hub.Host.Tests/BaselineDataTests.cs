@@ -17,7 +17,7 @@ public sealed class BaselineDataTests {
     /// </summary>
     /// <returns>异步任务。</returns>
     [Fact]
-    public async Task BaselineDataValidator_WhenConfigurationValid_ShouldReturnValid() {
+    public async Task BaselineDataValidatorWhenConfigurationValidShouldReturnValid() {
         var validator = CreateValidator(CreateValidConfiguration(), CreateOptions());
 
         var result = await validator.ValidateAsync(CancellationToken.None);
@@ -32,7 +32,7 @@ public sealed class BaselineDataTests {
     /// </summary>
     /// <returns>异步任务。</returns>
     [Fact]
-    public async Task BaselineDataValidator_WhenConnectionStringMissing_ShouldReturnInvalid() {
+    public async Task BaselineDataValidatorWhenConnectionStringMissingShouldReturnInvalid() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Provider"] = "MySql",
@@ -53,7 +53,7 @@ public sealed class BaselineDataTests {
     /// </summary>
     /// <returns>异步任务。</returns>
     [Fact]
-    public async Task BaselineDataValidator_WhenParcelStartTimeContainsTimeZone_ShouldReturnInvalid() {
+    public async Task BaselineDataValidatorWhenParcelStartTimeContainsTimeZoneShouldReturnInvalid() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Provider"] = "MySql",
@@ -75,7 +75,7 @@ public sealed class BaselineDataTests {
     /// </summary>
     /// <returns>异步任务。</returns>
     [Fact]
-    public async Task BaselineDataHealthCheck_WhenValidationFailedInDegradedMode_ShouldReturnDegraded() {
+    public async Task BaselineDataHealthCheckWhenValidationFailedInDegradedModeShouldReturnDegraded() {
         var validator = CreateValidator(CreateValidConfiguration(), CreateOptions());
         validator.SetLatestResult(new BaselineDataValidationResult {
             ValidatedAtLocal = DateTime.Now,
@@ -103,7 +103,7 @@ public sealed class BaselineDataTests {
     /// </summary>
     /// <returns>异步任务。</returns>
     [Fact]
-    public async Task BaselineDataHealthCheck_WhenValidationFailedInFailFastMode_ShouldReturnUnhealthy() {
+    public async Task BaselineDataHealthCheckWhenValidationFailedInFailFastModeShouldReturnUnhealthy() {
         var validator = CreateValidator(CreateValidConfiguration(), CreateOptions());
         validator.SetLatestResult(new BaselineDataValidationResult {
             ValidatedAtLocal = DateTime.Now,
@@ -131,8 +131,7 @@ public sealed class BaselineDataTests {
     /// </summary>
     /// <returns>异步任务。</returns>
     [Fact]
-    public async Task BaselineDataSeeder_ShouldReturnIdempotentNoOpResult() {
-        var seeder = new BaselineDataSeeder();
+    public async Task BaselineDataSeederShouldReturnIdempotentNoOpResult() {
         var initialResult = new BaselineDataValidationResult {
             ValidatedAtLocal = DateTime.Now,
             IsValidationEnabled = true,
@@ -148,7 +147,7 @@ public sealed class BaselineDataTests {
             SeedMessages = []
         };
 
-        var seededResult = await seeder.SeedAsync(initialResult, CancellationToken.None);
+        var seededResult = await BaselineDataSeeder.SeedAsync(initialResult, CancellationToken.None);
 
         Assert.True(seededResult.WasSeedAttempted);
         Assert.Equal(0, seededResult.SeededRecordCount);
@@ -160,7 +159,7 @@ public sealed class BaselineDataTests {
     /// </summary>
     /// <returns>异步任务。</returns>
     [Fact]
-    public async Task BaselineDataValidationHostedService_WhenValidationFailsInDegradedMode_ShouldNotThrow() {
+    public async Task BaselineDataValidationHostedServiceWhenValidationFailsInDegradedModeShouldNotThrow() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Provider"] = "MySql",
@@ -172,7 +171,6 @@ public sealed class BaselineDataTests {
         var validator = CreateValidator(configuration, options);
         var service = new BaselineDataValidationHostedService(
             validator,
-            new BaselineDataSeeder(),
             Microsoft.Extensions.Options.Options.Create(options));
 
         var exception = await Record.ExceptionAsync(() => service.StartAsync(CancellationToken.None));

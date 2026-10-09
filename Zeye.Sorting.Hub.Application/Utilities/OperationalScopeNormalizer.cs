@@ -12,7 +12,7 @@ public static class OperationalScopeNormalizer {
     /// <summary>
     /// NLog 日志器。
     /// </summary>
-    private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
+    private static readonly NLog.Logger Logger = LogManager.GetCurrentClassLogger();
 
     /// <summary>
     /// 从请求合同构建运营边界值对象。
@@ -135,7 +135,7 @@ public static class OperationalScopeNormalizer {
     /// <param name="logContext">日志上下文。</param>
     private static void EnsureLengthWithinLimit(string value, string paramName, string fieldName, int maxLength, string logContext) {
         if (value.Length > maxLength) {
-            Logger.Warn("{LogContext}运营边界字段超长，{FieldName}Length={FieldLength}, MaxLength={MaxLength}。", logContext, fieldName, value.Length, maxLength);
+            Logger.Warn(System.Globalization.CultureInfo.CurrentCulture, "{LogContext}运营边界字段超长，{FieldName}Length={FieldLength}, MaxLength={MaxLength}。", logContext, fieldName, value.Length, maxLength);
             throw new ArgumentOutOfRangeException(paramName, $"运营边界字段 {fieldName} 长度不能超过 {maxLength}。");
         }
     }

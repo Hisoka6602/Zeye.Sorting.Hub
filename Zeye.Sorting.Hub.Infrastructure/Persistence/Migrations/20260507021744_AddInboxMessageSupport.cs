@@ -9,6 +9,13 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
     /// <inheritdoc />
     public partial class AddInboxMessageSupport : Migration
     {
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedExpiresAtStatusColumns = new[] { "ExpiresAt", "Status" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedSourceSystemMessageIdColumns = new[] { "SourceSystem", "MessageId" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedStatusCreatedAtColumns = new[] { "Status", "CreatedAt" };
+
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
@@ -43,18 +50,18 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_InboxMessages_ExpiresAt_Status",
                 table: "InboxMessages",
-                columns: new[] { "ExpiresAt", "Status" });
+                columns: CachedExpiresAtStatusColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_InboxMessages_SourceSystem_MessageId",
                 table: "InboxMessages",
-                columns: new[] { "SourceSystem", "MessageId" },
+                columns: CachedSourceSystemMessageIdColumns,
                 unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_InboxMessages_Status_CreatedAt",
                 table: "InboxMessages",
-                columns: new[] { "Status", "CreatedAt" });
+                columns: CachedStatusCreatedAtColumns);
         }
 
         /// <inheritdoc />

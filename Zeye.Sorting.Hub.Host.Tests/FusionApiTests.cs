@@ -28,6 +28,11 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 
 /// <summary>通过官方 SignalR 客户端验证生产认证、完整协议方法和受保护的读取路径。</summary>
 public sealed class FusionApiTests {
+    /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+    private static readonly string[] CachedSettingsReadParcelsReadValues = new[] { "settings.read", "parcels.read" };
+    /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+    private static readonly string[] CachedParcelsReadSettingsReadValues = new[] { "parcels.read", "settings.read" };
+
     /// <summary>真实映射生成的账号、规则、Fusion 路由与两条 SignalR 隐式端点均包含中文摘要和业务说明。</summary>
     [Fact]
     public async Task BusinessEndpointsAndSignalRTransportsExposeChineseDescriptions() {
@@ -35,7 +40,7 @@ public sealed class FusionApiTests {
         await using var app = await AccessApiTests.CreateAsync(env.Database, configureServices: builder => {
             builder.Services.AddSortingRealtime();
             builder.Services.Configure<Zeye.Sorting.Hub.Host.Middleware.WebRequestAuditLogOptions>(options => options.Enabled = false);
-            builder.Services.AddSingleton(new Zeye.Sorting.Hub.Host.Middleware.WebRequestAuditBackgroundQueue(32, TimeSpan.FromSeconds(30)));
+            builder.Services.AddSingleton(new Zeye.Sorting.Hub.Host.Middleware.WebRequestAuditBuffer(32, TimeSpan.FromSeconds(30)));
             builder.Services.AddSingleton<IFusionIngestionGateway>(env.Ingress);
         }, configureRoutes: app => { app.MapFusionIngestion(); app.MapSortingRealtime(); });
         // 只检查此测试宿主实际安装的生产入口，排除账号测试所需的模拟业务响应。
@@ -210,7 +215,7 @@ public sealed class FusionApiTests {
         Assert.Equal(HttpStatusCode.Unauthorized, (await admin.DeleteAsync(path + "/sources/fusion-line-02?revision=1")).StatusCode);
         admin.DefaultRequestHeaders.Add("X-Zeye-Client", "web"); viewer.DefaultRequestHeaders.Add("X-Zeye-Client", "web");
         AccessApiTests.UseCookie(admin, await admin.PostAsJsonAsync("/api/access/bootstrap", new { username = "admin", name = "管理员", password = "test-admin-password", bootstrapKey = "test-bootstrap-key" }));
-        (await admin.PostAsJsonAsync("/api/access/roles", new { expectedRevision = 1, name = "查询员", permissions = new[] { "settings.read", "parcels.read" } })).EnsureSuccessStatusCode();
+        (await admin.PostAsJsonAsync("/api/access/roles", new { expectedRevision = 1, name = "查询员", permissions = CachedSettingsReadParcelsReadValues })).EnsureSuccessStatusCode();
         (await admin.PostAsJsonAsync("/api/access/users", new { expectedRevision = 2, account = "viewer", name = "查询员", password = "test-viewer-password", roleId = 2 })).EnsureSuccessStatusCode();
         AccessApiTests.UseCookie(viewer, await viewer.PostAsJsonAsync("/api/access/login", new { username = "viewer", password = "test-viewer-password" }));
         var directory = (await admin.GetFromJsonAsync<FusionConfigurationView>(path))!;
@@ -243,7 +248,7 @@ public sealed class FusionApiTests {
         await using var app = await CreateAsync(env, enforceAuthorization);
         using var admin = app.GetTestClient(); admin.DefaultRequestHeaders.Add("X-Zeye-Client", "web");
         AccessApiTests.UseCookie(admin, await admin.PostAsJsonAsync("/api/access/bootstrap", new { username = "admin", name = "管理员", password = "test-admin-password", bootstrapKey = "test-bootstrap-key" }));
-        await admin.PostAsJsonAsync("/api/access/roles", new { expectedRevision = 1, name = "配置查询员", permissions = new[] { "parcels.read", "settings.read" } });
+        await admin.PostAsJsonAsync("/api/access/roles", new { expectedRevision = 1, name = "配置查询员", permissions = CachedParcelsReadSettingsReadValues });
         await admin.PostAsJsonAsync("/api/access/users", new { expectedRevision = 2, account = "viewer", name = "查询员", password = "test-viewer-password", roleId = 2 });
         using var viewer = app.GetTestClient(); viewer.DefaultRequestHeaders.Add("X-Zeye-Client", "web");
         AccessApiTests.UseCookie(viewer, await viewer.PostAsJsonAsync("/api/access/login", new { username = "viewer", password = "test-viewer-password" }));
@@ -258,7 +263,7 @@ public sealed class FusionApiTests {
         using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await using var stream = realtime.StreamAsync<RealtimeResponse>("Watch", path, cancellation.Token).GetAsyncEnumerator(cancellation.Token);
         Assert.True(await stream.MoveNextAsync()); Assert.Equal(200, stream.Current.StatusCode);
-        var view = JsonSerializer.Deserialize<FusionConfigurationView>(stream.Current.Json, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        var view = JsonSerializer.Deserialize<FusionConfigurationView>(stream.Current.Json, JsonSerializerOptions.Web)!;
         var response = await admin.PostAsJsonAsync(path + "/sources", new FusionSourceChange(view.Revision,
             new("fusion-realtime-03", "第三工作台", true, "default", "default", "line-03", "", "", "Asia/Shanghai")));
         response.EnsureSuccessStatusCode(); var created = (await response.Content.ReadFromJsonAsync<FusionPairingResult>())!;
@@ -286,7 +291,7 @@ public sealed class FusionApiTests {
             builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["FusionIngestion:AllowInsecureHttp"] = "true" });
             builder.Services.AddSortingRealtime();
             builder.Services.Configure<WebRequestAuditLogOptions>(options => options.Enabled = false);
-            builder.Services.AddSingleton(new WebRequestAuditBackgroundQueue(32, TimeSpan.FromSeconds(30)));
+            builder.Services.AddSingleton(new WebRequestAuditBuffer(32, TimeSpan.FromSeconds(30)));
             builder.Services.AddFusionIngestion(builder.Configuration, env.Root);
             builder.Services.AddSingleton<IOptions<FusionIngestionOptions>>(Microsoft.Extensions.Options.Options.Create(env.Options));
             builder.Services.RemoveAll<IHostedService>();

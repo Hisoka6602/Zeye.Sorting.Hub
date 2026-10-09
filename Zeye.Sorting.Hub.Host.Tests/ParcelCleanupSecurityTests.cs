@@ -25,6 +25,9 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 
 /// <summary>对真实密码、权限、数据库清理与永久查询使用完整会话管线验证。</summary>
 public sealed class ParcelCleanupSecurityTests {
+    /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+    private static readonly string[] CachedParcelsWriteAuditReadValues = new[] { "parcels.write", "audit.read" };
+
     /// <summary>关闭通用鉴权也不能绕过超级管理员身份和密码；普通审计权限不能读取删除记录。</summary>
     [Theory]
     [InlineData(true)]
@@ -44,7 +47,7 @@ public sealed class ParcelCleanupSecurityTests {
         admin.DefaultRequestHeaders.Remove("X-Zeye-Client");
         Assert.Equal(HttpStatusCode.Forbidden, (await admin.PostAsJsonAsync("/api/admin/parcels/cleanup-expired", body)).StatusCode);
         admin.DefaultRequestHeaders.Add("X-Zeye-Client", "web");
-        await admin.PostAsJsonAsync("/api/access/roles", new { expectedRevision = 1, name = "业务员", permissions = new[] { "parcels.write", "audit.read" } });
+        await admin.PostAsJsonAsync("/api/access/roles", new { expectedRevision = 1, name = "业务员", permissions = CachedParcelsWriteAuditReadValues });
         await admin.PostAsJsonAsync("/api/access/users", new { expectedRevision = 2, account = "writer", name = "业务员", password = "test-writer-password", roleId = 2 });
         Cookie(writer, await writer.PostAsJsonAsync("/api/access/login", new { username = "writer", password = "test-writer-password" }));
         Assert.Equal(HttpStatusCode.Forbidden, (await writer.PostAsJsonAsync("/api/admin/parcels/cleanup-expired", body)).StatusCode);

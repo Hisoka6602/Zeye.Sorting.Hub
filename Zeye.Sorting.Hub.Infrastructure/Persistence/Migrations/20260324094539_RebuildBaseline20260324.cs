@@ -9,6 +9,41 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
     /// <inheritdoc />
     public partial class RebuildBaseline20260324 : Migration
     {
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedBarCodeParcelIdColumns = new[] { "BarCode", "ParcelId" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedActualChuteIdDischargeTimeColumns = new[] { "ActualChuteId", "DischargeTime" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedActualChuteIdScannedTimeColumns = new[] { "ActualChuteId", "ScannedTime" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedBagCodeScannedTimeColumns = new[] { "BagCode", "ScannedTime" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedNoReadTypeScannedTimeColumns = new[] { "NoReadType", "ScannedTime" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedRequestStatusScannedTimeColumns = new[] { "RequestStatus", "ScannedTime" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedStatusExceptionTypeScannedTimeColumns = new[] { "Status", "ExceptionType", "ScannedTime" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedStatusScannedTimeColumns = new[] { "Status", "ScannedTime" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedTargetChuteIdScannedTimeColumns = new[] { "TargetChuteId", "ScannedTime" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedWorkstationNameScannedTimeColumns = new[] { "WorkstationName", "ScannedTime" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedAuditResourceTypeResourceIdStartedAtColumns = new[] { "AuditResourceType", "ResourceId", "StartedAt" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedIsSuccessStartedAtColumns = new[] { "IsSuccess", "StartedAt" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedOperationNameStartedAtColumns = new[] { "OperationName", "StartedAt" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedRequestPathStartedAtColumns = new[] { "RequestPath", "StartedAt" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedStatusCodeStartedAtColumns = new[] { "StatusCode", "StartedAt" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedTenantIdStartedAtColumns = new[] { "TenantId", "StartedAt" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedUserIdStartedAtColumns = new[] { "UserId", "StartedAt" };
+
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
@@ -628,7 +663,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_BarCodeInfos_BarCode_ParcelId",
                 table: "Parcel_BarCodeInfos",
-                columns: new[] { "BarCode", "ParcelId" });
+                columns: CachedBarCodeParcelIdColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_BarCodeInfos_CapturedTime",
@@ -760,17 +795,17 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_Parcels_ActualChuteId_DischargeTime",
                 table: "Parcels",
-                columns: new[] { "ActualChuteId", "DischargeTime" });
+                columns: CachedActualChuteIdDischargeTimeColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcels_ActualChuteId_ScannedTime",
                 table: "Parcels",
-                columns: new[] { "ActualChuteId", "ScannedTime" });
+                columns: CachedActualChuteIdScannedTimeColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcels_BagCode_ScannedTime",
                 table: "Parcels",
-                columns: new[] { "BagCode", "ScannedTime" });
+                columns: CachedBagCodeScannedTimeColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcels_BagId",
@@ -785,7 +820,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_Parcels_NoReadType_ScannedTime",
                 table: "Parcels",
-                columns: new[] { "NoReadType", "ScannedTime" });
+                columns: CachedNoReadTypeScannedTimeColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcels_ParcelTimestamp",
@@ -795,7 +830,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_Parcels_RequestStatus_ScannedTime",
                 table: "Parcels",
-                columns: new[] { "RequestStatus", "ScannedTime" });
+                columns: CachedRequestStatusScannedTimeColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcels_ScannedTime",
@@ -805,22 +840,22 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_Parcels_Status_ExceptionType_ScannedTime",
                 table: "Parcels",
-                columns: new[] { "Status", "ExceptionType", "ScannedTime" });
+                columns: CachedStatusExceptionTypeScannedTimeColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcels_Status_ScannedTime",
                 table: "Parcels",
-                columns: new[] { "Status", "ScannedTime" });
+                columns: CachedStatusScannedTimeColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcels_TargetChuteId_ScannedTime",
                 table: "Parcels",
-                columns: new[] { "TargetChuteId", "ScannedTime" });
+                columns: CachedTargetChuteIdScannedTimeColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcels_WorkstationName_ScannedTime",
                 table: "Parcels",
-                columns: new[] { "WorkstationName", "ScannedTime" });
+                columns: CachedWorkstationNameScannedTimeColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_WebRequestAuditLogDetails_StartedAt",
@@ -830,7 +865,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_WebRequestAuditLogs_AuditResourceType_ResourceId_StartedAt",
                 table: "WebRequestAuditLogs",
-                columns: new[] { "AuditResourceType", "ResourceId", "StartedAt" });
+                columns: CachedAuditResourceTypeResourceIdStartedAtColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_WebRequestAuditLogs_CorrelationId",
@@ -840,17 +875,17 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_WebRequestAuditLogs_IsSuccess_StartedAt",
                 table: "WebRequestAuditLogs",
-                columns: new[] { "IsSuccess", "StartedAt" });
+                columns: CachedIsSuccessStartedAtColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_WebRequestAuditLogs_OperationName_StartedAt",
                 table: "WebRequestAuditLogs",
-                columns: new[] { "OperationName", "StartedAt" });
+                columns: CachedOperationNameStartedAtColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_WebRequestAuditLogs_RequestPath_StartedAt",
                 table: "WebRequestAuditLogs",
-                columns: new[] { "RequestPath", "StartedAt" });
+                columns: CachedRequestPathStartedAtColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_WebRequestAuditLogs_StartedAt",
@@ -860,12 +895,12 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_WebRequestAuditLogs_StatusCode_StartedAt",
                 table: "WebRequestAuditLogs",
-                columns: new[] { "StatusCode", "StartedAt" });
+                columns: CachedStatusCodeStartedAtColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_WebRequestAuditLogs_TenantId_StartedAt",
                 table: "WebRequestAuditLogs",
-                columns: new[] { "TenantId", "StartedAt" });
+                columns: CachedTenantIdStartedAtColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_WebRequestAuditLogs_TraceId",
@@ -875,7 +910,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_WebRequestAuditLogs_UserId_StartedAt",
                 table: "WebRequestAuditLogs",
-                columns: new[] { "UserId", "StartedAt" });
+                columns: CachedUserIdStartedAtColumns);
         }
 
         /// <inheritdoc />

@@ -11,7 +11,7 @@ internal static class EnumGuard {
     /// <summary>
     /// NLog 日志器。
     /// </summary>
-    private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
+    private static readonly NLog.Logger Logger = LogManager.GetCurrentClassLogger();
 
     /// <summary>
     /// 验证整型值是否为有效的枚举成员；无效时记录警告日志并抛出

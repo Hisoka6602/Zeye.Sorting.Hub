@@ -7,6 +7,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 
 /// <summary>透明委托读取器，计量流式读取与释放，捕获命令返回之后的失败和取消。</summary>
 internal sealed class SlowQueryDataReader : DbDataReader, IDbColumnSchemaGenerator {
+    /// <summary>同步与异步释放共用一次性状态，基类关闭回调不再重复释放提供器。</summary>
+    private int _disposeStarted;
     /// <summary>原始提供器读取器。</summary>
     private readonly DbDataReader _inner;
     /// <summary>一次实际命令的计量状态。</summary>
@@ -81,28 +83,39 @@ internal sealed class SlowQueryDataReader : DbDataReader, IDbColumnSchemaGenerat
     }
     /// <inheritdoc />
     public override void Close() {
+        if (Volatile.Read(ref _disposeStarted) != 0) return;
         var start = Stopwatch.GetTimestamp();
         try { _inner.Close(); _execution.ReadFinished(start); _execution.Complete(partial: !_exhausted, affectedRows: AffectedRows()); }
         catch (Exception exception) { _execution.ReadFinished(start); _execution.Complete(exception, true); throw; }
     }
     /// <inheritdoc />
     public override async Task CloseAsync() {
+        if (Volatile.Read(ref _disposeStarted) != 0) return;
         var start = Stopwatch.GetTimestamp();
         try { await _inner.CloseAsync().ConfigureAwait(false); _execution.ReadFinished(start); _execution.Complete(partial: !_exhausted, affectedRows: AffectedRows()); }
         catch (Exception exception) { _execution.ReadFinished(start); _execution.Complete(exception, true); throw; }
     }
     /// <inheritdoc />
     protected override void Dispose(bool disposing) {
-        if (!disposing) return;
-        var start = Stopwatch.GetTimestamp();
-        try { _inner.Dispose(); _execution.ReadFinished(start); _execution.Complete(partial: !_exhausted, affectedRows: AffectedRows()); }
-        catch (Exception exception) { _execution.ReadFinished(start); _execution.Complete(exception, true); throw; }
+        try {
+            if (disposing && Interlocked.Exchange(ref _disposeStarted, 1) == 0) {
+                var start = Stopwatch.GetTimestamp();
+                try { _inner.Dispose(); _execution.ReadFinished(start); _execution.Complete(partial: !_exhausted, affectedRows: AffectedRows()); }
+                catch (Exception exception) { _execution.ReadFinished(start); _execution.Complete(exception, true); throw; }
+            }
+        }
+        finally { base.Dispose(disposing); }
     }
     /// <inheritdoc />
     public override async ValueTask DisposeAsync() {
-        var start = Stopwatch.GetTimestamp();
-        try { await _inner.DisposeAsync().ConfigureAwait(false); _execution.ReadFinished(start); _execution.Complete(partial: !_exhausted, affectedRows: AffectedRows()); }
-        catch (Exception exception) { _execution.ReadFinished(start); _execution.Complete(exception, true); throw; }
+        try {
+            if (Interlocked.Exchange(ref _disposeStarted, 1) == 0) {
+                var start = Stopwatch.GetTimestamp();
+                try { await _inner.DisposeAsync().ConfigureAwait(false); _execution.ReadFinished(start); _execution.Complete(partial: !_exhausted, affectedRows: AffectedRows()); }
+                catch (Exception exception) { _execution.ReadFinished(start); _execution.Complete(exception, true); throw; }
+            }
+        }
+        finally { await base.DisposeAsync().ConfigureAwait(false); }
     }
     /// <inheritdoc />
     public override int Depth => _inner.Depth;

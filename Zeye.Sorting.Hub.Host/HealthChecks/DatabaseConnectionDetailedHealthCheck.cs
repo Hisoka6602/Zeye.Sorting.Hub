@@ -50,11 +50,11 @@ public sealed class DatabaseConnectionDetailedHealthCheck : IHealthCheck {
     /// </summary>
     /// <param name="snapshot">诊断快照。</param>
     /// <returns>附加数据字典。</returns>
-    private static IReadOnlyDictionary<string, object> BuildHealthData(DatabaseConnectionHealthSnapshot snapshot) {
+    private static System.Collections.Generic.Dictionary<string, object> BuildHealthData(DatabaseConnectionHealthSnapshot snapshot) {
         var data = new Dictionary<string, object> {
             ["provider"] = snapshot.Provider,
             ["database"] = snapshot.Database,
-            ["checkedAtLocal"] = snapshot.CheckedAtLocal.ToString("yyyy-MM-dd HH:mm:ss"),
+            ["checkedAtLocal"] = snapshot.CheckedAtLocal.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture),
             ["elapsedMilliseconds"] = snapshot.ElapsedMilliseconds,
             ["consecutiveFailureCount"] = snapshot.ConsecutiveFailureCount,
             ["consecutiveSuccessCount"] = snapshot.ConsecutiveSuccessCount,

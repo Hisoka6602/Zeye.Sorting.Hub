@@ -40,7 +40,7 @@ public sealed class ParcelProcessingStatisticsQueryTests {
         Assert.Contains("UNION ALL", sql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains(provider == "SqlServer" ? "COUNT_BIG(" : "COUNT(", sql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("GROUP BY", sql, StringComparison.OrdinalIgnoreCase);
-        Assert.Equal(3, Regex.Matches(sql, @"\bParcel_ProcessingRecords(?:_202611|_202609)?\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant).Count);
+        Assert.Equal(3, Regex.Count(sql, @"\bParcel_ProcessingRecords(?:_202611|_202609)?\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant));
         Assert.DoesNotMatch(@"(?is)\bSELECT\s*\(\s*SELECT\b", sql);
         Assert.DoesNotContain("LIMIT", sql, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(nameof(ParcelProcessingRecord.RawPayload), sql, StringComparison.Ordinal);

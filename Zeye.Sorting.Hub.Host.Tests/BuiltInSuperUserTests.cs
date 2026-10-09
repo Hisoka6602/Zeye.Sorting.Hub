@@ -13,6 +13,9 @@ using Zeye.Sorting.Hub.Host.Queries;
 namespace Zeye.Sorting.Hub.Host.Tests;
 /// <summary>内置超级用户、首次初始化、保留名冲突处理及会话保护的端到端回归。</summary>
 public sealed class BuiltInSuperUserTests {
+    /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+    private static readonly string[] CachedParcelsReadValues = new[] { "parcels.read" };
+
     /// <summary>用户指定的内置登录口令，仅用于隔离认证测试。</summary>
     private const string BuiltInPassword = "15876396602";
     /// <summary>内置身份不能跳过首次初始化；初始化后可用固定口令登录并获得全部权限。</summary>
@@ -79,7 +82,7 @@ public sealed class BuiltInSuperUserTests {
         Assert.True((await builtinClient.GetFromJsonAsync<JsonElement>("/api/access/session")).GetProperty("authenticated").GetBoolean());
         var (saved, _) = await service.ReadAsync(default);
         Assert.True(saved.HasManagedUsers); Assert.Equal(2, saved.Users.Length);
-        Assert.Equal(before.Users.Single().Name, Assert.Single(saved.Users.Where(BuiltInSuperUser.Is)).Name);
+        Assert.Equal(before.Users.Single().Name, Assert.Single(saved.Users, BuiltInSuperUser.Is).Name);
         Assert.DoesNotContain("hasManagedUsers", (await store.ReadAsync("access-directory", default))!.Json);
     }
 
@@ -114,10 +117,10 @@ public sealed class BuiltInSuperUserTests {
         var responses = await Task.WhenAll(
             first.PostAsJsonAsync("/api/access/bootstrap", new { username = "first-admin", name = "管理员甲", password = "test-admin-password", bootstrapKey = "test-bootstrap-key" }),
             second.PostAsJsonAsync("/api/access/bootstrap", new { username = "second-admin", name = "管理员乙", password = "test-admin-password", bootstrapKey = "test-bootstrap-key" }));
-        Assert.Single(responses.Where(x => x.StatusCode == HttpStatusCode.OK)); Assert.Single(responses.Where(x => x.StatusCode == HttpStatusCode.Conflict));
+        Assert.Single(responses, x => x.StatusCode == HttpStatusCode.OK); Assert.Single(responses, x => x.StatusCode == HttpStatusCode.Conflict);
         foreach (var response in responses) response.Dispose();
         var (directory, _) = await service.ReadAsync(default);
-        Assert.Single(directory.Users.Where(x => !BuiltInSuperUser.Is(x))); Assert.Single(directory.Users.Where(BuiltInSuperUser.Is));
+        Assert.Single(directory.Users, x => !BuiltInSuperUser.Is(x)); Assert.Single(directory.Users, BuiltInSuperUser.Is);
     }
     /// <summary>首次创建管理员不能使用任何大小写形式的保留账号名。</summary>
     [Theory]
@@ -171,18 +174,18 @@ public sealed class BuiltInSuperUserTests {
         var admin = AccessDirectoryService.CreateUser("existing-admin", "现有管理员", 1, "test-admin-password");
         var role = new AccessRole { Id = 1, BuiltIn = true, Name = "超级管理员", Permissions = AccessDirectoryService.PermissionCodes };
         var store = new ManagedDocumentService(db.Factory);
-        await store.WriteAsync("access-directory", JsonSerializer.Serialize(new AccessDirectory { Users = [admin, legacyUser], Roles = [role] }, new JsonSerializerOptions(JsonSerializerDefaults.Web)), 0, default);
+        await store.WriteAsync("access-directory", JsonSerializer.Serialize(new AccessDirectory { Users = [admin, legacyUser], Roles = [role] }, JsonSerializerOptions.Web), 0, default);
         await using var app = await AccessApiTests.CreateAsync(db); using var oldSession = app.GetTestClient();
         var cookie = app.Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>().Get("SortingCookie");
         var ticket = new AuthenticationTicket(AccessDirectoryService.Principal(legacyUser, role), new AuthenticationProperties { ExpiresUtc = DateTimeOffset.Now.AddHours(1) }, "SortingCookie");
         oldSession.DefaultRequestHeaders.Add("Cookie", cookie.Cookie.Name + "=" + cookie.TicketDataFormat.Protect(ticket));
-        await new BuiltInAccountHostedService(app.Services.GetRequiredService<IServiceScopeFactory>(), NullLogger<BuiltInAccountHostedService>.Instance).StartAsync(default);
+        await new BuiltInAccountHostedService(app.Services.GetRequiredService<IServiceScopeFactory>()).StartAsync(default);
         Assert.Equal(HttpStatusCode.Unauthorized, (await oldSession.GetAsync("/api/access")).StatusCode);
         var service = new AccessDirectoryService(store, app.Services.GetRequiredService<IConfiguration>());
         var (directory, revision) = await service.ReadAsync(default);
         Assert.True(directory.Initialized); Assert.Equal(2, directory.Users.Length);
         Assert.Contains(directory.Users, x => x.Id == admin.Id); Assert.DoesNotContain(directory.Users, x => x.Id == legacyUser.Id);
-        var builtIn = Assert.Single(directory.Users.Where(x => BuiltInSuperUser.IsReservedAccount(x.Account)));
+        var builtIn = Assert.Single(directory.Users, x => BuiltInSuperUser.IsReservedAccount(x.Account));
         Assert.Equal(BuiltInSuperUser.Id, builtIn.Id); Assert.True(builtIn.BuiltIn); Assert.True(AccessDirectoryService.VerifyPassword(builtIn, BuiltInPassword));
         Assert.Equal(revision, (await service.ReadAsync(default)).Revision);
         Assert.DoesNotContain(legacyUser.Id, (await store.ReadAsync("access-directory", default))!.Json);
@@ -193,12 +196,12 @@ public sealed class BuiltInSuperUserTests {
         await using var db = new RelationalParcelTestDatabase(); await db.InitializeAsync();
         var store = new ManagedDocumentService(db.Factory);
         var legacy = AccessDirectoryService.CreateUser("HISOKA", "旧管理员", 1, "legacy-admin-password");
-        await store.WriteAsync("access-directory", JsonSerializer.Serialize(new AccessDirectory { Users = [legacy] }, new JsonSerializerOptions(JsonSerializerDefaults.Web)), 0, default);
+        await store.WriteAsync("access-directory", JsonSerializer.Serialize(new AccessDirectory { Users = [legacy] }, JsonSerializerOptions.Web), 0, default);
         var service = new AccessDirectoryService(store, new ConfigurationBuilder().Build());
         var (directory, revision) = await service.ReadAsync(default);
         Assert.True(directory.Initialized); var builtIn = Assert.Single(directory.Users); Assert.True(BuiltInSuperUser.Is(builtIn));
         var corrupted = directory with { Users = [builtIn with { RoleId = 2, Enabled = false, PasswordHash = legacy.PasswordHash, SecurityStamp = "tampered" }], Roles = [new AccessRole { Id = 2, Name = "空权限", Permissions = [] }] };
-        await store.WriteAsync("access-directory", JsonSerializer.Serialize(corrupted, new JsonSerializerOptions(JsonSerializerDefaults.Web)), revision, default);
+        await store.WriteAsync("access-directory", JsonSerializer.Serialize(corrupted, JsonSerializerOptions.Web), revision, default);
         var (restored, _) = await service.ReadAsync(default); var user = Assert.Single(restored.Users);
         Assert.True(user.Enabled); Assert.Equal(1L, user.RoleId); Assert.True(AccessDirectoryService.VerifyPassword(user, BuiltInPassword)); Assert.False(AccessDirectoryService.VerifyPassword(user, "legacy-admin-password"));
         Assert.Equal(AccessDirectoryService.PermissionCodes.Order(), AccessDirectoryService.Principal(user, restored.Roles[0]).FindAll("permission").Select(x => x.Value).Order());
@@ -207,7 +210,7 @@ public sealed class BuiltInSuperUserTests {
         AccessApiTests.UseCookie(client, await client.PostAsJsonAsync("/api/access/login", new { username = "hisoka", password = BuiltInPassword }));
         var snapshot = await client.GetFromJsonAsync<JsonElement>("/api/access");
         Assert.False(snapshot.GetProperty("configured").GetBoolean()); Assert.Empty(snapshot.GetProperty("users").EnumerateArray());
-        Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync("/api/access/roles", new { expectedRevision = snapshot.GetProperty("revision").GetInt32(), name = "普通查询角色", permissions = new[] { "parcels.read" } })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync("/api/access/roles", new { expectedRevision = snapshot.GetProperty("revision").GetInt32(), name = "普通查询角色", permissions = CachedParcelsReadValues })).StatusCode);
         snapshot = await client.GetFromJsonAsync<JsonElement>("/api/access");
         Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync("/api/access/users", new { expectedRevision = snapshot.GetProperty("revision").GetInt32(), account = "reader", name = "普通查询用户", roleId = 2, password = "test-reader-password" })).StatusCode);
         Assert.True((await client.GetFromJsonAsync<JsonElement>("/api/access/session")).GetProperty("configured").GetBoolean());

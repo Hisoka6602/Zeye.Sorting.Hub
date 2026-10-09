@@ -32,7 +32,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
     /// </list>
     /// </para>
     /// </remarks>
-    internal sealed class SqlServerContextFactory {
+    internal static class SqlServerContextFactory {
 
         /// <summary>
         /// 无凭据设计时占位连接字符串，仅在无法从配置读取时用于模型分析，不用于数据库更新。
@@ -43,7 +43,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
         /// <summary>
         /// 为 SQL Server 场景构建设计时 DbContext（供统一设计时工厂内部复用）。
         /// </summary>
-        public SortingHubDbContext CreateDbContext(string[] args) {
+        public static SortingHubDbContext CreateDbContext(string[] args) {
             var config = DesignTimeConfigurationLocator.LoadConfiguration();
             return CreateDbContext(config);
         }
@@ -51,7 +51,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DesignTime {
         /// <summary>
         /// 根据配置创建 SQL Server 设计时 DbContext。
         /// </summary>
-        internal SortingHubDbContext CreateDbContext(IConfiguration config) {
+        internal static SortingHubDbContext CreateDbContext(IConfiguration config) {
             var connectionString = config.GetConnectionString(ConfiguredProviderNames.SqlServer) ?? FallbackConnectionString;
 
             var options = new DbContextOptionsBuilder<SortingHubDbContext>()

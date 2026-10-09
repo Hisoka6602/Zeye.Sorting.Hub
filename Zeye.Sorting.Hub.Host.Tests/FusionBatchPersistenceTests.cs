@@ -10,6 +10,13 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 
 /// <summary>批次事务的耐久确认、混合输入隔离与单一图片归属回归。</summary>
 public sealed class FusionBatchPersistenceTests {
+    /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+    private static readonly string[] CachedStoredStoredDuplicateValues = new[] { "stored", "stored", "duplicate" };
+    /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+    private static readonly string[] CachedDuplicateStoredRejectedConflictValues = new[] { "duplicate", "stored", "rejected", "conflict" };
+    /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+    private static readonly string[] CachedStoredConflictStoredValues = new[] { "stored", "conflict", "stored" };
+
     /// <summary>验证批次耐久性、输入隔离及单次事务提交。</summary>
     [Fact]
     public async Task FiftyFactsCommitOnceAndReplayWithoutAnotherWrite() {
@@ -40,7 +47,7 @@ public sealed class FusionBatchPersistenceTests {
         Assert.Empty(await env.NewIngress().GetFactsAsync("fusion-line-01", null, 20, default));
         Assert.Empty(await env.NewIngress().ClaimProjectionsAsync(default));
         var retry = await env.Ingress.PublishAsync("a", batch, default);
-        Assert.Equal(new[] { "stored", "stored", "duplicate" }, retry.Records.Select(x => x.Status));
+        Assert.Equal(CachedStoredStoredDuplicateValues, retry.Records.Select(x => x.Status));
         Assert.Equal(2, (await env.NewIngress().GetFactsAsync("fusion-line-01", null, 20, default)).Count);
     }
 
@@ -56,7 +63,7 @@ public sealed class FusionBatchPersistenceTests {
         var next = FusionIngressTestEnvironment.Fact("parcel.detected", 2, "2");
         var invalid = FusionIngressTestEnvironment.Fact("parcel.detected", 3, "3") with { BodySha256 = new string('0', 64) };
         var mixed = await env.Ingress.PublishAsync("a", FusionIngressTestEnvironment.Batch(lease, first, next, invalid, changed), default);
-        Assert.Equal(new[] { "duplicate", "stored", "rejected", "conflict" }, mixed.Records.Select(x => x.Status));
+        Assert.Equal(CachedDuplicateStoredRejectedConflictValues, mixed.Records.Select(x => x.Status));
         Assert.Equal(2, env.Database.Failure.FusionReceiptWrites);
         Assert.Equal(2, (await env.Ingress.GetFactsAsync("fusion-line-01", null, 20, default)).Count);
     }
@@ -71,7 +78,7 @@ public sealed class FusionBatchPersistenceTests {
         var other = FusionIngressTestEnvironment.Fact("image.association", 2, "2", data);
         var healthy = FusionIngressTestEnvironment.Fact("parcel.detected", 3, "3");
         var receipt = await env.Ingress.PublishAsync("a", FusionIngressTestEnvironment.Batch(lease, first, other, healthy), default);
-        Assert.Equal(new[] { "stored", "conflict", "stored" }, receipt.Records.Select(x => x.Status));
+        Assert.Equal(CachedStoredConflictStoredValues, receipt.Records.Select(x => x.Status));
         await using var db = await env.Database.Factory.CreateDbContextAsync();
         Assert.Equal(1L, (await db.Set<FusionImageUpload>().SingleAsync()).SourceParcelId);
         Assert.Equal(2, await db.Set<FusionFactReceipt>().CountAsync());

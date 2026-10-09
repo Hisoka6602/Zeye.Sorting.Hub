@@ -31,6 +31,9 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 
 /// <summary>自动调优生产控制相关功能的集成测试集合。</summary>
 public sealed class AutoTuningProductionControlTests {
+    /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+    private static readonly string[] CachedWebRequestAuditLogsWebRequestAuditLogDetailsBaseTableNames = new[] { "WebRequestAuditLogs", "WebRequestAuditLogDetails" };
+
     /// <summary>定点小数精度比较容差。</summary>
     private const decimal DecimalPrecisionTolerance = 0.0001m;
 
@@ -45,7 +48,7 @@ public sealed class AutoTuningProductionControlTests {
     [InlineData("01:02", 1, 2, 0)]
     [InlineData(" 23:59:59 ", 23, 59, 59)]
     [InlineData("00:00:00", 0, 0, 0)]
-    public void TimeOfDayConfiguration_ShouldAcceptPickerValues(string value, int hour, int minute, int second) {
+    public void TimeOfDayConfigurationShouldAcceptPickerValues(string value, int hour, int minute, int second) {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Time"] = value }).Build();
         var actual = AutoTuningConfigurationReader.GetTimeOfDayOrDefault(configuration, "Time", new TimeSpan(2, 30, 0));
         Assert.Equal(new TimeSpan(hour, minute, second), actual);
@@ -59,16 +62,16 @@ public sealed class AutoTuningProductionControlTests {
     [InlineData("12:30:00+08:00")]
     [InlineData("12:30:00.500")]
     [InlineData("")]
-    public void TimeOfDayConfiguration_ShouldKeepInvalidValueFallback(string value) {
+    public void TimeOfDayConfigurationShouldKeepInvalidValueFallback(string value) {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Time"] = value }).Build();
         var fallback = new TimeSpan(2, 30, 0);
         Assert.Equal(fallback, AutoTuningConfigurationReader.GetTimeOfDayOrDefault(configuration, "Time", fallback));
     }
     /// <summary>
-    /// 验证场景：ParcelStatus_ShouldOnlyContainThreeValues。
+    /// 验证场景：ParcelStatusShouldOnlyContainThreeValues。
     /// </summary>
     [Fact]
-    public void ParcelStatus_ShouldOnlyContainThreeValues() {
+    public void ParcelStatusShouldOnlyContainThreeValues() {
         var values = Enum.GetValues<ParcelStatus>();
         Assert.Equal(3, values.Length);
         Assert.Contains(ParcelStatus.Pending, values);
@@ -77,10 +80,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：Parcel_CreateAndMarkSortingException_ShouldKeepExceptionTypeConsistent。
+    /// 验证场景：ParcelCreateAndMarkSortingExceptionShouldKeepExceptionTypeConsistent。
     /// </summary>
     [Fact]
-    public void Parcel_CreateAndMarkSortingException_ShouldKeepExceptionTypeConsistent() {
+    public void ParcelCreateAndMarkSortingExceptionShouldKeepExceptionTypeConsistent() {
         var parcel = Parcel.Create(
             id: 9001,
             parcelTimestamp: 1,
@@ -117,10 +120,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：MigrationFailStartupPolicy_DefaultsToFalse_WhenConfigMissing。
+    /// 验证场景：MigrationFailStartupPolicyDefaultsToFalseWhenConfigMissing。
     /// </summary>
     [Fact]
-    public void MigrationFailStartupPolicy_DefaultsToFalse_WhenConfigMissing() {
+    public void MigrationFailStartupPolicyDefaultsToFalseWhenConfigMissing() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>())
             .Build();
@@ -130,10 +133,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：MigrationFailStartupPolicy_ReturnsTrue_WhenConfigEnabled。
+    /// 验证场景：MigrationFailStartupPolicyReturnsTrueWhenConfigEnabled。
     /// </summary>
     [Fact]
-    public void MigrationFailStartupPolicy_ReturnsTrue_WhenConfigEnabled() {
+    public void MigrationFailStartupPolicyReturnsTrueWhenConfigEnabled() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Migration:FailStartupOnError"] = "true"
@@ -145,10 +148,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：MigrationFailStartupPolicy_ReturnsFalse_WhenConfigIsInvalid。
+    /// 验证场景：MigrationFailStartupPolicyReturnsFalseWhenConfigIsInvalid。
     /// </summary>
     [Fact]
-    public void MigrationFailStartupPolicy_ReturnsFalse_WhenConfigIsInvalid() {
+    public void MigrationFailStartupPolicyReturnsFalseWhenConfigIsInvalid() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Migration:FailStartupOnError"] = "invalid"
@@ -160,10 +163,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：MigrationFailureMode_DefaultsToFailFast_InProduction。
+    /// 验证场景：MigrationFailureModeDefaultsToFailFastInProduction。
     /// </summary>
     [Fact]
-    public void MigrationFailureMode_DefaultsToFailFast_InProduction() {
+    public void MigrationFailureModeDefaultsToFailFastInProduction() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>())
             .Build();
@@ -173,10 +176,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：MigrationFailureMode_DefaultsToDegraded_InNonProduction。
+    /// 验证场景：MigrationFailureModeDefaultsToDegradedInNonProduction。
     /// </summary>
     [Fact]
-    public void MigrationFailureMode_DefaultsToDegraded_InNonProduction() {
+    public void MigrationFailureModeDefaultsToDegradedInNonProduction() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>())
             .Build();
@@ -186,10 +189,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：MigrationFailureMode_UsesEnvironmentSpecificConfig。
+    /// 验证场景：MigrationFailureModeUsesEnvironmentSpecificConfig。
     /// </summary>
     [Fact]
-    public void MigrationFailureMode_UsesEnvironmentSpecificConfig() {
+    public void MigrationFailureModeUsesEnvironmentSpecificConfig() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Migration:FailureStrategy:Production"] = "Degraded",
@@ -204,10 +207,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：MigrationFailureMode_FallbacksToLegacyBooleanSwitch。
+    /// 验证场景：MigrationFailureModeFallbacksToLegacyBooleanSwitch。
     /// </summary>
     [Fact]
-    public void MigrationFailureMode_FallbacksToLegacyBooleanSwitch() {
+    public void MigrationFailureModeFallbacksToLegacyBooleanSwitch() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Migration:FailStartupOnError"] = "true"
@@ -219,20 +222,20 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ShardingGovernanceTextNormalization_UsesPlaceholderForWhitespace。
+    /// 验证场景：ShardingGovernanceTextNormalizationUsesPlaceholderForWhitespace。
     /// </summary>
     [Fact]
-    public void ShardingGovernanceTextNormalization_UsesPlaceholderForWhitespace() {
+    public void ShardingGovernanceTextNormalizationUsesPlaceholderForWhitespace() {
         var normalized = DatabaseInitializerHostedService.NormalizeOptionalTextOrPlaceholder("   ", "未配置");
         Assert.Equal("未配置", normalized);
         Assert.Equal("runbook-path", DatabaseInitializerHostedService.NormalizeOptionalTextOrPlaceholder("  runbook-path  ", "未配置"));
     }
 
     /// <summary>
-    /// 验证场景：ShardingGovernance_ResolvesStructuredExpansionStages。
+    /// 验证场景：ShardingGovernanceResolvesStructuredExpansionStages。
     /// </summary>
     [Fact]
-    public void ShardingGovernance_ResolvesStructuredExpansionStages() {
+    public void ShardingGovernanceResolvesStructuredExpansionStages() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Sharding:HashSharding:ExpansionPlan:Stages:0"] = "warmup",
@@ -246,10 +249,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ShardingGovernance_BuildExpansionPlanSummary_PrefersStructuredStages。
+    /// 验证场景：ShardingGovernanceBuildExpansionPlanSummaryPrefersStructuredStages。
     /// </summary>
     [Fact]
-    public void ShardingGovernance_BuildExpansionPlanSummary_PrefersStructuredStages() {
+    public void ShardingGovernanceBuildExpansionPlanSummaryPrefersStructuredStages() {
         var summary = DatabaseInitializerHostedService.BuildExpansionPlanSummary(
             currentMod: 16,
             targetMod: 32,
@@ -268,10 +271,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ParcelShardingStrategyEvaluator_HybridModeSwitchesToPerDay_WhenThresholdReached。
+    /// 验证场景：ParcelShardingStrategyEvaluatorHybridModeSwitchesToPerDayWhenThresholdReached。
     /// </summary>
     [Fact]
-    public void ParcelShardingStrategyEvaluator_HybridModeSwitchesToPerDay_WhenThresholdReached() {
+    public void ParcelShardingStrategyEvaluatorHybridModeSwitchesToPerDayWhenThresholdReached() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Sharding:Strategy:Mode"] = "Hybrid",
@@ -296,10 +299,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ParcelShardingStrategyEvaluator_HybridModeSwitchesToPerDay_WhenHotThresholdReachedOnly。
+    /// 验证场景：ParcelShardingStrategyEvaluatorHybridModeSwitchesToPerDayWhenHotThresholdReachedOnly。
     /// </summary>
     [Fact]
-    public void ParcelShardingStrategyEvaluator_HybridModeSwitchesToPerDay_WhenHotThresholdReachedOnly() {
+    public void ParcelShardingStrategyEvaluatorHybridModeSwitchesToPerDayWhenHotThresholdReachedOnly() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Sharding:Strategy:Mode"] = "Hybrid",
@@ -322,10 +325,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ParcelShardingStrategyEvaluator_TimeModeUsesConfiguredGranularity。
+    /// 验证场景：ParcelShardingStrategyEvaluatorTimeModeUsesConfiguredGranularity。
     /// </summary>
     [Fact]
-    public void ParcelShardingStrategyEvaluator_TimeModeUsesConfiguredGranularity() {
+    public void ParcelShardingStrategyEvaluatorTimeModeUsesConfiguredGranularity() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Sharding:Strategy:Mode"] = "Time",
@@ -343,10 +346,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ParcelShardingStrategyEvaluator_TimeMode_ShouldIgnoreInvalidVolumeConfig。
+    /// 验证场景：ParcelShardingStrategyEvaluatorTimeModeShouldIgnoreInvalidVolumeConfig。
     /// </summary>
     [Fact]
-    public void ParcelShardingStrategyEvaluator_TimeMode_ShouldIgnoreInvalidVolumeConfig() {
+    public void ParcelShardingStrategyEvaluatorTimeModeShouldIgnoreInvalidVolumeConfig() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Sharding:Strategy:Mode"] = "Time",
@@ -364,10 +367,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ParcelShardingStrategyEvaluator_ShouldRejectNumericEnumValues。
+    /// 验证场景：ParcelShardingStrategyEvaluatorShouldRejectNumericEnumValues。
     /// </summary>
     [Fact]
-    public void ParcelShardingStrategyEvaluator_ShouldRejectNumericEnumValues() {
+    public void ParcelShardingStrategyEvaluatorShouldRejectNumericEnumValues() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Sharding:Strategy:Mode"] = "1",
@@ -385,10 +388,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ParcelShardingStrategyEvaluator_ShouldRejectNumericThresholdAction。
+    /// 验证场景：ParcelShardingStrategyEvaluatorShouldRejectNumericThresholdAction。
     /// </summary>
     [Fact]
-    public void ParcelShardingStrategyEvaluator_ShouldRejectNumericThresholdAction() {
+    public void ParcelShardingStrategyEvaluatorShouldRejectNumericThresholdAction() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Sharding:Strategy:Mode"] = "Hybrid",
@@ -407,10 +410,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ParcelShardingStrategyEvaluator_ValidationErrors_ShouldBeImmutableSnapshot。
+    /// 验证场景：ParcelShardingStrategyEvaluatorValidationErrorsShouldBeImmutableSnapshot。
     /// </summary>
     [Fact]
-    public void ParcelShardingStrategyEvaluator_ValidationErrors_ShouldBeImmutableSnapshot() {
+    public void ParcelShardingStrategyEvaluatorValidationErrorsShouldBeImmutableSnapshot() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Sharding:Strategy:Mode"] = "Volume"
@@ -424,10 +427,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ParcelShardingStrategyEvaluator_ReportsValidationErrors_WhenVolumeConfigMissing。
+    /// 验证场景：ParcelShardingStrategyEvaluatorReportsValidationErrorsWhenVolumeConfigMissing。
     /// </summary>
     [Fact]
-    public void ParcelShardingStrategyEvaluator_ReportsValidationErrors_WhenVolumeConfigMissing() {
+    public void ParcelShardingStrategyEvaluatorReportsValidationErrorsWhenVolumeConfigMissing() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Sharding:Strategy:Mode"] = "Volume",
@@ -444,10 +447,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：AddSortingHubPersistence_ShouldFailFast_WhenShardingStrategyInvalid。
+    /// 验证场景：AddSortingHubPersistenceShouldFailFastWhenShardingStrategyInvalid。
     /// </summary>
     [Fact]
-    public void AddSortingHubPersistence_ShouldFailFast_WhenShardingStrategyInvalid() {
+    public void AddSortingHubPersistenceShouldFailFastWhenShardingStrategyInvalid() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Provider"] = "MySql",
@@ -462,10 +465,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ParcelShardingStrategyEvaluator_PrefersStructuredObservationInput。
+    /// 验证场景：ParcelShardingStrategyEvaluatorPrefersStructuredObservationInput。
     /// </summary>
     [Fact]
-    public void ParcelShardingStrategyEvaluator_PrefersStructuredObservationInput() {
+    public void ParcelShardingStrategyEvaluatorPrefersStructuredObservationInput() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Sharding:Strategy:Mode"] = "Hybrid",
@@ -493,10 +496,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ParcelShardingStrategyEvaluator_OutputsBucketedPerDayExtensionPlan_WhenConfigured。
+    /// 验证场景：ParcelShardingStrategyEvaluatorOutputsBucketedPerDayExtensionPlanWhenConfigured。
     /// </summary>
     [Fact]
-    public void ParcelShardingStrategyEvaluator_OutputsBucketedPerDayExtensionPlan_WhenConfigured() {
+    public void ParcelShardingStrategyEvaluatorOutputsBucketedPerDayExtensionPlanWhenConfigured() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Sharding:Strategy:Mode"] = "Hybrid",
@@ -524,7 +527,7 @@ public sealed class AutoTuningProductionControlTests {
     /// 验证 PerHour 模式下缺失 BucketCount 时应通过校验。
     /// </summary>
     [Fact]
-    public void PerHourMode_MissingBucketCount_ShouldPassValidation() {
+    public void PerHourModeMissingBucketCountShouldPassValidation() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Sharding:Strategy:Mode"] = "Hybrid",
@@ -544,7 +547,7 @@ public sealed class AutoTuningProductionControlTests {
     /// 验证 None 模式下缺失 BucketCount 时应通过校验。
     /// </summary>
     [Fact]
-    public void NoneMode_MissingBucketCount_ShouldPassValidation() {
+    public void NoneModeMissingBucketCountShouldPassValidation() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Sharding:Strategy:Mode"] = "Hybrid",
@@ -564,7 +567,7 @@ public sealed class AutoTuningProductionControlTests {
     /// 验证 BucketedPerDay 模式下缺失 BucketCount 时应触发校验错误。
     /// </summary>
     [Fact]
-    public void ParcelShardingStrategyEvaluator_ShouldFailValidation_WhenBucketedPerDayMissingBucketCount() {
+    public void ParcelShardingStrategyEvaluatorShouldFailValidationWhenBucketedPerDayMissingBucketCount() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Sharding:Strategy:Mode"] = "Volume",
@@ -581,10 +584,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ParcelShardingStrategyEvaluator_ShouldFailValidation_WhenBucketCountOutOfRange。
+    /// 验证场景：ParcelShardingStrategyEvaluatorShouldFailValidationWhenBucketCountOutOfRange。
     /// </summary>
     [Fact]
-    public void ParcelShardingStrategyEvaluator_ShouldFailValidation_WhenBucketCountOutOfRange() {
+    public void ParcelShardingStrategyEvaluatorShouldFailValidationWhenBucketCountOutOfRange() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Sharding:Strategy:Mode"] = "Volume",
@@ -601,10 +604,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ParcelShardingStrategyEvaluator_ShouldFailValidation_WhenRequirePrebuildGuardInvalidBoolean。
+    /// 验证场景：ParcelShardingStrategyEvaluatorShouldFailValidationWhenRequirePrebuildGuardInvalidBoolean。
     /// </summary>
     [Fact]
-    public void ParcelShardingStrategyEvaluator_ShouldFailValidation_WhenRequirePrebuildGuardInvalidBoolean() {
+    public void ParcelShardingStrategyEvaluatorShouldFailValidationWhenRequirePrebuildGuardInvalidBoolean() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Sharding:Strategy:Mode"] = "Volume",
@@ -620,10 +623,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ParcelShardingStrategyEvaluator_ShouldFailValidation_WhenBucketCountConfiguredButModeIsNotBucketed。
+    /// 验证场景：ParcelShardingStrategyEvaluatorShouldFailValidationWhenBucketCountConfiguredButModeIsNotBucketed。
     /// </summary>
     [Fact]
-    public void ParcelShardingStrategyEvaluator_ShouldFailValidation_WhenBucketCountConfiguredButModeIsNotBucketed() {
+    public void ParcelShardingStrategyEvaluatorShouldFailValidationWhenBucketCountConfiguredButModeIsNotBucketed() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Sharding:Strategy:Mode"] = "Hybrid",
@@ -644,7 +647,7 @@ public sealed class AutoTuningProductionControlTests {
     /// 验证与默认示例关键字段组合一致的内存配置不会触发分表策略校验错误。
     /// </summary>
     [Fact]
-    public void DefaultExampleKeyCombinationInMemory_ShouldPassValidation() {
+    public void DefaultExampleKeyCombinationInMemoryShouldPassValidation() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Sharding:Strategy:Mode"] = "Hybrid",
@@ -668,10 +671,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ShouldEnforcePerDayPrebuildGuard_UsesUnifiedFinerPlan。
+    /// 验证场景：ShouldEnforcePerDayPrebuildGuardUsesUnifiedFinerPlan。
     /// </summary>
     [Fact]
-    public void ShouldEnforcePerDayPrebuildGuard_UsesUnifiedFinerPlan() {
+    public void ShouldEnforcePerDayPrebuildGuardUsesUnifiedFinerPlan() {
         var decision = new ParcelShardingStrategyDecision(
             Mode: ParcelShardingStrategyMode.Hybrid,
             TimeGranularity: ParcelTimeShardingGranularity.PerMonth,
@@ -704,10 +707,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ShouldEnforcePerDayPrebuildGuard_ReturnsTrue_WhenPerDayAndNoExtensionPlan。
+    /// 验证场景：ShouldEnforcePerDayPrebuildGuardReturnsTrueWhenPerDayAndNoExtensionPlan。
     /// </summary>
     [Fact]
-    public void ShouldEnforcePerDayPrebuildGuard_ReturnsTrue_WhenPerDayAndNoExtensionPlan() {
+    public void ShouldEnforcePerDayPrebuildGuardReturnsTrueWhenPerDayAndNoExtensionPlan() {
         var decision = new ParcelShardingStrategyDecision(
             Mode: ParcelShardingStrategyMode.Time,
             TimeGranularity: ParcelTimeShardingGranularity.PerDay,
@@ -740,10 +743,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ShouldEnforcePerDayPrebuildGuard_ReturnsFalse_WhenNotPerDay。
+    /// 验证场景：ShouldEnforcePerDayPrebuildGuardReturnsFalseWhenNotPerDay。
     /// </summary>
     [Fact]
-    public void ShouldEnforcePerDayPrebuildGuard_ReturnsFalse_WhenNotPerDay() {
+    public void ShouldEnforcePerDayPrebuildGuardReturnsFalseWhenNotPerDay() {
         var decision = new ParcelShardingStrategyDecision(
             Mode: ParcelShardingStrategyMode.Hybrid,
             TimeGranularity: ParcelTimeShardingGranularity.PerMonth,
@@ -776,10 +779,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ShouldEnforcePerDayPrebuildGuard_ReturnsTrue_WhenPerDayEvenIfPlanSaysNoPrebuild。
+    /// 验证场景：ShouldEnforcePerDayPrebuildGuardReturnsTrueWhenPerDayEvenIfPlanSaysNoPrebuild。
     /// </summary>
     [Fact]
-    public void ShouldEnforcePerDayPrebuildGuard_ReturnsTrue_WhenPerDayEvenIfPlanSaysNoPrebuild() {
+    public void ShouldEnforcePerDayPrebuildGuardReturnsTrueWhenPerDayEvenIfPlanSaysNoPrebuild() {
         var decision = new ParcelShardingStrategyDecision(
             Mode: ParcelShardingStrategyMode.Hybrid,
             TimeGranularity: ParcelTimeShardingGranularity.PerMonth,
@@ -812,10 +815,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ShardingGovernanceGuard_AutoPath_ShouldNotRequirePrebuiltDates。
+    /// 验证场景：ShardingGovernanceGuardAutoPathShouldNotRequirePrebuiltDates。
     /// </summary>
     [Fact]
-    public async Task ShardingGovernanceGuard_AutoPath_ShouldNotRequirePrebuiltDates() {
+    public async Task ShardingGovernanceGuardAutoPathShouldNotRequirePrebuiltDates() {
         var configuration = BuildPerDayGovernanceConfiguration(
             createShardingTableOnStarting: false,
             timeGranularity: "PerDay",
@@ -828,10 +831,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：DatabaseInitializer_RetryableExceptionPath_ShouldKeepRetrySemantics。
+    /// 验证场景：DatabaseInitializerRetryableExceptionPathShouldKeepRetrySemantics。
     /// </summary>
     [Fact]
-    public async Task DatabaseInitializer_RetryableExceptionPath_ShouldKeepRetrySemantics() {
+    public async Task DatabaseInitializerRetryableExceptionPathShouldKeepRetrySemantics() {
         var logger = new TestLogger<DatabaseInitializerHostedService>();
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
@@ -859,10 +862,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：SqlServerDialect_BatchProbeSql_ShouldUseSchemaParameter。
+    /// 验证场景：SqlServerDialectBatchProbeSqlShouldUseSchemaParameter。
     /// </summary>
     [Fact]
-    public void SqlServerDialect_BatchProbeSql_ShouldUseSchemaParameter() {
+    public void SqlServerDialectBatchProbeSqlShouldUseSchemaParameter() {
         var sqlField = typeof(SqlServerDialect).GetField(
             "BatchShardingProbeSql",
             BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
@@ -874,10 +877,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ResolveCriticalIndexesForProvider_ShouldIncludeChuteAndBagIndexes。
+    /// 验证场景：ResolveCriticalIndexesForProviderShouldIncludeChuteAndBagIndexes。
     /// </summary>
     [Fact]
-    public void ResolveCriticalIndexesForProvider_ShouldIncludeChuteAndBagIndexes() {
+    public void ResolveCriticalIndexesForProviderShouldIncludeChuteAndBagIndexes() {
         var mySqlIndexes = DatabaseInitializerHostedService.ResolveCriticalIndexesForProvider("MySQL");
         var sqlServerIndexes = DatabaseInitializerHostedService.ResolveCriticalIndexesForProvider("SQLServer");
         var mySqlAuditOnlyIndexes = DatabaseInitializerHostedService.ResolveAuditOnlyIndexesForProvider("MySQL");
@@ -894,10 +897,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：CriticalIndexAudit_DispatchesByLogicalTable_ShouldHitParcelAndWebRequestAuditLogSeparately。
+    /// 验证场景：CriticalIndexAuditDispatchesByLogicalTableShouldHitParcelAndWebRequestAuditLogSeparately。
     /// </summary>
     [Fact]
-    public void CriticalIndexAudit_DispatchesByLogicalTable_ShouldHitParcelAndWebRequestAuditLogSeparately() {
+    public void CriticalIndexAuditDispatchesByLogicalTableShouldHitParcelAndWebRequestAuditLogSeparately() {
         var criticalIndexes = DatabaseInitializerHostedService.ResolveCriticalIndexesByLogicalTableForProvider("MySQL");
         var auditOnlyIndexes = DatabaseInitializerHostedService.ResolveAuditOnlyIndexesByLogicalTableForProvider("MySQL");
 
@@ -913,10 +916,10 @@ public sealed class AutoTuningProductionControlTests {
 
 
     /// <summary>
-    /// 验证场景：IsolationPolicy_DryRun_DoesNotExecuteSql。
+    /// 验证场景：IsolationPolicyDryRunDoesNotExecuteSql。
     /// </summary>
     [Fact]
-    public void IsolationPolicy_DryRun_DoesNotExecuteSql() {
+    public void IsolationPolicyDryRunDoesNotExecuteSql() {
         var decision = ActionIsolationPolicy.Evaluate(
             enableGuard: true,
             allowDangerousActionExecution: true,
@@ -928,10 +931,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：WebRequestAuditLogRetentionDecision_GuardDryRunExecute_ShouldKeepPlannedAndExecutedSemanticsConsistent。
+    /// 验证场景：WebRequestAuditLogRetentionDecisionGuardDryRunExecuteShouldKeepPlannedAndExecutedSemanticsConsistent。
     /// </summary>
     [Fact]
-    public void WebRequestAuditLogRetentionDecision_GuardDryRunExecute_ShouldKeepPlannedAndExecutedSemanticsConsistent() {
+    public void WebRequestAuditLogRetentionDecisionGuardDryRunExecuteShouldKeepPlannedAndExecutedSemanticsConsistent() {
         var blocked = DatabaseInitializerHostedService.EvaluateWebRequestAuditLogRetentionDecision(
             candidateCount: 6,
             enableGuard: true,
@@ -968,10 +971,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ResolvePerDayGovernanceGroups_ShouldUseShardingRegistrationSameSourceForWebRequestAuditLog。
+    /// 验证场景：ResolvePerDayGovernanceGroupsShouldUseShardingRegistrationSameSourceForWebRequestAuditLog。
     /// </summary>
     [Fact]
-    public void ResolvePerDayGovernanceGroups_ShouldUseShardingRegistrationSameSourceForWebRequestAuditLog() {
+    public void ResolvePerDayGovernanceGroupsShouldUseShardingRegistrationSameSourceForWebRequestAuditLog() {
         var options = new DbContextOptionsBuilder<SortingHubDbContext>()
             .UseInMemoryDatabase($"resolve-governance-webrequest-{Guid.NewGuid():N}")
             .Options;
@@ -1015,10 +1018,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：EstimateWebRequestAuditLogRetentionCandidates_KeepRecentBoundary_ShouldReturnExpectedCount。
+    /// 验证场景：EstimateWebRequestAuditLogRetentionCandidatesKeepRecentBoundaryShouldReturnExpectedCount。
     /// </summary>
     [Fact]
-    public void EstimateWebRequestAuditLogRetentionCandidates_KeepRecentBoundary_ShouldReturnExpectedCount() {
+    public void EstimateWebRequestAuditLogRetentionCandidatesKeepRecentBoundaryShouldReturnExpectedCount() {
         var requiredDates = new[] {
             DateTime.Now.Date.AddDays(-4),
             DateTime.Now.Date.AddDays(-3),
@@ -1028,7 +1031,7 @@ public sealed class AutoTuningProductionControlTests {
         var governanceGroups = new[] {
             new PerDayGovernanceGroup(
                 GroupName: "WebRequestAuditLog",
-                BaseTableNames: new[] { "WebRequestAuditLogs", "WebRequestAuditLogDetails" })
+                BaseTableNames: CachedWebRequestAuditLogsWebRequestAuditLogDetailsBaseTableNames)
         };
 
         var candidatesWhenKeep2 = DatabaseInitializerHostedService.EstimateWebRequestAuditLogRetentionCandidates(
@@ -1045,10 +1048,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：WebRequestAuditLogRetention_MetadataCandidatesAndDryRun_ShouldUseRealPhysicalMetadataAndEmitObservability。
+    /// 验证场景：WebRequestAuditLogRetentionMetadataCandidatesAndDryRunShouldUseRealPhysicalMetadataAndEmitObservability。
     /// </summary>
     [Fact]
-    public async Task WebRequestAuditLogRetention_MetadataCandidatesAndDryRun_ShouldUseRealPhysicalMetadataAndEmitObservability() {
+    public async Task WebRequestAuditLogRetentionMetadataCandidatesAndDryRunShouldUseRealPhysicalMetadataAndEmitObservability() {
         var configuration = BuildPerDayGovernanceConfiguration(
             createShardingTableOnStarting: false,
             timeGranularity: "PerMonth",
@@ -1092,10 +1095,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：IsolationPolicy_BlocksDangerousAction_WhenNotAllowed。
+    /// 验证场景：IsolationPolicyBlocksDangerousActionWhenNotAllowed。
     /// </summary>
     [Fact]
-    public void IsolationPolicy_BlocksDangerousAction_WhenNotAllowed() {
+    public void IsolationPolicyBlocksDangerousActionWhenNotAllowed() {
         var decision = ActionIsolationPolicy.Evaluate(
             enableGuard: true,
             allowDangerousActionExecution: false,
@@ -1107,10 +1110,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：EnsureDatabaseExistsDecision_GuardDryRunExecute_ShouldKeepPlannedAndExecutedSemanticsConsistent。
+    /// 验证场景：EnsureDatabaseExistsDecisionGuardDryRunExecuteShouldKeepPlannedAndExecutedSemanticsConsistent。
     /// </summary>
     [Fact]
-    public void EnsureDatabaseExistsDecision_GuardDryRunExecute_ShouldKeepPlannedAndExecutedSemanticsConsistent() {
+    public void EnsureDatabaseExistsDecisionGuardDryRunExecuteShouldKeepPlannedAndExecutedSemanticsConsistent() {
         var blocked = DatabaseInitializerHostedService.EvaluateEnsureDatabaseExistsDecision(
             databaseMissing: true,
             enableGuard: true,
@@ -1147,10 +1150,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：EnsureDatabaseExistsDecision_WhenDatabaseAlreadyExists_ShouldSkipCreatePlan。
+    /// 验证场景：EnsureDatabaseExistsDecisionWhenDatabaseAlreadyExistsShouldSkipCreatePlan。
     /// </summary>
     [Fact]
-    public void EnsureDatabaseExistsDecision_WhenDatabaseAlreadyExists_ShouldSkipCreatePlan() {
+    public void EnsureDatabaseExistsDecisionWhenDatabaseAlreadyExistsShouldSkipCreatePlan() {
         var decision = DatabaseInitializerHostedService.EvaluateEnsureDatabaseExistsDecision(
             databaseMissing: false,
             enableGuard: true,
@@ -1165,10 +1168,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ResolveProviderConnectionStringKey_ShouldResolveMySqlAndSqlServerAndUnknown。
+    /// 验证场景：ResolveProviderConnectionStringKeyShouldResolveMySqlAndSqlServerAndUnknown。
     /// </summary>
     [Fact]
-    public void ResolveProviderConnectionStringKey_ShouldResolveMySqlAndSqlServerAndUnknown() {
+    public void ResolveProviderConnectionStringKeyShouldResolveMySqlAndSqlServerAndUnknown() {
         var mySqlByConfig = DatabaseInitializerHostedService.ResolveProviderConnectionStringKey("MySql", "Test");
         var sqlServerByDialect = DatabaseInitializerHostedService.ResolveProviderConnectionStringKey(null, "SQLServer");
         var unknown = DatabaseInitializerHostedService.ResolveProviderConnectionStringKey("Test", "Test");
@@ -1179,10 +1182,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：Dialect_ExtractDatabaseNameAndAdminConnection_ShouldFollowProviderSemantics。
+    /// 验证场景：DialectExtractDatabaseNameAndAdminConnectionShouldFollowProviderSemantics。
     /// </summary>
     [Fact]
-    public void Dialect_ExtractDatabaseNameAndAdminConnection_ShouldFollowProviderSemantics() {
+    public void DialectExtractDatabaseNameAndAdminConnectionShouldFollowProviderSemantics() {
         // 仅用于单元测试的本地示例连接字符串，不用于生产环境。
         var mySqlConnectionString = "Server=127.0.0.1;Port=3306;Database=zeye_sorting_hub;User Id=validation_user;Password=******;";
         var sqlServerConnectionString = "Server=127.0.0.1,1433;Database=zeye_sorting_hub;User Id=validation_user;Password=******;TrustServerCertificate=True;Encrypt=False;";
@@ -1204,10 +1207,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：Pipeline_AlertsSupportDebounceAndRecovery。
+    /// 验证场景：PipelineAlertsSupportDebounceAndRecovery。
     /// </summary>
     [Fact]
-    public void Pipeline_AlertsSupportDebounceAndRecovery() {
+    public void PipelineAlertsSupportDebounceAndRecovery() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:AutoTuning:SlowQueryThresholdMilliseconds"] = "10",
@@ -1244,10 +1247,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：AutoTuningConfigurationReader_BuildKeys_ShouldUseExpectedPrefix。
+    /// 验证场景：AutoTuningConfigurationReaderBuildKeysShouldUseExpectedPrefix。
     /// </summary>
     [Fact]
-    public void AutoTuningConfigurationReader_BuildKeys_ShouldUseExpectedPrefix() {
+    public void AutoTuningConfigurationReaderBuildKeysShouldUseExpectedPrefix() {
         var autoTuningKey = AutoTuningConfigurationReader.BuildAutoTuningKey("TriggerCount");
         var autonomousKey = AutoTuningConfigurationReader.BuildAutonomousKey("Validation:DelayCycles");
 
@@ -1256,7 +1259,7 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：AutoTuningConfigurationReader_BuildAutoTuningKey_ShouldProduceCorrectPath（参数化）。
+    /// 验证场景：AutoTuningConfigurationReaderBuildAutoTuningKeyShouldProduceCorrectPath（参数化）。
     /// 覆盖多个常用配置项后缀，确保拼装规则对未来新增配置项持续有效。
     /// </summary>
     [Theory]
@@ -1270,13 +1273,13 @@ public sealed class AutoTuningProductionControlTests {
     [InlineData("AlertConsecutiveWindows", "Persistence:AutoTuning:AlertConsecutiveWindows")]
     [InlineData("AlertRecoveryConsecutiveWindows", "Persistence:AutoTuning:AlertRecoveryConsecutiveWindows")]
     [InlineData("AlertDebounceMinCallCount", "Persistence:AutoTuning:AlertDebounceMinCallCount")]
-    public void AutoTuningConfigurationReader_BuildAutoTuningKey_ShouldProduceCorrectPath(string suffix, string expectedKey) {
+    public void AutoTuningConfigurationReaderBuildAutoTuningKeyShouldProduceCorrectPath(string suffix, string expectedKey) {
         var actual = AutoTuningConfigurationReader.BuildAutoTuningKey(suffix);
         Assert.Equal(expectedKey, actual);
     }
 
     /// <summary>
-    /// 验证场景：AutoTuningConfigurationReader_BuildAutonomousKey_ShouldProduceCorrectPath（参数化）。
+    /// 验证场景：AutoTuningConfigurationReaderBuildAutonomousKeyShouldProduceCorrectPath（参数化）。
     /// 覆盖多个 Autonomous 配置子路径，确保前缀拼装规则对嵌套层级一致有效。
     /// </summary>
     [Theory]
@@ -1286,16 +1289,16 @@ public sealed class AutoTuningProductionControlTests {
     [InlineData("CapacityPrediction:PredictionWindowDays", "Persistence:AutoTuning:Autonomous:CapacityPrediction:PredictionWindowDays")]
     [InlineData("CapacityPrediction:GrowthRateThreshold", "Persistence:AutoTuning:Autonomous:CapacityPrediction:GrowthRateThreshold")]
     [InlineData("SchemaSync:EnableAutoSchemaSync", "Persistence:AutoTuning:Autonomous:SchemaSync:EnableAutoSchemaSync")]
-    public void AutoTuningConfigurationReader_BuildAutonomousKey_ShouldProduceCorrectPath(string suffix, string expectedKey) {
+    public void AutoTuningConfigurationReaderBuildAutonomousKeyShouldProduceCorrectPath(string suffix, string expectedKey) {
         var actual = AutoTuningConfigurationReader.BuildAutonomousKey(suffix);
         Assert.Equal(expectedKey, actual);
     }
 
     /// <summary>
-    /// 验证场景：AutoTuningConfigurationReader_NormalizeToLocalTime_UsesLocalSemantics。
+    /// 验证场景：AutoTuningConfigurationReaderNormalizeToLocalTimeUsesLocalSemantics。
     /// </summary>
     [Fact]
-    public void AutoTuningConfigurationReader_NormalizeToLocalTime_UsesLocalSemantics() {
+    public void AutoTuningConfigurationReaderNormalizeToLocalTimeUsesLocalSemantics() {
         var unspecified = new DateTime(2026, 3, 18, 10, 0, 0, DateTimeKind.Unspecified);
         var normalizedUnspecified = AutoTuningConfigurationReader.NormalizeToLocalTime(unspecified);
         Assert.Equal(DateTimeKind.Local, normalizedUnspecified.Kind);
@@ -1312,10 +1315,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：Dialect_IndexNameHash_ShouldStayConsistentAcrossProviders。
+    /// 验证场景：DialectIndexNameHashShouldStayConsistentAcrossProviders。
     /// </summary>
     [Fact]
-    public void Dialect_IndexNameHash_ShouldStayConsistentAcrossProviders() {
+    public void DialectIndexNameHashShouldStayConsistentAcrossProviders() {
         IReadOnlyList<string> whereColumns = new[] { "col_a", "col_b" };
         var mySqlCreateIndexSql = new MySqlDialect().BuildAutomaticTuningSql("demo", "parcel", whereColumns)[0];
         var sqlServerCreateIndexSql = new SqlServerDialect().BuildAutomaticTuningSql("demo", "parcel", whereColumns)[0];
@@ -1336,7 +1339,7 @@ public sealed class AutoTuningProductionControlTests {
     /// 验证场景：当 maxLength 小于最小允许值（9）时，BuildIndexName 抛出 ArgumentOutOfRangeException。
     /// </summary>
     [Fact]
-    public void BuildIndexName_ShouldThrowArgumentOutOfRangeException_WhenMaxLengthLessThanMinimumRequired() {
+    public void BuildIndexNameShouldThrowArgumentOutOfRangeExceptionWhenMaxLengthLessThanMinimumRequired() {
         var helperType = typeof(MySqlDialect).Assembly.GetType("Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects.DatabaseProviderOperations");
         Assert.NotNull(helperType);
 
@@ -1353,10 +1356,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：UpdateAutonomousSignals_EmitsShardingObservabilityMetrics。
+    /// 验证场景：UpdateAutonomousSignalsEmitsShardingObservabilityMetrics。
     /// </summary>
     [Fact]
-    public void UpdateAutonomousSignals_EmitsShardingObservabilityMetrics() {
+    public void UpdateAutonomousSignalsEmitsShardingObservabilityMetrics() {
         var logger = new TestLogger<DatabaseAutoTuningHostedService>();
         var observability = new TestObservability();
         var configuration = new ConfigurationBuilder()
@@ -1439,10 +1442,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：UpdateAutonomousSignals_HitRateSupportsPartialAndNoTableReferenceCases。
+    /// 验证场景：UpdateAutonomousSignalsHitRateSupportsPartialAndNoTableReferenceCases。
     /// </summary>
     [Fact]
-    public void UpdateAutonomousSignals_HitRateSupportsPartialAndNoTableReferenceCases() {
+    public void UpdateAutonomousSignalsHitRateSupportsPartialAndNoTableReferenceCases() {
         var logger = new TestLogger<DatabaseAutoTuningHostedService>();
         var observability = new TestObservability();
         var fixedNow = DateTime.Now;
@@ -1503,10 +1506,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：UpdateAutonomousSignals_CrossTableRatioDetectsSubQueryWithoutJoinKeyword。
+    /// 验证场景：UpdateAutonomousSignalsCrossTableRatioDetectsSubQueryWithoutJoinKeyword。
     /// </summary>
     [Fact]
-    public void UpdateAutonomousSignals_CrossTableRatioDetectsSubQueryWithoutJoinKeyword() {
+    public void UpdateAutonomousSignalsCrossTableRatioDetectsSubQueryWithoutJoinKeyword() {
         var logger = new TestLogger<DatabaseAutoTuningHostedService>();
         var observability = new TestObservability();
         var configuration = new ConfigurationBuilder()
@@ -1571,10 +1574,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：UpdateAutonomousSignals_CrossTableRatio_ShouldIgnoreCommasOutsideFromClause。
+    /// 验证场景：UpdateAutonomousSignalsCrossTableRatioShouldIgnoreCommasOutsideFromClause。
     /// </summary>
     [Fact]
-    public void UpdateAutonomousSignals_CrossTableRatio_ShouldIgnoreCommasOutsideFromClause() {
+    public void UpdateAutonomousSignalsCrossTableRatioShouldIgnoreCommasOutsideFromClause() {
         var logger = new TestLogger<DatabaseAutoTuningHostedService>();
         var observability = new TestObservability();
         var configuration = new ConfigurationBuilder()
@@ -1638,10 +1641,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：UpdateAutonomousSignals_HotTableSkewUsesAllMetricsInsteadOfOnlyCandidates。
+    /// 验证场景：UpdateAutonomousSignalsHotTableSkewUsesAllMetricsInsteadOfOnlyCandidates。
     /// </summary>
     [Fact]
-    public void UpdateAutonomousSignals_HotTableSkewUsesAllMetricsInsteadOfOnlyCandidates() {
+    public void UpdateAutonomousSignalsHotTableSkewUsesAllMetricsInsteadOfOnlyCandidates() {
         var logger = new TestLogger<DatabaseAutoTuningHostedService>();
         var observability = new TestObservability();
         var configuration = new ConfigurationBuilder()
@@ -1683,10 +1686,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ApplyIndexSuggestionGuardsAsync_FiltersCoveredAndLowValueCreateIndexSuggestions。
+    /// 验证场景：ApplyIndexSuggestionGuardsAsyncFiltersCoveredAndLowValueCreateIndexSuggestions。
     /// </summary>
     [Fact]
-    public async Task ApplyIndexSuggestionGuardsAsync_FiltersCoveredAndLowValueCreateIndexSuggestions() {
+    public async Task ApplyIndexSuggestionGuardsAsyncFiltersCoveredAndLowValueCreateIndexSuggestions() {
         var logger = new TestLogger<DatabaseAutoTuningHostedService>();
         var observability = new TestObservability();
         var configuration = new ConfigurationBuilder()
@@ -1755,10 +1758,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ApplyIndexSuggestionGuardsAsync_KeepsCreateIndexWhenMetricIsHighValue。
+    /// 验证场景：ApplyIndexSuggestionGuardsAsyncKeepsCreateIndexWhenMetricIsHighValue。
     /// </summary>
     [Fact]
-    public async Task ApplyIndexSuggestionGuardsAsync_KeepsCreateIndexWhenMetricIsHighValue() {
+    public async Task ApplyIndexSuggestionGuardsAsyncKeepsCreateIndexWhenMetricIsHighValue() {
         var logger = new TestLogger<DatabaseAutoTuningHostedService>();
         var observability = new TestObservability();
         var configuration = new ConfigurationBuilder()
@@ -1823,10 +1826,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ApplyIndexSuggestionGuardsAsync_DoesNotTreatShorterExistingPrefixAsCovered。
+    /// 验证场景：ApplyIndexSuggestionGuardsAsyncDoesNotTreatShorterExistingPrefixAsCovered。
     /// </summary>
     [Fact]
-    public async Task ApplyIndexSuggestionGuardsAsync_DoesNotTreatShorterExistingPrefixAsCovered() {
+    public async Task ApplyIndexSuggestionGuardsAsyncDoesNotTreatShorterExistingPrefixAsCovered() {
         var logger = new TestLogger<DatabaseAutoTuningHostedService>();
         var observability = new TestObservability();
         var configuration = new ConfigurationBuilder()
@@ -1887,11 +1890,11 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ApplyIndexSuggestionGuardsAsync_ShardingGate_BlocksCreateIndexWhenHitRateBelowThreshold。
+    /// 验证场景：ApplyIndexSuggestionGuardsAsyncShardingGateBlocksCreateIndexWhenHitRateBelowThreshold。
     /// 分表治理门禁：当分析窗口 hit rate 低于阈值时，命中分表的候选 CreateIndex 动作应被阻断。
     /// </summary>
     [Fact]
-    public async Task ApplyIndexSuggestionGuardsAsync_ShardingGate_BlocksCreateIndexWhenHitRateBelowThreshold() {
+    public async Task ApplyIndexSuggestionGuardsAsyncShardingGateBlocksCreateIndexWhenHitRateBelowThreshold() {
         var logger = new TestLogger<DatabaseAutoTuningHostedService>();
         var observability = new TestObservability();
         var configuration = new ConfigurationBuilder()
@@ -1950,11 +1953,11 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ApplyIndexSuggestionGuardsAsync_ShardingGate_KeepsCreateIndexWhenHitRateAboveThreshold。
+    /// 验证场景：ApplyIndexSuggestionGuardsAsyncShardingGateKeepsCreateIndexWhenHitRateAboveThreshold。
     /// 分表治理门禁：当分析窗口 hit rate 高于阈值时，分表候选的 CreateIndex 动作不应被阻断。
     /// </summary>
     [Fact]
-    public async Task ApplyIndexSuggestionGuardsAsync_ShardingGate_KeepsCreateIndexWhenHitRateAboveThreshold() {
+    public async Task ApplyIndexSuggestionGuardsAsyncShardingGateKeepsCreateIndexWhenHitRateAboveThreshold() {
         var logger = new TestLogger<DatabaseAutoTuningHostedService>();
         var observability = new TestObservability();
         var configuration = new ConfigurationBuilder()
@@ -2011,10 +2014,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ParcelAggregateShardingCoverageGuard_ShouldCoverAllInfoValueObjects。
+    /// 验证场景：ParcelAggregateShardingCoverageGuardShouldCoverAllInfoValueObjects。
     /// </summary>
     [Fact]
-    public void ParcelAggregateShardingCoverageGuard_ShouldCoverAllInfoValueObjects() {
+    public void ParcelAggregateShardingCoverageGuardShouldCoverAllInfoValueObjects() {
         var method = typeof(PersistenceServiceCollectionExtensions).GetMethod(
             "AssertParcelAggregateShardingCoverage",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
@@ -2027,10 +2030,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ResolveMySqlServerVersion_UsesConfiguredVersion_WhenConfigIsValid。
+    /// 验证场景：ResolveMySqlServerVersionUsesConfiguredVersionWhenConfigIsValid。
     /// </summary>
     [Fact]
-    public void ResolveMySqlServerVersion_UsesConfiguredVersion_WhenConfigIsValid() {
+    public void ResolveMySqlServerVersionUsesConfiguredVersionWhenConfigIsValid() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:MySql:ServerVersion"] = "8.0.36"
@@ -2048,10 +2051,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ResolveMySqlServerVersion_FallsBackToDefault_WhenConfiguredVersionIsInvalid。
+    /// 验证场景：ResolveMySqlServerVersionFallsBackToDefaultWhenConfiguredVersionIsInvalid。
     /// </summary>
     [Fact]
-    public void ResolveMySqlServerVersion_FallsBackToDefault_WhenConfiguredVersionIsInvalid() {
+    public void ResolveMySqlServerVersionFallsBackToDefaultWhenConfiguredVersionIsInvalid() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:MySql:ServerVersion"] = "invalid-version"
@@ -2069,10 +2072,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ResolveMySqlServerVersion_FallsBackToDefault_WhenAutoDetectThrows。
+    /// 验证场景：ResolveMySqlServerVersionFallsBackToDefaultWhenAutoDetectThrows。
     /// </summary>
     [Fact]
-    public void ResolveMySqlServerVersion_FallsBackToDefault_WhenAutoDetectThrows() {
+    public void ResolveMySqlServerVersionFallsBackToDefaultWhenAutoDetectThrows() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>())
             .Build();
@@ -2088,10 +2091,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ResolveMySqlServerVersion_TreatsMajorLowerThanFiveAsInvalidAndFallsBack。
+    /// 验证场景：ResolveMySqlServerVersionTreatsMajorLowerThanFiveAsInvalidAndFallsBack。
     /// </summary>
     [Fact]
-    public void ResolveMySqlServerVersion_TreatsMajorLowerThanFiveAsInvalidAndFallsBack() {
+    public void ResolveMySqlServerVersionTreatsMajorLowerThanFiveAsInvalidAndFallsBack() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:MySql:ServerVersion"] = "4.1.0"
@@ -2109,10 +2112,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ParcelRelatedValueObjects_ShouldExposeClrParcelId_ForShardingFieldRecognition。
+    /// 验证场景：ParcelRelatedValueObjectsShouldExposeClrParcelIdForShardingFieldRecognition。
     /// </summary>
     [Fact]
-    public void ParcelRelatedValueObjects_ShouldExposeClrParcelId_ForShardingFieldRecognition() {
+    public void ParcelRelatedValueObjectsShouldExposeClrParcelIdForShardingFieldRecognition() {
         var parcelIdPropertyByType = new Dictionary<Type, System.Reflection.PropertyInfo?> {
             [typeof(ParcelDeviceInfo)] = typeof(ParcelDeviceInfo).GetProperty("ParcelId"),
             [typeof(ParcelPositionInfo)] = typeof(ParcelPositionInfo).GetProperty("ParcelId"),
@@ -2135,10 +2138,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ParcelRelatedValueObjects_ParcelId_ShouldMapToExistingParcelIdColumn。
+    /// 验证场景：ParcelRelatedValueObjectsParcelIdShouldMapToExistingParcelIdColumn。
     /// </summary>
     [Fact]
-    public void ParcelRelatedValueObjects_ParcelId_ShouldMapToExistingParcelIdColumn() {
+    public void ParcelRelatedValueObjectsParcelIdShouldMapToExistingParcelIdColumn() {
         using var dbContext = CreateTestingDbContext();
         var mappingPlans = new (Type ValueObjectType, string TableName)[] {
             (typeof(ParcelDeviceInfo), "Parcel_DeviceInfos"),
@@ -2166,10 +2169,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ParcelRelatedValueObjects_EqualityAndHashCode_ShouldIgnoreParcelId。
+    /// 验证场景：ParcelRelatedValueObjectsEqualityAndHashCodeShouldIgnoreParcelId。
     /// </summary>
     [Fact]
-    public void ParcelRelatedValueObjects_EqualityAndHashCode_ShouldIgnoreParcelId() {
+    public void ParcelRelatedValueObjectsEqualityAndHashCodeShouldIgnoreParcelId() {
         var fixedReceiveTime = new DateTime(2024, 1, 1, 12, 0, 0, DateTimeKind.Local);
         var fixedCapturedTime = new DateTime(2024, 1, 1, 12, 5, 0, DateTimeKind.Local);
 
@@ -2289,10 +2292,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：AutoRollbackDecisionEngine_TriggersSevereRollback。
+    /// 验证场景：AutoRollbackDecisionEngineTriggersSevereRollback。
     /// </summary>
     [Fact]
-    public void AutoRollbackDecisionEngine_TriggersSevereRollback() {
+    public void AutoRollbackDecisionEngineTriggersSevereRollback() {
         var result = AutoRollbackDecisionEngine.Evaluate(
             p99IncreasePercent: 32m,
             timeoutRateIncreasePercent: 0.5m,
@@ -2307,10 +2310,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：AutoRollbackDecisionEngine_TriggersNormalRegressionWithoutSevere。
+    /// 验证场景：AutoRollbackDecisionEngineTriggersNormalRegressionWithoutSevere。
     /// </summary>
     [Fact]
-    public void AutoRollbackDecisionEngine_TriggersNormalRegressionWithoutSevere() {
+    public void AutoRollbackDecisionEngineTriggersNormalRegressionWithoutSevere() {
         var result = AutoRollbackDecisionEngine.Evaluate(
             p99IncreasePercent: 12m,
             timeoutRateIncreasePercent: 0.7m,
@@ -2325,10 +2328,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：VerificationResultBuilder_ExplicitlyMarksUnavailableMetrics。
+    /// 验证场景：VerificationResultBuilderExplicitlyMarksUnavailableMetrics。
     /// </summary>
     [Fact]
-    public void VerificationResultBuilder_ExplicitlyMarksUnavailableMetrics() {
+    public void VerificationResultBuilderExplicitlyMarksUnavailableMetrics() {
         var result = AutoTuningVerificationResultBuilder.Build(
             regressed: true,
             severeRegressed: false,
@@ -2350,10 +2353,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：PlanRegressionProbe_SupportsUnavailableAndAvailablePaths。
+    /// 验证场景：PlanRegressionProbeSupportsUnavailableAndAvailablePaths。
     /// </summary>
     [Fact]
-    public void PlanRegressionProbe_SupportsUnavailableAndAvailablePaths() {
+    public void PlanRegressionProbeSupportsUnavailableAndAvailablePaths() {
         var observability = new TestObservability();
         var probe = new LoggingOnlyExecutionPlanRegressionProbe(observability);
 
@@ -2368,10 +2371,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：PlanRegressionProbe_ProviderAwareExtension_ShouldKeepLoggingOnlyCompatibility。
+    /// 验证场景：PlanRegressionProbeProviderAwareExtensionShouldKeepLoggingOnlyCompatibility。
     /// </summary>
     [Fact]
-    public void PlanRegressionProbe_ProviderAwareExtension_ShouldKeepLoggingOnlyCompatibility() {
+    public void PlanRegressionProbeProviderAwareExtensionShouldKeepLoggingOnlyCompatibility() {
         var observability = new TestObservability();
         var probe = new LoggingOnlyExecutionPlanRegressionProbe(observability);
         var providerAwareProbe = Assert.IsAssignableFrom<IProviderAwareExecutionPlanRegressionProbe>(probe);
@@ -2383,10 +2386,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：PerDayShardingBaseTableNames_ShouldResolveFromEfModelWithoutHardcodedTableList。
+    /// 验证场景：PerDayShardingBaseTableNamesShouldResolveFromEfModelWithoutHardcodedTableList。
     /// </summary>
     [Fact]
-    public void PerDayShardingBaseTableNames_ShouldResolveFromEfModelWithoutHardcodedTableList() {
+    public void PerDayShardingBaseTableNamesShouldResolveFromEfModelWithoutHardcodedTableList() {
         using var dbContext = CreateTestingDbContext();
         var tableNames = DatabaseInitializerHostedService.ResolvePerDayShardingBaseTableNames(dbContext);
         Assert.Equal(dbContext.Model.GetEntityTypes().Select(x => x.GetTableName()).Where(x => x == "Parcels" || x?.StartsWith("Parcel_", StringComparison.Ordinal) == true).Distinct().Count(), tableNames.Count);
@@ -2399,10 +2402,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ResolveWebRequestAuditLogRetentionKeepRecentShardCount_InvalidValue_ShouldPointToExactConfigKey。
+    /// 验证场景：ResolveWebRequestAuditLogRetentionKeepRecentShardCountInvalidValueShouldPointToExactConfigKey。
     /// </summary>
     [Fact]
-    public void ResolveWebRequestAuditLogRetentionKeepRecentShardCount_InvalidValue_ShouldPointToExactConfigKey() {
+    public void ResolveWebRequestAuditLogRetentionKeepRecentShardCountInvalidValueShouldPointToExactConfigKey() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:Sharding:Governance:WebRequestAuditLog:Retention:KeepRecentShardCount"] = "0"
@@ -2415,10 +2418,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ClosedLoopFlow_TriggersMonitorExecuteVerifyRollback_WithAuditAndRollbackTrigger。
+    /// 验证场景：ClosedLoopFlowTriggersMonitorExecuteVerifyRollbackWithAuditAndRollbackTrigger。
     /// </summary>
     [Fact]
-    public async Task ClosedLoopFlow_TriggersMonitorExecuteVerifyRollback_WithAuditAndRollbackTrigger() {
+    public async Task ClosedLoopFlowTriggersMonitorExecuteVerifyRollbackWithAuditAndRollbackTrigger() {
         var memoryTarget = new NLog.Targets.MemoryTarget { Name = "test-memory", Layout = "${message}" };
         var loggingConfig = new NLog.Config.LoggingConfiguration();
         loggingConfig.AddRuleForAllLevels(memoryTarget);
@@ -2524,10 +2527,10 @@ public sealed class AutoTuningProductionControlTests {
         }
     }
     /// <summary>
-    /// 验证场景：Validation_WhenPlanProbeDisabledOrSampleRateZero_MarksUnavailableWithoutInvokingProbe。
+    /// 验证场景：ValidationWhenPlanProbeDisabledOrSampleRateZeroMarksUnavailableWithoutInvokingProbe。
     /// </summary>
     [Fact]
-    public async Task Validation_WhenPlanProbeDisabledOrSampleRateZero_MarksUnavailableWithoutInvokingProbe() {
+    public async Task ValidationWhenPlanProbeDisabledOrSampleRateZeroMarksUnavailableWithoutInvokingProbe() {
         var memoryTarget = new NLog.Targets.MemoryTarget { Name = "test-memory", Layout = "${message}" };
         var loggingConfig = new NLog.Config.LoggingConfiguration();
         loggingConfig.AddRuleForAllLevels(memoryTarget);
@@ -2605,7 +2608,7 @@ public sealed class AutoTuningProductionControlTests {
     /// 验证非法执行计划采样率会回退到默认值并调用探针。
     /// </summary>
     [Fact]
-    public async Task WhenPlanProbeSampleRateInvalid_FallsBackToDefaultAndInvokesProbe() {
+    public async Task WhenPlanProbeSampleRateInvalidFallsBackToDefaultAndInvokesProbe() {
         var logger = new TestLogger<DatabaseAutoTuningHostedService>();
         var observability = new TestObservability();
         var probe = new CountingPlanProbe();
@@ -2666,12 +2669,12 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：WhenPlanProbeSampleRateOutOfRange_ClampsToLegacyBehavior。
+    /// 验证场景：WhenPlanProbeSampleRateOutOfRangeClampsToLegacyBehavior。
     /// </summary>
     [Theory]
     [InlineData("-0.1", 0)]
     [InlineData("1.8", 1)]
-    public async Task WhenPlanProbeSampleRateOutOfRange_ClampsToLegacyBehavior(string sampleRate, int expectedCallCount) {
+    public async Task WhenPlanProbeSampleRateOutOfRangeClampsToLegacyBehavior(string sampleRate, int expectedCallCount) {
         var logger = new TestLogger<DatabaseAutoTuningHostedService>();
         var observability = new TestObservability();
         var probe = new CountingPlanProbe();
@@ -2732,10 +2735,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：WhenShouldSamplePlanProbeInvoked_UsesStableHashBucket。
+    /// 验证场景：WhenShouldSamplePlanProbeInvokedUsesStableHashBucket。
     /// </summary>
     [Fact]
-    public void WhenShouldSamplePlanProbeInvoked_UsesStableHashBucket() {
+    public void WhenShouldSamplePlanProbeInvokedUsesStableHashBucket() {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> {
                 ["Persistence:AutoTuning:Autonomous:Validation:PlanProbe:Enable"] = "true",
@@ -2764,10 +2767,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ClosedLoopTracker_RecordsMonitorExecuteVerifyRollbackChain。
+    /// 验证场景：ClosedLoopTrackerRecordsMonitorExecuteVerifyRollbackChain。
     /// </summary>
     [Fact]
-    public void ClosedLoopTracker_RecordsMonitorExecuteVerifyRollbackChain() {
+    public void ClosedLoopTrackerRecordsMonitorExecuteVerifyRollbackChain() {
         var tracker = new AutoTuningClosedLoopTracker();
         tracker.MoveTo(AutoTuningClosedLoopStage.Diagnose);
         tracker.MoveTo(AutoTuningClosedLoopStage.Execute);
@@ -2786,10 +2789,10 @@ public sealed class AutoTuningProductionControlTests {
     }
 
     /// <summary>
-    /// 验证场景：ClosedLoopTracker_CapsAt1000AndDropsOldestWhenOverflow。
+    /// 验证场景：ClosedLoopTrackerCapsAt1000AndDropsOldestWhenOverflow。
     /// </summary>
     [Fact]
-    public void ClosedLoopTracker_CapsAt1000AndDropsOldestWhenOverflow() {
+    public void ClosedLoopTrackerCapsAt1000AndDropsOldestWhenOverflow() {
         var tracker = new AutoTuningClosedLoopTracker();
         // Fill exactly to the cap (1000 entries: 1 initial Monitor + 999 alternating Diagnose/Monitor).
         for (var i = 0; i < 999; i++) {
@@ -2875,7 +2878,7 @@ public sealed class AutoTuningProductionControlTests {
             ["Persistence:Migration:FailureStrategy:NonProduction"] = "Degraded",
             ["Persistence:Sharding:CreateShardingTableOnStarting"] = createShardingTableOnStarting.ToString(),
             ["Persistence:Sharding:Governance:Runbook"] = "docs/internal/sharding-governance-runbook",
-            ["Persistence:Sharding:Governance:PrebuildWindowHours"] = prebuildWindowHours.ToString(),
+            ["Persistence:Sharding:Governance:PrebuildWindowHours"] = prebuildWindowHours.ToString(System.Globalization.CultureInfo.InvariantCulture),
             ["Persistence:Sharding:Governance:WebRequestAuditLog:EnablePerDayGuard"] = enableWebRequestAuditLogPerDayGuard.ToString(),
             ["Persistence:Sharding:Governance:CriticalIndexAudit:Enabled"] = criticalIndexAuditEnabled.ToString(),
             ["Persistence:Sharding:Governance:CriticalIndexAudit:BlockOnMissing"] = blockOnCriticalIndexMissing.ToString(),

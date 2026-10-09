@@ -19,44 +19,44 @@ public sealed class FusionEntityTypeConfiguration :
         }
     }
     /// <summary>单来源租约用版本令牌保护多个 Hub 进程的注册竞争。</summary>
-    public void Configure(EntityTypeBuilder<FusionSourceLease> b) {
-        b.ToTable("FusionSourceLeases"); b.HasKey(x => x.SourceInstanceId);
-        b.Property(x => x.SourceInstanceId).HasMaxLength(96); b.Property(x => x.JournalId).HasMaxLength(32);
-        b.Property(x => x.ConnectionId).HasMaxLength(128); b.Property(x => x.LeaseId).HasMaxLength(32);
-        b.Property(x => x.ServerId).HasMaxLength(32); b.Property(x => x.Revision).IsConcurrencyToken();
+    public void Configure(EntityTypeBuilder<FusionSourceLease> builder) {
+        builder.ToTable("FusionSourceLeases"); builder.HasKey(x => x.SourceInstanceId);
+        builder.Property(x => x.SourceInstanceId).HasMaxLength(96); builder.Property(x => x.JournalId).HasMaxLength(32);
+        builder.Property(x => x.ConnectionId).HasMaxLength(128); builder.Property(x => x.LeaseId).HasMaxLength(32);
+        builder.Property(x => x.ServerId).HasMaxLength(32); builder.Property(x => x.Revision).IsConcurrencyToken();
     }
     /// <summary>舍弃指标按来源和发送数据库永久分开保存。</summary>
-    public void Configure(EntityTypeBuilder<FusionJournalHeartbeat> b) {
-        b.ToTable("FusionJournalHeartbeats"); b.HasKey(x => x.Key); b.Property(x => x.Key).HasMaxLength(64);
-        b.Property(x => x.SourceInstanceId).HasMaxLength(96); b.Property(x => x.JournalId).HasMaxLength(32);
-        b.HasIndex(x => new { x.SourceInstanceId, x.JournalId }).IsUnique();
+    public void Configure(EntityTypeBuilder<FusionJournalHeartbeat> builder) {
+        builder.ToTable("FusionJournalHeartbeats"); builder.HasKey(x => x.Key); builder.Property(x => x.Key).HasMaxLength(64);
+        builder.Property(x => x.SourceInstanceId).HasMaxLength(96); builder.Property(x => x.JournalId).HasMaxLength(32);
+        builder.HasIndex(x => new { x.SourceInstanceId, x.JournalId }).IsUnique();
     }
     /// <summary>原始编号和序号分别唯一；投影状态与原文同事务提交。</summary>
-    public void Configure(EntityTypeBuilder<FusionFactReceipt> b) {
-        b.ToTable("FusionFactReceipts"); b.HasKey(x => x.Key); b.Property(x => x.Key).HasMaxLength(64);
-        b.Property(x => x.SourceInstanceId).HasMaxLength(96); b.Property(x => x.JournalId).HasMaxLength(32);
-        b.Property(x => x.RecordId).HasMaxLength(32); b.Property(x => x.BodySha256).HasMaxLength(64);
-        b.Property(x => x.Kind).HasMaxLength(64); b.Property(x => x.TenantId).HasMaxLength(96);
-        b.Property(x => x.StoragePartitionId).HasMaxLength(96); b.Property(x => x.ProjectionState).HasMaxLength(16);
-        b.Property(x => x.ProjectionClaimId).HasMaxLength(32); b.Property(x => x.ProjectionError).HasMaxLength(128);
-        b.Property(x => x.ParcelId).HasMaxLength(32);
-        b.HasIndex(x => new { x.SourceInstanceId, x.JournalId, x.RecordId }).IsUnique();
-        b.HasIndex(x => new { x.SourceInstanceId, x.JournalId, x.SourceSequence }).IsUnique();
-        b.HasIndex(x => new { x.ProjectionState, x.NextProjectionAt });
-        b.HasIndex(x => new { x.ProjectionState, x.ReceivedAt, x.SourceSequence, x.NextProjectionAt, x.ProjectionClaimUntil })
+    public void Configure(EntityTypeBuilder<FusionFactReceipt> builder) {
+        builder.ToTable("FusionFactReceipts"); builder.HasKey(x => x.Key); builder.Property(x => x.Key).HasMaxLength(64);
+        builder.Property(x => x.SourceInstanceId).HasMaxLength(96); builder.Property(x => x.JournalId).HasMaxLength(32);
+        builder.Property(x => x.RecordId).HasMaxLength(32); builder.Property(x => x.BodySha256).HasMaxLength(64);
+        builder.Property(x => x.Kind).HasMaxLength(64); builder.Property(x => x.TenantId).HasMaxLength(96);
+        builder.Property(x => x.StoragePartitionId).HasMaxLength(96); builder.Property(x => x.ProjectionState).HasMaxLength(16);
+        builder.Property(x => x.ProjectionClaimId).HasMaxLength(32); builder.Property(x => x.ProjectionError).HasMaxLength(128);
+        builder.Property(x => x.ParcelId).HasMaxLength(32);
+        builder.HasIndex(x => new { x.SourceInstanceId, x.JournalId, x.RecordId }).IsUnique();
+        builder.HasIndex(x => new { x.SourceInstanceId, x.JournalId, x.SourceSequence }).IsUnique();
+        builder.HasIndex(x => new { x.ProjectionState, x.NextProjectionAt });
+        builder.HasIndex(x => new { x.ProjectionState, x.ReceivedAt, x.SourceSequence, x.NextProjectionAt, x.ProjectionClaimUntil })
             .HasDatabaseName("IX_FusionFacts_ProjectionQueue");
-        b.HasIndex(x => new { x.SourceInstanceId, x.ProjectionState, x.ProjectionError })
+        builder.HasIndex(x => new { x.SourceInstanceId, x.ProjectionState, x.ProjectionError })
             .HasDatabaseName("IX_FusionFacts_SourceProgress");
     }
     /// <summary>图片唯一身份不依赖条码或内容摘要。</summary>
-    public void Configure(EntityTypeBuilder<FusionImageUpload> b) {
-        b.ToTable("FusionImageUploads"); b.HasKey(x => x.Key); b.Property(x => x.Key).HasMaxLength(64);
-        b.Property(x => x.SourceInstanceId).HasMaxLength(96); b.Property(x => x.SourceImageId).HasMaxLength(128);
-        b.Property(x => x.UploadId).HasMaxLength(32); b.Property(x => x.FileName).HasMaxLength(256);
-        b.Property(x => x.ContentType).HasMaxLength(64); b.Property(x => x.ContentSha256).HasMaxLength(64);
-        b.Property(x => x.SourceRunId).HasMaxLength(32); b.Property(x => x.CameraName).HasMaxLength(128);
-        b.Property(x => x.Revision).IsConcurrencyToken();
-        b.HasIndex(x => new { x.SourceInstanceId, x.SourceImageId }).IsUnique();
-        b.HasIndex(x => x.UploadId).IsUnique(); b.HasIndex(x => new { x.IsStored, x.ModifiedAt });
+    public void Configure(EntityTypeBuilder<FusionImageUpload> builder) {
+        builder.ToTable("FusionImageUploads"); builder.HasKey(x => x.Key); builder.Property(x => x.Key).HasMaxLength(64);
+        builder.Property(x => x.SourceInstanceId).HasMaxLength(96); builder.Property(x => x.SourceImageId).HasMaxLength(128);
+        builder.Property(x => x.UploadId).HasMaxLength(32); builder.Property(x => x.FileName).HasMaxLength(256);
+        builder.Property(x => x.ContentType).HasMaxLength(64); builder.Property(x => x.ContentSha256).HasMaxLength(64);
+        builder.Property(x => x.SourceRunId).HasMaxLength(32); builder.Property(x => x.CameraName).HasMaxLength(128);
+        builder.Property(x => x.Revision).IsConcurrencyToken();
+        builder.HasIndex(x => new { x.SourceInstanceId, x.SourceImageId }).IsUnique();
+        builder.HasIndex(x => x.UploadId).IsUnique(); builder.HasIndex(x => new { x.IsStored, x.ModifiedAt });
     }
 }

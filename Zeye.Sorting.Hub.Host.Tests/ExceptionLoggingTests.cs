@@ -20,6 +20,12 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 
 /// <summary>使用生产 NLog 配置和独立日志工厂验证异常落盘，不修改其他测试或宿主日志状态。</summary>
 public sealed class ExceptionLoggingTests : IDisposable {
+    /// <summary>通过框架记录器验证异常桥接，缓存模板避免每次解析与分配。</summary>
+    private static readonly Action<Microsoft.Extensions.Logging.ILogger, Exception?> LogFrameworkFailure =
+        LoggerMessage.Define(FrameworkLogLevel.Error, new EventId(1), "后台服务失败。");
+    /// <summary>框架 SQL 信息日志应继续被过滤。</summary>
+    private static readonly Action<Microsoft.Extensions.Logging.ILogger, Exception?> LogSuccessfulSql =
+        LoggerMessage.Define(FrameworkLogLevel.Information, new EventId(2), "successful-sql-marker");
     /// <summary>每个测试实例独占的日志目录。</summary>
     private readonly string _directory = Directory.CreateDirectory(
         Path.Combine(Path.GetTempPath(), "zeye-exception-logging-tests", Guid.NewGuid().ToString("N"))).FullName;
@@ -118,10 +124,10 @@ public sealed class ExceptionLoggingTests : IDisposable {
         var framework = logging.CreateLogger("Microsoft.Extensions.Hosting.Internal.Host");
         Assert.False(framework.IsEnabled(FrameworkLogLevel.Information));
         Assert.True(framework.IsEnabled(FrameworkLogLevel.Error));
-        framework.LogError(new IOException("framework-error-marker"), "后台服务失败。");
+        LogFrameworkFailure(framework, new IOException("framework-error-marker"));
         var database = logging.CreateLogger("Microsoft.EntityFrameworkCore.Database.Command");
         Assert.False(database.IsEnabled(FrameworkLogLevel.Information));
-        database.LogInformation("successful-sql-marker");
+        LogSuccessfulSql(database, null);
         factory.Flush(TimeSpan.FromSeconds(10));
         Assert.Contains("framework-error-marker", ReadExceptionLogs());
         Assert.DoesNotContain("successful-sql-marker", ReadAllLogs());
@@ -236,7 +242,7 @@ public sealed class ExceptionLoggingTests : IDisposable {
     }
 
     /// <summary>制造真实抛出过的异常，确保断言覆盖完整堆栈而非仅错误文本。</summary>
-    private static Exception CaptureFailure(LogFactory factory) {
+    private static System.InvalidOperationException CaptureFailure(LogFactory factory) {
         try { throw new InvalidOperationException("outer-logging-failure", new IOException("inner-logging-failure")); }
         catch (InvalidOperationException exception) {
             var logger = factory.GetLogger(nameof(ExceptionLoggingTests));

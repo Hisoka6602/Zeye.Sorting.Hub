@@ -57,7 +57,7 @@ public static class AccessApiRouteExtensions {
             var user = directory.Users.SingleOrDefault(x => x.Account.Equals(account, StringComparison.OrdinalIgnoreCase));
             if (user is null || !AccessDirectoryService.VerifyPassword(user, password)) return Results.Problem(statusCode: 401, detail: "账号或密码不正确，请重试。");
             var role = directory.Roles.Single(x => x.Id == user.RoleId);
-            var updated = user with { LastLogin = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") };
+            var updated = user with { LastLogin = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) };
             await service.SaveAsync(directory with { Users = directory.Users.Select(x => x.Id == user.Id ? updated : x).ToArray() }, revision, ct);
             await context.SignInAsync("SortingCookie", AccessDirectoryService.Principal(user, role), new AuthenticationProperties {
                 IsPersistent = body.TryGetProperty("remember", out var remember) && remember.ValueKind == JsonValueKind.True
@@ -86,7 +86,7 @@ public static class AccessApiRouteExtensions {
             if (permissions.EnumerateArray().Any(x => x.ValueKind != JsonValueKind.String)) return Results.Problem(statusCode: 400, detail: "权限代码必须为字符串。");
             var codes = permissions.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!).Distinct().ToArray();
             if (codes.Any(x => !AccessDirectoryService.PermissionCodes.Contains(x))) return Results.Problem(statusCode: 400, detail: "存在未知权限代码。");
-            var role = new AccessRole { Id = existing?.Id ?? directory.Roles.Max(x => x.Id) + 1, Name = name, Description = description, Permissions = codes, Modified = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") };
+            var role = new AccessRole { Id = existing?.Id ?? directory.Roles.Max(x => x.Id) + 1, Name = name, Description = description, Permissions = codes, Modified = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture) };
             var updated = directory with { Roles = existing is null ? [.. directory.Roles, role] : directory.Roles.Select(x => x.Id == role.Id ? role : x).ToArray() };
             return await service.SaveAsync(updated, revision, ct) ? Results.Ok(AccessDirectoryService.PublicDirectory(updated, revision + 1)) : Results.Problem(statusCode: 409, detail: "并发修改，请刷新重试。");
         }).WithSummary("创建或修改角色权限")

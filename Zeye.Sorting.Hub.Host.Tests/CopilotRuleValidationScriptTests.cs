@@ -11,7 +11,7 @@ public sealed class CopilotRuleValidationScriptTests {
     /// README 历史记录门禁应覆盖常见标题变体，同时避免把正文文本误判为标题。
     /// </summary>
     [Fact]
-    public void ValidateScript_ShouldDetectReadmeHistoryHeadingVariants() {
+    public void ValidateScriptShouldDetectReadmeHistoryHeadingVariants() {
         if (!CanUseBash()) {
             return;
         }
@@ -33,7 +33,7 @@ public sealed class CopilotRuleValidationScriptTests {
     /// 性能反模式门禁应覆盖零值比较、Where 后再取首项与 string.Format 等常见场景，并保留正常写法。
     /// </summary>
     [Fact]
-    public void ValidateScript_ShouldDetectAdditionalPerformanceAntiPatterns() {
+    public void ValidateScriptShouldDetectAdditionalPerformanceAntiPatterns() {
         if (!CanUseBash()) {
             return;
         }

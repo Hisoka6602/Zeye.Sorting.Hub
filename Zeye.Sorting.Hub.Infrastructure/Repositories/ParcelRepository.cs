@@ -220,13 +220,9 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
         ParcelQueryFilter filter,
         PageRequest pageRequest,
         CancellationToken cancellationToken) {
-        if (filter is null) {
-            throw new ArgumentNullException(nameof(filter));
-        }
+        ArgumentNullException.ThrowIfNull(filter);
 
-        if (pageRequest is null) {
-            throw new ArgumentNullException(nameof(pageRequest));
-        }
+        ArgumentNullException.ThrowIfNull(pageRequest);
 
         try {
             ValidateQueryFilter(filter);
@@ -347,7 +343,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
         int afterCount,
         CancellationToken cancellationToken) {
         if (id <= 0) {
-            return RepositoryResult<IReadOnlyList<ParcelSummaryReadModel>>.Fail("包裹 Id 必须大于 0。");
+            return RepositoryResult.Fail<IReadOnlyList<ParcelSummaryReadModel>>("包裹 Id 必须大于 0。");
         }
 
         var normalizedBeforeCount = NormalizeAdjacentCount(beforeCount);
@@ -364,7 +360,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
                 .Select(x => new { x.Id, x.ScannedTime })
                 .FirstOrDefaultAsync(cancellationToken);
             if (anchor is null) {
-                return RepositoryResult<IReadOnlyList<ParcelSummaryReadModel>>.Fail($"未找到 Id 为 {id} 的资源。");
+                return RepositoryResult.Fail<IReadOnlyList<ParcelSummaryReadModel>>($"未找到 Id 为 {id} 的资源。");
             }
 
             var beforeItems = await Branch(branch => branch
@@ -389,7 +385,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
                 .OrderBy(x => x.ScannedTime).ThenBy(x => x.Id).Take(normalizedAfterCount)
                 .ToListAsync(cancellationToken);
 
-            return RepositoryResult<IReadOnlyList<ParcelSummaryReadModel>>.Success([.. beforeItems, .. afterItems]);
+            return RepositoryResult.Success<IReadOnlyList<ParcelSummaryReadModel>>([.. beforeItems, .. afterItems]);
         }
         catch (Exception ex) {
             Logger.Error(ex,
@@ -435,7 +431,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
                     blockedByGuard: true,
                     reason: "blocked-by-guard");
                 await CompleteCleanupAuditAsync(audit with { Status = "completed", CompletedAtLocal = DateTime.Now }, cancellationToken);
-                return RepositoryResult<DangerousBatchActionResult>.Success(BuildDangerousBatchActionResult(
+                return RepositoryResult.Success<DangerousBatchActionResult>(BuildDangerousBatchActionResult(
                     isolationDecision,
                     plannedCount,
                     executedCount: 0) with { CleanupRecordId = audit.Id });
@@ -450,7 +446,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
                     blockedByGuard: false,
                     reason: "dry-run");
                 await CompleteCleanupAuditAsync(audit with { Status = "completed", CompletedAtLocal = DateTime.Now }, cancellationToken);
-                return RepositoryResult<DangerousBatchActionResult>.Success(BuildDangerousBatchActionResult(
+                return RepositoryResult.Success<DangerousBatchActionResult>(BuildDangerousBatchActionResult(
                     isolationDecision,
                     plannedCount,
                     executedCount: 0) with { CleanupRecordId = audit.Id });
@@ -487,7 +483,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
                 blockedByGuard: false,
                 reason: "executed");
             await CompleteCleanupAuditAsync(audit with { Status = "completed", CompletedAtLocal = DateTime.Now }, cancellationToken);
-            return RepositoryResult<DangerousBatchActionResult>.Success(BuildDangerousBatchActionResult(
+            return RepositoryResult.Success<DangerousBatchActionResult>(BuildDangerousBatchActionResult(
                 isolationDecision,
                 plannedCount,
                 executedCount: audit.ExecutedCount) with { CleanupRecordId = audit.Id });
@@ -502,7 +498,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
                 dryRun: false,
                 blockedByGuard: false,
                 reason: "cancelled");
-            return RepositoryResult<DangerousBatchActionResult>.Fail("操作已取消");
+            return RepositoryResult.Fail<DangerousBatchActionResult>("操作已取消");
         }
         catch (Exception ex) {
             if (auditSaved) await TryFailCleanupAuditAsync(audit!, "failed");
@@ -514,7 +510,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
                 dryRun: false,
                 blockedByGuard: false,
                 reason: $"failed:{ex.Message}");
-            return RepositoryResult<DangerousBatchActionResult>.Fail("删除过期包裹失败");
+            return RepositoryResult.Fail<DangerousBatchActionResult>("删除过期包裹失败");
         }
     }
 
@@ -621,7 +617,7 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
         bool dryRun,
         bool blockedByGuard,
         string reason) {
-        Logger.Info(
+        Logger.Info(System.Globalization.CultureInfo.CurrentCulture,
             "仓储危险动作审计：ActionName={ActionName}, CreatedBefore={CreatedBefore}, PlannedCount={PlannedCount}, ExecutedCount={ExecutedCount}, DryRun={DryRun}, BlockedByGuard={BlockedByGuard}, CompensationBoundary={CompensationBoundary}, Reason={Reason}",
             RemoveExpiredActionName,
             createdBefore,
@@ -955,16 +951,16 @@ public sealed class ParcelRepository : RepositoryBase<Parcel, SortingHubDbContex
     }
 
     /// <summary>按首次入库周期批量保存，所有分表与全局索引共用一个数据库事务。</summary>
-    public override async Task<RepositoryResult> AddRangeAsync(IReadOnlyCollection<Parcel> parcels, CancellationToken cancellationToken) {
-        if (_partitions is null) return await base.AddRangeAsync(parcels, cancellationToken);
-        if (parcels is null || parcels.Count == 0) return RepositoryResult.Fail("实体集合不能为空");
+    public override async Task<RepositoryResult> AddRangeAsync(IReadOnlyCollection<Parcel> entities, CancellationToken cancellationToken) {
+        if (_partitions is null) return await base.AddRangeAsync(entities, cancellationToken);
+        if (entities is null || entities.Count == 0) return RepositoryResult.Fail("实体集合不能为空");
         try {
-            var ids = parcels.Select(x => x.Id).ToArray();
+            var ids = entities.Select(x => x.Id).ToArray();
             if (ids.Distinct().Count() != ids.Length) return RepositoryResult.Fail(DuplicateParcelIdErrorMessage, RepositoryErrorCodes.ParcelIdConflict);
             await using var lookup = await ContextFactory.CreateDbContextAsync(cancellationToken);
             if (await lookup.Set<Parcel>().AnyAsync(x => ids.Contains(x.Id), cancellationToken) || await lookup.Set<ParcelLocation>().AnyAsync(x => ids.Contains(x.Id), cancellationToken))
                 return RepositoryResult.Fail(DuplicateParcelIdErrorMessage, RepositoryErrorCodes.ParcelIdConflict);
-            var groups = parcels.GroupBy(x => _partitions.Resolve(x.CreatedTime).Suffix).ToArray();
+            var groups = entities.GroupBy(x => _partitions.Resolve(x.CreatedTime).Suffix).ToArray();
             foreach (var group in groups) await _partitions.EnsureCreatedAsync(_partitions.Resolve(group.First().CreatedTime), cancellationToken);
             await using var template = await ContextFactory.CreateDbContextAsync(cancellationToken);
             return await template.Database.CreateExecutionStrategy().ExecuteAsync(async () => {

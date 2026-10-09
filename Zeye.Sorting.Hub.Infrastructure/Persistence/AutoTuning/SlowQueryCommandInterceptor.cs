@@ -30,7 +30,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         private void Completed(DbCommand command, CommandEndEventData data, int rows = 0, Exception? error = null) =>
             _pipeline.CommandCompleted(command.CommandText, data.Duration, command.Connection?.GetType().Name ?? "", data.CommandId.ToString("N"), rows, error, _databaseRole);
         /// <summary>读取器执行和消费合并为一次观测，保留各阶段耗时。</summary>
-        private DbDataReader Wrap(DbCommand command, CommandExecutedEventData data, DbDataReader reader) =>
+        private Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning.SlowQueryDataReader Wrap(DbCommand command, CommandExecutedEventData data, DbDataReader reader) =>
             new SlowQueryDataReader(reader, new(_pipeline, command.CommandText, data.Duration, command.Connection?.GetType().Name ?? "", data.CommandId.ToString("N"), _databaseRole));
         /// <inheritdoc />
         public override InterceptionResult<DbDataReader> ReaderExecuting(DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result) { Started(command, eventData); return result; }
@@ -88,7 +88,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
             CommandExecutedEventData eventData,
             DbDataReader result,
             CancellationToken cancellationToken = default) {
-            return ValueTask.FromResult(Wrap(command, eventData, result));
+            return ValueTask.FromResult<DbDataReader>(Wrap(command, eventData, result));
         }
 
         /// <summary>同步命令失败时采集异常样本。</summary>

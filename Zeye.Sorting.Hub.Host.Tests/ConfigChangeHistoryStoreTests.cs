@@ -13,7 +13,7 @@ public sealed class ConfigChangeHistoryStoreTests {
     /// 验证场景：初始状态下历史为空。
     /// </summary>
     [Fact]
-    public void GetHistory_WhenNoRecords_ReturnsEmpty() {
+    public void GetHistoryWhenNoRecordsReturnsEmpty() {
         var store = new ConfigChangeHistoryStore<LogCleanupSettings>();
         Assert.Empty(store.GetHistory());
     }
@@ -22,7 +22,7 @@ public sealed class ConfigChangeHistoryStoreTests {
     /// 验证场景：GetLatest 在无记录时返回 null。
     /// </summary>
     [Fact]
-    public void GetLatest_WhenNoRecords_ReturnsNull() {
+    public void GetLatestWhenNoRecordsReturnsNull() {
         var store = new ConfigChangeHistoryStore<LogCleanupSettings>();
         Assert.Null(store.GetLatest());
     }
@@ -31,7 +31,7 @@ public sealed class ConfigChangeHistoryStoreTests {
     /// 验证场景：记录一条变更后，GetLatest 返回该条目，GetHistory 返回包含一条。
     /// </summary>
     [Fact]
-    public void Record_SingleEntry_CanBeRetrievedViaGetLatestAndGetHistory() {
+    public void RecordSingleEntryCanBeRetrievedViaGetLatestAndGetHistory() {
         var store = new ConfigChangeHistoryStore<LogCleanupSettings>();
         var settings = new LogCleanupSettings { RetentionDays = 5 };
 
@@ -52,7 +52,7 @@ public sealed class ConfigChangeHistoryStoreTests {
     /// 验证场景：记录多条时，历史按序从旧到新排列，序号单调递增。
     /// </summary>
     [Fact]
-    public void Record_MultipleEntries_HistoryOrderedBySequenceAscending() {
+    public void RecordMultipleEntriesHistoryOrderedBySequenceAscending() {
         var store = new ConfigChangeHistoryStore<LogCleanupSettings>(capacity: 5);
         var s1 = new LogCleanupSettings { RetentionDays = 1 };
         var s2 = new LogCleanupSettings { RetentionDays = 2 };
@@ -74,7 +74,7 @@ public sealed class ConfigChangeHistoryStoreTests {
     /// 验证场景：条目数超过容量时，旧条目被环形覆盖，仅保留最近 capacity 条。
     /// </summary>
     [Fact]
-    public void Record_ExceedCapacity_OlderEntriesEvicted() {
+    public void RecordExceedCapacityOlderEntriesEvicted() {
         const int capacity = 3;
         var store = new ConfigChangeHistoryStore<LogCleanupSettings>(capacity);
 
@@ -100,7 +100,7 @@ public sealed class ConfigChangeHistoryStoreTests {
     [InlineData(-5, 1)]
     [InlineData(101, ConfigChangeHistoryStore<LogCleanupSettings>.MaxCapacity)]
     [InlineData(1000, ConfigChangeHistoryStore<LogCleanupSettings>.MaxCapacity)]
-    public void Constructor_CapacityOutOfRange_IsClamped(int inputCapacity, int expectedCapacity) {
+    public void ConstructorCapacityOutOfRangeIsClamped(int inputCapacity, int expectedCapacity) {
         var store = new ConfigChangeHistoryStore<LogCleanupSettings>(inputCapacity);
         Assert.Equal(expectedCapacity, store.Capacity);
     }
@@ -109,7 +109,7 @@ public sealed class ConfigChangeHistoryStoreTests {
     /// 验证场景：Record 传入值为 record with {} 副本后，后续修改原始对象不影响历史条目（LogCleanupService 行为验证）。
     /// </summary>
     [Fact]
-    public void LogCleanupService_OnSettingsChanged_SnapshotIsIsolatedFromLaterChanges() {
+    public void LogCleanupServiceOnSettingsChangedSnapshotIsIsolatedFromLaterChanges() {
         var v1 = new LogCleanupSettings { RetentionDays = 2, Enabled = true };
         var v2 = new LogCleanupSettings { RetentionDays = 7, Enabled = true };
         var v3 = new LogCleanupSettings { RetentionDays = 30, Enabled = true };
@@ -117,7 +117,6 @@ public sealed class ConfigChangeHistoryStoreTests {
         var settingsMonitor = new TestOptionsMonitor<LogCleanupSettings>(v1);
         var changeHistory = new ConfigChangeHistoryStore<LogCleanupSettings>();
         _ = new LogCleanupService(
-            new SafeExecutor(),
             settingsMonitor,
             new TestObservability(),
             changeHistory);
@@ -138,14 +137,13 @@ public sealed class ConfigChangeHistoryStoreTests {
     /// 验证场景：LogCleanupService 在配置变更时触发快照记录，历史中可查到前后值。
     /// </summary>
     [Fact]
-    public void LogCleanupService_OnSettingsChanged_RecordsBeforeAfterSnapshot() {
+    public void LogCleanupServiceOnSettingsChangedRecordsBeforeAfterSnapshot() {
         var initialSettings = new LogCleanupSettings { RetentionDays = 2, Enabled = true };
         var updatedSettings = new LogCleanupSettings { RetentionDays = 7, Enabled = true };
 
         var settingsMonitor = new TestOptionsMonitor<LogCleanupSettings>(initialSettings);
         var changeHistory = new ConfigChangeHistoryStore<LogCleanupSettings>();
         _ = new LogCleanupService(
-            new SafeExecutor(),
             settingsMonitor,
             new TestObservability(),
             changeHistory);

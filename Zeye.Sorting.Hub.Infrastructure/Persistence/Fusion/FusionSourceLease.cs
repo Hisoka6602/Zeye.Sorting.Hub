@@ -13,9 +13,9 @@ public sealed class FusionSourceLease {
     /// <summary>中心进程身份。</summary>
     public string ServerId { get; set; } = "";
     /// <summary>中心本地租约到期时间。</summary>
-    public DateTime ExpiresAt { get; set; } = default;
+    public DateTime ExpiresAt { get; set; }
     /// <summary>中心本地最近心跳时间。</summary>
-    public DateTime? LastSeenAt { get; set; } = null;
+    public DateTime? LastSeenAt { get; set; }
     /// <summary>数据库并发版本。</summary>
-    public long Revision { get; set; } = 0;
+    public long Revision { get; set; }
 }

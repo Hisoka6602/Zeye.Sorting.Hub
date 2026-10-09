@@ -93,7 +93,7 @@ public static partial class FusionProtocol {
         };
         if (stage < 0) return null;
         var association = fact.Kind == "image.association" && Boolean(data, "associationConfirmed") == true
-            && (Decimal(data, "candidateCount") ?? 1) <= 1;
+            && (ReadDecimal(data, "candidateCount") ?? 1) <= 1;
         var sourceParcel = fact.SourceParcelId is null ? (long?)null : Number(fact.SourceParcelId);
         // 未绑定的非 DWS 事实仍保留原文，但不能为既有聚合制造假包裹。
         if (stage == 9 && !association || sourceParcel is null && stage is not (1 or 2)) return null;
@@ -116,17 +116,17 @@ public static partial class FusionProtocol {
         if (stage == 6 && ProtocolTime(data, "landedAtUtc", registered.TimeZoneId) is { } landed) occurred = landed;
         var imageId = Text(data, "sourceImageId", 128);
         if (stage is 9 or 10 && string.IsNullOrWhiteSpace(imageId)) throw new ArgumentException("MissingImageIdentity");
-        var length = Decimal(data, "lengthMm"); var width = Decimal(data, "widthMm"); var height = Decimal(data, "heightMm");
+        var length = ReadDecimal(data, "lengthMm"); var width = ReadDecimal(data, "widthMm"); var height = ReadDecimal(data, "heightMm");
         var request = new ParcelProcessingRecordRequest {
             RecordId = Key(fact.SourceInstanceId, fact.JournalId, fact.RecordId), SourceInstanceId = fact.SourceInstanceId,
             SourceRunId = fact.SourceRunId, SourceParcelId = sourceParcel, Stage = stage, OccurredAt = occurred,
             WorkstationName = string.IsNullOrEmpty(registered.WorkstationName) ? registered.SourceInstanceId : registered.WorkstationName,
-            IsSuccess = success, AttemptNumber = (int)Math.Clamp(Decimal(data, "attemptNumber") ?? 1, 1, int.MaxValue),
-            Barcode = Text(data, "barcode", 1024), WeightGrams = Decimal(data, "weightGrams"),
+            IsSuccess = success, AttemptNumber = (int)Math.Clamp(ReadDecimal(data, "attemptNumber") ?? 1, 1, int.MaxValue),
+            Barcode = Text(data, "barcode", 1024), WeightGrams = ReadDecimal(data, "weightGrams"),
             LengthMm = length, WidthMm = width, HeightMm = height,
             VolumeMm3 = length > 0 && width > 0 && height > 0 ? checked(length * width * height) : null,
-            VolumetricWeightGrams = Decimal(data, "volumetricWeightGrams"),
-            PreviousCreationGapMilliseconds = (long?)Decimal(data, "previousCreationGapMilliseconds"),
+            VolumetricWeightGrams = ReadDecimal(data, "volumetricWeightGrams"),
+            PreviousCreationGapMilliseconds = (long?)ReadDecimal(data, "previousCreationGapMilliseconds"),
             IsSpacingViolation = Boolean(data, "isSpacingViolation"), IsAwaitingWcsDecision = Boolean(data, "isAwaitingWcsDecision"),
             MeasuredAt = ProtocolTime(data, "measuredAtUtc", registered.TimeZoneId),
             ReceivedAt = ProtocolTime(data, "receivedAtUtc", registered.TimeZoneId),
@@ -140,14 +140,14 @@ public static partial class FusionProtocol {
             CandidateSourceParcelId = Long(data, "candidateParcelId"), FinalSourceParcelId = fact.Kind == "parcel.measurement" ? sourceParcel : Long(data, "finalParcelId"),
             CorrelationId = Long(data, "correlationId") ?? Long(data, "correlationIdHint"),
             TriggerBatch = Text(data, "triggerBatch", 128), ScanSequence = Text(data, "scanSequence", 128),
-            MessageIdentity = Text(data, "messageIdentity", 256), DeltaMilliseconds = Decimal(data, "deltaMilliseconds"),
+            MessageIdentity = Text(data, "messageIdentity", 256), DeltaMilliseconds = ReadDecimal(data, "deltaMilliseconds"),
             DecisionReason = Text(data, "reason", 2048),
             ExceptionCode = stage == 7 ? Text(data, "exceptionType", 128) ?? (Boolean(data, "isDwsTimedOut") == true ? "DwsTimeout"
                 : Boolean(data, "isSpacingViolation") == true ? "ParcelSpacingViolation" : Text(data, "stage", 128) ?? "Unknown") : null,
             ErrorMessage = Text(data, "message", 2048) ?? Text(data, "detail", 2048),
             RawPayload = fact.Data.GetRawText(), RequestUrl = Text(data, "url", 512),
             RequestBody = Text(data, "request", 8192), ResponseBody = Text(data, "response", 8192),
-            ResponseStatusCode = (int?)Decimal(data, "statusCode"), ElapsedMilliseconds = (int?)Decimal(data, "durationMs"),
+            ResponseStatusCode = (int?)ReadDecimal(data, "statusCode"), ElapsedMilliseconds = (int?)ReadDecimal(data, "durationMs"),
             ImagePath = imageId is null ? null : "/api/parcels/fusion/images/" + Key(fact.SourceInstanceId, imageId) + "/content",
             ImageCamera = Text(data, "cameraName", 128), ImageContentHash = Text(data, "contentSha256", 64)
         };
@@ -162,7 +162,7 @@ public static partial class FusionProtocol {
     public static bool? Boolean(JsonElement data, string name) => data.TryGetProperty(name, out var value)
         && value.ValueKind is JsonValueKind.True or JsonValueKind.False ? value.GetBoolean() : null;
     /// <summary>读取可空有限精度量测。</summary>
-    public static decimal? Decimal(JsonElement data, string name) => data.TryGetProperty(name, out var value)
+    public static decimal? ReadDecimal(JsonElement data, string name) => data.TryGetProperty(name, out var value)
         && value.ValueKind == JsonValueKind.Number && value.TryGetDecimal(out var number) ? number : null;
     /// <summary>读取字符串形式的设备关联编号。</summary>
     private static long? Long(JsonElement data, string name) => Text(data, name) is { } value

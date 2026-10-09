@@ -8,7 +8,7 @@ public sealed class PerformanceBaselineRulesTests {
     /// 压测目录说明应覆盖 PR-S 所需场景与本地时间约束。
     /// </summary>
     [Fact]
-    public void PerformanceReadme_ShouldDescribeCoveredScenariosAndLocalTimeRules() {
+    public void PerformanceReadmeShouldDescribeCoveredScenariosAndLocalTimeRules() {
         var performanceReadme = RepositoryFileReader.ReadAllText("performance", "README.md");
 
         Assert.Contains("Parcel 游标分页", performanceReadme, StringComparison.Ordinal);
@@ -26,7 +26,7 @@ public sealed class PerformanceBaselineRulesTests {
     /// k6 脚本应覆盖 PR-S 要求的核心接口，并统一通过本地时间格式化函数生成时间参数。
     /// </summary>
     [Fact]
-    public void PerformanceScripts_ShouldTargetRequiredApisAndUseLocalTimeFormatting() {
+    public void PerformanceScriptsShouldTargetRequiredApisAndUseLocalTimeFormatting() {
         var commonScript = RepositoryFileReader.ReadAllText("performance", "k6", "common.js");
         var parcelQueryScript = RepositoryFileReader.ReadAllText("performance", "k6", "parcel-cursor-query.js");
         var parcelBatchScript = RepositoryFileReader.ReadAllText("performance", "k6", "parcel-batch-buffer-write.js");
@@ -48,7 +48,7 @@ public sealed class PerformanceBaselineRulesTests {
     /// 压测 smoke workflow 应只执行轻量规则测试，避免在 CI 中触发真实压测。
     /// </summary>
     [Fact]
-    public void PerformanceSmokeWorkflow_ShouldRunFilteredRulesTests() {
+    public void PerformanceSmokeWorkflowShouldRunFilteredRulesTests() {
         var workflowContent = RepositoryFileReader.ReadAllText(".github", "workflows", "performance-smoke-test.yml");
 
         Assert.Contains("performance-smoke-test", workflowContent, StringComparison.Ordinal);
@@ -62,7 +62,7 @@ public sealed class PerformanceBaselineRulesTests {
     /// 真实回归工作流应执行读取门禁、显式保护写入场景并留存机器可读结果。
     /// </summary>
     [Fact]
-    public void PerformanceRegressionWorkflow_ShouldRunThresholdGatesAndPublishResults() {
+    public void PerformanceRegressionWorkflowShouldRunThresholdGatesAndPublishResults() {
         var workflowContent = RepositoryFileReader.ReadAllText(".github", "workflows", "performance-regression-gate.yml");
 
         Assert.Contains("grafana/setup-k6-action@v1", workflowContent, StringComparison.Ordinal);
@@ -78,7 +78,7 @@ public sealed class PerformanceBaselineRulesTests {
     /// 性能基线报告模板应包含 PR-S 强制指标与全部场景。
     /// </summary>
     [Fact]
-    public void PerformanceBaselineReportTemplate_ShouldContainRequiredMetricsAndScenarios() {
+    public void PerformanceBaselineReportTemplateShouldContainRequiredMetricsAndScenarios() {
         var reportTemplate = RepositoryFileReader.ReadAllText("性能基线报告.md");
 
         Assert.Contains("RPS", reportTemplate, StringComparison.Ordinal);

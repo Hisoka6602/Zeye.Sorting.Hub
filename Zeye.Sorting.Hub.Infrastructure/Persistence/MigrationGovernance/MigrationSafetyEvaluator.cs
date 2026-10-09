@@ -8,7 +8,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.MigrationGovernance;
 /// <summary>
 /// 迁移脚本危险操作识别器。
 /// </summary>
-public sealed partial class MigrationSafetyEvaluator {
+public static partial class MigrationSafetyEvaluator {
     /// <summary>
     /// 语句片段最大保留长度。
     /// </summary>
@@ -42,7 +42,7 @@ public sealed partial class MigrationSafetyEvaluator {
     /// </summary>
     /// <param name="sqlScript">迁移脚本。</param>
     /// <returns>危险操作列表。</returns>
-    public IReadOnlyList<string> EvaluateDangerousOperations(string? sqlScript) {
+    public static IReadOnlyList<string> EvaluateDangerousOperations(string? sqlScript) {
         if (string.IsNullOrWhiteSpace(sqlScript)) {
             return [];
         }

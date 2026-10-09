@@ -161,7 +161,7 @@ public static class EndpointRouteBuilderConventionExtensions {
             throw new ArgumentException("routePrefix 不能为空。", nameof(routePrefix));
         }
 
-        if (!routePrefix.StartsWith("/", StringComparison.Ordinal)) {
+        if (!routePrefix.StartsWith('/')) {
             Logger.Warn("创建业务模块路由组时路由前缀非法，RoutePrefix={RoutePrefix}", routePrefix);
             throw new ArgumentException("routePrefix 必须以 / 开头。", nameof(routePrefix));
         }

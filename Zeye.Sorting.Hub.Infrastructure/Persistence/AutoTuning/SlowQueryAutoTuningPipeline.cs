@@ -362,7 +362,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         }
 
         /// <summary>基于聚合结果生成自动调优候选动作。</summary>
-        private IReadOnlyList<SlowQueryTuningCandidate> BuildTuningCandidates(IDatabaseDialect dialect, IReadOnlyList<SlowQueryMetric> groups) {
+        private System.Collections.Generic.List<Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning.SlowQueryTuningCandidate> BuildTuningCandidates(IDatabaseDialect dialect, IReadOnlyList<SlowQueryMetric> groups) {
             var candidates = new List<SlowQueryTuningCandidate>();
             var existedSuggestions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var actionCount = 0;
@@ -411,7 +411,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         }
 
         /// <summary>将候选动作转换为只读建议文案。</summary>
-        private static IReadOnlyList<SlowQuerySuggestionInsight> BuildReadOnlySuggestions(
+        private static System.Collections.Generic.List<Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning.SlowQuerySuggestionInsight> BuildReadOnlySuggestions(
             IReadOnlyList<SlowQueryTuningCandidate> candidates,
             IReadOnlyList<SlowQueryMetric> metrics) {
             var metricsByFingerprint = metrics.ToDictionary(static metric => metric.SqlFingerprint, StringComparer.OrdinalIgnoreCase);
@@ -433,7 +433,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         }
 
         /// <summary>根据阈值规则生成告警列表。</summary>
-        private IReadOnlyList<SlowQueryAlertNotification> BuildAlerts(IReadOnlyList<SlowQueryMetric> groups, DateTime now) {
+        private System.Collections.Generic.List<Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning.SlowQueryAlertNotification> BuildAlerts(IReadOnlyList<SlowQueryMetric> groups, DateTime now) {
             var alerts = new List<SlowQueryAlertNotification>();
             var observedAlertKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var metric in groups) {
@@ -699,13 +699,13 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         }
 
         /// <summary>计算指定分位点值（输入必须为升序数组）。</summary>
-        private static decimal CalculatePercentile(IReadOnlyList<decimal> sorted, int percentile) {
-            if (sorted.Count == 0) {
+        private static decimal CalculatePercentile(decimal[] sorted, int percentile) {
+            if (sorted.Length == 0) {
                 return 0m;
             }
 
-            var rank = (int)Math.Ceiling(percentile / 100m * sorted.Count);
-            var index = Math.Clamp(rank - 1, 0, sorted.Count - 1);
+            var rank = (int)Math.Ceiling(percentile / 100m * sorted.Length);
+            var index = Math.Clamp(rank - 1, 0, sorted.Length - 1);
             return sorted[index];
         }
 

@@ -3,14 +3,14 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Baseline;
 /// <summary>
 /// 基线数据种子入口。
 /// </summary>
-public sealed class BaselineDataSeeder {
+public static class BaselineDataSeeder {
     /// <summary>
     /// 执行可选幂等种子入口。
     /// </summary>
     /// <param name="validationResult">校验结果。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>更新后的结果。</returns>
-    public Task<BaselineDataValidationResult> SeedAsync(
+    public static Task<BaselineDataValidationResult> SeedAsync(
         BaselineDataValidationResult validationResult,
         CancellationToken cancellationToken) {
         ArgumentNullException.ThrowIfNull(validationResult);

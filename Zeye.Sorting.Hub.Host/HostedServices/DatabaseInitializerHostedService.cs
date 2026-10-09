@@ -60,7 +60,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         private const string DialectProviderNameSqlServer = "SQLServer";
 
         /// <summary>Provider 标识到连接字符串节点键名的映射表（不区分大小写）。</summary>
-        private static readonly IReadOnlyDictionary<string, string> ProviderConnectionStringKeyMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+        private static readonly System.Collections.Generic.Dictionary<string, string> ProviderConnectionStringKeyMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
             [MySqlProviderKey] = MySqlProviderKey,
             [SqlServerProviderKey] = SqlServerProviderKey,
             [DialectProviderNameMySql] = MySqlProviderKey,
@@ -745,18 +745,18 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
 
             if (inCodeNotApplied.Count > 0 || appliedNotInCode.Count > 0) {
                 var sb = new StringBuilder();
-                sb.Append($"[CodeFirst 守卫] 迁移一致性异常：代码中定义了 {allMigrationsInCode.Count} 个迁移，");
-                sb.Append($"__EFMigrationsHistory 中记录了 {appliedMigrations.Count} 个。");
+                sb.Append(System.Globalization.CultureInfo.InvariantCulture, $"[CodeFirst 守卫] 迁移一致性异常：代码中定义了 {allMigrationsInCode.Count} 个迁移，");
+                sb.Append(System.Globalization.CultureInfo.InvariantCulture, $"__EFMigrationsHistory 中记录了 {appliedMigrations.Count} 个。");
 
                 if (inCodeNotApplied.Count > 0) {
                     sb.AppendLine();
-                    sb.Append($"  ▸ 代码中存在但未应用（{inCodeNotApplied.Count} 个）：");
+                    sb.Append(System.Globalization.CultureInfo.InvariantCulture, $"  ▸ 代码中存在但未应用（{inCodeNotApplied.Count} 个）：");
                     sb.Append(string.Join(", ", inCodeNotApplied));
                 }
 
                 if (appliedNotInCode.Count > 0) {
                     sb.AppendLine();
-                    sb.Append($"  ▸ 已应用但代码中不存在（{appliedNotInCode.Count} 个，可能为手工写入或迁移文件已删除）：");
+                    sb.Append(System.Globalization.CultureInfo.InvariantCulture, $"  ▸ 已应用但代码中不存在（{appliedNotInCode.Count} 个，可能为手工写入或迁移文件已删除）：");
                     sb.Append(string.Join(", ", appliedNotInCode));
                 }
 
@@ -1226,7 +1226,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             bool enableWebRequestAuditLogPerDayGuard) {
             var groups = new List<PerDayGovernanceGroup>();
             if (ShouldEnforcePerDayPrebuildGuard(parcelShardingDecision)) {
-                var baseTableNames = dbContext is null
+                IReadOnlyList<string> baseTableNames = dbContext is null
                     ? Array.Empty<string>()
                     : ResolvePerDayShardingBaseTableNamesByEntityTypes(dbContext, PerDayShardingEntityTypes);
                 groups.Add(new PerDayGovernanceGroup(
@@ -1235,7 +1235,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
             }
 
             if (enableWebRequestAuditLogPerDayGuard) {
-                var baseTableNames = dbContext is null
+                IReadOnlyList<string> baseTableNames = dbContext is null
                     ? Array.Empty<string>()
                     : ResolvePerDayShardingBaseTableNamesByEntityTypes(dbContext, WebRequestAuditLogPerDayShardingEntityTypes);
                 groups.Add(new PerDayGovernanceGroup(
@@ -1252,7 +1252,7 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
         /// <param name="dbContext">数据库上下文。</param>
         /// <param name="entityTypes">实体类型集合。</param>
         /// <returns>基础逻辑表名清单。</returns>
-        private static IReadOnlyList<string> ResolvePerDayShardingBaseTableNamesByEntityTypes(
+        private static System.Collections.Generic.List<string> ResolvePerDayShardingBaseTableNamesByEntityTypes(
             SortingHubDbContext dbContext,
             IReadOnlyList<Type> entityTypes) {
             ArgumentNullException.ThrowIfNull(dbContext);

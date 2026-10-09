@@ -11,7 +11,7 @@ public sealed class OperationalScopeTests {
     /// 构建运营边界时应标准化并保留层级维度。
     /// </summary>
     [Fact]
-    public void OperationalScopeNormalizer_WhenRequestIsValid_ShouldCreateNormalizedScope() {
+    public void OperationalScopeNormalizerWhenRequestIsValidShouldCreateNormalizedScope() {
         var scope = OperationalScopeNormalizer.Create(new OperationalScopeRequest {
             SiteCode = "  SITE-01  ",
             LineCode = "  LINE-A  ",
@@ -29,7 +29,7 @@ public sealed class OperationalScopeTests {
     /// 站点编码为空时应拒绝构建运营边界。
     /// </summary>
     [Fact]
-    public void OperationalScopeNormalizer_WhenSiteCodeMissing_ShouldThrow() {
+    public void OperationalScopeNormalizerWhenSiteCodeMissingShouldThrow() {
         Assert.Throws<ArgumentException>(() => OperationalScopeNormalizer.Create(new OperationalScopeRequest {
             SiteCode = " ",
             LineCode = "LINE-A",
@@ -42,7 +42,7 @@ public sealed class OperationalScopeTests {
     /// 工作站名称为空时应拒绝构建运营边界。
     /// </summary>
     [Fact]
-    public void OperationalScopeNormalizer_WhenWorkstationNameMissing_ShouldThrow() {
+    public void OperationalScopeNormalizerWhenWorkstationNameMissingShouldThrow() {
         Assert.Throws<ArgumentException>(() => OperationalScopeNormalizer.Create("SITE-01", "LINE-A", "DVC-01", " ", "创建运营边界"));
     }
 
@@ -50,7 +50,7 @@ public sealed class OperationalScopeTests {
     /// 可选维度为空白时应归一化为 null。
     /// </summary>
     [Fact]
-    public void OperationalScopeNormalizer_WhenOptionalCodesAreBlank_ShouldNormalizeToNull() {
+    public void OperationalScopeNormalizerWhenOptionalCodesAreBlankShouldNormalizeToNull() {
         var scope = OperationalScopeNormalizer.Create("SITE-01", " ", null, "WS-02", "创建运营边界");
 
         Assert.Equal("SITE-01", scope.SiteCode);
@@ -63,7 +63,7 @@ public sealed class OperationalScopeTests {
     /// 运营边界应可映射为响应合同。
     /// </summary>
     [Fact]
-    public void OperationalScopeNormalizer_ToResponse_ShouldMapAllFields() {
+    public void OperationalScopeNormalizerToResponseShouldMapAllFields() {
         var scope = OperationalScopeNormalizer.Create(new OperationalScopeRequest {
             SiteCode = "SITE-02",
             LineCode = "LINE-B",

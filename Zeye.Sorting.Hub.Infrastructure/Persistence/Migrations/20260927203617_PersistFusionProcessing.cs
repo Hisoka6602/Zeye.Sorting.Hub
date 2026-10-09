@@ -8,6 +8,15 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
     /// <inheritdoc />
     public partial class PersistFusionProcessing : Migration
     {
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedMessageIdentityReceivedAtColumns = new[] { "MessageIdentity", "ReceivedAt" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedParcelIdOccurredAtColumns = new[] { "ParcelId", "OccurredAt" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedSourceInstanceIdSourceRunIdSourceParcelIdColumns = new[] { "SourceInstanceId", "SourceRunId", "SourceParcelId" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedParcelIdRecordedAtColumns = new[] { "ParcelId", "RecordedAt" };
+
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
@@ -336,17 +345,17 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_ProcessingRecords_MessageIdentity_ReceivedAt",
                 table: "Parcel_ProcessingRecords",
-                columns: new[] { "MessageIdentity", "ReceivedAt" });
+                columns: CachedMessageIdentityReceivedAtColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_ProcessingRecords_ParcelId_OccurredAt",
                 table: "Parcel_ProcessingRecords",
-                columns: new[] { "ParcelId", "OccurredAt" });
+                columns: CachedParcelIdOccurredAtColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_Parcel_ProcessingRecords_SourceInstanceId_SourceRunId_Source~",
                 table: "Parcel_ProcessingRecords",
-                columns: new[] { "SourceInstanceId", "SourceRunId", "SourceParcelId" });
+                columns: CachedSourceInstanceIdSourceRunIdSourceParcelIdColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_ParcelLocations_SourceKey",
@@ -357,7 +366,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_ParcelProcessingReceipts_ParcelId_RecordedAt",
                 table: "ParcelProcessingReceipts",
-                columns: new[] { "ParcelId", "RecordedAt" });
+                columns: CachedParcelIdRecordedAtColumns);
         }
 
         /// <inheritdoc />

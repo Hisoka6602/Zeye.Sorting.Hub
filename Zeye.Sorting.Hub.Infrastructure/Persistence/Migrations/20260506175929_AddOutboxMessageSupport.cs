@@ -9,6 +9,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
     /// <inheritdoc />
     public partial class AddOutboxMessageSupport : Migration
     {
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedEventTypeCreatedAtColumns = new[] { "EventType", "CreatedAt" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedStatusCreatedAtColumns = new[] { "Status", "CreatedAt" };
+
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
@@ -40,12 +45,12 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_OutboxMessages_EventType_CreatedAt",
                 table: "OutboxMessages",
-                columns: new[] { "EventType", "CreatedAt" });
+                columns: CachedEventTypeCreatedAtColumns);
 
             migrationBuilder.CreateIndex(
                 name: "IX_OutboxMessages_Status_CreatedAt",
                 table: "OutboxMessages",
-                columns: new[] { "Status", "CreatedAt" });
+                columns: CachedStatusCreatedAtColumns);
         }
 
         /// <inheritdoc />

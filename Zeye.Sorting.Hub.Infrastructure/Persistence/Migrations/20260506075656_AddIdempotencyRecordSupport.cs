@@ -9,6 +9,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
     /// <inheritdoc />
     public partial class AddIdempotencyRecordSupport : Migration
     {
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedSourceSystemOperationNameBusinessKeyPayloadHashColumns = new[] { "SourceSystem", "OperationName", "BusinessKey", "PayloadHash" };
+        /// <summary>重复调用共用的固定参数，使用方按只读方式消费。</summary>
+        private static readonly string[] CachedStatusCreatedAtColumns = new[] { "Status", "CreatedAt" };
+
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
@@ -42,13 +47,13 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations
             migrationBuilder.CreateIndex(
                 name: "IX_IdempotencyRecords_SourceSystem_OperationName_BusinessKey_Pa~",
                 table: "IdempotencyRecords",
-                columns: new[] { "SourceSystem", "OperationName", "BusinessKey", "PayloadHash" },
+                columns: CachedSourceSystemOperationNameBusinessKeyPayloadHashColumns,
                 unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_IdempotencyRecords_Status_CreatedAt",
                 table: "IdempotencyRecords",
-                columns: new[] { "Status", "CreatedAt" });
+                columns: CachedStatusCreatedAtColumns);
         }
 
         /// <inheritdoc />

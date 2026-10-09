@@ -7,7 +7,9 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 using Zeye.Sorting.Hub.Infrastructure.Configuration;
 namespace Zeye.Sorting.Hub.Host.Queries;
 /// <summary>将运维策略保存到共享数据库，并唤醒本实例后台备份轮询。</summary>
-public sealed class OperationalPolicyService(IDbContextFactory<SortingHubDbContext> factory, IOptions<BackupOptions> backups, IOptions<ShardingPrebuildOptions> prebuild, IConfigurationDocumentStore? configurations = null) {
+public sealed class OperationalPolicyService(IDbContextFactory<SortingHubDbContext> factory, IOptions<BackupOptions> backups, IOptions<ShardingPrebuildOptions> prebuild, IConfigurationDocumentStore? configurations = null) : IDisposable {
+    /// <summary>宿主停止所有等待者后释放变更通知资源。</summary>
+    public void Dispose() => _changed.Dispose();
     /// <summary>记录运维策略通知合并时的异常，不输出策略正文。</summary>
     private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
     /// <summary>单个等待者使用有界信号，避免重复唤醒堆积。</summary>

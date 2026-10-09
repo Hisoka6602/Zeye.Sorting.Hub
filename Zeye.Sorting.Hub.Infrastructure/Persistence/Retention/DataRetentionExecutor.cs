@@ -167,7 +167,7 @@ public sealed class DataRetentionExecutor {
     /// <param name="decision">执行决策。</param>
     /// <returns>审计记录。</returns>
     private static DataRetentionAuditRecord BuildSkippedRecord(
-        IReadOnlyList<(DataRetentionPolicy Policy, DateTime ExpireBefore, int PlannedCount)> planItems,
+        System.Collections.Generic.List<(Zeye.Sorting.Hub.Infrastructure.Persistence.Retention.DataRetentionPolicy Policy, System.DateTime ExpireBefore, int PlannedCount)> planItems,
         int totalPlannedCount,
         ActionIsolationDecision decision) {
         var policySummaries = planItems

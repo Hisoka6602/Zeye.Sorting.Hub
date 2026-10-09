@@ -8,7 +8,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Diagnostics;
 /// <summary>
 /// 数据库连接诊断服务。
 /// </summary>
-public sealed class DatabaseConnectionDiagnosticsService : IDatabaseConnectionDiagnostics {
+public sealed class DatabaseConnectionDiagnosticsService : IDatabaseConnectionDiagnostics, IDisposable {
+    /// <summary>诊断服务生命周期结束后释放探测闸门。</summary>
+    public void Dispose() => _probeGate.Dispose();
     /// <summary>
     /// NLog 日志器。
     /// </summary>

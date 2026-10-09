@@ -59,14 +59,14 @@ public sealed class MigrationGovernanceHealthCheck : IHealthCheck {
     /// <param name="plan">迁移计划。</param>
     /// <param name="record">执行记录。</param>
     /// <returns>附加数据。</returns>
-    private static IReadOnlyDictionary<string, object> BuildHealthData(MigrationPlan? plan, MigrationExecutionRecord? record) {
+    private static System.Collections.Generic.Dictionary<string, object> BuildHealthData(MigrationPlan? plan, MigrationExecutionRecord? record) {
         var data = new Dictionary<string, object> {
             ["hasPlan"] = plan is not null,
             ["hasExecutionRecord"] = record is not null
         };
 
         if (plan is not null) {
-            data["generatedAtLocal"] = plan.GeneratedAtLocal.ToString(HealthCheckResponseWriter.LocalDateTimeFormat);
+            data["generatedAtLocal"] = plan.GeneratedAtLocal.ToString(HealthCheckResponseWriter.LocalDateTimeFormat, System.Globalization.CultureInfo.InvariantCulture);
             data["provider"] = plan.ProviderName;
             data["environment"] = plan.EnvironmentName;
             data["allMigrationCount"] = plan.AllMigrations.Count;
@@ -89,7 +89,7 @@ public sealed class MigrationGovernanceHealthCheck : IHealthCheck {
         }
 
         if (record is not null) {
-            data["recordedAtLocal"] = record.RecordedAtLocal.ToString(HealthCheckResponseWriter.LocalDateTimeFormat);
+            data["recordedAtLocal"] = record.RecordedAtLocal.ToString(HealthCheckResponseWriter.LocalDateTimeFormat, System.Globalization.CultureInfo.InvariantCulture);
             data["status"] = record.Status;
             data["summary"] = record.Summary;
             data["recordPendingMigrationCount"] = record.PendingMigrationCount;

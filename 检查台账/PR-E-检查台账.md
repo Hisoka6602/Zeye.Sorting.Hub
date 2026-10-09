@@ -30,7 +30,7 @@
 | 17 | Zeye.Sorting.Hub.Host/Middleware/ResponseCaptureResult.cs | ✅ |
 | 18 | Zeye.Sorting.Hub.Host/Middleware/ResponseCaptureTeeStream.cs | ✅ |
 | 19 | Zeye.Sorting.Hub.Host/Middleware/WebRequestAuditBackgroundEntry.cs | ✅ |
-| 20 | Zeye.Sorting.Hub.Host/Middleware/WebRequestAuditBackgroundQueue.cs | ✅ |
+| 20 | Zeye.Sorting.Hub.Host/Middleware/WebRequestAuditBuffer.cs | ✅ |
 | 21 | Zeye.Sorting.Hub.Host/Middleware/WebRequestAuditBackgroundWorkerHostedService.cs | ✅ |
 | 22 | Zeye.Sorting.Hub.Host/Middleware/WebRequestAuditLogMiddleware.cs | ✅ |
 | 23 | Zeye.Sorting.Hub.Host/Middleware/WebRequestAuditLogMiddlewareExtensions.cs | ✅ |

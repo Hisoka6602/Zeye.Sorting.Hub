@@ -14,7 +14,7 @@ using Zeye.Sorting.Hub.Infrastructure.Persistence.MigrationGovernance;
 namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 
 /// <summary>把提供器的 EF Core 模型升级同步到历史分表，不手写业务 SQL。</summary>
-public sealed class PhysicalPartitionMigrationService(IDbContextFactory<SortingHubDbContext> factory, ParcelPartitionStore partitions, IDatabaseDialect dialect, IConfiguration configuration, MigrationSafetyEvaluator safetyEvaluator, IHostEnvironment? environment = null) {
+public sealed class PhysicalPartitionMigrationService(IDbContextFactory<SortingHubDbContext> factory, ParcelPartitionStore partitions, IDatabaseDialect dialect, IConfiguration configuration, IHostEnvironment? environment = null) {
     /// <summary>分表升级和失败审计。</summary>
     private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
 
@@ -75,7 +75,7 @@ public sealed class PhysicalPartitionMigrationService(IDbContextFactory<SortingH
                     Logger.Info("历史分表迁移审计：Key={Key}, From={From}, To={To}, DDL={DDL}, IndexRollbackDDL={RollbackDDL}, SchemaRollbackRequiresBackup={RequiresBackup}",
                         key, previous, versions[^1], string.Join(Environment.NewLine, commands.Select(c => c.CommandText)),
                         string.Join(Environment.NewLine, rollback.Select(c => c.CommandText)), pending.Any(operation => operation is not CreateIndexOperation));
-                    var dangerous = safetyEvaluator.EvaluateDangerousOperations(string.Join(Environment.NewLine, commands.Select(c => c.CommandText)));
+                    var dangerous = MigrationSafetyEvaluator.EvaluateDangerousOperations(string.Join(Environment.NewLine, commands.Select(c => c.CommandText)));
                     if (commands.Count > 0 && AutoTuningConfigurationReader.GetBoolOrDefault(configuration, "Persistence:MigrationGovernance:DryRun", true))
                         throw new InvalidOperationException("历史分表迁移处于预演模式，已记录 DDL 但禁止更新结构或版本。");
                     if (dangerous.Count > 0 && environment?.IsProduction() == true && AutoTuningConfigurationReader.GetBoolOrDefault(configuration, "Persistence:MigrationGovernance:BlockDangerousMigrationInProduction", true))
@@ -92,7 +92,7 @@ public sealed class PhysicalPartitionMigrationService(IDbContextFactory<SortingH
     }
 
     /// <summary>旧版无版本目录时，按真实列集合匹配历史模型；无法匹配则保留原表并阻断升级。</summary>
-    private static async Task<string> InferVersionAsync(SortingHubDbContext db, ParcelPartitionDdlCoordinator coordinator, IReadOnlySet<string> tables, string suffix, string[] versions, IMigrationsAssembly assembly, CancellationToken token) {
+    private static async Task<string> InferVersionAsync(SortingHubDbContext db, ParcelPartitionDdlCoordinator coordinator, System.Collections.Generic.HashSet<string> tables, string suffix, string[] versions, IMigrationsAssembly assembly, CancellationToken token) {
         var actual = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
         foreach (var table in tables) actual[table] = await coordinator.ReadColumnsAsync(table + "_" + suffix, db.Model.GetDefaultSchema(), token);
         foreach (var id in versions.Reverse()) {

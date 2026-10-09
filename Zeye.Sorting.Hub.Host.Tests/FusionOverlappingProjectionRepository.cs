@@ -40,7 +40,7 @@ internal sealed class FusionOverlappingProjectionRepository : IParcelProcessingR
             }
             await Task.Yield();
             Writes.Enqueue((id, record.Stage));
-            return RepositoryResult<ParcelProcessingWriteResult>.Success(new() { ParcelId = id, PartitionSuffix = "" });
+            return RepositoryResult.Success<ParcelProcessingWriteResult>(new() { ParcelId = id, PartitionSuffix = "" });
         }
         finally { Interlocked.Decrement(ref _active); _activeByParcel.AddOrUpdate(id, 0, (_, count) => count - 1); }
     }

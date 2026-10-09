@@ -4,6 +4,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning;
 
 /// <summary>计量文本大字段的延迟读取，并保留取消及异常语义。</summary>
 internal sealed class SlowQueryTextReader : TextReader {
+    /// <summary>保证提供器文本读取器只释放一次。</summary>
+    private int _disposeStarted;
     /// <summary>提供器文本读取器。</summary>
     private readonly TextReader _inner;
     /// <summary>所属命令的计量状态。</summary>
@@ -40,9 +42,13 @@ internal sealed class SlowQueryTextReader : TextReader {
     }
     /// <inheritdoc />
     protected override void Dispose(bool disposing) {
-        if (!disposing) return;
-        var start = Stopwatch.GetTimestamp();
-        try { _inner.Dispose(); _execution.ReadFinished(start); }
-        catch (Exception exception) { _execution.ReadFinished(start); _execution.Complete(exception, true); throw; }
+        try {
+            if (disposing && Interlocked.Exchange(ref _disposeStarted, 1) == 0) {
+                var start = Stopwatch.GetTimestamp();
+                try { _inner.Dispose(); _execution.ReadFinished(start); }
+                catch (Exception exception) { _execution.ReadFinished(start); _execution.Complete(exception, true); throw; }
+            }
+        }
+        finally { base.Dispose(disposing); }
     }
 }

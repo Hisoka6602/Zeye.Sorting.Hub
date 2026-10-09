@@ -12,7 +12,7 @@ public sealed class WriteWebRequestAuditLogCommandService {
     /// <summary>
     /// NLog 日志器。
     /// </summary>
-    private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
+    private static readonly NLog.Logger Logger = LogManager.GetCurrentClassLogger();
 
     /// <summary>
     /// Web 请求审计日志仓储。
@@ -36,9 +36,7 @@ public sealed class WriteWebRequestAuditLogCommandService {
     public async Task<RepositoryResult> WriteAsync(
         WebRequestAuditLog auditLog,
         CancellationToken cancellationToken) {
-        if (auditLog is null) {
-            throw new ArgumentNullException(nameof(auditLog));
-        }
+        ArgumentNullException.ThrowIfNull(auditLog);
 
         try {
             return await _webRequestAuditLogRepository.AddAsync(auditLog, cancellationToken);

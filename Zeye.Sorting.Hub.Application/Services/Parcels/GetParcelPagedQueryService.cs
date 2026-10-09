@@ -20,7 +20,7 @@ public sealed class GetParcelPagedQueryService {
     /// <summary>
     /// NLog 日志器。
     /// </summary>
-    private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
+    private static readonly NLog.Logger Logger = LogManager.GetCurrentClassLogger();
 
     /// <summary>
     /// Parcel 仓储。
@@ -42,9 +42,7 @@ public sealed class GetParcelPagedQueryService {
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>分页列表响应。</returns>
     public async Task<ParcelListResponse> ExecuteAsync(ParcelListRequest request, CancellationToken cancellationToken) {
-        if (request is null) {
-            throw new ArgumentNullException(nameof(request));
-        }
+        ArgumentNullException.ThrowIfNull(request);
 
         ValidateRequest(request);
 
@@ -97,7 +95,7 @@ public sealed class GetParcelPagedQueryService {
         Guard.ThrowIfZeroOrNegative(request.PageSize, nameof(request.PageSize), "页大小必须大于 0。", "分页查询 Parcel 列表");
         if (request.PageNumber > MaxPageNumber) {
             Logger.Warn("分页查询 Parcel 列表参数非法，PageNumber={PageNumber}", request.PageNumber);
-            throw new ArgumentOutOfRangeException(nameof(request.PageNumber), $"页码不能超过 {MaxPageNumber}。");
+            throw new ArgumentOutOfRangeException(nameof(request), $"页码不能超过 {MaxPageNumber}。");
         }
 
         if (request.ScannedTimeStart.HasValue && request.ScannedTimeEnd.HasValue && request.ScannedTimeEnd.Value < request.ScannedTimeStart.Value) {

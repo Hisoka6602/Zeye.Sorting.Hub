@@ -11,7 +11,7 @@ internal static class Guard {
     /// <summary>
     /// NLog 日志器。
     /// </summary>
-    private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
+    private static readonly NLog.Logger Logger = LogManager.GetCurrentClassLogger();
 
     /// <summary>
     /// 校验长整型值是否大于零；不大于零时记录警告日志并抛出

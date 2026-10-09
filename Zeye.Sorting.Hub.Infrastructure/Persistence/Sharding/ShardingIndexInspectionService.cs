@@ -47,7 +47,7 @@ public sealed class ShardingIndexInspectionService {
         var missingIndexDescriptions = new List<string>();
         foreach (var physicalTableName in physicalTableNames) {
             var expectedIndexes = ResolveExpectedIndexes(physicalTableName);
-            if (expectedIndexes.Count == 0) {
+            if (expectedIndexes.Length == 0) {
                 continue;
             }
 
@@ -81,7 +81,7 @@ public sealed class ShardingIndexInspectionService {
     /// </summary>
     /// <param name="physicalTableName">物理表名。</param>
     /// <returns>索引名集合。</returns>
-    private IReadOnlyList<string> ResolveExpectedIndexes(string physicalTableName) {
+    private static string[] ResolveExpectedIndexes(string physicalTableName) {
         if (physicalTableName.StartsWith("Parcels_", StringComparison.Ordinal)) {
             return [
                 ParcelIndexNames.BagCodeScannedTime,

@@ -282,7 +282,7 @@ internal sealed class MinioObjectStorageService : IObjectStorageService {
     /// </summary>
     /// <param name="headers">请求头。</param>
     /// <returns>只读请求头集合。</returns>
-    private static IReadOnlyDictionary<string, string> AsReadOnlyHeaders(IDictionary<string, string> headers) {
+    private static IReadOnlyDictionary<string, string> AsReadOnlyHeaders(System.Collections.Generic.Dictionary<string, string> headers) {
         if (headers.Count == 0) {
             return EmptyHeaders;
         }
@@ -295,7 +295,7 @@ internal sealed class MinioObjectStorageService : IObjectStorageService {
     /// </summary>
     /// <param name="contentType">内容类型。</param>
     /// <returns>请求头集合。</returns>
-    private static IDictionary<string, string> CreateHeaders(string? contentType) {
+    private static System.Collections.Generic.Dictionary<string, string> CreateHeaders(string? contentType) {
         if (string.IsNullOrWhiteSpace(contentType)) {
             return new Dictionary<string, string>(capacity: 0, comparer: StringComparer.Ordinal);
         }
@@ -399,7 +399,7 @@ internal sealed class MinioObjectStorageService : IObjectStorageService {
     /// </summary>
     /// <param name="partEtags">分片集合。</param>
     /// <returns>分片 ETag 映射。</returns>
-    private static IReadOnlyDictionary<int, string> BuildPartEtags(IReadOnlyCollection<ObjectStorageMultipartPartETag> partEtags) {
+    private static System.Collections.ObjectModel.ReadOnlyDictionary<int, string> BuildPartEtags(IReadOnlyCollection<ObjectStorageMultipartPartETag> partEtags) {
         if (partEtags.Count == 0) {
             NLogLogger.Error("完成 Multipart 上传时至少需要一个分片 ETag。");
             throw new ArgumentException("完成 Multipart 上传时至少需要一个分片 ETag。", nameof(partEtags));

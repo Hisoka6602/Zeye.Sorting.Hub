@@ -335,7 +335,7 @@ public sealed partial class BaselineDataValidator {
     /// 构建默认参考数据定义。
     /// </summary>
     /// <returns>参考数据定义集合。</returns>
-    private static IReadOnlyList<(string Catalog, string Code, int Value)> BuildReferenceDataDefinitions() {
+    private static System.Collections.Generic.List<(string Catalog, string Code, int Value)> BuildReferenceDataDefinitions() {
         var definitions = new List<(string Catalog, string Code, int Value)>();
         AppendEnumDefinitions<ArchiveTaskType>(ArchiveTaskTypeCatalogName, definitions);
         AppendEnumDefinitions<ArchiveTaskStatus>(ArchiveTaskStatusCatalogName, definitions);
@@ -363,7 +363,7 @@ public sealed partial class BaselineDataValidator {
     /// <param name="warnings">告警集合。</param>
     /// <param name="provider">Provider 名称。</param>
     /// <returns>摘要文本。</returns>
-    private static string BuildSummary(IReadOnlyList<string> errors, IReadOnlyList<string> warnings, string provider) {
+    private static string BuildSummary(System.Collections.Generic.List<string> errors, System.Collections.Generic.List<string> warnings, string provider) {
         if (errors.Count == 0) {
             return warnings.Count == 0
                 ? $"基线数据校验通过，Provider={provider}。"

@@ -141,7 +141,7 @@ public sealed class ParcelBufferedWriteTests {
     /// 验证场景：批量缓冲写入服务在低水位时成功入队。
     /// </summary>
     [Fact]
-    public async Task ParcelBufferedWriteService_WhenQueueBelowThreshold_ShouldAcceptAll() {
+    public async Task ParcelBufferedWriteServiceWhenQueueBelowThresholdShouldAcceptAll() {
         var options = CreateBufferedWriteOptions();
         var writeChannel = new BoundedWriteChannel<BufferedParcelWriteItem>(options.ChannelCapacity);
         var service = new ParcelBufferedWriteService(writeChannel, Microsoft.Extensions.Options.Options.Create(options));
@@ -162,7 +162,7 @@ public sealed class ParcelBufferedWriteTests {
     /// 验证场景：队列达到背压阈值后拒绝剩余请求。
     /// </summary>
     [Fact]
-    public async Task ParcelBufferedWriteService_WhenQueueReachesThreshold_ShouldRejectRemaining() {
+    public async Task ParcelBufferedWriteServiceWhenQueueReachesThresholdShouldRejectRemaining() {
         var options = CreateBufferedWriteOptions(channelCapacity: 4, backpressureRejectThreshold: 2);
         var writeChannel = new BoundedWriteChannel<BufferedParcelWriteItem>(options.ChannelCapacity);
         var service = new ParcelBufferedWriteService(writeChannel, Microsoft.Extensions.Options.Options.Create(options));
@@ -186,7 +186,7 @@ public sealed class ParcelBufferedWriteTests {
     /// 验证场景：后台刷新按单批调用一次批量新增。
     /// </summary>
     [Fact]
-    public async Task ParcelBatchWriteFlushService_FlushOnce_ShouldPersistBatchWithSingleCall() {
+    public async Task ParcelBatchWriteFlushServiceFlushOnceShouldPersistBatchWithSingleCall() {
         var options = CreateBufferedWriteOptions(batchSize: 3);
         var writeChannel = new BoundedWriteChannel<BufferedParcelWriteItem>(options.ChannelCapacity);
         var deadLetterStore = new DeadLetterWriteStore(options.DeadLetterCapacity);
@@ -223,7 +223,7 @@ public sealed class ParcelBufferedWriteTests {
     /// 验证场景：重试次数耗尽后写入死信。
     /// </summary>
     [Fact]
-    public async Task ParcelBatchWriteFlushService_WhenRetryExhausted_ShouldMoveToDeadLetter() {
+    public async Task ParcelBatchWriteFlushServiceWhenRetryExhaustedShouldMoveToDeadLetter() {
         var options = CreateBufferedWriteOptions(maxRetryCount: 1, deadLetterCapacity: 10);
         var writeChannel = new BoundedWriteChannel<BufferedParcelWriteItem>(options.ChannelCapacity);
         var deadLetterStore = new DeadLetterWriteStore(options.DeadLetterCapacity);
@@ -259,7 +259,7 @@ public sealed class ParcelBufferedWriteTests {
     /// 验证场景：批量落库返回失败且取消信号已触发时，已出队批次进入死信避免丢失。
     /// </summary>
     [Fact]
-    public async Task ParcelBatchWriteFlushService_WhenRepositoryFailsAndTokenCanceled_ShouldMoveDequeuedBatchToDeadLetter() {
+    public async Task ParcelBatchWriteFlushServiceWhenRepositoryFailsAndTokenCanceledShouldMoveDequeuedBatchToDeadLetter() {
         using var cancellationTokenSource = new CancellationTokenSource();
         var options = CreateBufferedWriteOptions(maxRetryCount: 3, deadLetterCapacity: 10);
         var writeChannel = new BoundedWriteChannel<BufferedParcelWriteItem>(options.ChannelCapacity);
@@ -295,7 +295,7 @@ public sealed class ParcelBufferedWriteTests {
     /// 验证场景：有界写入通道达到容量后拒绝写入且深度不超过容量。
     /// </summary>
     [Fact]
-    public void BoundedWriteChannel_WhenCapacityReached_ShouldRejectAndKeepDepthBounded() {
+    public void BoundedWriteChannelWhenCapacityReachedShouldRejectAndKeepDepthBounded() {
         var writeChannel = new BoundedWriteChannel<int>(capacity: 1);
 
         var firstAccepted = writeChannel.TryEnqueue(1);
@@ -314,7 +314,7 @@ public sealed class ParcelBufferedWriteTests {
     /// 验证场景：死信存在时健康检查返回 Degraded。
     /// </summary>
     [Fact]
-    public async Task BufferedWriteQueueHealthCheck_WhenDeadLetterExists_ShouldReturnDegraded() {
+    public async Task BufferedWriteQueueHealthCheckWhenDeadLetterExistsShouldReturnDegraded() {
         var options = CreateBufferedWriteOptions(maxRetryCount: 0, deadLetterCapacity: 10);
         var writeChannel = new BoundedWriteChannel<BufferedParcelWriteItem>(options.ChannelCapacity);
         var deadLetterStore = new DeadLetterWriteStore(options.DeadLetterCapacity);
@@ -344,7 +344,7 @@ public sealed class ParcelBufferedWriteTests {
     /// 验证场景：批量缓冲写入接口返回 accepted/rejected/queueDepth 等字段。
     /// </summary>
     [Fact]
-    public async Task CreateBufferedParcelBatchApi_ShouldReturnAcceptedResult() {
+    public async Task CreateBufferedParcelBatchApiShouldReturnAcceptedResult() {
         await using var app = await BuildBatchBufferTestAppAsync(CreateBufferedWriteOptions());
         using var client = app.GetTestClient();
         using var response = await client.PostAsync("/api/admin/parcels/batch-buffer", BuildBatchCreateRequestJson(2));
@@ -362,7 +362,7 @@ public sealed class ParcelBufferedWriteTests {
     /// 验证场景：批量缓冲写入接口拒绝 UTC 时间字符串。
     /// </summary>
     [Fact]
-    public async Task CreateBufferedParcelBatchApi_WithUtcTime_ShouldReturnBadRequest() {
+    public async Task CreateBufferedParcelBatchApiWithUtcTimeShouldReturnBadRequest() {
         await using var app = await BuildBatchBufferTestAppAsync(CreateBufferedWriteOptions());
         using var client = app.GetTestClient();
         using var response = await client.PostAsync(

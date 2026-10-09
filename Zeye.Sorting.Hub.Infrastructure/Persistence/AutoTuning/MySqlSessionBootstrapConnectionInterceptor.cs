@@ -17,7 +17,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         /// <summary>
         /// NLog 静态日志器实例，用于记录会话初始化执行异常。
         /// </summary>
-        private static readonly ILogger Logger = LogManager.GetCurrentClassLogger();
+        private static readonly NLog.Logger Logger = LogManager.GetCurrentClassLogger();
 
         /// <summary>连接打开后同步执行会话初始化 SQL。</summary>
         public override void ConnectionOpened(DbConnection connection, ConnectionEndEventData eventData) {
@@ -38,7 +38,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         }
 
         /// <summary>同步执行会话初始化 SQL，失败时降级忽略。</summary>
-        private void ApplySessionSql(DbConnection connection) {
+        private static void ApplySessionSql(DbConnection connection) {
             foreach (var sql in SessionSql) {
                 try {
                     using var command = connection.CreateCommand();
@@ -52,7 +52,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.AutoTuning {
         }
 
         /// <summary>异步执行会话初始化 SQL，失败时降级忽略。</summary>
-        private async Task ApplySessionSqlAsync(DbConnection connection, CancellationToken cancellationToken) {
+        private static async Task ApplySessionSqlAsync(DbConnection connection, CancellationToken cancellationToken) {
             foreach (var sql in SessionSql) {
                 try {
                     await using var command = connection.CreateCommand();
