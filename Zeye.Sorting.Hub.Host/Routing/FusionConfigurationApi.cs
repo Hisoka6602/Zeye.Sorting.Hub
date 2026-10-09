@@ -43,6 +43,11 @@ public static class FusionConfigurationApi {
             changes.Notify(); return Results.Ok(await service.ReadAsync(ct));
         }).WithSummary("更新 Fusion 来源工作台配置")
             .WithDescription("按目录版本维护指定来源工作台的名称、身份及启用状态，并通知实时订阅；已经登记的来源身份受锁定约束，不返回机器认证密钥。");
+        group.MapDelete("/sources/{id}", async (string id, int revision, FusionConfigurationService service, RealtimeResourceSignal changes, CancellationToken ct) => {
+            if (await service.DeleteSourceAsync(revision, id, ct) is null) return Conflict();
+            changes.Notify(); return Results.Ok(await service.ReadAsync(ct));
+        }).WithSummary("删除尚未接入的 Fusion 来源工作台")
+            .WithDescription("按目录版本删除没有接入记录、心跳、处理事实和图片的误建工作台，使旧机器凭据失效并通知列表更新；已接入来源和历史数据不能删除，配置版本冲突时拒绝覆盖。");
         group.MapPost("/sources/{id}/rotate-key", async (string id, FusionKeyRotation request, FusionConfigurationService service, RealtimeResourceSignal changes, CancellationToken ct) => {
             var result = await service.RotateKeyAsync(request.Revision, id, ct);
             if (result is null) return Conflict();

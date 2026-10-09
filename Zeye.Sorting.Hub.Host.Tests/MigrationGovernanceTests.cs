@@ -19,6 +19,32 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 /// 迁移治理测试。
 /// </summary>
 public sealed class MigrationGovernanceTests {
+    /// <summary>首次空库可完整建表；已有库和显式预演仍保留危险迁移阻断。</summary>
+    [Theory]
+    [InlineData(true, false, true)]
+    [InlineData(false, false, false)]
+    [InlineData(true, true, false)]
+    public void InitialDatabaseStillHonorsDryRunAndProtectsExistingObjects(bool initialDatabase, bool dryRun, bool expected) {
+        var result = MigrationGovernanceHostedService.EvaluateShouldApplyMigrations(true, dryRun, true, true,
+            ["DROP TABLE: DROP TABLE legacy", "ALTER COLUMN: ALTER TABLE sample ALTER COLUMN value varchar(256)"], initialDatabase);
+        Assert.Equal(expected, result.ShouldApplyMigrations);
+    }
+
+    /// <summary>空库授权不绕过已有建库开关、守卫和预演设置。</summary>
+    [Theory]
+    [InlineData(true, true, false, true)]
+    [InlineData(false, true, false, false)]
+    [InlineData(true, false, false, false)]
+    [InlineData(true, true, true, false)]
+    public void EmptyDatabaseInitializationRequiresBootstrapAuthorization(bool enabled, bool allowed, bool dryRun, bool expected) {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> {
+            ["Persistence:DatabaseBootstrap:EnsureDatabaseExists:Enabled"] = enabled.ToString(),
+            ["Persistence:DatabaseBootstrap:EnsureDatabaseExists:Isolator:EnableGuard"] = "true",
+            ["Persistence:DatabaseBootstrap:EnsureDatabaseExists:Isolator:AllowDangerousActionExecution"] = allowed.ToString(),
+            ["Persistence:DatabaseBootstrap:EnsureDatabaseExists:Isolator:DryRun"] = dryRun.ToString()
+        }).Build();
+        Assert.Equal(expected, MigrationGovernanceHostedService.CanInitializeEmptyDatabase(configuration));
+    }
     /// <summary>SQL Server必须使用专用迁移与快照，且快照应与当前模型一致。</summary>
     [Fact]
     public void SqlServerMigrationAssembly_ShouldContainProviderModelSnapshot() {

@@ -41,4 +41,13 @@ public sealed class SqliteDialect : EfModelDatabaseDialect {
         Directory.CreateDirectory(Path.GetDirectoryName(databaseName)!);
         await DatabaseConnectionOpenCoordinator.EnsureOpenedAsync(administrationConnection, cancellationToken);
     }
+    /// <inheritdoc />
+    public override async Task<bool> HasUserObjectsAsync(DbConnection administrationConnection, string databaseName, CancellationToken cancellationToken) {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!File.Exists(databaseName)) return false;
+        await DatabaseConnectionOpenCoordinator.EnsureOpenedAsync(administrationConnection, cancellationToken);
+        await using var command = administrationConnection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE name NOT GLOB 'sqlite_*'";
+        return Convert.ToInt64(await SlowQueryDbOperations.ExecuteScalarAsync(command, cancellationToken)) > 0;
+    }
 }

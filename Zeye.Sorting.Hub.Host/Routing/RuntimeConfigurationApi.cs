@@ -2,6 +2,9 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using LiteDB;
 using Microsoft.Data.Sqlite;
+using Microsoft.AspNetCore.Mvc;
+using Zeye.Sorting.Hub.Host.Configuration;
+using Zeye.Sorting.Hub.Host.Hosting;
 using Zeye.Sorting.Hub.Host.Queries;
 using Zeye.Sorting.Hub.Infrastructure.Configuration;
 
@@ -42,5 +45,10 @@ public static class RuntimeConfigurationApi {
         group.MapGet("/history", (int? limit, ConfigurationHistoryStore history) => Results.Ok(history.Read(limit ?? 100)))
             .WithSummary("读取配置变更历史")
             .WithDescription("仅超级管理员可读取修改前后原值和提交状态，最多 500 条；旧版已脱敏历史保留原记录。");
+        group.MapPost("/restart", (HostRestartRequest request, HttpContext context, RuntimeConfigurationProvider source,
+            [FromServices] HostRestartCoordinator restart, [FromServices] DatabaseStartupState state) =>
+                restart.RequestRestart(context, request.Revision, source, state))
+            .WithSummary("使用已保存配置重启 Host")
+            .WithDescription("仅超级管理员可操作；必须提交当前配置版本。响应完成后正常关闭，新实例恢复后前端自动重新连接。");
     }
 }

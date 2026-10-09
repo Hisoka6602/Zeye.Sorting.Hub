@@ -74,6 +74,16 @@ public sealed class OracleDialect : EfModelDatabaseDialect {
         command.CommandText = $"GRANT EXECUTE ON SYS.DBMS_LOCK TO \"{schema}\"";
         await SlowQueryDbOperations.ExecuteNonQueryAsync(command, cancellationToken);
     }
+    /// <inheritdoc />
+    public override async Task<bool> HasUserObjectsAsync(DbConnection administrationConnection, string databaseName, CancellationToken cancellationToken) {
+        await DatabaseConnectionOpenCoordinator.EnsureOpenedAsync(administrationConnection, cancellationToken);
+        await using var command = (OracleCommand)administrationConnection.CreateCommand();
+        command.BindByName = true;
+        // 即使现有 schema 缺少 DBMS_LOCK 授权，也不能把已有对象误认成新库。
+        command.CommandText = "SELECT COUNT(*) FROM ALL_OBJECTS WHERE OWNER=:name";
+        command.Parameters.Add(new OracleParameter("name", ExtractSchema(databaseName)));
+        return Convert.ToInt64(await SlowQueryDbOperations.ExecuteScalarAsync(command, cancellationToken)) > 0;
+    }
     /// <summary>Oracle 未加引号的业务用户名统一规范成大写，阻止标识符注入。</summary>
     private static string ExtractSchema(string name) => DatabaseIdentifierPolicy.NormalizeDatabaseName(name, nameof(name)).ToUpperInvariant();
 }

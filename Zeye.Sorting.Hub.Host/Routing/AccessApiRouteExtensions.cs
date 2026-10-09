@@ -2,6 +2,8 @@ using System.Text.Json;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Zeye.Sorting.Hub.Host.Queries;
+using Zeye.Sorting.Hub.Host.Configuration;
+using Zeye.Sorting.Hub.Infrastructure.Security;
 namespace Zeye.Sorting.Hub.Host.Routing;
 /// <summary>真实账号初始化、登录、退出及角色和用户维护接口。</summary>
 public static class AccessApiRouteExtensions {
@@ -16,26 +18,35 @@ public static class AccessApiRouteExtensions {
         var group = routes.MapGroup("/api/access");
         group.AddEndpointFilter(async (invocation, next) => invocation.Arguments.OfType<JsonElement>().Any(x => x.ValueKind != JsonValueKind.Object)
             ? Results.Problem(statusCode: 400, detail: "请求必须为 JSON 对象。") : await next(invocation));
-        group.MapGet("/session", async (AccessDirectoryService service, HttpContext context, CancellationToken ct) => {
+        group.MapGet("/session", async (AccessDirectoryService service, AdministratorBootstrapKeyStore bootstrapKeys, HttpContext context, CancellationToken ct) => {
             var (directory, _) = await service.ReadAsync(ct);
+            if (directory.HasManagedUsers) bootstrapKeys.Retire();
+            var localBootstrap = !directory.HasManagedUsers && !service.BootstrapAvailable;
+            var localKey = localBootstrap && DatabaseStartupState.IsLocal(context) ? bootstrapKeys.GetOrCreate() : null;
             var user = directory.Users.SingleOrDefault(x => x.Id == context.User.FindFirstValue(ClaimTypes.NameIdentifier));
             string? avatarUrl = null;
             if (user is not null) { var (profile, revision) = await service.ReadProfileAsync(user.Id, ct); avatarUrl = profile.AvatarUrl(revision); }
             context.Response.Headers.CacheControl = "private, no-store";
-            return Results.Ok(new { configured = directory.HasManagedUsers, bootstrapAvailable = service.BootstrapAvailable, authenticated = context.User.Identity?.IsAuthenticated == true,
+            return Results.Ok(new { configured = directory.HasManagedUsers, bootstrapAvailable = !directory.HasManagedUsers && (service.BootstrapAvailable || localKey is not null),
+                bootstrapLocalOnly = localBootstrap, bootstrapKeyPath = localBootstrap && DatabaseStartupState.IsLocal(context) ? bootstrapKeys.KeyPath : null,
+                authenticated = context.User.Identity?.IsAuthenticated == true,
                 isSuperAdministrator = AccessDirectoryService.IsSuperAdministrator(context.User), enforceAuthorization = service.EnforceAuthorization,
                 name = context.User.Identity?.Name, avatarUrl, permissions = context.User.FindAll("permission").Select(x => x.Value).ToArray() });
         }).WithSummary("读取当前登录状态与访问权限")
             .WithDescription("返回系统是否需要创建管理员、当前会话身份及权限，用于登录入口和页面访问控制；不返回密码或初始化密钥。");
-        group.MapPost("/bootstrap", async (JsonElement body, AccessDirectoryService service, HttpContext context, CancellationToken ct) => {
-            if (!service.MatchesSecret(Text(body, "bootstrapKey"), "Access:BootstrapKey")) return Results.Problem(statusCode: 403, detail: "初始化密钥无效或未配置。");
+        group.MapPost("/bootstrap", async (JsonElement body, AccessDirectoryService service, AdministratorBootstrapKeyStore bootstrapKeys, HttpContext context, CancellationToken ct) => {
             var (directory, revision) = await service.ReadAsync(ct);
-            if (directory.HasManagedUsers) return Results.Problem(statusCode: 409, detail: "系统已有成员，请直接登录。");
+            if (directory.HasManagedUsers) { bootstrapKeys.Retire(); return Results.Problem(statusCode: 409, detail: "系统已有成员，请直接登录。"); }
+            if (!service.BootstrapAvailable && !DatabaseStartupState.IsLocalWrite(context))
+                return Results.Problem(statusCode: 403, detail: "未配置部署初始化密钥，请在服务器本机使用管理员初始化密钥文件完成创建。");
+            var localKey = service.BootstrapAvailable ? null : bootstrapKeys.GetOrCreate();
+            if (!service.MatchesSecret(Text(body, "bootstrapKey"), "Access:BootstrapKey", localKey)) return Results.Problem(statusCode: 403, detail: "管理员初始化密钥无效。该密钥与数据库配置访问码不同，请按本页提示获取。");
             var account = Text(body, "username").Trim(); var name = Text(body, "name").Trim(); var password = Text(body, "password");
             if (BuiltInSuperUser.IsReservedAccount(account)) return Results.Problem(statusCode: 400, detail: "hisoka 为内置超级用户的保留账号名，请使用其他账号名创建管理员。");
             if (!AccessDirectoryService.ValidUser(account, name, password, true)) return Results.Problem(statusCode: 400, detail: "账号需为 3~64 位字母、数字或 _.-；姓名不能为空；密码长度为 12~128。");
             var user = AccessDirectoryService.CreateUser(account, name, AccessDirectoryService.SuperAdministratorRoleId, password);
             if (!await service.SaveAsync(directory with { Initialized = true, Users = [.. directory.Users.Where(BuiltInSuperUser.Is), user] }, revision, ct)) return Results.Problem(statusCode: 409, detail: "初始化存在并发冲突，请登录或重试。");
+            bootstrapKeys.Retire();
             await context.SignInAsync("SortingCookie", AccessDirectoryService.Principal(user, directory.Roles[0]));
             return Results.Ok(new { name = user.Name });
         }).RequireRateLimiting("account-login").WithSummary("首次创建管理员并登录")

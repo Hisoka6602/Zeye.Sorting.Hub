@@ -42,12 +42,14 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.ResponseCompression;
 using Zeye.Sorting.Hub.Host.Serialization;
 using Zeye.Sorting.Hub.Host.Configuration;
+using Zeye.Sorting.Hub.Host.Hosting;
 
 // ──────────────────────────────────────────────────────────
 // 启动期引导日志：在 DI 容器就绪之前捕获启动异常
 // ──────────────────────────────────────────────────────────
 var logger = LogManager.GetCurrentClassLogger();
 ExceptionLoggingLifetime? loggingLifetime = null;
+HostRestartCoordinator? restart = null;
 const string UrlsConfigKey = "urls";
 
 try {
@@ -64,6 +66,7 @@ try {
     });
     ConfigurationBootstrapper.Configure(builder);
     builder.AddNativeServiceLifetime();
+    builder.Services.AddSingleton<HostRestartCoordinator>();
     builder.WebHost.ConfigureKestrel(static options => {
         // 请求体硬上限用于在 JSON 反序列化前阻断异常大批次。
         options.Limits.MaxRequestBodySize = 8L * 1024L * 1024L;
@@ -435,6 +438,7 @@ try {
     // 实时读取分发固定正式路由数据源，必须在所有接口组注册完成后初始化。
     app.MapSortingRealtime();
 
+    restart = app.Services.GetRequiredService<HostRestartCoordinator>();
     app.Run();
 }
 catch (Microsoft.Extensions.Hosting.HostAbortedException) {
@@ -450,5 +454,7 @@ finally {
     // 退出前刷新异步队列，再释放文件句柄；初始化失败也执行刷新。
     if (loggingLifetime is null) LogManager.Flush(TimeSpan.FromSeconds(10));
     else loggingLifetime.Dispose();
+    try { restart?.CompleteRestart(); }
+    catch (Exception exception) { logger.Fatal(exception, "Host 已停止，但新进程无法启动。"); Environment.ExitCode = 1; }
     LogManager.Shutdown();
 }

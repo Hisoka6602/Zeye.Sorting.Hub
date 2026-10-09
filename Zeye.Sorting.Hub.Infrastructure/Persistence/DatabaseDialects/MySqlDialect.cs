@@ -123,6 +123,20 @@ SELECT CASE WHEN EXISTS (
             };
         }
 
+        /// <inheritdoc />
+        public async Task<bool> HasUserObjectsAsync(DbConnection administrationConnection, string databaseName, CancellationToken cancellationToken) {
+            await DatabaseConnectionOpenCoordinator.EnsureOpenedAsync(administrationConnection, cancellationToken);
+            await using var command = administrationConnection.CreateCommand();
+            command.CommandText = """
+SELECT (SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA=@name)
+     + (SELECT COUNT(*) FROM INFORMATION_SCHEMA.ROUTINES WHERE ROUTINE_SCHEMA=@name)
+     + (SELECT COUNT(*) FROM INFORMATION_SCHEMA.EVENTS WHERE EVENT_SCHEMA=@name)
+""";
+            var parameter = command.CreateParameter(); parameter.ParameterName = "@name";
+            parameter.Value = DatabaseIdentifierPolicy.NormalizeDatabaseName(databaseName, nameof(databaseName)); command.Parameters.Add(parameter);
+            return Convert.ToInt64(await SlowQueryDbOperations.ExecuteScalarAsync(command, cancellationToken)) > 0;
+        }
+
         /// <summary>
         /// 创建目标数据库（MySQL 幂等语义：CREATE DATABASE IF NOT EXISTS）。
         /// </summary>

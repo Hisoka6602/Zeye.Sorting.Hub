@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { App, Alert, AutoComplete, Badge, Button, Collapse, Drawer, Empty, Form, Input, InputNumber, Modal, Select, Skeleton, Space, Switch, Tag, Typography } from 'antd';
+import { App, Alert, AutoComplete, Badge, Button, Collapse, Drawer, Empty, Form, Input, InputNumber, Modal, Select, Skeleton, Space, Switch, Tag, Tooltip, Typography } from 'antd';
 import { ApiOutlined, CopyOutlined, KeyOutlined, PlusOutlined, ReloadOutlined, SaveOutlined } from '@ant-design/icons';
 import { PageIntro } from '../../components/PageIntro';
 import { SectionCard } from '../../components/SectionCard';
@@ -84,6 +84,22 @@ export function FusionSettingsPage() {
     const result = await requestApi<FusionPairingResult>(`${api}/sources/${encodeURIComponent(source.sourceInstanceId)}/rotate-key`, undefined, { method: 'POST', body: JSON.stringify({ revision: config.data!.revision }) });
     setPairing(result.pairing);
   }) });
+  /** 删除确认保留打开时的目录版本，避免确认期间的新修改被覆盖。 */
+  const removeSource = (source: FusionSource) => {
+    if (!canManage || busy || source.identityLocked || !config.data) return;
+    const revision = config.data.revision;
+    modal.confirm({ title: `删除工作台“${source.workstationName || source.sourceInstanceId}”？`,
+      content: `将删除来源 ${source.sourceInstanceId} 的登记及配对凭据，并从工作台列表移除。仅允许删除尚未接入且没有历史数据的记录。`,
+      okText: '删除工作台', okButtonProps: { danger: true }, cancelText: '取消',
+      onOk: async () => {
+        const deleted = await perform(async () => {
+          await requestApi(`${api}/sources/${encodeURIComponent(source.sourceInstanceId)}?revision=${revision}`, undefined, { method: 'DELETE' });
+          message.success('工作台已删除');
+        });
+        if (!deleted) throw new Error('工作台未删除，请刷新状态后重试');
+      },
+    });
+  };
   const copy = async (value: string) => { try { await navigator.clipboard.writeText(value); message.success('已复制'); } catch { message.error('无法访问剪贴板，请手动复制。'); } };
   const rows = (config.data?.sources ?? []).filter(source => `${source.sourceInstanceId} ${source.workstationName} ${source.lineId}`.toLowerCase().includes(search.toLowerCase()));
   const states = new Map((presence.data ?? []).map(source => [source.sourceInstanceId, source]));
@@ -106,7 +122,7 @@ export function FusionSettingsPage() {
           { title: '连接状态', key: 'status', width: 110, render: (_, source) => <Badge status={!source.enabled ? 'default' : states.get(source.sourceInstanceId)?.isOnline ? 'success' : 'warning'} text={!source.enabled ? '已停用' : states.get(source.sourceInstanceId)?.isOnline ? '在线' : '离线'} /> },
           { title: '最近心跳', key: 'seen', width: 215, render: (_, source) => { const seen = states.get(source.sourceInstanceId)?.lastSeenAt; return seen ? localTime(seen) : '尚未接入'; } },
           { title: '待确认 / 图片', key: 'pending', width: 145, render: (_, source) => `${states.get(source.sourceInstanceId)?.pendingFacts ?? 0} / ${states.get(source.sourceInstanceId)?.pendingImages ?? 0}` },
-          { title: '操作', key: 'action', width: 175, render: (_, source) => <Space wrap><Button type="link" size="small" disabled={!canManage || busy} onClick={() => openSource(source)}>编辑 / 停用</Button><Button type="link" size="small" disabled={!canManage || busy} onClick={() => rotate(source)}>重置密钥</Button></Space> },
+          { title: '操作', key: 'action', width: 240, render: (_, source) => <Space wrap><Button type="link" size="small" disabled={!canManage || busy} onClick={() => openSource(source)}>编辑 / 停用</Button><Button type="link" size="small" disabled={!canManage || busy} onClick={() => rotate(source)}>重置密钥</Button><Tooltip title={source.identityLocked ? '已接入的工作台保留历史，请使用“编辑 / 停用”' : '删除尚未接入的误建记录'}><span><Button type="link" size="small" danger disabled={!canManage || busy || source.identityLocked} onClick={() => removeSource(source)}>删除</Button></span></Tooltip></Space> },
         ]} />
       </SectionCard>
     </>}

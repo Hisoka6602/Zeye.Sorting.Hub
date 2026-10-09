@@ -17,10 +17,12 @@ export interface RuntimeConfigurationSaved {
 }
 /** 启动网页与业务就绪独立；本机访问码只保存在受保护文件中。 */
 export interface DatabaseStartupStatus {
+  instanceId: string;
   ready: boolean;
   requiresConfiguration: boolean;
   localSetupAllowed: boolean;
   setupKeyPath: string | null;
+  failureSummary?: string | null;
 }
 export interface ConfigurationHistoryEntry {
   id: string; documentKey: string; previousRevision: string; revision: string;

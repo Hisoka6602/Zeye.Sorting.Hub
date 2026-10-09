@@ -6,7 +6,7 @@ x-hub-environment: &hub-environment
   Hosting__Urls: http://0.0.0.0:5078
   Persistence__DatabaseBootstrap__EnsureDatabaseExists__Enabled: "true"
   Persistence__DatabaseBootstrap__EnsureDatabaseExists__Isolator__AllowDangerousActionExecution: "true"
-  Persistence__DatabaseBootstrap__EnsureDatabaseExists__Isolator__EnableDryRun: "false"
+  Persistence__DatabaseBootstrap__EnsureDatabaseExists__Isolator__DryRun: "false"
   Persistence__Migration__FailureStrategy: FailFast
   Persistence__Migration__FailureStrategyNonProduction: FailFast
   Persistence__MigrationGovernance__DryRun: "false"

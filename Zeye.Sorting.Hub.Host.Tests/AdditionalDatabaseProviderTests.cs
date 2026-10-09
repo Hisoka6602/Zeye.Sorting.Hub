@@ -35,15 +35,34 @@ public sealed class AdditionalDatabaseProviderTests {
     }
 
     /// <summary>SQLite 缺失文件的只读初始化探测不能创建文件或目录。</summary>
-    [Fact]
-    public async Task SqliteProbe_DoesNotCreateMissingDirectoryOrFile() {
-        var directory = Path.Combine(Path.GetTempPath(), "zeye-sqlite-probe-" + Guid.NewGuid().ToString("N"));
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SqliteProbe_DoesNotCreateMissingDirectoryOrFile(bool parentExists) {
+        using var environment = new ConfigurationTestStorage();
+        var directory = Path.Combine(environment.DirectoryPath, "nested");
+        if (parentExists) Directory.CreateDirectory(directory);
         var configuration = new ConfigurationBuilder().Build();
         var dialect = new SqliteDialect(configuration);
-        var connection = "Data Source=" + Path.Combine(directory, "nested", "business.db");
+        var databasePath = Path.Combine(directory, "business.db");
+        var connection = "Data Source=" + databasePath;
         await using var administration = dialect.CreateAdministrationConnection(connection);
+        await DatabaseConnectionOpenCoordinator.ProbeAdministrationConnectionAsync(dialect, connection, CancellationToken.None);
         Assert.False(await dialect.DatabaseExistsAsync(administration, dialect.ExtractDatabaseName(connection), CancellationToken.None));
-        Assert.False(Directory.Exists(directory));
+        Assert.Equal(parentExists, Directory.Exists(directory));
+        Assert.False(File.Exists(databasePath));
+    }
+
+    /// <summary>禁止创建文件的 SQLite 模式仍须在启动探测时报告缺失文件，不能被当成可初始化的新库。</summary>
+    [Theory]
+    [InlineData("ReadOnly")]
+    [InlineData("ReadWrite")]
+    public async Task SqliteStartupProbe_RejectsMissingFileWhenCreationIsDisabled(string mode) {
+        using var environment = new ConfigurationTestStorage();
+        var path = Path.Combine(environment.DirectoryPath, "missing", "business.db");
+        await Assert.ThrowsAsync<SqliteException>(() => DatabaseConnectionOpenCoordinator.ProbeAdministrationConnectionAsync(
+            new SqliteDialect(environment.Configuration), $"Data Source={path};Mode={mode};Pooling=False", CancellationToken.None));
+        Assert.False(Directory.Exists(Path.GetDirectoryName(path)));
     }
 
     /// <summary>持久化业务数据拒绝内存模式，提供器名称兼容旧写法。</summary>

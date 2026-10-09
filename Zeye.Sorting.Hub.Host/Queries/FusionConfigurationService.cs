@@ -227,6 +227,19 @@ public sealed class FusionConfigurationService : IFusionRuntimeConfiguration {
             return updated.SecurityStamp != old.SecurityStamp ? [id] : [];
         }, ct);
 
+    /// <summary>删除尚未接入且没有历史的误建来源；与注册共用互斥条带，删除后旧密钥立即失效。</summary>
+    public Task<FusionRuntimeSnapshot?> DeleteSourceAsync(int revision, string id, CancellationToken ct) =>
+        FusionSourceGate.RunAsync(id, () => MutateAsync(revision, async (next, db) => {
+            if (!next.Sources.Any(source => source.SourceInstanceId == id)) throw new ArgumentException("工作台不存在，请刷新列表。");
+            if (await db.Set<FusionSourceLease>().AnyAsync(row => row.SourceInstanceId == id, ct)
+                || await db.Set<FusionJournalHeartbeat>().AnyAsync(row => row.SourceInstanceId == id, ct)
+                || await db.Set<FusionFactReceipt>().AnyAsync(row => row.SourceInstanceId == id, ct)
+                || await db.Set<FusionImageUpload>().AnyAsync(row => row.SourceInstanceId == id, ct))
+                throw new ArgumentException("工作台已接入或存在历史数据，不能删除；可使用“编辑 / 停用”停止接入。");
+            next.Sources = next.Sources.Where(source => source.SourceInstanceId != id).ToArray();
+            return Array.Empty<string>();
+        }, ct), ct);
+
     /// <summary>配对信息及保存后的目录版本。</summary>
     public async Task<FusionPairingResult?> RotateKeyAsync(int revision, string id, CancellationToken ct) {
         var key = Convert.ToBase64String(RandomNumberGenerator.GetBytes(48));

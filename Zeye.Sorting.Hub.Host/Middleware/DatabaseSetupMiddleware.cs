@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Zeye.Sorting.Hub.Host.Configuration;
 using Zeye.Sorting.Hub.Host.HealthChecks;
+using Zeye.Sorting.Hub.Host.Hosting;
 using Zeye.Sorting.Hub.Host.Routing;
 using Zeye.Sorting.Hub.Infrastructure.Configuration;
 
@@ -12,8 +13,8 @@ namespace Zeye.Sorting.Hub.Host.Middleware;
 public sealed class DatabaseSetupMiddleware(RequestDelegate next, DatabaseStartupState state) {
     /// <summary>允许本机引导修改的唯一字段白名单。</summary>
     private static readonly HashSet<string> AllowedKeys = new(StringComparer.OrdinalIgnoreCase) {
-        "Persistence:Provider", "ConnectionStrings:MySql", "ConnectionStrings:MySqlReadOnly",
-        "ConnectionStrings:SqlServer", "ConnectionStrings:SqlServerReadOnly", "ConnectionStrings:Oracle",
+        "Persistence:Provider", "Persistence:MigrationGovernance:DryRun", "ConnectionStrings:MySql", "ConnectionStrings:MySqlReadOnly",
+        "ConnectionStrings:SqlServer", "ConnectionStrings:SqlServerReadOnly", "ConnectionStrings:Oracle", "ConnectionStrings:OracleAdministration",
         "ConnectionStrings:OracleReadOnly", "ConnectionStrings:SQLite", "ConnectionStrings:SQLiteReadOnly"
     };
     /// <summary>配置错误日志，不输出请求正文或访问码。</summary>
@@ -24,8 +25,9 @@ public sealed class DatabaseSetupMiddleware(RequestDelegate next, DatabaseStartu
         var path = (context.Request.Path.Value ?? "").TrimEnd('/');
         if (path.Equals("/api/setup/status", StringComparison.OrdinalIgnoreCase) && HttpMethods.IsGet(context.Request.Method)) {
             context.Response.Headers.CacheControl = "no-store";
-            await Results.Json(new { ready = state.Ready, requiresConfiguration = state.RequiresConfiguration,
+            await Results.Json(new { instanceId = state.InstanceId, ready = state.Ready, requiresConfiguration = state.RequiresConfiguration,
                 localSetupAllowed = DatabaseStartupState.IsLocal(context),
+                failureSummary = DatabaseStartupState.IsLocal(context) ? state.FailureSummary : null,
                 setupKeyPath = DatabaseStartupState.IsLocal(context) && state.RequiresConfiguration ? state.SetupKeyPath : null }).ExecuteAsync(context);
             return;
         }
@@ -52,20 +54,24 @@ public sealed class DatabaseSetupMiddleware(RequestDelegate next, DatabaseStartu
     /// <summary>验证本机、来源和访问码；版本化保存只包含数据库字段的修改。</summary>
     private async Task ConfigureDatabaseAsync(HttpContext context, RuntimeConfigurationProvider source, string path) {
         context.Response.Headers.CacheControl = "private, no-store";
-        if (!state.RequiresConfiguration || !path.Equals("/api/setup/database/runtime", StringComparison.OrdinalIgnoreCase)) {
+        var restarting = path.Equals("/api/setup/host/restart", StringComparison.OrdinalIgnoreCase);
+        if (!state.RequiresConfiguration || !restarting && !path.Equals("/api/setup/database/runtime", StringComparison.OrdinalIgnoreCase)) {
             context.Response.StatusCode = 404; return;
         }
-        if (!DatabaseStartupState.IsLocal(context) || context.Request.Headers["X-Zeye-Client"] != "web") {
+        if (!DatabaseStartupState.IsLocalWrite(context)) {
             await Results.Problem(statusCode: 403, detail: "数据库配置入口只允许服务器本机直接访问。").ExecuteAsync(context); return;
-        }
-        var origin = context.Request.Headers.Origin.ToString();
-        if (origin.Length > 0 && !origin.Equals($"{context.Request.Scheme}://{context.Request.Host}", StringComparison.OrdinalIgnoreCase)) {
-            await Results.Problem(statusCode: 403, detail: "配置请求来源不匹配。").ExecuteAsync(context); return;
         }
         if (!state.Authorize(context.Request.Headers["X-Zeye-Setup-Key"].ToString())) {
             await Results.Problem(statusCode: 401, detail: "请使用本次启动生成的本机配置访问码。").ExecuteAsync(context); return;
         }
         try {
+            if (restarting) {
+                if (!HttpMethods.IsPost(context.Request.Method)) { context.Response.StatusCode = 405; return; }
+                var restartRequest = await context.Request.ReadFromJsonAsync<HostRestartRequest>(context.RequestAborted);
+                await context.RequestServices.GetRequiredService<HostRestartCoordinator>()
+                    .RequestRestart(context, restartRequest?.Revision, source, state).ExecuteAsync(context);
+                return;
+            }
             source.TryReload();
             if (HttpMethods.IsGet(context.Request.Method)) { await Results.Json(SelectDatabase(source.Capture())).ExecuteAsync(context); return; }
             if (!HttpMethods.IsPut(context.Request.Method)) { context.Response.StatusCode = 405; return; }
@@ -75,7 +81,7 @@ public sealed class DatabaseSetupMiddleware(RequestDelegate next, DatabaseStartu
                     && !item.Key.Equals("ConnectionStrings", StringComparison.OrdinalIgnoreCase))
                 || request.Changes.Any(item => item.Value is not JsonObject)
                 || ConfigurationDocument.Flatten(request.Changes).Keys.Any(key => !AllowedKeys.Contains(key))) {
-                await Results.Problem(statusCode: 400, detail: "仅允许修改数据库类型和连接字符串，且必须提供当前配置版本。").ExecuteAsync(context); return;
+                await Results.Problem(statusCode: 400, detail: "仅允许修改数据库类型、连接字符串和初始化预演开关，且必须提供当前配置版本。").ExecuteAsync(context); return;
             }
             var result = source.Save(request.Revision, request.Changes);
             await Results.Json(new { result, snapshot = SelectDatabase(source.Capture()) }).ExecuteAsync(context);
@@ -95,7 +101,10 @@ public sealed class DatabaseSetupMiddleware(RequestDelegate next, DatabaseStartu
         var connections = new JsonObject();
         if (snapshot.Configuration["ConnectionStrings"] is JsonObject values)
             foreach (var item in values.Where(item => AllowedKeys.Contains("ConnectionStrings:" + item.Key))) connections[item.Key] = item.Value?.DeepClone();
-        var selected = new JsonObject { ["Persistence"] = new JsonObject { ["Provider"] = snapshot.Configuration["Persistence"]?["Provider"]?.DeepClone() },
+        var selected = new JsonObject { ["Persistence"] = new JsonObject {
+                ["Provider"] = snapshot.Configuration["Persistence"]?["Provider"]?.DeepClone(),
+                ["MigrationGovernance"] = new JsonObject { ["DryRun"] = snapshot.Configuration["Persistence"]?["MigrationGovernance"]?["DryRun"]?.DeepClone() }
+            },
             ["ConnectionStrings"] = connections };
         var effective = new JsonObject();
         foreach (var item in snapshot.EffectiveConfiguration.Where(item => AllowedKeys.Contains(item.Key))) effective[item.Key] = item.Value?.DeepClone();

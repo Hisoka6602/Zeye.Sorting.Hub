@@ -4,6 +4,7 @@ import 'dayjs/locale/zh-cn';
 import pickerLocale from 'antd/es/date-picker/locale/zh_CN';
 import { CheckCircleOutlined, DatabaseOutlined, HistoryOutlined, ReloadOutlined, SaveOutlined, SearchOutlined, ThunderboltOutlined, UndoOutlined } from '@ant-design/icons';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { HostRestartButton } from './HostRestartButton';
 import { Link } from 'react-router';
 import { requestApi, requestHttpApi, ApiError } from '../../data/api/client';
 import type { RuntimeConfigurationSaved, RuntimeConfigurationSnapshot } from '../../data/api/configurationTypes';
@@ -67,19 +68,20 @@ function StringListEditor({ fieldKey, values, suggestions, disabled, onChange }:
 }
 
 /** 保留草稿和提交版本，轮询仅更新最新快照；旧读取不能覆盖刚保存的结果。 */
-export function RuntimeConfigurationPanel({ allowed, authenticated, active, refreshToken, onDraftStateChange, setupKey }: { allowed: boolean; authenticated: boolean; active: boolean; refreshToken: number; onDraftStateChange: (dirty: boolean, saving: boolean) => void; setupKey?: string }) {
+export function RuntimeConfigurationPanel({ allowed, authenticated, active, refreshToken, onDraftStateChange, setupKey, restartBlocked = false }: { allowed: boolean; authenticated: boolean; active: boolean; refreshToken: number; onDraftStateChange: (dirty: boolean, saving: boolean) => void; setupKey?: string; restartBlocked?: boolean }) {
   const { message } = App.useApp();
   const [state, setState] = useState<EditorState>({ draft: {}, loading: allowed, busy: false });
   const [category, setCategory] = useState<ConfigurationCategory>(setupKey ? 'database' : 'online');
   const apiPath = setupKey ? '/api/setup/database/runtime' : '/api/operations/configuration/runtime';
   const requester = setupKey ? requestHttpApi : requestApi;
   const [search, setSearch] = useState('');
+  const [restarting, setRestarting] = useState(false);
   const sequence = useRef(0);
   const reading = useRef<AbortController | null>(null);
   const saving = useRef(false);
   const mounted = useRef(true);
   const read = useCallback(async () => {
-    if (!allowed || saving.current) return;
+    if (!allowed || saving.current || restarting) return;
     reading.current?.abort();
     const controller = new AbortController(); reading.current = controller;
     const current = ++sequence.current;
@@ -94,7 +96,7 @@ export function RuntimeConfigurationPanel({ allowed, authenticated, active, refr
       if (!setupKey && error instanceof ApiError && (error.status === 401 || error.status === 403)) window.dispatchEvent(new Event('zeye-session-changed'));
       setState(previous => ({ ...previous, loading: false, error: error instanceof Error ? error : new Error(String(error)) }));
     }
-  }, [allowed, apiPath, requester, setupKey]);
+  }, [allowed, apiPath, requester, setupKey, restarting]);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; sequence.current++; reading.current?.abort(); }; }, []);
   useEffect(() => { if (!allowed) setState({ draft: {}, loading: false, busy: false }); }, [allowed]);
   useEffect(() => {
@@ -103,10 +105,14 @@ export function RuntimeConfigurationPanel({ allowed, authenticated, active, refr
     return () => { window.clearInterval(timer); reading.current?.abort(); };
   }, [read, active, allowed, refreshToken]);
   const dirty = hasDraft(state);
-  useEffect(() => {
-    onDraftStateChange(dirty, state.busy);
+  const restartPendingChanged = useCallback((pending: boolean) => {
+    setRestarting(pending); onDraftStateChange(dirty, state.busy || pending);
   }, [dirty, state.busy, onDraftStateChange]);
-  const fields = useMemo(() => state.base ? configurationFields(state.base.configuration) : [], [state.base]);
+  useEffect(() => {
+    onDraftStateChange(dirty, state.busy || restarting);
+  }, [dirty, state.busy, restarting, onDraftStateChange]);
+  const fields = useMemo(() => state.base ? configurationFields(state.base.configuration)
+    .map(field => setupKey ? { ...field, category: 'database' as const } : field) : [], [state.base, setupKey]);
   const prepared = useMemo(() => {
     try { return { ...configurationPatch(state.base?.configuration ?? {}, state.draft), error: undefined }; }
     catch (error) { return { changes: {}, changedKeys: [] as string[], error: error instanceof Error ? error.message : '配置格式无效' }; }
@@ -155,6 +161,8 @@ export function RuntimeConfigurationPanel({ allowed, authenticated, active, refr
       <span><DatabaseOutlined /> 配置存储已连接</span><span><ThunderboltOutlined /> {fields.filter(field => isHotConfigurationField(field, state.base!)).length} 项支持在线更新</span>
       <span className={snapshot.restartRequiredKeys.length ? 'runtime-pending' : ''}><HistoryOutlined /> {snapshot.restartRequiredKeys.length ? `${snapshot.restartRequiredKeys.length} 项待重启` : '当前无待重启配置'}</span>
     </div>
+    {restarting && <Alert type="info" showIcon message="正在等待 Host 重新启动，请稍候" description="恢复后会自动刷新；数据库连接仍有问题时可继续修改配置。" />}
+    {setupKey && state.draft['Persistence:MigrationGovernance:DryRun'] === true && <Alert type="warning" showIcon message="数据库初始化当前处于仅预演模式" description="此模式不会创建或更新表结构。首次初始化数据库时，请关闭下方的“仅预演数据库初始化”，保存配置后点击“重启 Host”。" />}
     {snapshot.lastReloadError && <Alert type="error" showIcon message={snapshot.lastReloadError} />}
     {state.error && <Alert type="error" showIcon message={state.error.message} description="当前草稿已保留，可修正后重新保存或刷新配置。" action={<Button size="small" onClick={() => void read()}>刷新</Button>} />}
     {stale && <Alert type="warning" showIcon message="配置已被其他页面或进程修改" description="当前草稿已保留。请先核对修改，再撤销草稿读取最新版本；不会自动覆盖他人的配置。" action={<Button size="small" onClick={reset}>读取最新配置</Button>} />}
@@ -170,7 +178,7 @@ export function RuntimeConfigurationPanel({ allowed, authenticated, active, refr
         })}</nav>
       </SectionCard>
       <SectionCard className="runtime-editor-card" title={<div><div className="settings-section-title">{activeCategory.name}</div><div className="settings-section-caption">{activeCategory.description} · {visible.length} 项</div></div>} extra={<Input allowClear prefix={<SearchOutlined />} placeholder="搜索当前分类" aria-label="搜索配置字段" value={search} onChange={event => setSearch(event.target.value)} className="runtime-search" />}>
-        <Form layout="vertical" disabled={state.busy} onFinish={() => void save()}>
+        <Form layout="vertical" disabled={state.busy || restarting} onFinish={() => void save()}>
           {visible.length ? Array.from(groups, ([group, items]) => <section className="runtime-field-group" key={group} aria-label={configurationGroupLabel(items[0].path.slice(0, -1))}>
             <h3>{configurationGroupLabel(items[0].path.slice(0, -1)) || '通用配置'}</h3>
             <div className="runtime-field-grid">{items.map(field => {
@@ -211,11 +219,11 @@ export function RuntimeConfigurationPanel({ allowed, authenticated, active, refr
           {dirty && !prepared.error && prepared.changedKeys.length > 0 && <details className="runtime-change-preview"><summary>本次修改 {prepared.changedKeys.length} 项：{hotCount} 项支持在线更新，{prepared.changedKeys.length - hotCount} 项需要重启</summary><ul className="runtime-key-list">{prepared.changedKeys.map(key => <li key={key}>{configurationFieldPresentation(key).label}<small>{key}</small></li>)}</ul></details>}
           <div className="settings-policy-footer runtime-save-bar">
             <div className={`settings-form-status${dirty ? ' pending' : ''}`} role="status">{dirty ? <><span className="settings-status-dot" />{prepared.error ? '有无效的配置内容，请先修正' : `${prepared.changedKeys.length} 项未保存修改`}</> : <><CheckCircleOutlined />配置已同步</>}</div>
-            <div className="settings-policy-actions"><Button icon={<UndoOutlined />} onClick={reset} disabled={state.busy || !dirty}>撤销修改</Button><Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={state.busy} disabled={!dirty || stale || Boolean(prepared.error) || !prepared.changedKeys.length}>保存配置</Button></div>
+            <div className="settings-policy-actions"><HostRestartButton revision={snapshot.revision} setupKey={setupKey} disabled={restartBlocked || dirty || state.busy || restarting || stale} onPendingChange={restartPendingChanged} /><Button icon={<UndoOutlined />} onClick={reset} disabled={state.busy || restarting || !dirty}>撤销修改</Button><Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={state.busy} disabled={restarting || !dirty || stale || Boolean(prepared.error) || !prepared.changedKeys.length}>保存配置</Button></div>
           </div>
         </Form>
         <div className="settings-config-source"><div><span>配置存储</span><p>{snapshot.storagePath}</p></div><div><span>独立配置入口</span><p><Link to="/settings/fusion">Fusion 接入配置</Link>与规则管理页面支持在线维护；启动引导参数保留在 appsettings.json。</p></div></div>
-        <Button type="link" size="small" icon={<ReloadOutlined />} onClick={() => void read()} disabled={state.busy}>重新读取配置</Button>
+        <Button type="link" size="small" icon={<ReloadOutlined />} onClick={() => void read()} disabled={state.busy || restarting}>重新读取配置</Button>
       </SectionCard>
     </div>
   </div>;

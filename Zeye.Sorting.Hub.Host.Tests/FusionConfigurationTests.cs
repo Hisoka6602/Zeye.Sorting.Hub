@@ -7,6 +7,7 @@ using MsOptions = Microsoft.Extensions.Options.Options;
 using Zeye.Sorting.Hub.Host.Queries;
 using Zeye.Sorting.Hub.Infrastructure.Integrations.Fusion;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Management;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Fusion;
 
 namespace Zeye.Sorting.Hub.Host.Tests;
 
@@ -80,6 +81,90 @@ public sealed class FusionConfigurationTests {
         Assert.Contains("LineId", service.Check("fusion-line-01", new("fusion-line-01", "sorting-hub", "line-99", "Asia/Shanghai", null, null)).Mismatches);
         await Assert.ThrowsAsync<ArgumentException>(() => service.WriteSettingsAsync(view.Revision, view.Settings with { DiscoveryEnabled = true, DiscoveryPort = 5089 }, default));
         await Assert.ThrowsAsync<ArgumentException>(() => service.CreateSourceAsync(view.Revision, Source("FUSION-LINE-01"), default));
+    }
+
+    /// <summary>删除误建记录同时撤销密钥，保护在线来源，版本冲突和重启均不会恢复旧登记。</summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DeleteUnusedSourceIsDurableAndPreservesConnectedSource(bool useLiteDb) {
+        using var storage = useLiteDb ? new ConfigurationTestStorage() : null;
+        await using var env = new FusionIngressTestEnvironment(); await env.InitializeAsync();
+        var protection = new EphemeralDataProtectionProvider();
+        var service = new FusionConfigurationService(env.Database.Factory, MsOptions.Create(env.Options), protection, storage?.Store);
+        await service.InitializeAsync(default);
+        var ingress = new FusionIngestionService(env.Database.Factory, MsOptions.Create(env.Options), env.Root, service);
+        await ingress.RegisterAsync("online", "fusion-line-01", FusionIngressTestEnvironment.Hello(), default);
+        var revision = service.Snapshot.Revision;
+        Assert.Null(await service.DeleteSourceAsync(revision + 1, "fusion-line-02", default));
+        Assert.True(ingress.Authenticate("fusion-line-02", FusionIngressTestEnvironment.SecondKey));
+        var deleted = await service.DeleteSourceAsync(revision, "fusion-line-02", default);
+        Assert.NotNull(deleted);
+        Assert.False(ingress.Authenticate("fusion-line-02", FusionIngressTestEnvironment.SecondKey));
+        await Assert.ThrowsAsync<ArgumentException>(() => ingress.RegisterAsync("removed", "fusion-line-02", FusionIngressTestEnvironment.Hello("fusion-line-02"), default));
+        var remaining = Assert.Single(await ingress.GetSourcesAsync(default));
+        Assert.Equal("fusion-line-01", remaining.SourceInstanceId); Assert.True(remaining.IsOnline);
+        Assert.Null(await service.DeleteSourceAsync(revision, "fusion-line-01", default));
+        var restarted = new FusionConfigurationService(env.Database.Factory, MsOptions.Create(env.Options), protection, storage?.Store);
+        await restarted.InitializeAsync(default);
+        Assert.Equal("fusion-line-01", Assert.Single((await restarted.ReadAsync(default)).Sources).SourceInstanceId);
+        Assert.Equal(deleted.Revision, restarted.Snapshot.Revision);
+        await Assert.ThrowsAsync<ArgumentException>(() => restarted.DeleteSourceAsync(deleted.Revision, "unknown", default));
+        Assert.Equal(deleted.Revision, restarted.Snapshot.Revision);
+    }
+
+    /// <summary>离线租约及孤立的历史记录也阻止删除，不以当前在线状态代替历史保护。</summary>
+    [Theory]
+    [InlineData("lease")]
+    [InlineData("heartbeat")]
+    [InlineData("fact")]
+    [InlineData("image")]
+    public async Task DeleteSourceRejectsAnyExistingHistory(string history) {
+        await using var env = new FusionIngressTestEnvironment(); await env.InitializeAsync();
+        var service = new FusionConfigurationService(env.Database.Factory, MsOptions.Create(env.Options), new EphemeralDataProtectionProvider());
+        await service.InitializeAsync(default);
+        const string source = "fusion-line-02";
+        await using var db = await env.Database.Factory.CreateDbContextAsync();
+        switch (history) {
+            case "lease":
+                await env.Ingress.RegisterAsync("old", source, FusionIngressTestEnvironment.Hello(source), default);
+                await env.Ingress.DisconnectAsync("old", default);
+                break;
+            case "heartbeat": db.Add(new FusionJournalHeartbeat { Key = "history", SourceInstanceId = source }); break;
+            case "fact": db.Add(new FusionFactReceipt { Key = "history", SourceInstanceId = source }); break;
+            case "image": db.Add(new FusionImageUpload { Key = "history", SourceInstanceId = source }); break;
+        }
+        await db.SaveChangesAsync();
+        var revision = service.Snapshot.Revision;
+        var error = await Assert.ThrowsAsync<ArgumentException>(() => service.DeleteSourceAsync(revision, source, default));
+        Assert.Contains("不能删除", error.Message);
+        Assert.Equal(revision, service.Snapshot.Revision);
+        Assert.Contains(source, service.Snapshot.Sources.Keys);
+        Assert.Equal(history == "lease" ? 1 : 0, await db.Set<FusionSourceLease>().CountAsync());
+        Assert.Equal(history == "heartbeat" ? 1 : 0, await db.Set<FusionJournalHeartbeat>().CountAsync());
+        Assert.Equal(history == "fact" ? 1 : 0, await db.Set<FusionFactReceipt>().CountAsync());
+        Assert.Equal(history == "image" ? 1 : 0, await db.Set<FusionImageUpload>().CountAsync());
+    }
+
+    /// <summary>首次注册与删除竞争时只能有一方成功，不出现已登记租约的来源被删除。</summary>
+    [Fact]
+    public async Task DeleteAndFirstRegistrationCannotBothSucceed() {
+        using var storage = new ConfigurationTestStorage();
+        await using var env = new FusionIngressTestEnvironment(); await env.InitializeAsync();
+        var service = new FusionConfigurationService(env.Database.Factory, MsOptions.Create(env.Options), new EphemeralDataProtectionProvider(), storage.Store);
+        await service.InitializeAsync(default);
+        var ingress = new FusionIngestionService(env.Database.Factory, MsOptions.Create(env.Options), env.Root, service);
+        var revision = service.Snapshot.Revision;
+        var start = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var registration = Task.Run(async () => { await start.Task; return await Record.ExceptionAsync(() => ingress.RegisterAsync("racing", "fusion-line-02", FusionIngressTestEnvironment.Hello("fusion-line-02"), default)); });
+        var deletion = Task.Run(async () => { await start.Task; return await Record.ExceptionAsync(() => service.DeleteSourceAsync(revision, "fusion-line-02", default)); });
+        start.SetResult();
+        var errors = await Task.WhenAll(registration, deletion).WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Single(errors, error => error is null);
+        Assert.IsType<ArgumentException>(Assert.Single(errors, error => error is not null));
+        await using var db = await env.Database.Factory.CreateDbContextAsync();
+        Assert.Equal(errors[0] is null, await db.Set<FusionSourceLease>().AnyAsync(row => row.SourceInstanceId == "fusion-line-02"));
+        Assert.Equal(errors[0] is null, service.Snapshot.Sources.ContainsKey("fusion-line-02"));
     }
 
     /// <summary>发现服务启动时关闭也能在线开启、签名应答及再次关闭释放端口。</summary>

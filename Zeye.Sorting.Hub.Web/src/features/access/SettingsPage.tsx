@@ -44,7 +44,7 @@ export function DatabaseSetupPage({ status, onRefresh }: { status: DatabaseStart
   }, [dirty, busy]);
   return <main className="system-settings" style={{ maxWidth: 1400, margin: '0 auto', padding: 24 }}>
     <PageIntro title="数据库配置" description="网页已启动。完成数据库连接配置后，重启服务即可进入登录和业务页面。" />
-    <Alert type="warning" showIcon message="业务数据库尚未就绪" description="当前仅提供本机数据库配置，业务读写暂不可用。保存后重新运行 install.bat 或重启服务；直接运行的程序请关闭后重新启动。" action={<Button onClick={onRefresh} disabled={dirty || busy}>检查启动状态</Button>} />
+    <Alert type="warning" showIcon message="业务数据库尚未就绪" description={<><p>{status.failureSummary ?? '当前仅提供本机数据库配置，业务读写暂不可用。'}</p><p>保存后点击配置表单中的“重启 Host”；已保存的配置无需重复修改，也可直接重启重试连接。</p></>} action={<Button onClick={onRefresh} disabled={dirty || busy}>检查启动状态</Button>} />
     {status.localSetupAllowed ? <>
       <SectionCard title="本机配置访问码">
         <p>安装程序会自动打开带访问码的配置入口。手动打开时，请从服务器本机读取访问码文件：{status.setupKeyPath}</p>
@@ -152,11 +152,11 @@ export function SettingsPage() {
   return <div className="system-settings" aria-busy={resource.loading || policy.loading}>
     <PageIntro title="系统配置" description="在线维护运行参数与运维策略，查看配置的生效状态和变更历史。" action={<div className="settings-header-actions">
       <span className="settings-environment" title={resource.data?.environment}><DeploymentUnitOutlined /><span className="settings-environment-label">{resource.data?.environment ?? (resource.loading ? '读取环境中…' : '环境未知')}</span></span>
-      <Button icon={<ReloadOutlined />} onClick={refresh} loading={resource.loading || policy.loading} disabled={busy}>刷新配置</Button>
+      <Button icon={<ReloadOutlined />} onClick={refresh} loading={resource.loading || policy.loading} disabled={savingConfiguration}>刷新配置</Button>
     </div>} />
     <InfoAlert message="配置保存后，重启仍保留" description="在线参数保存后发布热更新；数据库连接、监听地址等启动参数需要重启。环境覆盖值和待重启字段会单独显示。" closable={false} />
-    <Tabs className="settings-tabs" activeKey={tab} onChange={setTab} items={[
-      { key: 'runtime', label: '运行配置', children: <RuntimeConfigurationPanel allowed={canManageRuntime} authenticated={session.data?.authenticated ?? false} active={tab === 'runtime'} refreshToken={refreshToken} onDraftStateChange={runtimeDraftChanged} /> },
+    <Tabs className="settings-tabs" activeKey={tab} onChange={next => { if (!savingConfiguration) setTab(next); }} items={[
+      { key: 'runtime', label: '运行配置', children: <RuntimeConfigurationPanel allowed={canManageRuntime} authenticated={session.data?.authenticated ?? false} active={tab === 'runtime'} refreshToken={refreshToken} onDraftStateChange={runtimeDraftChanged} restartBlocked={policyDirty || busy} /> },
       { key: 'policy', label: '运维策略', children: <div className="settings-layout">
       <SectionCard className="settings-navigation" title={<span className="settings-section-title">配置分类</span>}>
         <nav className="settings-category-list" aria-label="配置分类">{categories.map(item => <button type="button" className={`settings-category${category === item.name ? ' selected' : ''}`} aria-pressed={category === item.name}

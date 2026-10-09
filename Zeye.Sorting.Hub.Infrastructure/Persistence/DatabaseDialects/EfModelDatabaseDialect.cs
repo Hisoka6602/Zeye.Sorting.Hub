@@ -44,6 +44,8 @@ public abstract class EfModelDatabaseDialect : IDatabaseDialect, IBatchShardingP
     /// <inheritdoc />
     public abstract Task<bool> DatabaseExistsAsync(DbConnection administrationConnection, string databaseName, CancellationToken cancellationToken);
     /// <inheritdoc />
+    public abstract Task<bool> HasUserObjectsAsync(DbConnection administrationConnection, string databaseName, CancellationToken cancellationToken);
+    /// <inheritdoc />
     public abstract Task CreateDatabaseAsync(DbConnection administrationConnection, string databaseName, CancellationToken cancellationToken);
 
     /// <inheritdoc />

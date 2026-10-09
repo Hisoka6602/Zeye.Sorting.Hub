@@ -97,10 +97,11 @@ const knownFields: Record<string, FieldPresentation> = {
   'ConnectionStrings:SqlServer': { label: 'SQL Server 连接字符串' },
   'ConnectionStrings:SqlServerReadOnly': { label: 'SQL Server 只读连接字符串' },
   'ConnectionStrings:Oracle': { label: 'Oracle 业务连接字符串', help: '填写目标 PDB 服务与业务用户。' },
-  'ConnectionStrings:OracleAdministration': { label: 'Oracle 初始化管理连接', help: '首次自动创建业务用户时使用目标 PDB 的管理连接。' },
+  'ConnectionStrings:OracleAdministration': { label: 'Oracle 初始化管理连接', help: '首次自动创建业务用户或补齐初始化权限时，填写指向相同 PDB 的管理连接。已有业务用户及所需权限时可留空；Oracle 实例、PDB 和监听服务需预先准备。' },
   'ConnectionStrings:OracleReadOnly': { label: 'Oracle 只读连接字符串' },
   'ConnectionStrings:SQLite': { label: 'SQLite 业务文件', help: '使用 Data Source=文件路径；相对路径以服务内容目录为基准，首次启动自动建立目录与文件。' },
   'ConnectionStrings:SQLiteReadOnly': { label: 'SQLite 只读连接字符串', help: '只读连接应填写 Mode=ReadOnly。' },
+  'Persistence:MigrationGovernance:DryRun': { label: '仅预演数据库初始化', help: '开启时仅检查并保存迁移脚本，不创建或更新表结构。首次使用任意数据库时需关闭此项，保存后重启 Host；系统按授权自动建库、创建业务用户或 SQLite 文件并迁移表结构。数据库服务器需预先安装，已有数据的迁移保护仍然生效。' },
 };
 const labels: Record<string, string> = {
   Hosting: '服务运行', Swagger: '接口文档', BrowserAutoOpen: '启动浏览器',

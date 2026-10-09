@@ -7,6 +7,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.MigrationGovernance;
 /// 迁移治理预演计划。
 /// </summary>
 public sealed record class MigrationPlan {
+    /// <summary>已经确认目标库无用户对象并获得建库授权；仅用于首次安装，不放宽已有库升级保护。</summary>
+    public bool IsInitialDatabase { get; init; }
     /// <summary>
     /// 计划生成时间（本地时间）。
     /// </summary>

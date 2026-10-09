@@ -13,6 +13,7 @@ using Zeye.Sorting.Hub.Host.Configuration;
 using Zeye.Sorting.Hub.Host.HostedServices;
 using Zeye.Sorting.Hub.Host.Middleware;
 using Zeye.Sorting.Hub.Infrastructure.Configuration;
+using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 
@@ -20,6 +21,37 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 
 /// <summary>验证无业务数据库时的配置入口、生命周期隔离、持久化与访问限制。</summary>
 public sealed class DatabaseSetupTests {
+    /// <summary>首次启动从缺失的目录自动建库并执行真实迁移；再次启动沿用相同文件且不返回配置模式。</summary>
+    [Fact]
+    public async Task NewSqliteDatabaseCreatesDirectoriesAndSchemaAndSurvivesRestart() {
+        using var environment = new ConfigurationTestStorage();
+        var databasePath = Path.Combine(environment.DirectoryPath, "data", "business", "sorting-hub.db");
+        Assert.False(Directory.Exists(Path.GetDirectoryName(databasePath)));
+        for (var startup = 0; startup < 2; startup++) {
+            await using var app = await CreateInitializedDatabaseHostAsync(environment, "SQLite", $"Data Source={databasePath};Pooling=False", dryRun: false);
+            Assert.True(app.Services.GetRequiredService<DatabaseStartupState>().Ready);
+            Assert.True(File.Exists(databasePath));
+            using var client = app.GetTestClient();
+            Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/api/business")).StatusCode);
+            await using var db = await app.Services.GetRequiredService<IDbContextFactory<SortingHubDbContext>>().CreateDbContextAsync();
+            Assert.Empty(await db.Database.GetPendingMigrationsAsync());
+            Assert.NotEmpty(await db.Database.GetAppliedMigrationsAsync());
+        }
+    }
+
+    /// <summary>允许创建目录不能绕过迁移演练；尚未建表的数据库继续停留在配置模式。</summary>
+    [Fact]
+    public async Task NewSqliteDatabaseStillHonorsMigrationDryRun() {
+        using var environment = new ConfigurationTestStorage();
+        var databasePath = Path.Combine(environment.DirectoryPath, "data", "business", "sorting-hub.db");
+        await using var app = await CreateInitializedDatabaseHostAsync(environment, "SQLite", $"Data Source={databasePath};Pooling=False", dryRun: true);
+        Assert.True(app.Services.GetRequiredService<DatabaseStartupState>().RequiresConfiguration);
+        Assert.Contains("仅预演", app.Services.GetRequiredService<DatabaseStartupState>().FailureSummary);
+        await using var db = await app.Services.GetRequiredService<IDbContextFactory<SortingHubDbContext>>().CreateDbContextAsync();
+        Assert.NotEmpty(await db.Database.GetPendingMigrationsAsync());
+        Assert.Empty(await db.Database.GetAppliedMigrationsAsync());
+    }
+
     /// <summary>独立数据库连接失败时网页仍启动，业务工厂不能提前实例化。</summary>
     [Fact]
     public async Task UnavailableDatabaseKeepsConfigurationHostAndDefersBusinessServices() {
@@ -134,18 +166,24 @@ public sealed class DatabaseSetupTests {
         Assert.DoesNotContain("private-machine-secret", snapshot.GetRawText());
         var revision = snapshot.GetProperty("revision").GetString();
         var response = await client.PutAsJsonAsync("/api/setup/database/runtime", new { revision,
-            changes = new { Persistence = new { Provider = "SQLite" } } });
+            changes = new { Persistence = new { Provider = "SQLite", MigrationGovernance = new { DryRun = false } },
+                ConnectionStrings = new { OracleAdministration = "User Id=setup_admin;Password=setup-only-test;Data Source=localhost:1521/TESTPDB;" } } });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("SQLite", environment.Store.ReadRuntime()["Persistence"]!["Provider"]!.GetValue<string>());
+        Assert.False(environment.Store.ReadRuntime()["Persistence"]!["MigrationGovernance"]!["DryRun"]!.GetValue<bool>());
+        Assert.Contains("setup_admin", environment.Store.ReadRuntime()["ConnectionStrings"]!["OracleAdministration"]!.GetValue<string>());
         Assert.Equal("MySql", environment.Configuration["Persistence:Provider"]);
         Assert.Equal("private-machine-secret", environment.Configuration["Access:MachineApiKey"]);
         Assert.Equal("Committed", environment.History.Read()[0].Status);
         var saved = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Contains("Persistence:Provider", saved.GetProperty("result").GetProperty("restartRequiredKeys").EnumerateArray().Select(item => item.GetString()));
+        Assert.Contains("ConnectionStrings:OracleAdministration", saved.GetProperty("result").GetProperty("restartRequiredKeys").EnumerateArray().Select(item => item.GetString()));
         Assert.Equal(HttpStatusCode.Conflict, (await client.PutAsJsonAsync("/api/setup/database/runtime", new { revision,
             changes = new { Persistence = new { Provider = "MySql" } } })).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await client.PutAsJsonAsync("/api/setup/database/runtime", new {
             revision = saved.GetProperty("snapshot").GetProperty("revision").GetString(), changes = new { Access = new { EnforceAuthorization = false } } })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.PutAsJsonAsync("/api/setup/database/runtime", new {
+            revision = saved.GetProperty("snapshot").GetProperty("revision").GetString(), changes = new { Persistence = new { MigrationGovernance = new { BlockDangerousMigrationInProduction = false } } } })).StatusCode);
         var reloaded = new RuntimeConfigurationProvider(environment.Store); reloaded.Load();
         Assert.True(reloaded.TryGet("Persistence:Provider", out var configured)); Assert.Equal("SQLite", configured);
         state.MarkReady();
@@ -163,7 +201,7 @@ public sealed class DatabaseSetupTests {
     [InlineData("missing-client", 403)]
     public async Task SetupRejectsUntrustedRequests(string scenario, int statusCode) {
         using var environment = new ConfigurationTestStorage();
-        var state = new DatabaseStartupState(environment.Store.DatabasePath); state.RequireConfiguration();
+        var state = new DatabaseStartupState(environment.Store.DatabasePath); state.RequireConfiguration("连接阶段失败，请检查数据库地址。");
         await using var app = await CreateConfigurationHostAsync(environment, state, scenario == "remote");
         using var client = app.GetTestClient();
         if (scenario != "missing-client") client.DefaultRequestHeaders.Add("X-Zeye-Client", "web");
@@ -172,9 +210,12 @@ public sealed class DatabaseSetupTests {
         if (scenario == "cross-origin") client.DefaultRequestHeaders.Add("Origin", "http://untrusted.example");
         if (scenario == "remote") client.DefaultRequestHeaders.Add("X-Forwarded-For", "127.0.0.1");
         Assert.Equal((HttpStatusCode)statusCode, (await client.GetAsync("/api/setup/database/runtime")).StatusCode);
+        Assert.Equal((HttpStatusCode)statusCode, (await client.PostAsJsonAsync("/api/setup/host/restart", new { revision = environment.Source.Capture().Revision })).StatusCode);
         var startup = await client.GetFromJsonAsync<JsonElement>("/api/setup/status");
         Assert.DoesNotContain(File.ReadAllText(state.SetupKeyPath), startup.GetRawText());
         if (scenario is "remote" or "wrong-host") Assert.True(startup.GetProperty("setupKeyPath").ValueKind == JsonValueKind.Null);
+        if (scenario is "remote" or "wrong-host") Assert.True(startup.GetProperty("failureSummary").ValueKind == JsonValueKind.Null);
+        else Assert.Equal(state.FailureSummary, startup.GetProperty("failureSummary").GetString());
     }
 
     /// <summary>建立无需账号数据库的真实 HTTP 测试管线。</summary>
@@ -182,6 +223,26 @@ public sealed class DatabaseSetupTests {
         var builder = WebApplication.CreateBuilder(); builder.WebHost.UseTestServer();
         builder.Services.AddSingleton(environment.Source); builder.Services.AddSingleton(state);
         var app = builder.Build(); ConfigureRoutes(app, remote); await app.StartAsync(); return app;
+    }
+
+    /// <summary>按实际启动顺序运行四库迁移治理和初始化，配置与归档文件均限定在测试目录。</summary>
+    internal static async Task<WebApplication> CreateInitializedDatabaseHostAsync(ConfigurationTestStorage environment, string provider, string connection, bool dryRun, string? oracleAdministration = null) {
+        var builder = WebApplication.CreateBuilder(); builder.WebHost.UseTestServer();
+        builder.Configuration.AddConfiguration(environment.Configuration).AddInMemoryCollection(new Dictionary<string, string?> {
+            ["Persistence:Provider"] = provider,
+            [$"ConnectionStrings:{provider}"] = connection,
+            ["ConnectionStrings:OracleAdministration"] = oracleAdministration ?? "",
+            ["Persistence:MigrationGovernance:DryRun"] = dryRun.ToString(),
+            ["Persistence:MigrationGovernance:ArchiveDirectory"] = Path.Combine(environment.DirectoryPath, "migration-scripts")
+        });
+        builder.Services.AddSingleton(environment.Source);
+        builder.Services.AddSortingHubPersistence(builder.Configuration);
+        builder.Services.AddHostedService<MigrationGovernanceHostedService>();
+        builder.Services.AddHostedService<DatabaseInitializerHostedService>();
+        DatabaseStartupHostedService.Register(builder.Services);
+        var app = builder.Build(); ConfigureRoutes(app);
+        try { await app.StartAsync(); return app; }
+        catch { await app.DisposeAsync(); throw; }
     }
 
     /// <summary>测试管线固定网络来源，并提供可以证明业务是否被调用的端点。</summary>

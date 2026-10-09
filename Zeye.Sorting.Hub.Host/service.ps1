@@ -239,6 +239,8 @@ try {
     Invoke-ServiceControl @('config', $serviceName, 'start=', 'delayed-auto', 'obj=', "NT SERVICE\$serviceName")
     Invoke-ServiceControl @('sidtype', $serviceName, 'unrestricted')
     Invoke-ServiceControl @('failure', $serviceName, 'reset=', '86400', 'actions=', 'restart/10000/restart/30000/restart/60000')
+    # 前端主动重启使用非零服务状态正常关闭，允许 SCM 在关闭完成后重新启动本服务。
+    Invoke-ServiceControl @('failureflag', $serviceName, '1')
     & "$env:SystemRoot\System32\icacls.exe" $installDirectory '/grant' "NT SERVICE\${serviceName}:(OI)(CI)M" | Out-Null
     if ($LASTEXITCODE -ne 0) { throw '无法授权服务读取发布文件并写入运行数据；安装未完成。' }
     Save-ServiceEnvironment
@@ -247,7 +249,7 @@ try {
     $setup = Get-DatabaseSetupStatus
     if ($setup -and $setup.requiresConfiguration) {
         Write-Host "服务 $serviceName 已安装，网页已启动；当前等待数据库配置，已启用开机自动启动。"
-        Write-Host "本机配置入口：$($setup.WebUrl)/；保存数据库配置后重新运行 install.bat。"
+        Write-Host ('本机配置入口：{0}/；保存数据库配置后点击网页中的“重启 Host”。' -f $setup.WebUrl)
         Write-Host "本机配置访问码文件：$($setup.setupKeyPath)；访问码不记录到安装日志。"
         if ($OpenBrowser) {
             try {

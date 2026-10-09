@@ -200,6 +200,40 @@ public sealed class FusionApiTests {
         await WaitForDisconnectAsync(env.Ingress);
     }
 
+    /// <summary>删除接口检查账号权限、写入来源、目录版本和接入历史，响应不返回配对凭据。</summary>
+    [Fact]
+    public async Task DeleteSourceRequiresPermissionAndCurrentRevisionAndPreservesUsedSource() {
+        await using var env = new FusionIngressTestEnvironment(); await env.InitializeAsync();
+        await using var app = await CreateAsync(env, enforceAuthorization: false);
+        using var admin = app.GetTestClient(); using var viewer = app.GetTestClient();
+        const string path = "/api/operations/configuration/fusion";
+        Assert.Equal(HttpStatusCode.Unauthorized, (await admin.DeleteAsync(path + "/sources/fusion-line-02?revision=1")).StatusCode);
+        admin.DefaultRequestHeaders.Add("X-Zeye-Client", "web"); viewer.DefaultRequestHeaders.Add("X-Zeye-Client", "web");
+        AccessApiTests.UseCookie(admin, await admin.PostAsJsonAsync("/api/access/bootstrap", new { username = "admin", name = "管理员", password = "test-admin-password", bootstrapKey = "test-bootstrap-key" }));
+        (await admin.PostAsJsonAsync("/api/access/roles", new { expectedRevision = 1, name = "查询员", permissions = new[] { "settings.read", "parcels.read" } })).EnsureSuccessStatusCode();
+        (await admin.PostAsJsonAsync("/api/access/users", new { expectedRevision = 2, account = "viewer", name = "查询员", password = "test-viewer-password", roleId = 2 })).EnsureSuccessStatusCode();
+        AccessApiTests.UseCookie(viewer, await viewer.PostAsJsonAsync("/api/access/login", new { username = "viewer", password = "test-viewer-password" }));
+        var directory = (await admin.GetFromJsonAsync<FusionConfigurationView>(path))!;
+        var deletePath = path + "/sources/fusion-line-02?revision=" + directory.Revision;
+        Assert.Equal(HttpStatusCode.Forbidden, (await viewer.DeleteAsync(deletePath)).StatusCode);
+        admin.DefaultRequestHeaders.Remove("X-Zeye-Client");
+        Assert.Equal(HttpStatusCode.Forbidden, (await admin.DeleteAsync(deletePath)).StatusCode);
+        admin.DefaultRequestHeaders.Add("X-Zeye-Client", "web");
+        Assert.Equal(HttpStatusCode.Conflict, (await admin.DeleteAsync(path + "/sources/fusion-line-02?revision=" + (directory.Revision + 1))).StatusCode);
+        await env.Ingress.RegisterAsync("used", "fusion-line-01", FusionIngressTestEnvironment.Hello(), default);
+        var denied = await admin.DeleteAsync(path + "/sources/fusion-line-01?revision=" + directory.Revision);
+        Assert.Equal(HttpStatusCode.BadRequest, denied.StatusCode);
+        var deleted = await admin.DeleteAsync(deletePath);
+        deleted.EnsureSuccessStatusCode();
+        Assert.Contains("no-store", deleted.Headers.CacheControl!.ToString());
+        var text = await deleted.Content.ReadAsStringAsync();
+        Assert.DoesNotContain("machineApiKey", text); Assert.DoesNotContain(FusionIngressTestEnvironment.SecondKey, text);
+        var remaining = (await deleted.Content.ReadFromJsonAsync<FusionConfigurationView>())!;
+        Assert.Equal("fusion-line-01", Assert.Single(remaining.Sources).SourceInstanceId);
+        Assert.True(remaining.Revision > directory.Revision);
+        Assert.Equal(HttpStatusCode.Conflict, (await admin.DeleteAsync(deletePath)).StatusCode);
+    }
+
     /// <summary>正式配置组在实时通道初始化前注册，流式读取复用权限并及时返回无密钥的在线修改。</summary>
     [Theory]
     [InlineData(true, HttpTransportType.WebSockets)]

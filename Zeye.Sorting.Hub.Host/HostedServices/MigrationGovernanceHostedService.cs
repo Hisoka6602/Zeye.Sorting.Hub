@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Hosting;
 using NLog;
+using Zeye.Sorting.Hub.Domain.Enums;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.MigrationGovernance;
@@ -144,6 +145,10 @@ public sealed class MigrationGovernanceHostedService : IHostedService {
             var databaseExists = await _dialect.DatabaseExistsAsync(administration, _dialect.ExtractDatabaseName(connectionString), cancellationToken);
             var appliedMigrations = databaseExists ? (await dbContext.Database.GetAppliedMigrationsAsync(cancellationToken)).ToArray() : [];
             var pendingMigrations = allMigrations.Except(appliedMigrations, StringComparer.Ordinal).ToArray();
+            // 仅真正空库可按首次安装执行完整迁移链；无迁移历史但已有对象的库仍按升级保护。
+            var initialDatabase = appliedMigrations.Length == 0 && pendingMigrations.Length > 0
+                && CanInitializeEmptyDatabase(_configuration)
+                && !await _dialect.HasUserObjectsAsync(administration, _dialect.ExtractDatabaseName(connectionString), cancellationToken);
             var forwardScript = GenerateForwardScript(dbContext, appliedMigrations, pendingMigrations);
             var dangerousOperations = _migrationSafetyEvaluator.EvaluateDangerousOperations(forwardScript);
             var (shouldApplyMigrations, skipReason) = EvaluateShouldApplyMigrations(
@@ -151,7 +156,8 @@ public sealed class MigrationGovernanceHostedService : IHostedService {
                 isDryRun,
                 isProductionEnvironment,
                 blockDangerousMigrationInProduction,
-                dangerousOperations);
+                dangerousOperations,
+                initialDatabase);
 
             string? archivedForwardScriptPath = null;
             string? archivedRollbackScriptPath = null;
@@ -177,6 +183,7 @@ public sealed class MigrationGovernanceHostedService : IHostedService {
                     PendingMigrations = pendingMigrations,
                     DangerousOperations = dangerousOperations,
                     ShouldApplyMigrations = shouldApplyMigrations,
+                    IsInitialDatabase = initialDatabase,
                     SkipReason = skipReason,
                     ArchivedForwardScriptPath = archivedForwardScriptPath
                 };
@@ -202,6 +209,7 @@ public sealed class MigrationGovernanceHostedService : IHostedService {
                 PendingMigrations = pendingMigrations,
                 DangerousOperations = dangerousOperations,
                 ShouldApplyMigrations = shouldApplyMigrations,
+                IsInitialDatabase = initialDatabase,
                 SkipReason = skipReason,
                 ArchivedForwardScriptPath = archivedForwardScriptPath,
                 ArchivedRollbackScriptPath = archivedRollbackScriptPath
@@ -226,6 +234,7 @@ public sealed class MigrationGovernanceHostedService : IHostedService {
             }
 
             _migrationGovernanceStateStore.SetLatestExecutionRecord(MigrationExecutionRecord.CreatePrepared(migrationPlan));
+            if (initialDatabase) NLogLogger.Info("目标库无用户对象且自动建库已授权，按首次初始化计划执行完整迁移链，Provider={Provider}", providerName);
             if (dangerousOperations.Count > 0) {
                 NLogLogger.Warn(
                     "迁移治理检测到危险 SQL，但当前环境允许继续执行迁移，Provider={Provider}, Environment={Environment}, DangerousOperations={DangerousOperations}",
@@ -285,7 +294,8 @@ public sealed class MigrationGovernanceHostedService : IHostedService {
         bool isDryRun,
         bool isProductionEnvironment,
         bool blockDangerousMigrationInProduction,
-        IReadOnlyCollection<string> dangerousOperations) {
+        IReadOnlyCollection<string> dangerousOperations,
+        bool isInitialDatabase = false) {
         if (!hasPendingMigrations) {
             return (true, null);
         }
@@ -294,12 +304,21 @@ public sealed class MigrationGovernanceHostedService : IHostedService {
             return (false, "当前处于 dry-run 模式，待执行迁移仅归档不执行。");
         }
 
-        if (isProductionEnvironment && blockDangerousMigrationInProduction && dangerousOperations.Count > 0) {
+        if (isProductionEnvironment && blockDangerousMigrationInProduction && dangerousOperations.Count > 0 && !isInitialDatabase) {
             return (false, "生产环境检测到危险迁移，已阻断自动执行。");
         }
 
         return (true, null);
     }
+
+    /// <summary>空库初始化复用建库授权及预演隔离器，不改动全局危险迁移保护开关。</summary>
+    internal static bool CanInitializeEmptyDatabase(IConfiguration configuration) =>
+        configuration.GetValue("Persistence:DatabaseBootstrap:EnsureDatabaseExists:Enabled", true)
+        && DatabaseInitializerHostedService.EvaluateEnsureDatabaseExistsDecision(
+            databaseMissing: true,
+            enableGuard: configuration.GetValue("Persistence:DatabaseBootstrap:EnsureDatabaseExists:Isolator:EnableGuard", true),
+            allowDangerousActionExecution: configuration.GetValue("Persistence:DatabaseBootstrap:EnsureDatabaseExists:Isolator:AllowDangerousActionExecution", false),
+            enableDryRun: configuration.GetValue("Persistence:DatabaseBootstrap:EnsureDatabaseExists:Isolator:DryRun", false)).Decision == ActionIsolationDecision.Execute;
 
     /// <summary>
     /// 解析是否启用迁移治理。

@@ -41,11 +41,11 @@ public sealed class AccessDirectoryService(ManagedDocumentService store, IConfig
     }
     /// <summary>是否启用全平台权限保护，默认由部署明确选择。</summary>
     public bool EnforceAuthorization => config.GetValue("Access:EnforceAuthorization", false);
-    /// <summary>初始化密钥存在时才允许建立首个管理员。</summary>
+    /// <summary>是否存在部署显式指定的管理员初始化密钥。</summary>
     public bool BootstrapAvailable => !string.IsNullOrWhiteSpace(config["Access:BootstrapKey"]);
-    /// <summary>固定时间比较初始化或机器接口密钥。</summary>
-    public bool MatchesSecret(string? supplied, string key) {
-        var expected = config[key];
+    /// <summary>固定时间比较初始化或机器接口密钥，部署值优先于已授权的本机临时凭据。</summary>
+    public bool MatchesSecret(string? supplied, string key, string? localFallback = null) {
+        var expected = string.IsNullOrWhiteSpace(config[key]) ? localFallback : config[key];
         if (string.IsNullOrWhiteSpace(expected) || supplied is null || supplied.Length > 512) return false;
         var actualHash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(supplied));
         var expectedHash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(expected));

@@ -108,6 +108,15 @@ WHERE s.name = @p0
             ArgumentNullException.ThrowIfNull(administrationConnection);
             var normalizedDatabaseName = DatabaseIdentifierPolicy.NormalizeDatabaseName(databaseName, nameof(databaseName));
 
+            // 已有库首先使用业务目录验证，兼容不能连接 master 的包含数据库用户。
+            var targetOptions = new SqlConnectionStringBuilder(administrationConnection.ConnectionString) { InitialCatalog = normalizedDatabaseName };
+            await using (var target = new SqlConnection(targetOptions.ConnectionString)) {
+                SlowQueryDbOperations.Attach(target, _telemetry);
+                try { await DatabaseConnectionOpenCoordinator.EnsureOpenedAsync(target, cancellationToken); return true; }
+                catch (SqlException exception) when (exception.Number == 4060) {
+                    NLog.LogManager.GetCurrentClassLogger().Debug(exception, "业务库尚不可连接，使用管理连接确认是否需要建库。");
+                }
+            }
             await DatabaseConnectionOpenCoordinator.EnsureOpenedAsync(administrationConnection, cancellationToken);
             await using var command = administrationConnection.CreateCommand();
             command.CommandText = "SELECT CASE WHEN DB_ID(@databaseName) IS NULL THEN CAST(0 AS bit) ELSE CAST(1 AS bit) END";
@@ -118,6 +127,18 @@ WHERE s.name = @p0
             command.Parameters.Add(databaseNameParameter);
             var scalar = await SlowQueryDbOperations.ExecuteScalarAsync(command, cancellationToken);
             return scalar is true || (scalar is bool value && value);
+        }
+
+        /// <inheritdoc />
+        public async Task<bool> HasUserObjectsAsync(DbConnection administrationConnection, string databaseName, CancellationToken cancellationToken) {
+            if (!await DatabaseExistsAsync(administrationConnection, databaseName, cancellationToken)) return false;
+            var options = new SqlConnectionStringBuilder(administrationConnection.ConnectionString) { InitialCatalog = databaseName };
+            await using var target = new SqlConnection(options.ConnectionString);
+            SlowQueryDbOperations.Attach(target, _telemetry);
+            await DatabaseConnectionOpenCoordinator.EnsureOpenedAsync(target, cancellationToken);
+            await using var command = target.CreateCommand();
+            command.CommandText = "SELECT COUNT(*) FROM sys.objects WHERE is_ms_shipped=0";
+            return Convert.ToInt64(await SlowQueryDbOperations.ExecuteScalarAsync(command, cancellationToken)) > 0;
         }
 
         /// <summary>

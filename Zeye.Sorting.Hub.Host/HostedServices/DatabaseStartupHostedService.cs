@@ -3,6 +3,7 @@ using Zeye.Sorting.Hub.Host.Configuration;
 using Zeye.Sorting.Hub.Infrastructure.Configuration;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.MigrationGovernance;
 
 namespace Zeye.Sorting.Hub.Host.HostedServices;
 
@@ -33,19 +34,21 @@ public sealed class DatabaseStartupHostedService(IServiceProvider services, Data
 
     /// <summary>先验证连接，再启动原有业务链；失败时停止已启动服务而保留配置网页。</summary>
     public override async Task StartAsync(CancellationToken cancellationToken) {
+        var failureSummary = "无法连接数据库。请检查数据库服务、地址、账号、密码和连接权限；Oracle 首次建用户还需提供初始化管理连接。";
         try {
             using var probeTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             probeTimeout.CancelAfter(TimeSpan.FromSeconds(15));
             await using (var scope = services.CreateAsyncScope()) {
                 await using var db = await scope.ServiceProvider.GetRequiredService<IDbContextFactory<SortingHubDbContext>>().CreateDbContextAsync(probeTimeout.Token);
-                // 只验证服务器连接，缺失的目标库仍交给既有建库守卫处理。
-                await using var connection = scope.ServiceProvider.GetRequiredService<IDatabaseDialect>()
-                    .CreateAdministrationConnection(db.Database.GetConnectionString()!);
-                await connection.OpenAsync(probeTimeout.Token);
-                await connection.CloseAsync();
+                // 只验证连接；首次 SQLite 的目录和文件必须由后续建库守卫创建，不能在此提前打开。
+                await DatabaseConnectionOpenCoordinator.ProbeAdministrationConnectionAsync(
+                    scope.ServiceProvider.GetRequiredService<IDatabaseDialect>(), db.Database.GetConnectionString()!, probeTimeout.Token);
             }
             foreach (var registration in registrations) {
                 var service = services.GetRequiredKeyedService<IHostedService>(registration);
+                failureSummary = service is MigrationGovernanceHostedService or DatabaseInitializerHostedService
+                    ? "数据库结构初始化未完成。请检查建库权限、初始化预演开关及服务日志。"
+                    : "数据库连接已通过，但业务服务启动失败。请检查服务日志后重试。";
                 _started.Add(service);
                 await service.StartAsync(cancellationToken);
                 if (service is DatabaseInitializerHostedService initializer && !initializer.IsInitialized) {
@@ -59,7 +62,12 @@ public sealed class DatabaseStartupHostedService(IServiceProvider services, Data
             Logger.Error(exception, "数据库或业务初始化失败，保留网页供本机完成数据库配置；业务接口返回 503。");
             using var stopTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             await StopAsync(stopTimeout.Token);
-            state.RequireConfiguration();
+            var migration = services.GetService<MigrationGovernanceStateStore>()?.GetLatestExecutionRecord();
+            if (migration is { Status: MigrationExecutionRecord.SkippedStatus, IsDryRun: true })
+                failureSummary = "数据库初始化处于仅预演模式，表结构尚未创建或更新。请关闭“仅预演数据库初始化”，保存后重启 Host。";
+            else if (migration is { Status: MigrationExecutionRecord.SkippedStatus, ShouldApplyMigrations: false })
+                failureSummary = "数据库迁移被保护规则阻止。请检查迁移脚本与服务日志，完成受控迁移后再重启。";
+            state.RequireConfiguration(failureSummary);
         }
         await base.StartAsync(cancellationToken);
     }

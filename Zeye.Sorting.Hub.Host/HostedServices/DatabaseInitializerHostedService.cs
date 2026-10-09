@@ -362,6 +362,13 @@ namespace Zeye.Sorting.Hub.Host.HostedServices {
                     var db = scope.ServiceProvider.GetRequiredService<SortingHubDbContext>();
 
                     try {
+                        if (migrationPlan is { IsInitialDatabase: true, DangerousOperations.Count: > 0 }) {
+                            // 建库后、执行前再次核对，防止预演与执行之间目标库被其他进程写入。
+                            var connectionString = db.Database.GetConnectionString()!;
+                            await using var administration = _dialect.CreateAdministrationConnection(connectionString);
+                            if (await _dialect.HasUserObjectsAsync(administration, _dialect.ExtractDatabaseName(connectionString), ct))
+                                throw new InvalidOperationException("首次初始化计划生成后目标库出现用户对象，已停止迁移；请重新检查迁移计划。");
+                        }
                         NLogLogger.Info("开始执行数据库迁移，Provider={Provider}", _dialect.ProviderName);
                         await db.Database.MigrateAsync(ct);
                         await scope.ServiceProvider.GetRequiredService<PhysicalPartitionMigrationService>().ExecuteAsync(ct);

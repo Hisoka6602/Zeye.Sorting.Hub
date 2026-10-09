@@ -31,8 +31,6 @@ public sealed partial class FusionIngestionService : IFusionIngestionGateway {
     private readonly ConcurrentDictionary<string, FusionConnectionLease> _connections = new(StringComparer.Ordinal);
     /// <summary>仅通过 Begin 授权给当前连接的上传身份。</summary>
     private readonly ConcurrentDictionary<string, string> _uploadConnections = new(StringComparer.Ordinal);
-    /// <summary>进程内固定大小互斥条带，数据库唯一键与版本令牌继续保护多进程。</summary>
-    private static readonly SemaphoreSlim[] Gates = Enumerable.Range(0, 128).Select(_ => new SemaphoreSlim(1, 1)).ToArray();
     /// <summary>服务端生成路径的持久化根目录。</summary>
     private readonly string _imageDirectory;
     /// <summary>协议异常日志，不输出机器凭据或报文原文。</summary>
@@ -88,12 +86,8 @@ public sealed partial class FusionIngestionService : IFusionIngestionGateway {
     }
 
     /// <summary>固定大小条带控制同一来源写入竞争，不累积无界键对象。</summary>
-    private static async Task<T> LockedAsync<T>(string key, Func<Task<T>> action, CancellationToken cancellationToken) {
-        var gate = Gates[(uint)StringComparer.Ordinal.GetHashCode(key) % (uint)Gates.Length];
-        await gate.WaitAsync(cancellationToken);
-        try { return await action(); }
-        finally { gate.Release(); }
-    }
+    private static Task<T> LockedAsync<T>(string key, Func<Task<T>> action, CancellationToken cancellationToken) =>
+        FusionSourceGate.RunAsync(key, action, cancellationToken);
 
     /// <summary>注册来源元数据，数据库唯一来源主键和并发版本共同防止克隆部署。</summary>
     public Task<FusionRegistration> RegisterAsync(string connectionId, string authenticatedSource, FusionHello hello, CancellationToken cancellationToken) =>

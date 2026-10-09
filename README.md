@@ -711,17 +711,38 @@ Docker 使用 `host_configuration` 和 `host_configuration_history` 两个持久
 | Zeye.Sorting.Hub.Host/HostedServices | `LegacyConfigurationMigrationHostedService.cs` | 业务库初始化后导入旧配置白名单并绑定规则快照 |
 | Zeye.Sorting.Hub.Host/Routing | `RuntimeConfigurationApi.cs` | 超级管理员读取、版本化保存和历史查询接口 |
 | Zeye.Sorting.Hub.Host/Routing | `RuntimeConfigurationUpdate.cs` | 带版本的 JSON 局部更新合同 |
+| Zeye.Sorting.Hub.Host/Routing | `HostRestartRequest.cs` | 限定当前已保存配置版本的重启请求合同 |
+| Zeye.Sorting.Hub.Host/Hosting | `HostRestartCoordinator.cs` | 响应发送后正常停止，服务恢复或原启动命令重新启动，重复请求合并 |
 | Zeye.Sorting.Hub.Host.Tests | `ConfigurationTestStorage.cs` | 独立 LiteDB 和 SQLite 文件测试环境 |
 | Zeye.Sorting.Hub.Host.Tests | `RuntimeConfigurationTests.cs` | 自动建库、旧配置兼容、热更新、并发、原值快照和接口权限测试 |
 | Zeye.Sorting.Hub.Host.Tests | `DatabaseSetupTests.cs` | 无数据库启动、业务生命周期隔离、配置保存与本机访问限制回归 |
+| Zeye.Sorting.Hub.Host.Tests | `DatabaseBootstrapIntegrationTests.cs` | 独立 MySQL、SQL Server、Oracle 临时库的首次建库、预演与重复启动回归 |
+| Zeye.Sorting.Hub.Host.Tests | `DatabaseIntegrationTheoryAttribute.cs` | 显式启用独立验收数据库时运行集成用例，普通测试环境跳过 |
+| Zeye.Sorting.Hub.Host.Tests | `HostRestartTests.cs` | 重启权限、来源与版本校验、重复请求及一次性访问码交接回归 |
 | Zeye.Sorting.Hub.Host.Tests | `LiteDbManagedConfigurationTests.cs` | 加密目录迁移、租约撤销、运维策略和只读工具验证 |
 | Zeye.Sorting.Hub.Web/src/data/api | `configurationTypes.ts` | 运行配置、能力清单和配置历史的前后端合同 |
+| Zeye.Sorting.Hub.Web/src/data/api | `hostRestart.ts` | 重启断线等待、超时取消及新实例识别 |
 | Zeye.Sorting.Hub.Web/src/features/access | `RuntimeConfigurationPanel.tsx` | 分类编辑、版本冲突保护、保存和生效状态展示 |
+| Zeye.Sorting.Hub.Web/src/features/access | `HostRestartButton.tsx` | 配置入口共用的重启确认、等待反馈和页面恢复 |
 | Zeye.Sorting.Hub.Web/src/features/access | `RuntimeConfigurationHistory.tsx` | SQLite 变更历史筛选、提交状态与前后值查询 |
 | Zeye.Sorting.Hub.Web/src/features/access | `configurationModel.ts` | 类型化草稿、字段分类、数组补丁、本地日历校验和能力匹配 |
 | Zeye.Sorting.Hub.Web/src/features/access | `configurationFields.ts` | 配置维护字段的中文说明、固定选项、数值预设、列表建议和输入范围 |
 | Zeye.Sorting.Hub.Web/src/features/access | `useConfigurationNavigationGuard.ts` | 运行配置及策略草稿的站内导航、历史返回和刷新保护 |
 | Zeye.Sorting.Hub.Web/tests | `configurationModel.test.mjs` | 配置类型、数组替换、本地日期时间、列表、凭据和热更新能力回归 |
+| Zeye.Sorting.Hub.Web/tests | `hostRestart.test.mjs` | 旧实例、连接中断、超时取消与新实例仍需配置的重连回归 |
+
+Host 重启入口的文件结构如下：
+
+```text
+Zeye.Sorting.Hub.Host/
+  Hosting/HostRestartCoordinator.cs
+  Routing/HostRestartRequest.cs
+Zeye.Sorting.Hub.Host.Tests/HostRestartTests.cs
+Zeye.Sorting.Hub.Web/
+  src/data/api/hostRestart.ts
+  src/features/access/HostRestartButton.tsx
+  tests/hostRestart.test.mjs
+```
 
 ### Fusion 1.0 耐久接收与工作台接入
 
@@ -764,6 +785,7 @@ Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations/20261005034152_Ad
 Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations/20261005034152_AddFusionIngestionSqlServer.cs
 Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/FusionEntityTypeConfiguration.cs
 Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionConnectionLease.cs
+Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionSourceGate.cs
 Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionDiscoveryService.cs
 Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionIngestionOptions.cs
 Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionIngestionServiceFacts.cs
@@ -818,6 +840,7 @@ deploy/fusion-ingestion.example.json
 - `20261005034152_AddFusionIngestionSqlServer.cs`（`Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations/20261005034152_AddFusionIngestionSqlServer.cs`）：提供器独立的四张接收表、索引和二进制身份排序规则迁移。
 - `FusionEntityTypeConfiguration.cs`（`Zeye.Sorting.Hub.Infrastructure/EntityConfigurations/FusionEntityTypeConfiguration.cs`）：全局接收凭据、连接租约和图片断点的提供器无关映射。
 - `FusionConnectionLease.cs`（`Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionConnectionLease.cs`）：当前连接独立的来源租约缓存。
+- `FusionSourceGate.cs`（`Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionSourceGate.cs`）：来源接入写入与误建目录删除共用的有界互斥条带，防止首次注册与删除竞争。
 - `FusionDiscoveryService.cs`（`Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionDiscoveryService.cs`）：有界、签名认证的独立 UDP 发现，不在 UDP 上传输业务内容或凭据。
 - `FusionIngestionOptions.cs`（`Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionIngestionOptions.cs`）：融合接收端的独立配置，不复用网页账号或全局旧机器密钥。
 - `FusionIngestionServiceFacts.cs`（`Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/FusionIngestionServiceFacts.cs`）：原文接收、独立编号去重与可恢复投影任务。
@@ -1524,7 +1547,7 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 ##### `Zeye.Sorting.Hub.Infrastructure/Persistence/DatabaseDialects/`：数据库方言抽象与实现目录
 - `DatabaseProviderOperations.cs`：数据库提供器操作类（异常错误码提取 `TryGetProviderErrorNumber`、WHERE 列归一化 `NormalizeWhereColumns`、稳定索引名构造 `BuildIndexName`）。
 - `DatabaseIdentifierPolicy.cs`：数据库名安全守卫（数据库名格式校验、MySQL/SQL Server 标识符转义）。
-- `DatabaseConnectionOpenCoordinator.cs`：数据库连接打开共享工具（统一处理 Open/Broken 状态）。
+- `DatabaseConnectionOpenCoordinator.cs`：统一处理连接 Open/Broken 状态及数据库存在性启动探测；SQLite 缺失文件交由受治理的建库流程创建，探测不产生目录或文件。
 - `IDatabaseDialect.cs`：数据库方言抽象接口。
 - `IShardingPhysicalTableProbe.cs`：分表物理对象探测抽象（最小职责：判断目标物理表是否存在 + 探测目标表缺失索引名集合；仅探测，不执行 DDL）。
 - `IBatchShardingPhysicalTableProbe.cs`：分表物理表批量探测抽象（返回缺失集合，并支持按逻辑表名前缀枚举已存在物理分表）。
@@ -1755,6 +1778,9 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 | Zeye.Sorting.Hub.Domain/Aggregates/Parcels/Processing | `ExceptionRuleMatcher.cs` | 发布规则的数值换算、文本匹配、范围和缺失事实校验 |
 | Zeye.Sorting.Hub.Domain/Aggregates/Parcels/Processing | `SorterExceptionClassifier.cs` | 分拣异常及跨平台运行接入文件 |
 | Zeye.Sorting.Hub.Host.Tests | `AccessApiTests.cs` | 初始化与真实认证、会话撤销、角色权限及设备入口回归 |
+| Zeye.Sorting.Hub.Host.Tests | `AdministratorBootstrapTests.cs` | 无部署密钥的本机首次初始化、重启保留、权限及来源限制、完成后失效回归 |
+| Zeye.Sorting.Hub.Infrastructure/Security | `AdministratorBootstrapKeyStore.cs` | 本机管理员初始化密钥的生成、缓存、重启复用与账号提交后清理 |
+| Zeye.Sorting.Hub.Infrastructure/Security | `ProtectedSecretFile.cs` | 数据库和管理员引导凭据共用的文件访问控制，限制权限后写入秘密 |
 | Zeye.Sorting.Hub.Host.Tests | `ManagedRuleApiTests.cs` | 真实规则保存、并发冲突、系统兜底及实际事实分类回归 |
 | Zeye.Sorting.Hub.Host.Tests | `SorterExceptionClassificationTests.cs` | 分拣异常及跨平台运行接入文件 |
 | Zeye.Sorting.Hub.Host.Tests | `SqliteRuntimeTests.cs` | 分拣异常及跨平台运行接入文件 |
@@ -2417,9 +2443,15 @@ Zeye.Sorting.Hub.Host.Tests/
 Zeye.Sorting.Hub.Host/
   Authentication/DataProtectionKeyStorage.cs
 Zeye.Sorting.Hub.Host.Tests/
+  AdministratorBootstrapTests.cs
   AdditionalDatabaseProviderTests.cs
+  DatabaseBootstrapIntegrationTests.cs
+  DatabaseIntegrationTheoryAttribute.cs
   DataProtectionKeyStorageTests.cs
   DisposedHubCallerContext.cs
+Zeye.Sorting.Hub.Infrastructure/Security/
+  AdministratorBootstrapKeyStore.cs
+  ProtectedSecretFile.cs
 Zeye.Sorting.Hub.Infrastructure/Persistence/
   AdditionalDbContextOptions.cs
   OracleConnectionLivenessInterceptor.cs

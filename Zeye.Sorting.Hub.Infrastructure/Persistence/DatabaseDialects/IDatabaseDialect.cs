@@ -66,6 +66,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects {
         /// <returns>存在返回 true，否则 false。</returns>
         Task<bool> DatabaseExistsAsync(DbConnection administrationConnection, string databaseName, CancellationToken cancellationToken);
 
+        /// <summary>检查目标库中是否已有用户对象；未知方言保守视为非空，禁止跳过已有数据的迁移保护。</summary>
+        Task<bool> HasUserObjectsAsync(DbConnection administrationConnection, string databaseName, CancellationToken cancellationToken) => Task.FromResult(true);
+
         /// <summary>
         /// 创建目标数据库。
         /// </summary>

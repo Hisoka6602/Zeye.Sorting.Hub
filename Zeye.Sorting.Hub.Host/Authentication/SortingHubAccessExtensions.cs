@@ -3,12 +3,15 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 using Zeye.Sorting.Hub.Host.Queries;
+using Zeye.Sorting.Hub.Infrastructure.Security;
 namespace Zeye.Sorting.Hub.Host.Authentication;
 /// <summary>注册可撤销的安全会话，并按部署配置保护业务接口。</summary>
 public static class SortingHubAccessExtensions {
     /// <summary>注册真实账号认证；密钥与配置文件同卷保存，兼容旧日志目录的会话密钥。</summary>
     public static IServiceCollection AddSortingHubAccess(this IServiceCollection services, string contentRoot, string? configurationDatabasePath = null) {
         services.AddScoped<AccessDirectoryService>();
+        var configurationPath = Path.GetFullPath(configurationDatabasePath ?? "data/configuration/settings.db", contentRoot);
+        services.AddSingleton(new AdministratorBootstrapKeyStore(Path.Combine(Path.GetDirectoryName(configurationPath)!, "administrator-bootstrap.key")));
         services.AddDataProtection().SetApplicationName("Zeye.Sorting.Hub").PersistKeysToFileSystem(DataProtectionKeyStorage.Prepare(contentRoot, configurationDatabasePath));
         services.AddAuthentication("SortingCookie").AddCookie("SortingCookie", options => {
             options.Cookie.Name = "Zeye.Sorting.Session"; options.Cookie.HttpOnly = true; options.Cookie.SameSite = SameSiteMode.Lax;
