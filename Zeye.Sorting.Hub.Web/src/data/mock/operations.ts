@@ -75,7 +75,7 @@ export const exceptionTypeOptions = [
   { value: 9, label: '位置检测异常' }, { value: 10, label: '包裹丢失' },
   { value: 11, label: '机械故障' }, { value: 12, label: '飘格' },
   { value: 13, label: '包裹间距违规' }, { value: 14, label: '目标格口分配被拒绝' },
-  { value: 15, label: '来源设备异常' },
+  { value: 15, label: '来源设备异常' }, { value: 16, label: '异常落格' },
 ];
 
 // Retained only to migrate untouched examples without removing user-edited drafts.

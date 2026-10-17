@@ -10,8 +10,8 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
-    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.9" />
-    <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="10.0.9" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.13" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="10.0.13" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.14" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.14" />
     <!-- 中文说明：使用包含已修复 SQLite 原生库的兼容包，避免旧传递依赖的安全漏洞。 -->
@@ -30,6 +30,7 @@
     <ProjectReference Include="..\Zeye.Sorting.Hub.Domain\Zeye.Sorting.Hub.Domain.csproj" />
     <ProjectReference Include="..\Zeye.Sorting.Hub.Host\Zeye.Sorting.Hub.Host.csproj" />
     <ProjectReference Include="..\Zeye.Sorting.Hub.Infrastructure\Zeye.Sorting.Hub.Infrastructure.csproj" />
+    <ProjectReference Include="..\tools\ParcelExceptionRepair\ParcelExceptionRepair.csproj" />
   </ItemGroup>
 
 </Project>

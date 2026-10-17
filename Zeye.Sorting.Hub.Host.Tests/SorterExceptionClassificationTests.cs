@@ -57,11 +57,11 @@ public sealed class SorterExceptionClassificationTests {
     public void LateUnknownExceptionDoesNotUndoCompletion() {
         var detected = Fact("detected") with { ParcelId = 1 };
         var parcel = Parcel.CreateDetected(1, detected, detected.RecordedAt);
-        var completed = detected with { RecordId = "completed", Stage = ParcelProcessingStage.SortingCompleted, OccurredAt = detected.OccurredAt.AddSeconds(1), ActualChuteCode = "A01" };
+        var completed = detected with { RecordId = "completed", Stage = ParcelProcessingStage.SortingCompleted, OccurredAt = detected.OccurredAt.AddSeconds(1), TargetChuteCode = "A01", ActualChuteCode = "A01" };
         var exception = detected with { RecordId = "exception", Stage = ParcelProcessingStage.ParcelException, OccurredAt = detected.OccurredAt.AddSeconds(2), ExceptionCode = "FutureDeviceFailure" };
         parcel.ApplyProcessingRecords([detected, completed, exception]);
         Assert.Equal(ParcelStatus.Completed, parcel.Status);
-        Assert.Null(parcel.ExceptionType);
+        Assert.Equal(ParcelExceptionType.Unknown, parcel.ExceptionType);
         Assert.Equal("FutureDeviceFailure", parcel.SourceExceptionCode);
     }
 

@@ -12,8 +12,10 @@ public sealed record ParcelAnalysisResponse {
     public long ParcelCount { get; init; }
     /// <summary>总体内当前已完成票数。</summary>
     public long CompletedCount { get; init; }
-    /// <summary>总体内当前异常票数。</summary>
+    /// <summary>总体内发生过异常的票数（含已完成）。</summary>
     public long ExceptionCount { get; init; }
+    /// <summary>仍待处理的包裹数，独立计算，不从可能重叠的完成数和异常数相减。</summary>
+    public long PendingCount { get; init; }
     /// <summary>总体内NoRead票数，可能与异常票重叠。</summary>
     public long NoReadCount { get; init; }
     /// <summary>总体内明确阻断路由的票数。</summary>
@@ -40,7 +42,7 @@ public sealed record ParcelAnalysisResponse {
     public long ChuteMismatchCount { get; init; }
     /// <summary>总体内明确采用兜底格口的票数。</summary>
     public long FallbackCount { get; init; }
-    /// <summary>所有当前异常类型的数据库聚合。</summary>
+    /// <summary>所有历史异常分类的数据库聚合（含已完成）。</summary>
     public IReadOnlyList<ParcelAnalysisGroupResponse> ExceptionTypes { get; init; } = [];
     /// <summary>全部有效完成样本的互不重叠耗时分布。</summary>
     public IReadOnlyList<ParcelDurationBucketResponse> DurationBuckets { get; init; } = [];

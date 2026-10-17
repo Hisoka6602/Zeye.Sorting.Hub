@@ -25,7 +25,7 @@ public sealed record ParcelAnalysisSnapshot {
     public string WorkstationName { get; init; } = string.Empty;
     /// <summary>当前包裹状态。</summary>
     public ParcelStatus Status { get; init; }
-    /// <summary>当前异常分类。</summary>
+    /// <summary>保留的历史异常分类。</summary>
     public ParcelExceptionType? ExceptionType { get; init; }
     /// <summary>当前识读状态。</summary>
     public NoReadType NoReadType { get; init; }

@@ -39,7 +39,8 @@ public sealed class ParcelAnalysisReadService(IDbContextFactory<SortingHubDbCont
         var summary = await cohort.GroupBy(_ => 1).Select(group => new {
             Count = group.LongCount(),
             Completed = group.LongCount(parcel => parcel.Status == ParcelStatus.Completed),
-            Exceptions = group.LongCount(parcel => parcel.Status == ParcelStatus.SortingException),
+            Pending = group.LongCount(parcel => parcel.Status == ParcelStatus.Pending),
+            Exceptions = group.LongCount(parcel => (parcel.ExceptionType != null || parcel.Status == ParcelStatus.SortingException)),
             NoRead = group.LongCount(parcel => parcel.NoReadType != NoReadType.None || DatabaseTextFunctions.Lower(parcel.BarCodes) == "noread"),
             Blocked = group.LongCount(parcel => parcel.IsRoutingBlocked == true),
             Comparable = group.LongCount(parcel => parcel.TargetChuteCode != null && parcel.TargetChuteCode.Trim() != ""
@@ -55,7 +56,7 @@ public sealed class ParcelAnalysisReadService(IDbContextFactory<SortingHubDbCont
             View = request.View, FromDate = request.FromDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             ToDate = request.ToDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             ParcelCount = summary?.Count ?? 0, CompletedCount = summary?.Completed ?? 0,
-            ExceptionCount = summary?.Exceptions ?? 0, NoReadCount = summary?.NoRead ?? 0,
+            ExceptionCount = summary?.Exceptions ?? 0, PendingCount = summary?.Pending ?? 0, NoReadCount = summary?.NoRead ?? 0,
             RoutingBlockedCount = summary?.Blocked ?? 0, ComparableChuteCount = summary?.Comparable ?? 0,
             ChuteMismatchCount = summary?.Mismatch ?? 0, FallbackCount = summary?.Fallback ?? 0, PageNumber = request.PageNumber
         };
@@ -65,7 +66,7 @@ public sealed class ParcelAnalysisReadService(IDbContextFactory<SortingHubDbCont
             return result with { DurationType = request.DurationType, DurationAnalysis = duration, FilteredCount = duration.FilteredCount };
         }
         if (request.View == "exceptions") {
-            var types = await cohort.Where(parcel => parcel.Status == ParcelStatus.SortingException)
+            var types = await cohort.Where(parcel => (parcel.ExceptionType != null || parcel.Status == ParcelStatus.SortingException))
                 .GroupBy(parcel => parcel.ExceptionType).Select(group => new { Type = group.Key, Count = group.LongCount() })
                 .OrderByDescending(row => row.Count).ThenBy(row => row.Type).ToListAsync(cancellationToken);
             result = result with { ExceptionTypes = types.Select(row => new ParcelAnalysisGroupResponse {
@@ -74,7 +75,7 @@ public sealed class ParcelAnalysisReadService(IDbContextFactory<SortingHubDbCont
             details = request.Issue switch {
                 "noread" => details.Where(parcel => parcel.NoReadType != NoReadType.None || DatabaseTextFunctions.Lower(parcel.BarCodes) == "noread"),
                 "blocked" => details.Where(parcel => parcel.IsRoutingBlocked == true),
-                _ => details.Where(parcel => parcel.Status == ParcelStatus.SortingException)
+                _ => details.Where(parcel => (parcel.ExceptionType != null || parcel.Status == ParcelStatus.SortingException))
             };
             if (request.Issue == "exception" && request.ExceptionType.HasValue)
                 details = details.Where(parcel => parcel.ExceptionType == (ParcelExceptionType)request.ExceptionType.Value);
@@ -143,7 +144,7 @@ public sealed class ParcelAnalysisReadService(IDbContextFactory<SortingHubDbCont
         return result with { FilteredCount = filteredCount, Items = items.Select(parcel => new ParcelAnalysisParcelResponse {
             Id = parcel.Id.ToString(CultureInfo.InvariantCulture), BarCodes = parcel.BarCodes, CreatedTime = parcel.CreatedTime,
             ScannedTime = parcel.ScannedTime, SourceInstanceId = parcel.SourceInstanceId, WorkstationName = parcel.WorkstationName,
-            Status = (int)parcel.Status, ExceptionName = parcel.Status == ParcelStatus.SortingException ? ExceptionName(parcel.ExceptionType) : null,
+            Status = (int)parcel.Status, ExceptionName = (parcel.ExceptionType != null || parcel.Status == ParcelStatus.SortingException) ? ExceptionName(parcel.ExceptionType) : null,
             LifecycleMilliseconds = parcel.Status == ParcelStatus.Completed && parcel.CompletedTime >= parcel.DetectedTime
                 && parcel.LifecycleMilliseconds >= 0 ? parcel.LifecycleMilliseconds : null,
             TargetChuteCode = parcel.TargetChuteCode, ActualChuteCode = parcel.ActualChuteCode,

@@ -64,7 +64,7 @@ public sealed class ParcelAnalyticsReadService : IParcelAnalyticsReadService {
             Date = group.Key,
             DetectedCount = group.LongCount(),
             CompletedCount = group.LongCount(x => x.Status == ParcelStatus.Completed),
-            ExceptionCount = group.LongCount(x => x.Status == ParcelStatus.SortingException),
+            ExceptionCount = group.LongCount(x => (x.ExceptionType != null || x.Status == ParcelStatus.SortingException)),
             NoReadCount = group.LongCount(x => x.NoReadType != NoReadType.None || DatabaseTextFunctions.Lower(x.BarCodes) == "noread"),
             ChuteMismatchCount = group.LongCount(x => x.TargetChuteCode != null && x.ActualChuteCode != null
                 && DatabaseTextFunctions.Lower(x.TargetChuteCode) != DatabaseTextFunctions.Lower(x.ActualChuteCode)),
@@ -102,7 +102,7 @@ public sealed class ParcelAnalyticsReadService : IParcelAnalyticsReadService {
         }).ToArray();
 
         // 步骤2：工作台和异常类型先在数据库分组，返回行数受既有报表预算控制。
-        var exceptionRows = await parcels.Where(x => x.Status == ParcelStatus.SortingException)
+        var exceptionRows = await parcels.Where(x => (x.ExceptionType != null || x.Status == ParcelStatus.SortingException))
             .GroupBy(x => x.ExceptionType)
             .Select(group => new { Type = group.Key, Count = group.LongCount() })
             .OrderByDescending(x => x.Count).ToListAsync(cancellationToken);

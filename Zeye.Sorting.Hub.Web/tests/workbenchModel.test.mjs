@@ -39,6 +39,18 @@ test('最近明细在服务器按实例筛选，不从全局200条截取；历�
 
 const parcel = (sourceInstanceId, workstationName, status = 1, createdTime = '2026-10-03T10:00:00') => ({ sourceInstanceId, workstationName, status, createdTime });
 
+test('已完成包裹保留异常分类时同时计入完成和异常，未知异常零也计数', () => {
+  const result = observeWorkstations([
+    { ...parcel('fusion-a', '工作台'), exceptionType: 14 },
+    { ...parcel('fusion-a', '工作台'), exceptionType: 0 },
+    { ...parcel('fusion-a', '工作台'), exceptionType: null },
+  ]).workstations[0];
+  assert.equal(result.parcelCount, 3);
+  assert.equal(result.completedCount, 3);
+  assert.equal(result.exceptionCount, 2);
+  assert.equal(result.pendingCount, 0);
+});
+
 test('同名工作台的不同来源实例保持独立，编号会话不改变实例身份', () => {
   const first = { ...parcel('fusion-a', '一号工作台'), sourceRunId: 'run-1' };
   const second = { ...parcel('fusion-a', '一号工作台', 2), sourceRunId: 'run-2' };

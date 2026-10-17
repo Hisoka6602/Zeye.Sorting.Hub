@@ -2691,3 +2691,17 @@ Zeye.Sorting.Hub.Host.Tests/
 | Infrastructure.SqliteMigrations/Migrations | `20261007212040_AlignDwsMeasurementIdentityLength.cs`、`.Designer.cs` | SQLite量测消息身份长度迁移及目标模型 |
 | Host/HostedServices | `ParcelDwsMeasurementBackfillHostedService.cs` | 初始化后低负载执行补齐，异常后保留已提交游标 |
 | Host.Tests | `ParcelDwsMeasurementProjectionTests.cs` | 四库查询翻译和字段保真、跨日补齐、统计一致性及批次幂等回归 |
+
+### 完成包裹异常保留与历史修复
+
+完成状态与异常分类独立保存：已完成包裹发生过异常时，继续进入概览、工作台和异常分析的异常计数。正常落格要求实际与有效目标格口一致，且非兜底、非强排；历史异常不因完成清空。操作说明见 [包裹异常保留与历史修复](docs/包裹异常保留与历史修复.md)。
+
+| 文件 | 职责 |
+| --- | --- |
+| `Zeye.Sorting.Hub.Host.Tests/ParcelHistoricalExceptionTests.cs` | 完成后异常保留、落格判定、跨报表一致性及历史修复回归 |
+| `tools/ParcelExceptionRepair/ParcelExceptionRepair.csproj` | SQLite 历史异常修复工具项目 |
+| `tools/ParcelExceptionRepair/Program.cs` | 部署配置读取、只读预览、显式执行及回滚入口 |
+| `tools/ParcelExceptionRepair/ExceptionRepairRunner.cs` | 分页重算及带原值复核的质量字段更新 |
+| `tools/ParcelExceptionRepair/ExceptionRepairEntry.cs` | 数据库位置、包裹身份与修复前后审计凭据 |
+| `tools/ParcelExceptionRepair/ExceptionRepairSnapshot.cs` | 限定可修复和回滚的质量字段 |
+| `docs/包裹异常保留与历史修复.md` | 新统计口径、部署配合及旧数据修复操作说明 |

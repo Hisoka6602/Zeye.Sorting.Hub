@@ -5,6 +5,14 @@ import { parcelExceptionDetails } from '../src/features/parcels/parcelExceptionD
 const normal = { status: 0, exceptionType: null, sourceExceptionCode: null, processingRecords: [], apiRequests: [] };
 const event = { recordId: 'exception-1', stage: 7, occurredAt: '2026-10-02T10:00:00', attemptNumber: 1, exceptionCode: 'ParcelSpacingViolation', errorMessage: 'IntervalMs=220 MinimumIntervalMs=300', decisionReason: null, rawPayload: '{"ExceptionType":"ParcelSpacingViolation"}' };
 
+test('完成状态与异常分类分别展示，异常落格仍明确计入统计', () => {
+  const result = parcelExceptionDetails({ ...normal, status: 1, exceptionType: 16 });
+  assert.equal(result.current, false);
+  assert.equal(result.classified, true);
+  assert.equal(result.type, '异常落格');
+  assert.match(result.rule, /不得使用兜底或强排格口/);
+});
+
 test('无异常包裹及未加载状态不显示异常版块', () => {
   assert.equal(parcelExceptionDetails(undefined), null);
   assert.equal(parcelExceptionDetails(normal), null);

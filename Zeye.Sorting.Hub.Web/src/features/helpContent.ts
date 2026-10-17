@@ -121,7 +121,7 @@ export const helpGroups: HelpGroup[] = [
         links: [{ title: '打开异常分析', to: '/parcels/exceptions' }],
         steps: [
           { title: '确定日期和来源', description: '选择首次入库日期，按需填写工作台名称、来源实例，点击「查询」。' },
-          { title: '选择问题范围', description: '查看当前异常、NoRead、路由阻断指标；点击异常类型分布，或切换包裹明细的问题范围。' },
+          { title: '选择问题范围', description: '查看发生异常、NoRead、路由阻断指标；点击异常类型分布，或切换包裹明细的问题范围。' },
           { title: '追溯问题包裹', description: '在分页明细打开「详情」查看异常和报文，或打开「时序」比较扫码、格口请求和邻票。' },
         ],
         notes: [

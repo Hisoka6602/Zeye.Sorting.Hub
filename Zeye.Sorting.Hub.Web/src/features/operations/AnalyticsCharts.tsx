@@ -27,7 +27,7 @@ export function AnalyticsTrend({ rows, unavailable = false }: { rows: AnalyticsD
   return <div ref={container} className="analytics-trend-container">
     {unavailable || maximum <= 0 ? <div className="analytics-chart-empty"><Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={unavailable ? '报表暂不可用，请刷新重试' : '该时间范围暂无入库包裹'} /></div>
       : <div className="analytics-trend-scroll" tabIndex={0} role="region" aria-label="每日入库趋势，日期较多时可横向滚动">
-        <svg width={width} height="266" role="img" aria-label={`每日入库与当前异常票数；${rows.map(row => `${row.date} 入库 ${row.detectedCount} 票、当前异常 ${row.exceptionCount} 票`).join('；')}`}>
+        <svg width={width} height="266" role="img" aria-label={`每日入库与发生异常票数；${rows.map(row => `${row.date} 入库 ${row.detectedCount} 票、发生异常 ${row.exceptionCount} 票`).join('；')}`}>
           {ticks.map(tick => {
             const y = baseline - heightOf(tick);
             return <g key={tick} aria-hidden="true">
@@ -42,7 +42,7 @@ export function AnalyticsTrend({ rows, unavailable = false }: { rows: AnalyticsD
             const pairSpacing = Math.max(barWidth + 4, labelSpacing);
             const inboundX = x - pairSpacing / 2, exceptionX = x + pairSpacing / 2;
             return <g key={row.date}>
-              <title>{`${row.date}：入库 ${formatNumber(row.detectedCount, { grouping: true })} 票，当前异常 ${formatNumber(row.exceptionCount, { grouping: true })} 票`}</title>
+              <title>{`${row.date}：入库 ${formatNumber(row.detectedCount, { grouping: true })} 票，发生异常 ${formatNumber(row.exceptionCount, { grouping: true })} 票`}</title>
               <rect x={inboundX - barWidth / 2} y={baseline - inboundHeight} width={barWidth} height={inboundHeight} rx="3" className="analytics-chart-inbound" />
               <rect x={exceptionX - barWidth / 2} y={baseline - exceptionHeight} width={barWidth} height={exceptionHeight} rx="3" className="analytics-chart-exception" />
               <text x={inboundX} y={baseline - inboundHeight - 8} textAnchor="middle" className="analytics-chart-count">{formatTrendCount(row.detectedCount)}</text>

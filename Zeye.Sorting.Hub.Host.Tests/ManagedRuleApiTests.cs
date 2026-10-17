@@ -75,7 +75,7 @@ public sealed class ManagedRuleApiTests {
         Assert.True((await db.Processing.AppendAsync(completed, default)).IsSuccess);
         Assert.True((await db.Processing.AppendAsync(detected with { RecordId = "late", Stage = ParcelProcessingStage.ParcelException, OccurredAt = detected.OccurredAt.AddSeconds(3), ExceptionCode = "FutureFault" }, default)).IsSuccess);
         parcel = await db.Parcels.GetByIdAsync(created.Value.ParcelId.Value, default);
-        Assert.Equal(ParcelStatus.Completed, parcel!.Status); Assert.Null(parcel.ExceptionType);
+        Assert.Equal(ParcelStatus.Completed, parcel!.Status); Assert.Equal(ParcelExceptionType.MechanicalFailure, parcel.ExceptionType);
         var saved = await new ManagedDocumentService(db.Factory).ReadAsync("rules-exception", default);
         Assert.Contains("1250.25", saved!.Json);
     }

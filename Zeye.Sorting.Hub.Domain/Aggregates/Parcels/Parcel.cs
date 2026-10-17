@@ -132,25 +132,39 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
                     TargetChuteCode = record.TargetChuteCode ?? TargetChuteCode;
                     TargetChuteId = long.TryParse(TargetChuteCode, out var chuteId) && chuteId > 0 ? chuteId : null;
                     TaskCode = record.TaskCode ?? TaskCode;
-                    IsFallbackChuteAssigned = record.IsFallback ?? IsFallbackChuteAssigned;
                 }
-                IsRoutingBlocked = record.IsRoutingBlocked ?? IsRoutingBlocked;
-                if (record.Stage == ParcelProcessingStage.ScanUploaded) providerResponse = record;
+                // 曾经发生的兜底和路由阻断保留在质量快照中，后续正常报文不能抹除。
+                if (IsFallbackChuteAssigned != true) IsFallbackChuteAssigned = record.IsFallback ?? IsFallbackChuteAssigned;
+                if (IsRoutingBlocked != true) IsRoutingBlocked = record.IsRoutingBlocked ?? IsRoutingBlocked;
+                if (record.IsFallback == true || record.IsRoutingBlocked == true)
+                    ApplyProcessingException(ParcelExceptionType.AbnormalDischarge);
+                if (record.Stage == ParcelProcessingStage.ScanUploaded && !string.IsNullOrWhiteSpace(record.ResponseBody)) providerResponse = record;
                 var facts = ExceptionRuleMatcher.Facts(this, record, providerResponse);
                 var previousType = Type;
                 if (rules is not null && Status != ParcelStatus.Completed && record.Stage is ParcelProcessingStage.Detected or ParcelProcessingStage.DwsBound or ParcelProcessingStage.ScanUploaded)
                     Type = ExceptionRuleMatcher.MatchParcel(rules, facts, WorkstationName, SourceInstanceId) ?? Type;
                 if (Type != previousType) facts = ExceptionRuleMatcher.Facts(this, record, providerResponse);
                 var matchedType = rules is not null ? ExceptionRuleMatcher.Match(rules, facts, WorkstationName, SourceInstanceId) : null;
-                if (matchedType.HasValue && Status != ParcelStatus.Completed && record.Stage is ParcelProcessingStage.Detected or ParcelProcessingStage.DwsBound or ParcelProcessingStage.ScanUploaded)
-                    ApplyStatus(ParcelStatus.SortingException, matchedType.Value);
+                if (matchedType.HasValue && record.Stage is ParcelProcessingStage.Detected or ParcelProcessingStage.DwsBound or ParcelProcessingStage.ScanUploaded)
+                    ApplyProcessingException(matchedType.Value);
+                else if (record.Stage == ParcelProcessingStage.ScanUploaded && record.IsSuccess == false)
+                    ApplyProcessingException(ParcelExceptionType.InterfaceResponseException);
                 if (record.Stage == ParcelProcessingStage.ParcelException) {
                     SourceExceptionCode = record.ExceptionCode;
-                    if (Status != ParcelStatus.Completed) ApplyStatus(ParcelStatus.SortingException, matchedType ?? SorterExceptionClassifier.Classify(record.ExceptionCode));
+                    ApplyProcessingException(matchedType ?? SorterExceptionClassifier.Classify(record.ExceptionCode));
                 }
                 if (record.Stage == ParcelProcessingStage.SortingCompleted && record.IsSuccess != false) {
+                    // 落格事实携带最终目标快照，兼容目标事实晚到或缺失；空目标不能证明正常分拣。
+                    TargetChuteCode = record.TargetChuteCode ?? TargetChuteCode;
+                    TargetChuteId = long.TryParse(TargetChuteCode, out var targetId) && targetId > 0 ? targetId : null;
                     ActualChuteCode = record.ActualChuteCode;
                     ActualChuteId = long.TryParse(ActualChuteCode, out var chuteId) && chuteId > 0 ? chuteId : null;
+                    if (string.IsNullOrWhiteSpace(TargetChuteCode) || string.IsNullOrWhiteSpace(ActualChuteCode)
+                        || (TargetChuteId.HasValue && ActualChuteId.HasValue
+                            ? TargetChuteId != ActualChuteId
+                            : !string.Equals(TargetChuteCode.Trim(), ActualChuteCode.Trim(), StringComparison.OrdinalIgnoreCase))
+                        || long.TryParse(ActualChuteCode, out var actual) && actual <= 0)
+                        ApplyProcessingException(ParcelExceptionType.AbnormalDischarge);
                     DischargeTime = record.OccurredAt;
                     MarkCompleted(record.OccurredAt);
                     LifecycleMilliseconds = DetectedTime.HasValue ? Math.Max(0, (record.OccurredAt - DetectedTime.Value).Ticks / TimeSpan.TicksPerMillisecond) : null;
@@ -176,7 +190,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         public ParcelStatus Status { get; private set; }
 
         /// <summary>
-        /// 包裹异常类型（仅当状态为分拣异常时有值）
+        /// 包裹处理过程中的异常分类，完成后仍保留；空值表示未记录异常。
         /// </summary>
         public ParcelExceptionType? ExceptionType { get; private set; }
 
@@ -481,11 +495,11 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         /// 标记包裹完结
         /// </summary>
         /// <remarks>
-        /// 标记完成时会清空 <see cref="ExceptionType"/>，避免“已完成”与“异常类型”并存的状态歧义。
+        /// 生命周期完成与处理质量独立；落格完成不会清空已经记录的异常分类。
         /// </remarks>
         public void MarkCompleted(DateTime completedTime) {
             CompletedTime = completedTime;
-            ApplyStatus(ParcelStatus.Completed, null);
+            ApplyStatus(ParcelStatus.Completed, ExceptionType);
         }
 
         /// <summary>
@@ -493,15 +507,18 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         /// </summary>
         /// <param name="exceptionType">分拣异常的具体类型。</param>
         public void MarkSortingException(ParcelExceptionType exceptionType) {
-            if (Status == ParcelStatus.Completed) {
-                throw new InvalidOperationException("已完成的包裹不允许再标记为分拣异常");
-            }
-
             if (!Enum.IsDefined(exceptionType)) {
                 throw new ArgumentOutOfRangeException(nameof(exceptionType), "异常类型无效");
             }
 
-            ApplyStatus(ParcelStatus.SortingException, exceptionType);
+            ApplyStatus(Status == ParcelStatus.Completed ? ParcelStatus.Completed : ParcelStatus.SortingException, exceptionType);
+        }
+
+        /// <summary>登记处理异常，保留完成状态；通用异常落格或未知编码不覆盖更具体的原因。</summary>
+        private void ApplyProcessingException(ParcelExceptionType exceptionType) {
+            if (ExceptionType.HasValue && ExceptionType is not (ParcelExceptionType.Unknown or ParcelExceptionType.AbnormalDischarge)
+                && exceptionType is ParcelExceptionType.Unknown or ParcelExceptionType.AbnormalDischarge) return;
+            MarkSortingException(exceptionType);
         }
 
         /// <summary>
@@ -526,8 +543,8 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
                 throw new InvalidOperationException("分拣异常状态必须提供异常类型");
             }
 
-            if (status != ParcelStatus.SortingException && exceptionType is not null) {
-                throw new InvalidOperationException("非分拣异常状态不允许包含异常类型");
+            if (status == ParcelStatus.Pending && exceptionType is not null) {
+                throw new InvalidOperationException("未完成且存在异常的包裹必须使用分拣异常状态");
             }
         }
 

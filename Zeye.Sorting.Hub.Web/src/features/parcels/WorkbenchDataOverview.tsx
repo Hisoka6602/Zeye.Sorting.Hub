@@ -180,7 +180,7 @@ export function WorkbenchDataOverview() {
         trend={<WorkbenchMetricTrend days={metricDays} metric="detectedCount" title="检测入库" loading={loading} />} />
       <Metric title="已完成分拣" value={number(data?.completedCount)} suffix="票" note="入库包裹的当前完成数" icon={<CheckCircleOutlined />} tone="green"
         trend={<WorkbenchMetricTrend days={metricDays} metric="completedCount" title="已完成分拣" loading={loading} />} />
-      <Metric title="分拣异常" value={number(data?.exceptionCount)} suffix="票" note="入库包裹的当前异常数" icon={<WarningOutlined />} tone="red"
+      <Metric title="分拣异常" value={number(data?.exceptionCount)} suffix="票" note="发生过异常的包裹，含已完成" icon={<WarningOutlined />} tone="red"
         trend={<WorkbenchMetricTrend days={metricDays} metric="exceptionCount" title="分拣异常" loading={loading} />} />
       <Metric title="异常占比" value={data ? percent(data.exceptionCount, data.detectedCount) : '—'} note="反映入库包裹的异常情况" icon={<WarningOutlined />} tone="orange"
         sideVisual={<ExceptionShareDonut count={data?.exceptionCount} total={data?.detectedCount} loading={loading} />} />
@@ -191,7 +191,7 @@ export function WorkbenchDataOverview() {
     </div>
     <div className="workbench-data-distributions">
       <SectionCard title="异常类型分布" extra={data && !loading ? <span className="workbench-data-panel-badge">共 {number(data.exceptionCount)} 票</span> : undefined} className="workbench-data-panel workbench-data-panel-exceptions">
-        <p className="workbench-data-panel-caption">当前异常构成 · 数量与占比</p>
+        <p className="workbench-data-panel-caption">发生异常构成 · 数量与占比</p>
         {loading ? <div className="workbench-distribution-empty"><Spin /></div>
           : <ExceptionDonut rows={data?.exceptionTypes ?? []} total={data?.exceptionCount ?? 0} />}
       </SectionCard>

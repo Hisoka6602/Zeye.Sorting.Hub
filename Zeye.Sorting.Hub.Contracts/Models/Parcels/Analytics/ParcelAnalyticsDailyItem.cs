@@ -8,7 +8,7 @@ public sealed record ParcelAnalyticsDailyItem {
     public long DetectedCount { get; init; }
     /// <summary>当前完成件数。</summary>
     public long CompletedCount { get; init; }
-    /// <summary>当前异常件数。</summary>
+    /// <summary>发生过异常的件数（含已完成）。</summary>
     public long ExceptionCount { get; init; }
     /// <summary>当前 NoRead 件数。</summary>
     public long NoReadCount { get; init; }

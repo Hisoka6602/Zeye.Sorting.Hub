@@ -6,6 +6,6 @@ public sealed record ParcelAnalysisGroupResponse {
     public int? Code { get; init; }
     /// <summary>服务端领域说明中的中文名称。</summary>
     public required string Name { get; init; }
-    /// <summary>该类型的当前异常票数。</summary>
+    /// <summary>该类型的发生过异常的票数（含已完成）。</summary>
     public long Count { get; init; }
 }

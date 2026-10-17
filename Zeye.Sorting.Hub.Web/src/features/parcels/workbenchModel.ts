@@ -1,8 +1,11 @@
+import { hasParcelException } from './parcelExceptionDetails.ts';
+
 /** 来源实例优先于工作台名称；编号会话不代表新的工作台。 */
 export interface WorkbenchParcel {
   sourceInstanceId: string | null;
   workstationName: string;
   status: number;
+  exceptionType?: number | null;
   createdTime: string;
 }
 
@@ -100,8 +103,8 @@ export function observeWorkstations(parcels: readonly WorkbenchParcel[]) {
     group.parcelCount++;
     if (parcel.status === 0) group.pendingCount++;
     else if (parcel.status === 1) group.completedCount++;
-    else if (parcel.status === 2) group.exceptionCount++;
-    else group.otherCount++;
+    else if (parcel.status !== 2) group.otherCount++;
+    if (hasParcelException(parcel)) group.exceptionCount++;
     if (timestamp(parcel.createdTime) > timestamp(group.lastParcelAt)) {
       group.lastParcelAt = parcel.createdTime;
       if (name) group.name = name;

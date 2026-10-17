@@ -122,8 +122,8 @@ function ParcelAnalysisPage({ view }: { view: ParcelAnalysisView }) {
     </SectionCard>}
     <div className="parcel-analysis-metrics">
       {view === 'exceptions' ? <>
-        <AnalysisMetric label="当前异常票数" value={count(data?.exceptionCount)} unit="票" caption={`首次入库总体 ${count(data?.parcelCount)} 票`} />
-        <AnalysisMetric label="当前异常率" value={data ? analysisPercent(data.exceptionCount, data.parcelCount) : '—'} caption="当前异常票数 / 首次入库总体" />
+        <AnalysisMetric label="发生异常票数" value={count(data?.exceptionCount)} unit="票" caption={`首次入库总体 ${count(data?.parcelCount)} 票`} />
+        <AnalysisMetric label="发生异常率" value={data ? analysisPercent(data.exceptionCount, data.parcelCount) : '—'} caption="发生异常票数 / 首次入库总体" />
         <AnalysisMetric label="NoRead 票数" value={count(data?.noReadCount)} unit="票" caption="识读状态或主条码为 NoRead" />
         <AnalysisMetric label="路由阻断票数" value={count(data?.routingBlockedCount)} unit="票" caption="已明确记录阻断正常路由" />
       </> : view === 'duration' ? <>
@@ -147,7 +147,7 @@ function ParcelAnalysisPage({ view }: { view: ParcelAnalysisView }) {
               onClick={() => update({ issue: 'exception', exceptionType: String(group.code) })} aria-label={`查看${group.name}包裹`}>
               <span title={group.name}>{group.name}</span><i><b style={{ width: `${data.exceptionCount > 0 ? group.count / data.exceptionCount * 100 : 0}%` }} /></i>
               <strong>{count(group.count)} 票</strong><small>{analysisPercent(group.count, data.exceptionCount)}</small>
-            </button>)}</div> : empty('该日期和来源范围暂无当前异常包裹')
+            </button>)}</div> : empty('该日期和来源范围暂无发生异常包裹')
           : data && (sampleCount ?? 0) > 0 ? <div className="parcel-analysis-bars is-duration" aria-label={`${durationName}分布`}>{buckets.map(bucket => <button type="button" key={bucket.minimumMilliseconds}
               disabled={bucket.count === 0} className={filters.minimumMilliseconds === String(bucket.minimumMilliseconds) && filters.maximumMilliseconds === String(bucket.maximumMilliseconds ?? '') ? 'is-selected' : ''}
               onClick={() => update({ minimumMilliseconds: String(bucket.minimumMilliseconds), maximumMilliseconds: bucket.maximumMilliseconds === null ? null : String(bucket.maximumMilliseconds) })}
@@ -155,7 +155,7 @@ function ParcelAnalysisPage({ view }: { view: ParcelAnalysisView }) {
               <span>{durationBucketLabel(bucket)}</span><i><b style={{ width: `${bucket.count / (sampleCount ?? 1) * 100}%` }} /></i>
               <strong>{count(bucket.count)} {durationUnit}</strong><small>{analysisPercent(bucket.count, sampleCount ?? 0)}</small>
             </button>)}</div> : empty(`该范围暂无有效${durationName}样本`)}
-        <p className="parcel-analysis-note">{view === 'exceptions' ? '分母为当前异常票数；选择类型只筛选下方包裹明细。' : '分母为当前类型的全部有效样本；区间含下限、不含上限，单位毫秒。'}</p>
+        <p className="parcel-analysis-note">{view === 'exceptions' ? '分母为发生异常票数；选择类型只筛选下方包裹明细。' : '分母为当前类型的全部有效样本；区间含下限、不含上限，单位毫秒。'}</p>
       </SectionCard>
       <SectionCard title="统计口径">
         {view === 'duration' ? <dl className="parcel-analysis-definitions">
@@ -169,7 +169,7 @@ function ParcelAnalysisPage({ view }: { view: ParcelAnalysisView }) {
           <div><dt>最短 / 最长耗时</dt><dd>{milliseconds(duration?.minimumMilliseconds ?? data?.minimumMilliseconds)} / {milliseconds(duration?.maximumMilliseconds ?? data?.maximumMilliseconds)} ms</dd></div>
         </dl> : <dl className="parcel-analysis-definitions">
           <div><dt>入库总体</dt><dd>{count(data?.parcelCount)} 票</dd></div><div><dt>当前已完成</dt><dd>{count(data?.completedCount)} 票</dd></div>
-          <div><dt>当前待分拣</dt><dd>{data ? count(data.parcelCount - data.completedCount - data.exceptionCount) : '—'} 票</dd></div>
+          <div><dt>当前待分拣</dt><dd>{data ? count(data.pendingCount) : '—'} 票</dd></div>
         </dl>}
         <p className="parcel-analysis-note">{view === 'duration'
           ? '只纳入有效耗时，真实 0 ms 保留；缺失、不可靠或倒序时间不计入分位数。接口优先使用请求与响应时间，只有来源明确上报耗时时会标记其依据。'
@@ -200,7 +200,7 @@ function ParcelAnalysisPage({ view }: { view: ParcelAnalysisView }) {
       <div className="parcel-analysis-drill-filters">
         {view === 'exceptions' ? <>
           <label>问题范围 <Select aria-label="问题范围" value={filters.issue} onChange={value => update({ issue: value, exceptionType: null })}
-            options={[{ value: 'exception', label: '当前异常' }, { value: 'noread', label: 'NoRead' }, { value: 'blocked', label: '路由阻断' }]} /></label>
+            options={[{ value: 'exception', label: '发生异常' }, { value: 'noread', label: 'NoRead' }, { value: 'blocked', label: '路由阻断' }]} /></label>
           <label>异常类型 <Select aria-label="异常类型" value={filters.exceptionType || undefined} disabled={filters.issue !== 'exception'} allowClear placeholder="全部异常类型"
             onChange={value => update({ exceptionType: value ?? null })} options={data?.exceptionTypes.filter(group => group.code !== null).map(group => ({ value: String(group.code), label: group.name })) ?? []} /></label>
         </> : view === 'duration' ? <>
@@ -235,7 +235,7 @@ function ParcelAnalysisPage({ view }: { view: ParcelAnalysisView }) {
   </div>;
 }
 
-/** 当前异常及识读、路由问题的独立入口。 */
+/** 发生异常及识读、路由问题的独立入口。 */
 export function ParcelExceptionsPage() { return <ParcelAnalysisPage view="exceptions" />; }
 /** 完成、DWS、阶段与业务接口调用耗时的独立入口。 */
 export function ParcelDurationPage() { return <ParcelAnalysisPage view="duration" />; }

@@ -44,7 +44,7 @@ public sealed record ParcelListRequest {
 
     /// <summary>
     /// 包裹异常类型（对应 Domain 层 ParcelExceptionType 枚举数值）。
-    /// 仅在 Status=SortingException 场景下有意义；传 null 表示不按异常类型筛选。
+    /// 独立于完成状态筛选历史异常类型；传 null 表示不按异常类型筛选。
     /// </summary>
     public int? ExceptionType { get; init; }
 

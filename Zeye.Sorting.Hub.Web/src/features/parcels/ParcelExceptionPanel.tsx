@@ -23,7 +23,7 @@ export function ParcelExceptionPanel({ parcel, events }: { parcel: ParcelDetail 
   const exception = parcelExceptionDetails(parcel, events);
   if (!exception) return null;
 
-  return <SectionCard title="包裹异常" className="parcel-exception-panel" extra={<Tag color={exception.current ? 'error' : 'default'}>{exception.current ? '当前异常' : '异常记录'}</Tag>}>
+  return <SectionCard title="包裹异常" className="parcel-exception-panel" extra={<Tag color={exception.classified ? 'error' : 'default'}>{exception.classified ? '计入异常统计' : '异常记录'}</Tag>}>
     <Descriptions bordered size="small" column={{ xs: 1, sm: 2 }} items={[
       { key: 'type', label: '异常类型', children: <Typography.Text type="danger">{exception.type}</Typography.Text> },
       { key: 'source', label: '来源异常代码', children: exception.sourceCode ? <Typography.Text copyable>{exception.sourceCode}</Typography.Text> : '未提供' },

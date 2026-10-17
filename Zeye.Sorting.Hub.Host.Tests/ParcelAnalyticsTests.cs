@@ -33,7 +33,7 @@ public sealed class ParcelAnalyticsTests {
         var report = await Reader(database).GetAsync(first.Date, second.Date, default);
         Assert.Equal(2, report.DetectedCount);
         Assert.Equal(1, report.CompletedCount);
-        Assert.Equal(1, report.ExceptionCount);
+        Assert.Equal(2, report.ExceptionCount);
         Assert.Equal(1, report.NoReadCount);
         Assert.Equal(1, report.ChuteMismatchCount);
         Assert.Equal(10m, report.AverageLifecycleSeconds);
@@ -43,7 +43,9 @@ public sealed class ParcelAnalyticsTests {
         Assert.Equal(2, report.Daily.Count);
         Assert.Equal(first.Date.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture), Assert.Single(report.DailySorting).Date);
         Assert.Equal(1, Assert.Single(report.DailySorting).SortedCount);
-        Assert.Equal("包裹间距违规", Assert.Single(report.ExceptionTypes).Name);
+        Assert.Equal(2, report.ExceptionTypes.Count);
+        Assert.Contains(report.ExceptionTypes, item => item.Name == "包裹间距违规" && item.Count == 1);
+        Assert.Contains(report.ExceptionTypes, item => item.Name == "接口响应异常" && item.Count == 1);
         Assert.Contains(report.Workstations, x => x.Name == "W-B" && x.Count == 1);
     }
 

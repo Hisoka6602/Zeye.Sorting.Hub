@@ -21,7 +21,7 @@ public sealed record ParcelAnalysisParcelResponse {
     public required string WorkstationName { get; init; }
     /// <summary>当前包裹状态。</summary>
     public int Status { get; init; }
-    /// <summary>当前异常的中文说明，非异常状态为空。</summary>
+    /// <summary>历史异常的中文说明，未记录异常时为空。</summary>
     public string? ExceptionName { get; init; }
     /// <summary>有效完成耗时，单位毫秒；缺失或无效时为空。</summary>
     public long? LifecycleMilliseconds { get; init; }

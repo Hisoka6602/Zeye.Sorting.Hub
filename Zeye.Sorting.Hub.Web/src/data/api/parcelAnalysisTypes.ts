@@ -31,7 +31,7 @@ export interface ParcelAnalysisParcel {
 }
 /** 指标使用完整首次入库总体，items 仅代表下钻筛选的当前页。 */
 export interface ParcelAnalysis {
-  view: ParcelAnalysisView; fromDate: string; toDate: string; parcelCount: number; completedCount: number; exceptionCount: number;
+  view: ParcelAnalysisView; fromDate: string; toDate: string; parcelCount: number; completedCount: number; exceptionCount: number; pendingCount: number;
   durationType: ParcelDurationType; durationAnalysis: ParcelDurationAnalysis | null;
   noReadCount: number; routingBlockedCount: number; lifecycleSampleCount: number; averageMilliseconds: number | null;
   medianMilliseconds: number | null; p95Milliseconds: number | null; minimumMilliseconds: number | null; maximumMilliseconds: number | null;

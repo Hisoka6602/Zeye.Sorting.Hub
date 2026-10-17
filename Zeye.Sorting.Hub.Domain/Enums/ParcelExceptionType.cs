@@ -94,5 +94,9 @@ namespace Zeye.Sorting.Hub.Domain.Enums {
         /// <summary>其他来源设备异常，具体编码保存在处理事实中。</summary>
         [Description("来源设备异常")]
         SourceDeviceException = 15,
+
+        /// <summary>实际落格无效，或包裹使用强排、兜底格口。</summary>
+        [Description("异常落格")]
+        AbnormalDischarge = 16,
     }
 }

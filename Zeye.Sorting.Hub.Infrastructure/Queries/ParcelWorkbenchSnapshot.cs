@@ -16,4 +16,7 @@ public sealed record ParcelWorkbenchSnapshot {
     public string WorkstationName { get; init; } = string.Empty;
     /// <summary>当前包裹状态。</summary>
     public ParcelStatus Status { get; init; }
+
+    /// <summary>处理过程中的异常分类，包裹完成后仍参与异常计数。</summary>
+    public ParcelExceptionType? ExceptionType { get; init; }
 }

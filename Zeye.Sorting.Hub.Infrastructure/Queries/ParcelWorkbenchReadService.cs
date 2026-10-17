@@ -35,7 +35,7 @@ public sealed class ParcelWorkbenchReadService(IDbContextFactory<SortingHubDbCon
             ParcelCount = group.LongCount(),
             PendingCount = group.LongCount(x => x.Status == ParcelStatus.Pending),
             CompletedCount = group.LongCount(x => x.Status == ParcelStatus.Completed),
-            ExceptionCount = group.LongCount(x => x.Status == ParcelStatus.SortingException),
+            ExceptionCount = group.LongCount(x => (x.ExceptionType != null || x.Status == ParcelStatus.SortingException)),
             OtherCount = group.LongCount(x => x.Status != ParcelStatus.Pending && x.Status != ParcelStatus.Completed && x.Status != ParcelStatus.SortingException),
             LastParcelAt = group.Max(x => (DateTime?)x.CreatedTime)
         }).ToListAsync(cancellationToken);
