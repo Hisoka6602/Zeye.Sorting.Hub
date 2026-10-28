@@ -57,7 +57,7 @@ export function ParcelDetailPage() {
       <div className="detail-pair"><span className="detail-label">来源工作台</span><span className="detail-value">{display('workstationName', parcel?.workstationName, unavailable)}</span></div>
       <div className="detail-pair"><span className="detail-label">重量</span><span className="detail-value">{parcel?.weight != null ? `${formatNumber(parcel.weight)} kg` : parcel ? '未提供' : '—'}</span></div>
       <div className="detail-pair"><span className="detail-label">物理尺寸</span><span className="detail-value">{dimensions(parcel)}</span></div>
-      <div className="detail-pair"><span className="detail-label">创建时间</span><span className="detail-value">{display('createdTime', parcel?.createdTime, unavailable)}</span></div>
+      <div className="detail-pair"><span className="detail-label">Hub首次入库时间</span><span className="detail-value">{display('createdTime', parcel?.createdTime, unavailable)}</span></div>
     </div>
   </div>;
 

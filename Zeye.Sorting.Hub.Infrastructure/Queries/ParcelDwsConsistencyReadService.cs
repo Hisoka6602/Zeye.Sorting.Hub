@@ -16,7 +16,11 @@ namespace Zeye.Sorting.Hub.Infrastructure.Queries;
 public sealed class ParcelDwsConsistencyReadService(IDbContextFactory<SortingHubDbContext> factory,
     ReportingQueryBudgetPlanner planner, ParcelPartitionStore partitions, ParcelDwsConsistencyCache? cache = null) : IParcelDwsConsistencyReadService {
     /// <summary>防止过宽时间范围造成无界报表内存；超限明确拒绝而非返回不完整统计。</summary>
-    private const int MaximumRecords = 200000;
+    internal const int MaximumRecords = 200000;
+    /// <summary>跨物理表联合的最大分表数，限制查询结构及空查询往返。</summary>
+    internal const int PartitionQueryBatchSize = 32;
+    /// <summary>身份参数批次，保持低于各提供器的IN参数上限。</summary>
+    internal const int IdentityBatchSize = 500;
 
     /// <summary>阈值、排行分页和所选条码复用相同量测快照，明细筛选不改变总体。</summary>
     public async Task<ParcelDwsConsistencyResponse> ReadAsync(ParcelDwsConsistencyRequest request, CancellationToken cancellationToken) {
@@ -27,7 +31,7 @@ public sealed class ParcelDwsConsistencyReadService(IDbContextFactory<SortingHub
         var catalog = await partitions.GetReadCatalogAsync(cancellationToken);
         var suffixes = catalog.Periods.Where(period => period.Start < budget.RangeEndLocal && period.End > budget.RangeStartLocal)
             .Select(period => period.Suffix).Append(string.Empty).ToArray();
-        var key = JsonSerializer.Serialize(new { request.FromDate, request.ToDate, request.SourceInstanceId, request.WorkstationName, Suffixes = suffixes });
+        var key = JsonSerializer.Serialize(new { request.FromDate, request.ToDate, request.SourceInstanceId, request.WorkstationName, Suffixes = catalog.Suffixes });
         Task<ParcelDwsMeasurementDataset> Load() => LoadAsync(request, catalog, suffixes, budget, cancellationToken);
         var data = cache is null ? await Load() : await cache.GetAsync(key, request.Refresh, Load, cancellationToken);
         var selected = data.Samples.Where(sample => request.Barcode is null || sample.Barcode == request.Barcode).ToArray();
@@ -67,15 +71,16 @@ public sealed class ParcelDwsConsistencyReadService(IDbContextFactory<SortingHub
             Sources = sources.Take(100).ToArray(), SourcesTruncated = sources.Length > 100, Detail = detail };
     }
 
-    /// <summary>只读DWS接收及成功绑定窄列，晚到的绑定仍按固定入库分表归组。</summary>
+    /// <summary>量测按首次接收入库日期归组，跨周期补齐同一消息的绑定与检测，保持真实时间端点。</summary>
     private async Task<ParcelDwsMeasurementDataset> LoadAsync(ParcelDwsConsistencyRequest request, ParcelPartitionCatalogSnapshot catalog,
         string[] suffixes, ReportingQueryBudget budget, CancellationToken token) {
         await using var db = await factory.CreateDbContextAsync(token);
         await using var read = ParcelPartitionReadContext<ParcelDwsMeasurementSnapshot>.Create<ParcelProcessingRecord>(db, catalog.Suffixes, streaming: true);
         await using var measurements = ParcelPartitionReadContext<ParcelDwsMeasurementSnapshot>.Create<ParcelDwsMeasurementSnapshot>(db, catalog.Suffixes, streaming: true);
-        var indexed = (await db.Set<ParcelDurationBackfillState>().AsNoTracking().Where(row => row.DwsCompleted && suffixes.Contains(row.Suffix))
+        var indexed = (await db.Set<ParcelDurationBackfillState>().AsNoTracking().Where(row => row.DwsCompleted)
             .Select(row => row.Suffix).ToListAsync(token)).ToHashSet(StringComparer.Ordinal);
         var rows = new List<ParcelDwsMeasurementSnapshot>();
+        var readCount = 0;
         foreach (var suffix in suffixes) {
             // 完整补齐的分表读取耐久窄表；未完成的历史保持原有统计口径。
             var source = indexed.Contains(suffix) ? measurements : read;
@@ -83,42 +88,53 @@ public sealed class ParcelDwsConsistencyReadService(IDbContextFactory<SortingHub
                 .Where(row => (row.Stage == ParcelProcessingStage.DwsReceived || row.Stage == ParcelProcessingStage.DwsBound) && row.IsSuccess != false)
                 .Where(row => row.Stage != ParcelProcessingStage.DwsBound || row.IsSuccess == true);
             if (request.SourceInstanceId is not null) query = query.Where(row => row.SourceInstanceId == request.SourceInstanceId);
-            if (request.WorkstationName is not null) query = query.Where(row => row.WorkstationName == request.WorkstationName);
             // DWS 窄量测采用较大窗口，避免中小总体为同一索引反复打开读取器；仍不截断统计总体。
             await foreach (var window in ParcelAnalysisWindowReader.ReadAsync(query, budget.RangeStartLocal, budget.RangeEndLocal, token,
                 targetRows: ParcelAnalysisWindowReader.TargetRows * 2))
             await foreach (var row in window.AsAsyncEnumerable().WithCancellation(token)) {
                 // 提供器排序规则可能不区分大小写；业务来源仍执行精确匹配。
-                if (request.SourceInstanceId is not null && row.SourceInstanceId != request.SourceInstanceId
-                    || request.WorkstationName is not null && row.WorkstationName != request.WorkstationName) continue;
-                if (rows.Count == MaximumRecords) throw new ArgumentException("量测记录超过20万条，请缩小日期或来源范围。");
+                if (readCount++ == MaximumRecords) throw new ArgumentException("量测记录超过20万条，请缩小日期或来源范围。");
+                if (request.SourceInstanceId is not null && row.SourceInstanceId != request.SourceInstanceId) continue;
                 rows.Add(row);
             }
         }
+        await CompleteMessageGroupsAsync(rows, read, catalog.Suffixes, request.SourceInstanceId, readCount, token);
+        var distinct = rows.DistinctBy(row => row.Key, StringComparer.Ordinal).ToArray();
+        var groups = distinct.Where(HasIdentity)
+            .GroupBy(row => (row.SourceInstanceId, row.SourceRunId, row.MessageIdentity))
+            .Where(group => {
+                // 接收事实决定量测唯一日期；缺少接收时才沿用绑定锚点，不按设备测量时钟猜入库日期。
+                var receptions = group.Where(row => row.Stage == ParcelProcessingStage.DwsReceived).ToArray();
+                var anchorRows = receptions.Length == 0 ? group.AsEnumerable() : receptions.AsEnumerable();
+                var anchor = anchorRows.Min(row => row.PartitionTime);
+                if (anchor < budget.RangeStartLocal || anchor >= budget.RangeEndLocal) return false;
+                var primary = group.OrderBy(row => row.Stage == ParcelProcessingStage.DwsReceived ? 0 : 1).ThenBy(row => row.OccurredAt).ThenBy(row => row.Key, StringComparer.Ordinal).First();
+                var binding = group.FirstOrDefault(row => row.Stage == ParcelProcessingStage.DwsBound && row.IsSuccess == true && row.ParcelId.HasValue);
+                return request.WorkstationName is null || (binding?.WorkstationName ?? primary.WorkstationName) == request.WorkstationName;
+            }).Select(group => group.ToArray()).ToArray();
+        var selectedKeys = groups.SelectMany(group => group).Select(row => row.Key).ToHashSet(StringComparer.Ordinal);
+        var duplicates = rows.Count(row => selectedKeys.Contains(row.Key)) - selectedKeys.Count;
+        var missingIdentity = distinct.Count(row => !HasIdentity(row)
+            && (request.WorkstationName is null || row.WorkstationName == request.WorkstationName));
+        var selectedRows = groups.SelectMany(group => group).ToArray();
         // 只在缺少测量条码时读取窄包裹身份，不加载Owned集合，也不按相同条码猜测关联包裹。
         var parcelIdentities = new Dictionary<long, ParcelDwsParcelIdentitySnapshot>();
         // 完整条码总体无需再次创建全部身份分组；存在缺失时仍按完整组判断。
-        var missingIds = rows.Any(row => string.IsNullOrWhiteSpace(row.Barcode)) ? rows.Where(HasIdentity).GroupBy(row => (row.SourceInstanceId, row.SourceRunId, row.MessageIdentity))
+        var missingIds = selectedRows.Any(row => string.IsNullOrWhiteSpace(row.Barcode)) ? selectedRows.Where(HasIdentity).GroupBy(row => (row.SourceInstanceId, row.SourceRunId, row.MessageIdentity))
             .Where(group => group.All(row => string.IsNullOrWhiteSpace(row.Barcode)))
             .SelectMany(group => group.Where(row => row.ParcelId.HasValue).Select(row => row.ParcelId!.Value)).Distinct().ToArray() : [];
         if (missingIds.Length > 0) {
             await using var parcelRead = ParcelPartitionReadContext<ParcelDwsParcelIdentitySnapshot>.Create<Parcel>(db, catalog.Suffixes, streaming: true);
-            var cohort = parcelRead.Query(suffixes, nameof(Parcel.CreatedTime), budget.RangeStartLocal, budget.RangeEndLocal, false);
-            if (request.SourceInstanceId is not null) cohort = cohort.Where(parcel => parcel.SourceInstanceId == request.SourceInstanceId);
-            if (request.WorkstationName is not null) cohort = cohort.Where(parcel => parcel.WorkstationName == request.WorkstationName);
             // Oracle的IN参数有上限，所有提供器使用500编号的有界批次。
-            foreach (var ids in missingIds.Chunk(500)) {
-                var identities = await cohort.Where(parcel => ids.Contains(parcel.Id)).ToArrayAsync(token);
+            foreach (var ids in missingIds.Chunk(IdentityBatchSize))
+            foreach (var partitionBatch in catalog.Suffixes.Chunk(PartitionQueryBatchSize)) {
+                var identities = await parcelRead.QueryAll(partitionBatch, branch => branch.Where(parcel => ids.Contains(parcel.Id))).ToArrayAsync(token);
                 foreach (var parcel in identities) parcelIdentities.TryAdd(parcel.Id, parcel);
             }
         }
-        var distinct = rows.DistinctBy(row => row.Key, StringComparer.Ordinal).ToArray();
-        var duplicates = rows.Count - distinct.Length;
-        var missingIdentity = distinct.Count(row => !HasIdentity(row));
         var conflicts = 0; var missingBarcode = 0;
         var samples = new List<DwsMeasurementSample>();
-        foreach (var group in distinct.Where(HasIdentity)
-            .GroupBy(row => (row.SourceInstanceId, row.SourceRunId, row.MessageIdentity))) {
+        foreach (var group in groups) {
             var facts = group.OrderBy(row => row.Stage == ParcelProcessingStage.DwsReceived ? 0 : 1).ThenBy(row => row.OccurredAt).ThenBy(row => row.Key, StringComparer.Ordinal).ToArray();
             duplicates += facts.Length - 1;
             var barcodes = facts.Select(row => Barcode(row, parcelIdentities)).Where(value => value is not null).Distinct(StringComparer.Ordinal).ToArray();
@@ -139,8 +155,32 @@ public sealed class ParcelDwsConsistencyReadService(IDbContextFactory<SortingHub
                 HeightMm = facts.Select(row => row.HeightMm).FirstOrDefault(value => value is > 0), VolumeCm3 = facts.Select(ParcelDwsConsistencyMath.Volume).FirstOrDefault(value => value.HasValue) };
             samples.Add(ParcelDwsScanTimingReader.ReceiveEndpoint(sample, facts));
         }
-        samples = await ParcelDwsScanTimingReader.ReadAsync(samples, db, catalog, suffixes, budget, request.SourceInstanceId, token, indexed);
+        samples = await ParcelDwsScanTimingReader.ReadAsync(samples, db, catalog, request.SourceInstanceId, token, indexed);
         return new(DateTime.Now, samples, missingIdentity, conflicts, missingBarcode, duplicates);
+    }
+
+    /// <summary>全部候选消息核对历史首次接收和冲突事实；完整窗口组也不能省略历史身份核验。</summary>
+    private static async Task CompleteMessageGroupsAsync(List<ParcelDwsMeasurementSnapshot> rows,
+        ParcelPartitionReadContext<ParcelDwsMeasurementSnapshot> read, IReadOnlyList<string> suffixes, string? sourceInstanceId,
+        int readCount, CancellationToken token) {
+        var wanted = rows.Where(HasIdentity).Select(row => (row.SourceInstanceId, row.SourceRunId, row.MessageIdentity)).ToHashSet();
+        if (wanted.Count == 0) return;
+        var seen = rows.Select(row => row.Key).ToHashSet(StringComparer.Ordinal);
+        // 原事实已有消息身份索引，跨日关联只读取匹配身份的窄字段，不扫描窄表中的全部历史时间窗口。
+        foreach (var messages in wanted.Select(identity => identity.MessageIdentity!).Distinct(StringComparer.Ordinal).Chunk(IdentityBatchSize))
+        foreach (var partitionBatch in suffixes.Chunk(PartitionQueryBatchSize)) {
+            var query = read.QueryAll(partitionBatch, branch => {
+                var matching = branch.Where(row => row.MessageIdentity != null && messages.Contains(row.MessageIdentity)
+                    && (row.Stage == ParcelProcessingStage.DwsReceived || row.Stage == ParcelProcessingStage.DwsBound && row.IsSuccess == true)
+                    && row.IsSuccess != false);
+                return sourceInstanceId is null ? matching : matching.Where(row => row.SourceInstanceId == sourceInstanceId);
+            });
+            await foreach (var row in query.AsAsyncEnumerable().WithCancellation(token)) {
+                if (readCount++ == MaximumRecords) throw new ArgumentException("量测关联读取超过20万条，请缩小日期或来源范围。");
+                if (!wanted.Contains((row.SourceInstanceId, row.SourceRunId, row.MessageIdentity)) || !seen.Add(row.Key)) continue;
+                rows.Add(row);
+            }
+        }
     }
 
     /// <summary>不同非空值不能拼成一次可靠量测；同身份冲突整组排除。</summary>

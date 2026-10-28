@@ -32,7 +32,7 @@ public sealed class ParcelAnalyticsReadService : IParcelAnalyticsReadService {
         _partitions = partitions;
     }
 
-    /// <summary>以首次入库日为包裹总体，以发生日为处理事实总体；两个总体不混用。</summary>
+    /// <summary>包裹数量按首次入库日、时效按源端检测日、处理事实按发生日统计，各自总体不混用。</summary>
     public async Task<ParcelAnalyticsResponse> GetAsync(DateTime fromLocalDate, DateTime toLocalDate, CancellationToken cancellationToken) {
         if (fromLocalDate.TimeOfDay != TimeSpan.Zero || toLocalDate.TimeOfDay != TimeSpan.Zero)
             throw new ArgumentException("报表范围必须使用本地日期，不接受时分秒。");
@@ -67,25 +67,32 @@ public sealed class ParcelAnalyticsReadService : IParcelAnalyticsReadService {
             ExceptionCount = group.LongCount(x => (x.ExceptionType != null || x.Status == ParcelStatus.SortingException)),
             NoReadCount = group.LongCount(x => x.NoReadType != NoReadType.None || DatabaseTextFunctions.Lower(x.BarCodes) == "noread"),
             ChuteMismatchCount = group.LongCount(x => x.TargetChuteCode != null && x.ActualChuteCode != null
-                && DatabaseTextFunctions.Lower(x.TargetChuteCode) != DatabaseTextFunctions.Lower(x.ActualChuteCode)),
-            LifecycleSampleCount = group.LongCount(x => x.Status == ParcelStatus.Completed && x.LifecycleMilliseconds != null),
-            LifecycleMilliseconds = group.Sum(x => x.Status == ParcelStatus.Completed && x.LifecycleMilliseconds != null
-                ? x.LifecycleMilliseconds.Value : 0L)
+                && DatabaseTextFunctions.Lower(x.TargetChuteCode) != DatabaseTextFunctions.Lower(x.ActualChuteCode))
         }).OrderBy(x => x.Date).ToListAsync(cancellationToken);
 
-        var daily = dayRows.Select(x => new ParcelAnalyticsDailyItem {
-            Date = x.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-            DetectedCount = x.DetectedCount,
-            CompletedCount = x.CompletedCount,
-            ExceptionCount = x.ExceptionCount,
-            NoReadCount = x.NoReadCount,
-            ChuteMismatchCount = x.ChuteMismatchCount,
-            LifecycleSampleCount = x.LifecycleSampleCount,
-            AverageLifecycleSeconds = x.LifecycleSampleCount == 0 ? null : (decimal)x.LifecycleMilliseconds / x.LifecycleSampleCount / 1000m
+        // 历史快照可能已保存不可靠端点算出的耗时；同表NOT EXISTS只影响有效耗时，不改变包裹数量。
+        var lifecycleRows = await intake.Query(cohortSuffixes, nameof(Parcel.CreatedTime), budget.RangeStartLocal, budget.RangeEndLocal,
+                false, requireReliableLifecycle: true).Where(x => x.SourceParcelId != null && x.DetectedTime != null)
+            .GroupBy(x => x.CreatedTime.Date).Select(group => new {
+                Date = group.Key, Count = group.LongCount(), Sum = group.Sum(x => x.LifecycleMilliseconds!.Value)
+            }).ToDictionaryAsync(x => x.Date, cancellationToken);
+        var daily = dayRows.Select(x => {
+            var lifecycle = lifecycleRows.GetValueOrDefault(x.Date);
+            return new ParcelAnalyticsDailyItem {
+                Date = x.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                DetectedCount = x.DetectedCount,
+                CompletedCount = x.CompletedCount,
+                ExceptionCount = x.ExceptionCount,
+                NoReadCount = x.NoReadCount,
+                ChuteMismatchCount = x.ChuteMismatchCount,
+                LifecycleSampleCount = lifecycle?.Count ?? 0,
+                AverageLifecycleSeconds = lifecycle is null ? null : (decimal)lifecycle.Sum / lifecycle.Count / 1000m
+            };
         }).ToArray();
-        var lifecycleSamples = dayRows.Sum(x => x.LifecycleSampleCount);
-        var lifecycleMilliseconds = dayRows.Sum(x => x.LifecycleMilliseconds);
-        var creationIntervals = await ParcelCreationIntervalQuery.ReadAsync(db, cohortSuffixes,
+        var lifecycleSamples = lifecycleRows.Values.Sum(x => x.Count);
+        var lifecycleMilliseconds = lifecycleRows.Values.Sum(x => x.Sum);
+        // 分表按服务器入库日期建立，补传的源端检测日期可能落在其他周期，时效必须读取全部分表。
+        var detectionIntervals = await ParcelDetectionIntervalQuery.ReadAsync(db, allSuffixes,
             budget.RangeStartLocal, budget.RangeEndLocal, cancellationToken);
 
         // 趋势按实际完成日期计数，包含更早入库、但在窗口内完成的包裹。
@@ -136,13 +143,13 @@ public sealed class ParcelAnalyticsReadService : IParcelAnalyticsReadService {
             NoReadCount = daily.Sum(x => x.NoReadCount),
             ChuteMismatchCount = daily.Sum(x => x.ChuteMismatchCount),
             AverageLifecycleSeconds = lifecycleSamples == 0 ? null : (decimal)lifecycleMilliseconds / lifecycleSamples / 1000m,
-            MedianCreationIntervalMilliseconds = creationIntervals.MedianIntervalMilliseconds,
-            MinimumCreationIntervalMilliseconds = creationIntervals.MinimumIntervalMilliseconds,
-            ActualSortingThroughputPerHour = creationIntervals.MedianIntervalMilliseconds is > 0
-                ? 3_600_000m / creationIntervals.MedianIntervalMilliseconds.Value : null,
-            TheoreticalSortingThroughputPerHour = creationIntervals.MinimumIntervalMilliseconds is > 0
-                ? 3_600_000m / creationIntervals.MinimumIntervalMilliseconds.Value : null,
-            CreationIntervalSampleCount = creationIntervals.SampleCount,
+            MedianCreationIntervalMilliseconds = detectionIntervals.MedianIntervalMilliseconds,
+            MinimumCreationIntervalMilliseconds = detectionIntervals.MinimumIntervalMilliseconds,
+            ActualSortingThroughputPerHour = detectionIntervals.MedianIntervalMilliseconds is > 0
+                ? 3_600_000m / detectionIntervals.MedianIntervalMilliseconds.Value : null,
+            TheoreticalSortingThroughputPerHour = detectionIntervals.MinimumIntervalMilliseconds is > 0
+                ? 3_600_000m / detectionIntervals.MinimumIntervalMilliseconds.Value : null,
+            CreationIntervalSampleCount = detectionIntervals.SampleCount,
             Daily = daily,
             DailySorting = dailySorting,
             ExceptionTypes = exceptionTypes,

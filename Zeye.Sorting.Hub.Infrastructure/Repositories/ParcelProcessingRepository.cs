@@ -107,7 +107,7 @@ public sealed partial class ParcelProcessingRepository : IParcelProcessingReposi
                 db.Add(storedRecord);
                 db.Add(new ParcelProcessingReceipt { Key = recordKey, PayloadHash = record.PayloadHash, ParcelId = parcel?.Id, Suffix = suffix, RecordedAt = record.RecordedAt });
                 if (parcel is not null) {
-                    var history = await db.Set<ParcelProcessingRecord>().AsNoTracking().Where(x => x.ParcelId == parcel.Id).ToListAsync(cancellationToken);
+                    var history = await ParcelProcessingReplayQuery.ReadAsync(db, parcel.Id, cancellationToken);
                     history.Add(storedRecord);
                     parcel.ApplyProcessingRecords(history, rules);
                 }

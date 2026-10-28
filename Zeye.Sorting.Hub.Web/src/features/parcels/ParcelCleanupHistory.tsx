@@ -21,7 +21,7 @@ export function ParcelCleanupHistory({ revision, selectedId, onSelect }: { revis
     <DataTable<ParcelCleanupRecord> loading={history.loading} dataSource={history.data?.items ?? []} pagination={{ current: page, pageSize: size, total: history.data?.totalCount ?? 0, onChange: (next, nextSize) => { setPage(nextSize !== size ? 1 : next); setSize(nextSize); } }} columns={[
       { title: '操作时间', dataIndex: 'startedAtLocal', width: 180, render: localTime },
       { title: '操作人', width: 180, render: (_, item) => <div>{item.operator.name}<div className="text-muted">{item.operator.account}</div></div> },
-      { title: '创建时间早于', dataIndex: 'createdBefore', width: 180, render: localTime },
+      { title: 'Hub首次入库时间早于', dataIndex: 'createdBefore', width: 210, render: localTime },
       { title: '结果', width: 155, render: (_, item) => status(item) },
       { title: '计划票数', dataIndex: 'plannedCount', width: 110 },
       { title: '删除票数', dataIndex: 'executedCount', width: 110 },
@@ -39,7 +39,7 @@ export function ParcelCleanupHistory({ revision, selectedId, onSelect }: { revis
           { key: 'userId', label: '用户编号', children: record.operator.userId },
           { key: 'start', label: '操作时间', children: localTime(record.startedAtLocal) },
           { key: 'end', label: '结束时间', children: localTime(record.completedAtLocal) },
-          { key: 'before', label: '创建时间早于', children: localTime(record.createdBefore) },
+          { key: 'before', label: 'Hub首次入库时间早于', children: localTime(record.createdBefore) },
           { key: 'count', label: '执行数量', children: `计划 ${record.plannedCount.toLocaleString()} 票，实际删除 ${record.executedCount.toLocaleString()} 票，已提交 ${record.batchCount} 批` },
           { key: 'scope', label: '清理范围', children: record.scope },
           { key: 'boundary', label: '恢复说明', children: record.compensationBoundary },

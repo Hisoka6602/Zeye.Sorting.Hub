@@ -129,9 +129,9 @@ public sealed class ParcelAnalyticsTests {
         Assert.Equal(0, empty.ProcessingEventCount);
     }
 
-    /// <summary>创建间隔采用中位数抵抗长暂停；未完成的成功入库包裹也参与产能估算。</summary>
+    /// <summary>源端检测间隔采用中位数抵抗长暂停；未完成的已检测包裹也参与产能估算。</summary>
     [Fact]
-    public async Task SortingThroughputUsesMedianCreationGapInsteadOfCompletionDuration() {
+    public async Task SortingThroughputUsesMedianDetectionGapInsteadOfCompletionDuration() {
         await using var database = new RelationalParcelTestDatabase();
         await database.InitializeAsync();
         var start = new DateTime(2026, 9, 28, 10, 0, 0);
@@ -149,16 +149,19 @@ public sealed class ParcelAnalyticsTests {
         Assert.Equal(7200m, report.TheoreticalSortingThroughputPerHour);
     }
 
-    /// <summary>偶数间隔取中间两项平均，保留半毫秒；来源事件耗时和到达顺序不能替代创建时间。</summary>
+    /// <summary>偶数检测间隔取中间两项平均，保留半毫秒；乱序且压缩的入库时间不改变源端节拍。</summary>
     [Fact]
-    public async Task EvenMedianPreservesFractionalMillisecondsAndOrdersCreationTimes() {
+    public async Task EvenMedianPreservesFractionalMillisecondsAndOrdersDetectionTimes() {
         await using var database = new RelationalParcelTestDatabase();
         await database.InitializeAsync();
         var start = new DateTime(2026, 9, 28, 10, 0, 0);
-        foreach (var offset in new[] { 201, 0, 100 })
-            await SaveAsync(database, Fact("even-" + offset, offset + 1, start.AddSeconds(offset)) with {
-                RecordedAt = start.AddMilliseconds(offset)
+        var offsets = new[] { 201, 0, 100 };
+        for (var index = 0; index < offsets.Length; index++) {
+            var offset = offsets[index];
+            await SaveAsync(database, Fact("even-" + offset, offset + 1, start.AddMilliseconds(offset)) with {
+                RecordedAt = start.AddTicks(index * 20)
             });
+        }
 
         var report = await Reader(database).GetAsync(start.Date, start.Date, default);
         Assert.Equal(2, report.CreationIntervalSampleCount);
@@ -166,6 +169,84 @@ public sealed class ParcelAnalyticsTests {
         Assert.Equal(100m, report.MinimumCreationIntervalMilliseconds);
         Assert.Equal(3_600_000m / 100.5m, report.ActualSortingThroughputPerHour);
         Assert.Equal(36000m, report.TheoreticalSortingThroughputPerHour);
+    }
+
+    /// <summary>同一时刻或微秒相邻的批量入库时间不能覆盖来源包裹的正常检测节拍。</summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(20)]
+    public async Task SortingThroughputIgnoresIdenticalOrMicrosecondHubTimestamps(int recordedGapTicks) {
+        await using var database = new RelationalParcelTestDatabase();
+        await database.InitializeAsync();
+        var start = new DateTime(2026, 9, 28, 10, 0, 0);
+        for (var index = 0; index < 3; index++)
+            await SaveAsync(database, Fact("compressed-" + index, index + 1, start.AddMilliseconds(index * 500)) with {
+                RecordedAt = start.AddTicks(index * recordedGapTicks)
+            });
+
+        var report = await Reader(database).GetAsync(start.Date, start.Date, default);
+        Assert.Equal(3, report.DetectedCount);
+        Assert.Equal(2, report.CreationIntervalSampleCount);
+        Assert.Equal(500m, report.MedianCreationIntervalMilliseconds);
+        Assert.Equal(500m, report.MinimumCreationIntervalMilliseconds);
+        Assert.Equal(7200m, report.ActualSortingThroughputPerHour);
+        Assert.Equal(7200m, report.TheoreticalSortingThroughputPerHour);
+    }
+
+    /// <summary>源端检测日期决定时效窗口，后日入库分表仍可参与；入库数量继续使用首次入库日期。</summary>
+    [Fact]
+    public async Task DetectionWindowIncludesLaterIntakePartitionsWithoutChangingIntakeCounts() {
+        await using var database = new RelationalParcelTestDatabase("PerDay");
+        await database.InitializeAsync();
+        var detectedAt = new DateTime(2026, 9, 28, 10, 0, 0);
+        var recordedAt = detectedAt.AddDays(2);
+        for (var index = 0; index < 3; index++)
+            await SaveAsync(database, Fact("late-intake-" + index, index + 1, detectedAt.AddMilliseconds(index * 500)) with {
+                RecordedAt = recordedAt.AddMilliseconds(index)
+            });
+
+        var detectionDay = await Reader(database).GetAsync(detectedAt.Date, detectedAt.Date, default);
+        Assert.Equal(0, detectionDay.DetectedCount);
+        Assert.Empty(detectionDay.Daily);
+        Assert.Equal(2, detectionDay.CreationIntervalSampleCount);
+        Assert.Equal(500m, detectionDay.MedianCreationIntervalMilliseconds);
+        Assert.Equal(500m, detectionDay.MinimumCreationIntervalMilliseconds);
+        Assert.Equal(7200m, detectionDay.ActualSortingThroughputPerHour);
+        Assert.Equal(7200m, detectionDay.TheoreticalSortingThroughputPerHour);
+
+        var intakeDay = await Reader(database).GetAsync(recordedAt.Date, recordedAt.Date, default);
+        Assert.Equal(3, intakeDay.DetectedCount);
+        Assert.Single(intakeDay.Daily);
+        Assert.Equal(0, intakeDay.CreationIntervalSampleCount);
+        Assert.Null(intakeDay.MedianCreationIntervalMilliseconds);
+        Assert.Null(intakeDay.MinimumCreationIntervalMilliseconds);
+        Assert.Null(intakeDay.ActualSortingThroughputPerHour);
+        Assert.Null(intakeDay.TheoreticalSortingThroughputPerHour);
+    }
+
+    /// <summary>相同源端检测时间不回退到入库节拍；只有其他处理事实而未检测的包裹不产生样本。</summary>
+    [Fact]
+    public async Task ZeroDetectionGapsAndMissingDetectionsNeverFallBackToHubTimestamps() {
+        await using var database = new RelationalParcelTestDatabase();
+        await database.InitializeAsync();
+        var start = new DateTime(2026, 9, 28, 10, 0, 0);
+        for (var index = 0; index < 3; index++) {
+            await SaveAsync(database, Fact("same-detection-" + index, index + 1, start) with {
+                RecordedAt = start.AddMilliseconds(index * 500)
+            });
+            await SaveAsync(database, Fact("missing-detection-" + index, index + 10, start.AddMilliseconds(index * 500 + 100)) with {
+                Stage = ParcelProcessingStage.ScanUploaded, IsSuccess = false,
+                RecordedAt = start.AddMilliseconds(index * 500 + 100)
+            });
+        }
+
+        var report = await Reader(database).GetAsync(start.Date, start.Date, default);
+        Assert.Equal(3, report.DetectedCount);
+        Assert.Equal(0, report.CreationIntervalSampleCount);
+        Assert.Null(report.MedianCreationIntervalMilliseconds);
+        Assert.Null(report.MinimumCreationIntervalMilliseconds);
+        Assert.Null(report.ActualSortingThroughputPerHour);
+        Assert.Null(report.TheoreticalSortingThroughputPerHour);
     }
 
     /// <summary>最短间隔可以来自时间窗口首部或尾部，不能只对中位数选中的间隔取最小值。</summary>
@@ -188,9 +269,9 @@ public sealed class ParcelAnalyticsTests {
         Assert.Equal(36000m, report.TheoreticalSortingThroughputPerHour);
     }
 
-    /// <summary>跨日分表和基础表必须先合并再求间隔，重试、未检测消息及范围外创建均不加样本。</summary>
+    /// <summary>跨日分表和基础表必须先合并再求检测间隔，重试、未检测消息及范围外检测均不加样本。</summary>
     [Fact]
-    public async Task CreationIntervalsMergePartitionsAndExcludeDuplicatesAndOutOfRangeRows() {
+    public async Task DetectionIntervalsMergePartitionsAndExcludeDuplicatesAndOutOfRangeRows() {
         await using var database = new RelationalParcelTestDatabase("PerDay");
         await database.InitializeAsync();
         var start = new DateTime(2026, 9, 28, 23, 59, 59, 900);
@@ -227,7 +308,7 @@ public sealed class ParcelAnalyticsTests {
         Assert.Equal(72000m, report.TheoreticalSortingThroughputPerHour);
     }
 
-    /// <summary>没有包裹、单票或同毫秒创建都无法估算有效小时产能。</summary>
+    /// <summary>没有包裹、单票或同一时刻检测都无法估算有效小时产能。</summary>
     [Theory]
     [InlineData(0)]
     [InlineData(1)]
@@ -248,7 +329,7 @@ public sealed class ParcelAnalyticsTests {
         Assert.Equal(0, report.CreationIntervalSampleCount);
     }
 
-    /// <summary>同时间创建的零间隔不参与分母，随后正常节拍仍能估算。</summary>
+    /// <summary>同时间检测的零间隔不参与分母，随后正常节拍仍能估算。</summary>
     [Fact]
     public async Task ZeroIntervalsAreIgnoredWithoutDiscardingPositiveIntervals() {
         await using var database = new RelationalParcelTestDatabase();

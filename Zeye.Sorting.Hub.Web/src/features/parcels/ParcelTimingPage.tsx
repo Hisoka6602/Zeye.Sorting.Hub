@@ -174,7 +174,7 @@ export function ParcelTimingPage() {
         <div className="parcel-timing-chart-footnote"><span>业务起点使用来源首次检测；Hub首次入库时间单独标注。默认比较检测到落格，右侧耗时为扫码到首次格口请求。</span>
           <span>概览覆盖首次检测、扫码、请求、分拣、落格与回传。点击动作数或异常标记展开 DWS、扫描上传等完整动作与重试。</span>
           <span>色条可点击比较端点。缺少请求开始时，蓝色虚线条显示扫码到已记录的格口或分拣节点；紫色斜纹条表示格口分配到分拣阶段。</span>
-          <span>按扫码时间、包裹 ID 升序排列。点选两个节点比较间隔，可跨包裹选择。</span>
+          <span>邻票按检测 / 量测摘要时间、包裹 ID 升序排列；扫码节点只取已关联的有效DWS条码接收事实，缺少时保持未知。点选两个节点比较间隔，可跨包裹选择。</span>
           {(data.beforeCount < 5 || data.afterCount < 5) && <span>一侧不足 5 票时，显示全部现有记录。</span>}
           {invalidTimes > 0 && <Typography.Text type="warning">{invalidTimes} 个无效或缺失时间未绘入图中，完整记录可在包裹详情查看。</Typography.Text>}</div>
       </SectionCard>
@@ -203,11 +203,11 @@ export function ParcelTimingPage() {
         ]} /> }]} />
     </> : !searching && !validId && !emptyQuery && !searchError ? <SectionCard><Empty description="输入包裹 ID 或完整条码，查看前后包裹的动作时序。" /></SectionCard> : null}
     <Modal title="请选择包裹" open={Boolean(candidates)} footer={null} width={1050} onCancel={() => { searchController.current?.abort(); setSearching(false); setCandidates(null); setSearchError(null); }}>
-      <p>“{candidateSearch?.query}”命中 {candidates?.totalCount} 票包裹，请结合扫码时间和来源选择本次分析的目标。</p>
+      <p>“{candidateSearch?.query}”命中 {candidates?.totalCount} 票包裹，请结合检测 / 量测摘要时间和来源选择本次分析的目标。</p>
       {candidates && <DataTable<ParcelTimingCandidate> rowKey="id" dataSource={candidates.items} loading={searching} scroll={{ x: 910 }}
         pagination={{ current: candidates.pageNumber, pageSize: candidates.pageSize, total: candidates.totalCount, showSizeChanger: false, onChange: page => { if (candidateSearch) void search(candidateSearch, page, false); } }} columns={[
           { title: '包裹 ID', dataIndex: 'id', width: 190 }, { title: '条码', dataIndex: 'barCodes', width: 200 },
-          { title: '扫码时间', width: 240, render: (_, parcel) => formatTimingTime(parseTimingTime(parcel.scannedTime)) },
+          { title: '检测 / 量测摘要时间', width: 240, render: (_, parcel) => formatTimingTime(parseTimingTime(parcel.scannedTime)) },
           { title: '来源', width: 220, render: (_, parcel) => <><div>{parcel.workstationName || '未提供工作台'}</div><div className="text-muted">{parcel.sourceInstanceId || '未提供来源实例'}</div>{parcel.sourceRunId && <div className="text-muted">批次 {parcel.sourceRunId}</div>}</> },
           { title: '操作', width: 90, render: (_, parcel) => <Button type="primary" size="small" onClick={() => chooseParcel(parcel.id)}>选择</Button> },
         ]} />}

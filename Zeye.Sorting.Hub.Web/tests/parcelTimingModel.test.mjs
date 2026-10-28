@@ -7,12 +7,58 @@ import { timingOverview, timingOverviewSpans } from '../src/features/parcels/par
 
 const scan = '2026-10-07T10:00:00.0000000';
 const parcel = (id = '9223372036854775806', overrides = {}) => ({ id, barCodes: `PKG-${id}`, scannedTime: scan,
+  sourceInstanceId: 'source-a', sourceRunId: 'run-a', sourceParcelId: '12',
   detectedTime: null, dischargeTime: null, completedTime: null, processingRecords: [], apiRequests: [], ...overrides });
 const context = (items, anchorId = items[0].id) => ({ items, anchorId, beforeCount: 0, afterCount: items.length - 1 });
 const record = (id, time, outcome, overrides = {}) => ({ recordId: id, parcelId: '9223372036854775806',
   sourceInstanceId: 'source-a', sourceRunId: 'run-a', sourceParcelId: '12', stage: 3, occurredAt: time,
   requestAt: null, responseAt: null, attemptNumber: 1, isSuccess: null,
   rawPayload: JSON.stringify({ kind: 'provider-attempt', operation: '请求格口', operationId: 'chute-1', attemptId: 'chute-1-1', attemptNumber: 1, outcome }), ...overrides });
+const receipt = (id, time, overrides = {}) => record(`receipt-${id}`, time, '', { parcelId: id, stage: 1,
+  barcode: `PKG-${id}`, receivedAt: time, measuredAt: null, isSuccess: true, hasReliableTimestamp: true,
+  messageIdentity: `measurement-${id}`, rawPayload: null, ...overrides });
+
+test('只有检测或DWS绑定摘要时不补造扫码节点，量测与Hub时间不作为扫码完成', () => {
+  for (const records of [[], [record('detected', scan, '', { stage: 0 })],
+    [record('bound', scan, '', { stage: 2, barcode: 'PKG', isSuccess: true, measuredAt: scan, receivedAt: scan })]]) {
+    const value = buildParcelTimingRows(context([parcel(undefined, { detectedTime: scan, scannedTime: scan,
+      createdTime: '2026-10-09T10:00:00', processingRecords: records })]))[0];
+    assert.equal(value.scan, null);
+    assert.equal(timingOverview(value).scan, null);
+    assert.equal(value.marks.some(mark => mark.title === '扫码'), false);
+    assert.equal(value.parcel.scannedTime, scan);
+  }
+});
+
+test('扫码完成取已关联的有效条码接收时间，保留原精度并独立于设备量测和摘要', () => {
+  const id = '9223372036854775806';
+  const received = '2026-10-07T10:00:00.4000001';
+  const value = buildParcelTimingRows(context([parcel(id, { scannedTime: '2026-10-07T10:00:00.100',
+    processingRecords: [receipt(id, '2026-10-07T10:00:00.500', { receivedAt: received, measuredAt: scan })] })]))[0];
+  assert.equal(value.scan, parseTimingTime(received));
+  assert.equal(timingOverview(value).scan.source, '已关联DWS接收事实');
+  assert.equal(timingOverview(value).scan.startLabel, '来源接收');
+});
+
+test('未绑定、跨来源、NoRead、失败和不可靠DWS均不能按相同条码制造扫码端点', () => {
+  const id = '9223372036854775806';
+  for (const overrides of [{ parcelId: null }, { parcelId: '99' }, { sourceInstanceId: 'other' },
+    { sourceRunId: 'other' }, { sourceParcelId: '99' }, { barcode: '' }, { barcode: 'NoRead' },
+    { isSuccess: false }, { hasReliableTimestamp: false }, { receivedAt: '0001-01-01T00:00:00' }]) {
+    const value = buildParcelTimingRows(context([parcel(id, { processingRecords: [receipt(id, scan, overrides)] })]))[0];
+    assert.equal(value.scan, null, JSON.stringify(overrides));
+  }
+});
+
+test('重复接收保留真实零间隔，同消息身份的冲突时间不进入扫码端点', () => {
+  const id = '9223372036854775806';
+  const first = receipt(id, scan);
+  const values = records => buildParcelTimingRows(context([parcel(id, { detectedTime: scan, processingRecords: records })]))[0];
+  assert.equal(values([first, { ...first }]).scan, parseTimingTime(scan));
+  assert.equal(values([first, { ...first, recordId: 'retry', receivedAt: '2026-10-07T10:00:00.001' }]).scan, null);
+  assert.equal(values([first, { ...first, recordId: 'retry', hasReliableTimestamp: false }]).scan, null);
+  assert.equal(values([receipt(id, scan, { receivedAt: null })]).scan, parseTimingTime(scan));
+});
 
 test('业务起点取最早真实检测，补传的Hub创建时间不会进入业务节点或扩大时间轴', () => {
   const detected = '2026-10-07T10:00:00.0500001';
@@ -35,8 +81,10 @@ test('业务起点取最早真实检测，补传的Hub创建时间不会进入�
 
 test('检测对齐保留每票真实起点，扫码对齐及节点间隔计算维持各自口径', () => {
   const rows = buildParcelTimingRows(context([
-    parcel('101', { detectedTime: '2026-10-07T10:00:00.100', scannedTime: '2026-10-07T10:00:00.300' }),
-    parcel('102', { detectedTime: '2026-10-07T10:00:01.100', scannedTime: '2026-10-07T10:00:01.400' }),
+    parcel('101', { detectedTime: '2026-10-07T10:00:00.100', scannedTime: '2026-10-07T10:00:00.300',
+      processingRecords: [receipt('101', '2026-10-07T10:00:00.300')] }),
+    parcel('102', { detectedTime: '2026-10-07T10:00:01.100', scannedTime: '2026-10-07T10:00:01.400',
+      processingRecords: [receipt('102', '2026-10-07T10:00:01.400')] }),
   ]));
   const aligned = createTimingScale(rows, 'detected');
   assert.equal(timingPosition(rows[0].detected, rows[0], aligned), timingPosition(rows[1].detected, rows[1], aligned));
@@ -87,10 +135,10 @@ test('Fusion空响应调用开始与精简元数据沿用详情轨迹，扫描�
   }
   const detail = buildParcelProcessingTimeline(full);
   const timing = buildParcelTimingRows(context([parcel(undefined, {
-    scannedTime: time('31.109'), processingRecords: compact,
+    scannedTime: time('31.109'), processingRecords: [receipt('9223372036854775806', time('31.109')), ...compact],
   })]))[0];
   assert.equal(detail.items.length, 3);
-  assert.deepEqual(timing.marks.filter(mark => mark.source === '处理事实').map(mark => mark.title),
+  assert.deepEqual(timing.marks.filter(mark => ['扫描上传', '请求格口', '落格回传'].includes(mark.title)).map(mark => mark.title),
     ['扫描上传', '请求格口', '落格回传']);
   assert.deepEqual(buildParcelProcessingTimeline(compact).items.map(item => [item.title, item.state, item.events.length]),
     detail.items.map(item => [item.title, item.state, item.events.length]));
@@ -128,14 +176,17 @@ test('64位编号不会转换成Number，超界、负数和非法链接被拒绝
 });
 
 test('每票在同一真实时间轴上，锚点索引和前后票数位置保持一致', () => {
-  const items = Array.from({ length: 11 }, (_, index) => parcel(String(100 + index), { scannedTime: `2026-10-07T10:00:${String(index).padStart(2, '0')}.000` }));
+  const items = Array.from({ length: 11 }, (_, index) => {
+    const id = String(100 + index), time = `2026-10-07T10:00:${String(index).padStart(2, '0')}.000`;
+    return parcel(id, { scannedTime: time, processingRecords: [receipt(id, time)] });
+  });
   const rows = buildParcelTimingRows(context(items, '105'));
   assert.deepEqual(rows.map(row => row.relativeIndex), [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5]);
   const absolute = createTimingScale(rows, 'absolute');
   assert.ok(timingPosition(rows[0].marks[0].start, rows[0], absolute) < timingPosition(rows[10].marks[0].start, rows[10], absolute));
   const aligned = createTimingScale(rows, 'scan');
   assert.equal(timingPosition(rows[0].marks[0].start, rows[0], aligned), timingPosition(rows[10].marks[0].start, rows[10], aligned));
-  const nodes = parcelTimingNodes(rows);
+  const nodes = parcelTimingNodes(rows).filter(node => node.mark.title === '扫码');
   assert.equal(timingInterval(nodes[0].ticks, nodes[10].ticks), 10000);
 });
 
@@ -197,6 +248,6 @@ test('空数据与同一时刻的动作仍有有限轴域，标签在独立轨�
   const rows = buildParcelTimingRows(context([parcel(undefined, { detectedTime: scan, dischargeTime: scan, completedTime: scan })]));
   const scale = createTimingScale(rows, 'absolute');
   const layout = layoutTimingMarks(rows[0], scale, 680);
-  assert.equal(new Set(layout.map(mark => mark.lane)).size, 4);
+  assert.equal(new Set(layout.map(mark => mark.lane)).size, 3);
   assert.ok(layout.every(mark => Number.isFinite(mark.startX)));
 });

@@ -75,7 +75,7 @@ public sealed partial class ParcelProcessingRepository {
                 else {
                     if (location.Suffix != suffix) throw new InvalidOperationException("并发写入已固定其他分表，请使用相同消息重试。");
                     parcel = await db.Set<Parcel>().AsTracking().SingleAsync(row => row.Id == location.Id, cancellationToken);
-                    history = await db.Set<ParcelProcessingRecord>().AsNoTracking().Where(row => row.ParcelId == parcel.Id).ToListAsync(cancellationToken);
+                    history = await ParcelProcessingReplayQuery.ReadAsync(db, parcel.Id, cancellationToken);
                 }
                 var detected = history.Any(record => record.Stage == ParcelProcessingStage.Detected);
                 var appended = 0;

@@ -1,4 +1,5 @@
 import type { ParcelTiming, ParcelTimingParcel } from '../../data/api/parcelTimingTypes.ts';
+import type { ParcelProcessingRecord } from '../../data/api/parcelTypes.ts';
 import { localTime } from '../../data/api/operationalTypes.ts';
 import { buildParcelProcessingTimeline } from './parcelProcessingTimeline.ts';
 
@@ -62,6 +63,32 @@ function compareTime(left: bigint, right: bigint): number { return left < right 
 function earliest(values: (bigint | null)[]): bigint | null { return values.filter((value): value is bigint => value !== null).sort(compareTime)[0] ?? null; }
 function latest(values: (bigint | null)[]): bigint | null { return values.filter((value): value is bigint => value !== null).sort(compareTime).at(-1) ?? null; }
 
+/** 只从完整来源身份关联的有效DWS接收事实确定首次条码可用时间；摘要、量测和绑定时间均不补造端点。 */
+function firstScanReceipt(parcel: ParcelTimingParcel): { record: ParcelProcessingRecord; time: bigint } | null {
+  if (!parcel.sourceInstanceId || !parcel.sourceRunId || !parcel.sourceParcelId) return null;
+  const receipts = new Map<string, { record: ParcelProcessingRecord; time: bigint }>();
+  const conflicts = new Set<string>();
+  for (const record of parcel.processingRecords ?? []) {
+    const barcode = record.barcode?.trim();
+    if (record.stage !== 1 || record.isSuccess === false || !barcode || barcode.toLowerCase() === 'noread'
+      || record.parcelId !== parcel.id || record.sourceInstanceId !== parcel.sourceInstanceId || record.sourceRunId !== parcel.sourceRunId
+      || String(record.sourceParcelId) !== parcel.sourceParcelId) continue;
+    const key = record.messageIdentity ? `message:${record.messageIdentity}` : `record:${record.recordId}`;
+    if (conflicts.has(key)) continue;
+    const time = parseTimingTime(record.receivedAt ?? record.occurredAt);
+    const previous = receipts.get(key);
+    if (record.hasReliableTimestamp === false || time === null || previous
+      && (previous.time !== time || previous.record.barcode?.trim() !== barcode)) {
+      receipts.delete(key); conflicts.add(key); continue;
+    }
+    if (!previous) receipts.set(key, { record, time });
+  }
+  let first: { record: ParcelProcessingRecord; time: bigint } | null = null;
+  for (const receipt of receipts.values()) if (!first || receipt.time < first.time
+    || receipt.time === first.time && receipt.record.recordId.localeCompare(first.record.recordId) < 0) first = receipt;
+  return first;
+}
+
 /** 只用真实事实和明确关联的调用窗口生成图形，不使用elapsedMilliseconds猜测端点。 */
 export function buildParcelTimingRows(data: ParcelTiming): TimingRow[] {
   const anchorIndex = data.items.findIndex(parcel => parcel.id === data.anchorId);
@@ -77,7 +104,10 @@ export function buildParcelTimingRows(data: ParcelTiming): TimingRow[] {
       add({ key: `${parcel.id}:summary:${key}`, title, start: time, end: null, startLabel: '时间', endLabel: '',
         state: '', issue: false, warning: '', source: '包裹摘要', attemptNumber: null, reportedElapsed: null });
     };
-    summary('scan', '扫码', parcel.scannedTime);
+    const scan = firstScanReceipt(parcel);
+    if (scan) add({ key: `${parcel.id}:scan:${scan.record.recordId}`, title: '扫码', start: scan.time, end: null,
+      startLabel: scan.record.receivedAt ? '来源接收' : '来源接收事件', endLabel: '', state: '有效条码已接收', issue: false,
+      warning: '', source: '已关联DWS接收事实', attemptNumber: null, reportedElapsed: null });
     const history = buildParcelProcessingTimeline(parcel.processingRecords ?? []);
     for (const item of history.items) {
       const request = earliest(item.events.map(event => parseTimingTime(event.record.requestAt)));
@@ -120,7 +150,7 @@ export function buildParcelTimingRows(data: ParcelTiming): TimingRow[] {
     }
     marks.sort((left, right) => compareTime(left.start, right.start) || left.key.localeCompare(right.key));
     return { parcel, marks, detected: marks.find(mark => mark.title === '分拣机检测')?.start ?? null,
-      scan: parseTimingTime(parcel.scannedTime), relativeIndex: index - anchorIndex, invalidTimeCount };
+      scan: scan?.time ?? null, relativeIndex: index - anchorIndex, invalidTimeCount };
   });
 }
 

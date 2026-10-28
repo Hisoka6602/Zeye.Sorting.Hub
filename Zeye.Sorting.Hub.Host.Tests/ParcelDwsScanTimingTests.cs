@@ -3,6 +3,7 @@ using Zeye.Sorting.Hub.Contracts.Models.Parcels.Dws;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.Processing;
 using Zeye.Sorting.Hub.Domain.Enums.Parcels;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.ReadModels;
+using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 using Zeye.Sorting.Hub.Infrastructure.Queries;
 
 namespace Zeye.Sorting.Hub.Host.Tests;
@@ -49,6 +50,166 @@ public sealed class ParcelDwsScanTimingTests {
         Assert.All(report.Sources, source => Assert.NotNull(source.MedianScanDurationDeviationPercent));
         var relaxed = await reader.ReadAsync(request with { ScanDurationToleranceMilliseconds = 1000m, SortBy = "scan-duration" }, default);
         Assert.Empty(relaxed.Items); Assert.Equal(report.GeneratedAt, relaxed.GeneratedAt); Assert.Equal(4, relaxed.ScanTimingSampleCount);
+    }
+
+    /// <summary>跨午夜的接收、绑定与检测按完整来源关联，量测仅归接收日，缺失扫码条码仍保持未知。</summary>
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task CrossDayReceptionOwnsOneMeasurementAndReadsAllIdentityEndpoints(bool useIndex, bool missingBarcode) {
+        await using var db = new RelationalParcelTestDatabase("PerDay");
+        await db.InitializeAsync();
+        var detectedAt = new DateTime(2026, 10, 1, 23, 59, 59, 900);
+        var receivedAt = detectedAt.AddMilliseconds(200);
+        await Detect(db, "a", "run-1", 1, detectedAt);
+        var received = Measurement("cross-day-rx", "shared-message", "a", "run-1", null, receivedAt) with {
+            Barcode = missingBarcode ? null : "SCAN"
+        };
+        await Save(db, received);
+        await Save(db, received with {
+            RecordId = "cross-day-bound", PayloadHash = "cross-day-bound", Stage = ParcelProcessingStage.DwsBound,
+            SourceParcelId = 1, FinalSourceParcelId = 1, IsSuccess = true,
+            OccurredAt = receivedAt.AddMilliseconds(20), RecordedAt = receivedAt.AddMilliseconds(20)
+        });
+        // 相同消息标识可被其他运行会话或大小写不同的来源复用，跨表补齐不能拼接它们。
+        await Save(db, Measurement("other-run-rx", "shared-message", "a", "run-2", null, detectedAt.AddDays(-2)) with { WeightGrams = 2000m });
+        await Save(db, Measurement("other-source-rx", "shared-message", "A", "run-1", null, detectedAt.AddDays(-2)) with { WeightGrams = 3000m });
+        if (useIndex) {
+            var backfill = new ParcelDwsMeasurementBackfillService(db.Factory, db.Partitions);
+            while (await backfill.RunBatchAsync(default) > 0) { }
+        }
+
+        var reader = Reader(db);
+        var previousDay = await reader.ReadAsync(Request(detectedAt) with { DetailBarcode = "SCAN" }, default);
+        Assert.Equal(0, previousDay.MeasurementCount);
+        Assert.Equal(0, previousDay.ScanTimingSampleCount);
+        Assert.Null(previousDay.Detail);
+
+        var nextDay = await reader.ReadAsync(Request(receivedAt) with { DetailBarcode = "SCAN" }, default);
+        Assert.Equal(1, nextDay.MeasurementCount);
+        Assert.Equal(0, nextDay.ConflictingMeasurementCount);
+        Assert.Equal(0, nextDay.MissingBarcodeCount);
+        Assert.Equal(1, nextDay.DuplicateRecordCount);
+        var sample = Assert.Single(nextDay.Detail!.Items);
+        Assert.Equal("a", sample.SourceInstanceId);
+        Assert.Equal("run-1", sample.SourceRunId);
+        Assert.Equal("1", sample.SourceParcelId);
+        Assert.True(sample.BindingConfirmed);
+        Assert.Equal(1000m, sample.WeightGrams);
+        Assert.NotNull(sample.ParcelId);
+        if (missingBarcode) {
+            Assert.Equal(0, nextDay.ScanTimingSampleCount);
+            Assert.Equal(1, nextDay.MissingScanTimingCount);
+            Assert.Equal("missing-scan-result", sample.ScanTimingUnavailableReason);
+            Assert.Null(sample.ScanDurationMilliseconds);
+        } else {
+            Assert.Equal(1, nextDay.ScanTimingSampleCount);
+            Assert.Equal(0, nextDay.MissingScanTimingCount);
+            Assert.Equal(detectedAt, sample.ScanStartedAt);
+            Assert.Equal(receivedAt, sample.ScanCompletedAt);
+            Assert.Equal(200m, sample.ScanDurationMilliseconds);
+            Assert.Null(sample.ScanTimingUnavailableReason);
+        }
+        var bothDays = await reader.ReadAsync(Request(detectedAt) with { ToDate = receivedAt.Date, DetailBarcode = "SCAN" }, default);
+        Assert.Equal(1, bothDays.MeasurementCount);
+        Assert.Equal(nextDay.ScanTimingSampleCount, bothDays.ScanTimingSampleCount);
+        Assert.Equal(sample.Key, Assert.Single(bothDays.Detail!.Items).Key);
+    }
+
+    /// <summary>窗口内已完整的消息仍核对历史首次接收，两个单日的合计不能超过合并范围。</summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CompleteWindowGroupStillUsesEarlierHistoricalReception(bool useIndex) {
+        await using var db = new RelationalParcelTestDatabase("PerDay");
+        await db.InitializeAsync();
+        var sourceDetected = new DateTime(2026, 10, 1, 10, 0, 0);
+        var laterIntake = sourceDetected.AddDays(1);
+        var received = Measurement("first-historical-rx", "stable-message", "a", "run-1", null, sourceDetected.AddMilliseconds(200));
+        await Save(db, received);
+        await Save(db, Measurement("late-detection", "", "a", "run-1", 1, sourceDetected) with {
+            Stage = ParcelProcessingStage.Detected, HasReliableTimestamp = true,
+            ReceivedAt = null, MeasuredAt = null, RecordedAt = laterIntake
+        });
+        await Save(db, received with {
+            RecordId = "later-rx-copy", PayloadHash = "later-rx-copy", RecordedAt = laterIntake.AddMilliseconds(1)
+        });
+        await Save(db, received with {
+            RecordId = "later-binding", PayloadHash = "later-binding", Stage = ParcelProcessingStage.DwsBound,
+            SourceParcelId = 1, FinalSourceParcelId = 1, IsSuccess = true,
+            RecordedAt = laterIntake.AddMilliseconds(2), OccurredAt = received.OccurredAt.AddMilliseconds(20)
+        });
+        if (useIndex) {
+            var backfill = new ParcelDwsMeasurementBackfillService(db.Factory, db.Partitions);
+            while (await backfill.RunBatchAsync(default) > 0) { }
+        }
+        var reader = Reader(db);
+        var firstDay = await reader.ReadAsync(Request(sourceDetected) with { DetailBarcode = "SCAN" }, default);
+        var secondDay = await reader.ReadAsync(Request(laterIntake) with { DetailBarcode = "SCAN" }, default);
+        var combined = await reader.ReadAsync(Request(sourceDetected) with { ToDate = laterIntake.Date, DetailBarcode = "SCAN" }, default);
+        Assert.Equal(1, firstDay.MeasurementCount);
+        Assert.Equal(1, firstDay.ScanTimingSampleCount);
+        Assert.Equal(200m, Assert.Single(firstDay.Detail!.Items).ScanDurationMilliseconds);
+        Assert.Equal(0, secondDay.MeasurementCount);
+        Assert.Equal(1, combined.MeasurementCount);
+        Assert.Equal(firstDay.MeasurementCount + secondDay.MeasurementCount, combined.MeasurementCount);
+        Assert.Equal(2, combined.DuplicateRecordCount);
+    }
+
+    /// <summary>501票跨身份批次时按分表块关联，正常检测走目录；缺目录历史联合读取仍保留冲突事实。</summary>
+    [Fact]
+    public async Task BatchedLookupsAvoidHistoricalPartitionRoundTripsAndRetainLegacyConflicts() {
+        var capture = new UnboundQueryCaptureInterceptor();
+        await using var db = new RelationalParcelTestDatabase("PerDay", capture);
+        await db.InitializeAsync();
+        var at = new DateTime(2026, 10, 8, 10, 0, 0);
+        for (var day = 1; day <= 3; day++)
+            await db.Partitions.EnsureCreatedAsync(db.Partitions.Resolve(at.AddDays(-day)), default);
+        for (var index = 1; index <= 501; index++) {
+            var detected = at.AddSeconds(index);
+            await Detect(db, "a", "run-1", index, detected);
+            await Save(db, Measurement("batch-rx-" + index, "batch-message-" + index, "a", "run-1", index, detected.AddMilliseconds(200)));
+        }
+        var catalog = await db.Partitions.GetReadCatalogAsync(default);
+        Assert.Equal(5, catalog.Suffixes.Count);
+        capture.Commands.Clear();
+        var reader = Reader(db);
+        var report = await reader.ReadAsync(Request(at) with { DetailBarcode = "SCAN" }, default);
+        Assert.Equal(501, report.MeasurementCount);
+        Assert.Equal(501, report.ScanTimingSampleCount);
+        var queries = capture.Commands.ToArray();
+        var messageQueries = queries.Where(command => command.Parameters.Any(parameter => parameter.Name.Contains("messages", StringComparison.Ordinal))).ToArray();
+        Assert.Equal(2, messageQueries.Length);
+        Assert.All(messageQueries, command => Assert.Contains("UNION ALL", command.Sql, StringComparison.OrdinalIgnoreCase));
+        var detections = queries.Where(command => command.Sql.Contains("OccurredAt", StringComparison.Ordinal)
+            && !command.Sql.Contains("MessageIdentity", StringComparison.Ordinal)).ToArray();
+        Assert.Equal(2, detections.Length);
+        Assert.All(detections, command => {
+            Assert.Contains("Parcel_ProcessingRecords_20261008", command.Sql, StringComparison.Ordinal);
+            Assert.DoesNotContain("UNION ALL", command.Sql, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Parcel_ProcessingRecords_20261007", command.Sql, StringComparison.Ordinal);
+        });
+        Assert.True(messageQueries.Length + detections.Length < 2 * catalog.Suffixes.Count);
+
+        // 移除测试目录以覆盖遗留路径，另存一个原始冲突检测，不能被只取首条的优化掩盖。
+        await using (var legacy = await db.Partitions.CreateContextAsync("20261008", default)) {
+            var first = await legacy.Set<ParcelProcessingRecord>().SingleAsync(row => row.SourceParcelId == 501 && row.Stage == ParcelProcessingStage.Detected);
+            legacy.Add(first with { Key = "historical-conflicting-start", RecordId = "historical-conflicting-start", OccurredAt = first.OccurredAt.AddMilliseconds(1) });
+            await legacy.SaveChangesAsync();
+        }
+        await using (var directory = await db.Factory.CreateDbContextAsync())
+            await directory.Set<ParcelLocation>().ExecuteDeleteAsync();
+        capture.Commands.Clear();
+        var historical = await reader.ReadAsync(Request(at) with { DetailBarcode = "SCAN" }, default);
+        Assert.Equal(501, historical.MeasurementCount);
+        Assert.Equal(500, historical.ScanTimingSampleCount);
+        var legacyDetections = capture.Commands.Where(command => command.Sql.Contains("OccurredAt", StringComparison.Ordinal)
+            && !command.Sql.Contains("MessageIdentity", StringComparison.Ordinal)).ToArray();
+        Assert.Equal(2, legacyDetections.Length);
+        Assert.All(legacyDetections, command => Assert.Contains("UNION ALL", command.Sql, StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("conflicting-detection-time", Assert.Single(historical.Detail!.Items, sample => sample.SourceParcelId == "501").ScanTimingUnavailableReason);
     }
 
     /// <summary>缺失、倒序、不可靠和冲突的扫码时间保持未知，不污染重量、体积和测量身份统计。</summary>

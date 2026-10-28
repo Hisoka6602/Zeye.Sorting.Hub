@@ -1,5 +1,5 @@
 import { formatNumber } from '../../data/formatNumber.ts';
-interface CreationIntervals {
+interface DetectionIntervals {
   medianCreationIntervalMilliseconds: number | null;
   minimumCreationIntervalMilliseconds: number | null;
   actualSortingThroughputPerHour: number | null;
@@ -7,8 +7,8 @@ interface CreationIntervals {
   creationIntervalSampleCount: number;
 }
 
-/** 实际时效采用中位间隔，理论时效采用最短正间隔；两者都独立于完成耗时。 */
-export function sortingThroughputMetric(data: CreationIntervals | null | undefined) {
+/** 时效采用源端检测间隔；接口保留历史创建间隔字段名以兼容已有客户端。 */
+export function sortingThroughputMetric(data: DetectionIntervals | null | undefined) {
   const samples = data?.creationIntervalSampleCount ?? 0;
   const positiveNumber = (value: number) => value < 0.01 ? '< 0.01' : formatNumber(value, { grouping: true });
   const metric = (interval: number | null | undefined, rate: number | null | undefined, description: string) => {
@@ -22,6 +22,6 @@ export function sortingThroughputMetric(data: CreationIntervals | null | undefin
   return {
     actual: metric(data?.medianCreationIntervalMilliseconds, data?.actualSortingThroughputPerHour, '当前处理节奏下的小时产能'),
     theoretical: metric(data?.minimumCreationIntervalMilliseconds, data?.theoreticalSortingThroughputPerHour, '最佳处理节奏下的预估产能'),
-    hint: '实际时效反映所选时间范围内的常态处理效率，理论时效反映最佳处理节奏下的预估产能。两项指标可用于评估当前分拣表现。',
+    hint: '按所选日期内的源端检测时间估算：实际时效反映常态处理效率，理论时效反映最佳处理节奏下的预估产能。',
   };
 }

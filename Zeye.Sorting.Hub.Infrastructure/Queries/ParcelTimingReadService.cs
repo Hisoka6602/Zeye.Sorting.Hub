@@ -114,6 +114,7 @@ public sealed class ParcelTimingReadService(IDbContextFactory<SortingHubDbContex
                 RecordId = record.RecordId, ParcelId = record.ParcelId!.Value.ToString(System.Globalization.CultureInfo.InvariantCulture),
                 SourceInstanceId = record.SourceInstanceId, SourceRunId = record.SourceRunId, SourceParcelId = record.SourceParcelId,
                 Stage = (int)record.Stage, OccurredAt = record.OccurredAt, RecordedAt = record.RecordedAt,
+                ReceivedAt = record.ReceivedAt, MeasuredAt = record.MeasuredAt, Barcode = record.Barcode, MessageIdentity = record.MessageIdentity,
                 PartitionTime = record.PartitionTime, IsSuccess = record.IsSuccess, AttemptNumber = record.AttemptNumber,
                 Provider = record.Provider, RawPayload = record.RawPayload, ErrorMessage = record.ErrorMessage,
                 DecisionReason = record.DecisionReason, RequestAt = record.RequestAt, ResponseAt = record.ResponseAt,

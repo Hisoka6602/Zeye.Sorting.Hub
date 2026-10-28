@@ -1,6 +1,20 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { localDateTimeFormat, localTime } from '../src/data/api/operationalTypes.ts';
+import { inclusiveLocalDayRange, localDateTimeFormat, localTime } from '../src/data/api/operationalTypes.ts';
+import { parseTimingTime } from '../src/features/parcels/parcelTimingModel.ts';
+
+test('包含式整日查询覆盖最后一秒和最后100ns，下一天零点不进入窗口', () => {
+  const range = inclusiveLocalDayRange('2026-10-28', '2026-10-28');
+  const start = parseTimingTime(range.start), end = parseTimingTime(range.end);
+  assert.equal(start, parseTimingTime('2026-10-28T00:00:00'));
+  for (const value of ['2026-10-28T23:59:59.001', '2026-10-28T23:59:59.9999999']) {
+    const time = parseTimingTime(value);
+    assert.ok(time >= start && time <= end);
+  }
+  assert.ok(parseTimingTime('2026-10-29T00:00:00') > end);
+  assert.deepEqual(inclusiveLocalDayRange(undefined, '2026-10-28'), { start: undefined, end: range.end });
+  assert.deepEqual(inclusiveLocalDayRange('2026-10-28'), { start: range.start, end: undefined });
+});
 
 test('七位小数按本地钟面截断到三位，不四舍五入或跨越日期边界', () => {
   assert.equal(localTime('2026-10-06T10:24:31.0612630'), '2026-10-06 10:24:31.061');

@@ -83,11 +83,11 @@ export function ParcelComparisonPage() {
       <ParcelComparisonTiming key={key} rows={rows} ids={ids} baselineId={baselineId} axis={axis} zoom={zoom} onAxis={value => update('axis', value)} onZoom={value => update('zoom', String(value))} />
     </> : !key || data ? <SectionCard className="parcel-comparison-empty"><Empty description={data ? '所选包裹均未找到，请重新查询。' : '添加两票或更多包裹，开始对比分析。'} /><p>可比较重量和体积差值、长宽高，以及检测、扫码、请求格口、落格等动作的时间间隔。</p></SectionCard> : null}
     <Modal title="条码对应多个包裹，请选择" open={Boolean(lookup.candidates)} width={1000} onCancel={lookup.cancel} footer={<Space><Button onClick={lookup.cancel}>结束查询</Button><Button onClick={lookup.skip} disabled={lookup.busy}>跳过此项，继续查询</Button></Space>}>
-      <p>“{lookup.activeQuery}”命中 {lookup.candidates?.totalCount} 票。请结合扫码时间、工作台与来源批次选择，确认后继续查询下一项。</p>
+      <p>“{lookup.activeQuery}”命中 {lookup.candidates?.totalCount} 票。请结合检测 / 量测摘要时间、工作台与来源编号会话选择，确认后继续查询下一项。</p>
       {lookup.error && <Alert type="error" showIcon message="候选加载失败" description={lookup.error} action={<Button onClick={() => void lookup.page(lookup.candidates?.pageNumber ?? 1)}>重试</Button>} />}
       {lookup.candidates && <DataTable<ParcelTimingCandidate> rowKey="id" countUnit="票" dataSource={lookup.candidates.items} loading={lookup.busy} scroll={{ x: 850 }} pagination={{ current: lookup.candidates.pageNumber, pageSize: lookup.candidates.pageSize, total: lookup.candidates.totalCount, showSizeChanger: false, onChange: page => void lookup.page(page) }} columns={[
         { title: '包裹 ID', dataIndex: 'id', width: 190 }, { title: '主条码', dataIndex: 'barCodes', width: 180 },
-        { title: '扫码时间', width: 215, render: (_, parcel) => localTime(parcel.scannedTime) },
+        { title: '检测 / 量测摘要时间', width: 215, render: (_, parcel) => localTime(parcel.scannedTime) },
         { title: '工作台 / 来源', width: 220, render: (_, parcel) => <><div>{parcel.workstationName || '未提供'}</div><small>{parcel.sourceInstanceId || '未提供来源实例'}{parcel.sourceRunId && <><br />批次 {parcel.sourceRunId}</>}</small></> },
         { title: '操作', width: 115, render: (_, parcel) => <Button size="small" type="primary" onClick={() => lookup.choose(parcel)} disabled={lookup.busy || lookup.pendingIds.includes(parcel.id)}>{lookup.pendingIds.includes(parcel.id) ? '已添加' : '选择此票'}</Button> },
       ]} />}

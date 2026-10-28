@@ -16,17 +16,36 @@ async function fixture(t) {
     await fs.rm(directory, { recursive: true, force: true });
   });
   const root = path.join(directory, "web with spaces");
-  await write(path.join(root, "package.json"), { name: "fixture", dependencies: { vite: "1.0.0" } });
-  await write(path.join(root, "package-lock.json"), { lockfileVersion: 3, packages: { "node_modules/vite": { version: "1.0.0", integrity: "sha512-test" } } });
+  const manifest = { name: "fixture", dependencies: { vite: "1.0.0" }, devDependencies: { typescript: "1.0.0" } };
+  await write(path.join(root, "package.json"), manifest);
+  await write(path.join(root, "package-lock.json"), { name: "fixture", lockfileVersion: 3, packages: {
+    "": manifest,
+    "node_modules/vite": { name: "vite", version: "1.0.0", integrity: "sha512-vite", bin: { vite: "bin/vite.js" }, dependencies: { "fixture-helper": "1.0.0" } },
+    "node_modules/typescript": { name: "typescript", version: "1.0.0", integrity: "sha512-typescript", dev: true, bin: { tsc: "bin/tsc" } },
+    "node_modules/fixture-helper": { name: "fixture-helper", version: "1.0.0", integrity: "sha512-helper" },
+  } });
   await write(path.join(root, "src/main.js"), "export const value = 1;");
   await write(path.join(root, "public/logo.svg"), "<svg/>");
   await write(path.join(root, "scripts/build.mjs"), "// build");
   const calls = [];
   const install = async () => {
     const lock = JSON.parse(await fs.readFile(path.join(root, "package-lock.json"), "utf8"));
-    await write(path.join(root, "node_modules/.package-lock.json"), lock);
-    await write(path.join(root, "node_modules/vite/package.json"), { version: lock.packages["node_modules/vite"].version });
-    await write(path.join(root, "node_modules/vite/bin/vite.js"), "// vite");
+    const packages = Object.fromEntries(Object.entries(lock.packages).filter(([location]) => location.startsWith("node_modules/")));
+    await write(path.join(root, "node_modules/.package-lock.json"), { ...lock, packages });
+    for (const [location, item] of Object.entries(packages)) {
+      const packageDirectory = path.join(root, location);
+      await write(path.join(packageDirectory, "package.json"), { name: item.name, version: item.version, bin: item.bin, dependencies: item.dependencies });
+      const bins = typeof item.bin === "string" ? { [item.name.split("/").at(-1)]: item.bin } : item.bin ?? {};
+      const installationLayer = location.slice(0, location.lastIndexOf("node_modules/") + "node_modules".length);
+      const binDirectory = path.join(root, installationLayer, ".bin");
+      for (const [name, target] of Object.entries(bins)) {
+        const executable = path.join(packageDirectory, target);
+        await write(executable, `#!/usr/bin/env node\n// ${item.name}\n`);
+        const relativeTarget = path.relative(binDirectory, executable);
+        await write(path.join(binDirectory, name), `#!/bin/sh\nexec node "$(dirname "$0")/${relativeTarget.split(path.sep).join("/")}" "$@"\n`);
+        if (process.platform === "win32") await write(path.join(binDirectory, `${name}.cmd`), `@echo off\r\nnode "%~dp0${relativeTarget}" %*\r\n`);
+      }
+    }
   };
   const build = async () => {
     await write(path.join(root, "dist/index.html"), '<script src="/assets/main.js"></script>');
@@ -40,6 +59,19 @@ async function fixture(t) {
   const options = { root, runNpm, log() {}, cacheDirectory: path.join(directory, "npm-cache") };
   return { root, directory, options, calls, install, build, runNpm };
 }
+
+async function removeTransitivePackage(root) {
+  const installedFile = path.join(root, "node_modules/.package-lock.json");
+  const installed = JSON.parse(await fs.readFile(installedFile, "utf8"));
+  delete installed.packages["node_modules/fixture-helper"];
+  await write(installedFile, installed);
+  await fs.rm(path.join(root, "node_modules/fixture-helper"), { recursive: true });
+}
+
+const missingBuildFiles = [
+  ["build tool target", "node_modules/typescript/bin/tsc"],
+  ["build tool command shim", `node_modules/.bin/vite${process.platform === "win32" ? ".cmd" : ""}`],
+];
 
 test("unchanged publications reuse the complete verified frontend, even without node_modules", async (t) => {
   const f = await fixture(t);
@@ -65,11 +97,38 @@ test("changed dependency lockfiles require a new matching installation", async (
   const f = await fixture(t);
   await publishWebUi(f.options);
   const lock = JSON.parse(await fs.readFile(path.join(f.root, "package-lock.json"), "utf8"));
+  const manifest = JSON.parse(await fs.readFile(path.join(f.root, "package.json"), "utf8"));
+  manifest.dependencies.vite = "2.0.0";
+  lock.packages[""].dependencies.vite = "2.0.0";
   lock.packages["node_modules/vite"].version = "2.0.0";
+  lock.packages["node_modules/vite"].integrity = "sha512-vite-2";
+  await write(path.join(f.root, "package.json"), manifest);
   await write(path.join(f.root, "package-lock.json"), lock);
   assert.deepEqual(await publishWebUi(f.options), { restored: true, built: true });
   assert.equal(f.calls.filter((call) => call.args[0] === "ci").length, 2);
 });
+
+test("required transitive packages missing from both the hidden lock and disk trigger restoration", async (t) => {
+  const f = await fixture(t);
+  await publishWebUi(f.options);
+  await removeTransitivePackage(f.root);
+  assert.deepEqual(await publishWebUi({ ...f.options, forceBuild: true }), { restored: true, built: true });
+  assert.equal(f.calls.filter((call) => call.args[0] === "ci").length, 2);
+  const installed = JSON.parse(await fs.readFile(path.join(f.root, "node_modules/.package-lock.json"), "utf8"));
+  assert.ok(installed.packages["node_modules/fixture-helper"]);
+  await fs.access(path.join(f.root, "node_modules/fixture-helper/package.json"));
+});
+
+for (const [name, relativePath] of missingBuildFiles) {
+  test(`a missing ${name} triggers dependency restoration before building`, async (t) => {
+    const f = await fixture(t);
+    await publishWebUi(f.options);
+    await fs.rm(path.join(f.root, relativePath));
+    assert.deepEqual(await publishWebUi({ ...f.options, forceBuild: true }), { restored: true, built: true });
+    assert.deepEqual(f.calls.map((call) => call.args[0]), ["ci", "run", "ci", "run"]);
+    await fs.access(path.join(f.root, relativePath));
+  });
+}
 
 test("changing only build scripts does not reinstall dependencies", async (t) => {
   const f = await fixture(t);
@@ -108,6 +167,17 @@ test("disabled restores reject incomplete dependencies rather than publishing st
   assert.equal(f.calls.length, 0);
   await f.install();
   assert.deepEqual(await publishWebUi({ ...f.options, restoreDependencies: false }), { restored: false, built: true });
+  const damageCases = [
+    removeTransitivePackage,
+    ...missingBuildFiles.map(([, relativePath]) => (root) => fs.rm(path.join(root, relativePath))),
+  ];
+  for (const damage of damageCases) {
+    await f.install();
+    await damage(f.root);
+    const callsBefore = f.calls.length;
+    await assert.rejects(publishWebUi({ ...f.options, restoreDependencies: false, forceBuild: true }), /enable RestoreWebDependencies/);
+    assert.equal(f.calls.length, callsBefore, "broken dependencies must fail before npm installation or build starts");
+  }
 });
 
 test("force switches rebuild or restore only when requested", async (t) => {
@@ -156,6 +226,19 @@ test("abandoned publish locks are recovered safely", async (t) => {
 
 test("a real stuck child process is terminated at the deadline", async () => {
   await assert.rejects(runProcess(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { timeout: 250, log() {} }), /exceeded/);
+});
+
+test("a real failed child process reports its label, exit code, and original stderr", async () => {
+  await assert.rejects(runProcess(process.execPath, ["-e", "process.stderr.write('TS9999: fixture compiler failed\\n'); process.exitCode = 23;"], {
+    timeout: 5000,
+    label: "frontend build",
+    log() {},
+  }), (error) => {
+    assert.match(error.message, /frontend build/);
+    assert.match(error.message, /code\s+23/i);
+    assert.match(error.message, /TS9999: fixture compiler failed/);
+    return true;
+  });
 });
 
 test("TypeScript configuration changes invalidate the build without reinstalling", async (t) => {

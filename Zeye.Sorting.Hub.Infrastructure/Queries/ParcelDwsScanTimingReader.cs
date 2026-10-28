@@ -26,9 +26,9 @@ internal static class ParcelDwsScanTimingReader {
             : sample with { ScanTimingUnavailableReason = "invalid-scan-time" };
     }
 
-    /// <summary>分表内单次流式读取窄检测字段，少量编号走IN筛选，完整来源身份必须同时匹配。</summary>
+    /// <summary>明确包裹先按全局目录路由，缺少目录的历史以分表块读取；检测冲突保留完整事实核验。</summary>
     internal static async Task<List<DwsMeasurementSample>> ReadAsync(List<DwsMeasurementSample> samples, SortingHubDbContext db,
-        ParcelPartitionCatalogSnapshot catalog, string[] suffixes, ReportingQueryBudget budget, string? sourceInstanceId, CancellationToken token, IReadOnlySet<string>? indexed = null) {
+        ParcelPartitionCatalogSnapshot catalog, string? sourceInstanceId, CancellationToken token, IReadOnlySet<string>? indexed = null) {
         // 大整数身份只解析一次，筛选与读取后端点校验共用同一结果。
         var identified = samples.Select(sample => (Sample: sample, Identity: Identity(sample))).ToArray();
         var wanted = identified.Where(item => item.Sample.ScanCompletedAt.HasValue && item.Identity.HasValue)
@@ -38,19 +38,38 @@ internal static class ParcelDwsScanTimingReader {
             var ids = wanted.Select(identity => identity.Parcel).Distinct().ToArray();
             await using var read = ParcelPartitionReadContext<ParcelDwsDetectionSnapshot>.Create<ParcelProcessingRecord>(db, catalog.Suffixes, streaming: true);
             await using var measurements = ParcelPartitionReadContext<ParcelDwsDetectionSnapshot>.Create<ParcelDwsMeasurementSnapshot>(db, catalog.Suffixes, streaming: true);
+            var registered = catalog.Suffixes.ToHashSet(StringComparer.Ordinal);
+            var locations = new Dictionary<long, string>();
+            foreach (var batch in ids.Chunk(ParcelDwsConsistencyReadService.IdentityBatchSize)) {
+                var entries = await db.Set<ParcelLocation>().AsNoTracking().Where(location => batch.Contains(location.Id))
+                    .Select(location => new { location.Id, location.Suffix }).ToArrayAsync(token);
+                foreach (var entry in entries) if (registered.Contains(entry.Suffix)) locations.TryAdd(entry.Id, entry.Suffix);
+            }
             var count = 0;
-            foreach (var suffix in suffixes) {
-                var source = indexed?.Contains(suffix) == true ? measurements : read;
-                var query = source.Query([suffix], nameof(ParcelProcessingRecord.PartitionTime), budget.RangeStartLocal, budget.RangeEndLocal, false)
-                    .Where(row => row.Stage == ParcelProcessingStage.Detected && row.ParcelId != null && row.SourceParcelId != null && row.IsSuccess != false);
-                if (ids.Length <= 500) query = query.Where(row => ids.Contains(row.ParcelId!.Value));
-                if (sourceInstanceId is not null) query = query.Where(row => row.SourceInstanceId == sourceInstanceId);
-                await foreach (var window in ParcelAnalysisWindowReader.ReadAsync(query, budget.RangeStartLocal, budget.RangeEndLocal, token,
-                    targetRows: ParcelAnalysisWindowReader.TargetRows * 2))
-                await foreach (var row in window.AsAsyncEnumerable().WithCancellation(token)) {
+            // 目录是包裹不可变的入库归属，正常查询不探测无关历史分表。
+            foreach (var group in ids.Where(locations.ContainsKey).GroupBy(id => locations[id], StringComparer.Ordinal))
+            foreach (var parcelIds in group.Chunk(ParcelDwsConsistencyReadService.IdentityBatchSize))
+                await ReadDetectionsAsync([group.Key], parcelIds);
+            // 缺失目录或目录已指向不在当前目录中的分表时，保留跨历史及基础表的兼容路径。
+            var legacy = ids.Where(id => !locations.ContainsKey(id)).ToArray();
+            foreach (var parcelIds in legacy.Chunk(ParcelDwsConsistencyReadService.IdentityBatchSize))
+            foreach (var projectionGroup in catalog.Suffixes.GroupBy(suffix => indexed?.Contains(suffix) == true))
+            foreach (var partitionBatch in projectionGroup.Chunk(ParcelDwsConsistencyReadService.PartitionQueryBatchSize))
+                await ReadDetectionsAsync(partitionBatch, parcelIds);
+
+            // 每个分支先按包裹编号和阶段过滤，枚举全部检测事实而非只取第一条，避免掩盖历史冲突。
+            async Task ReadDetectionsAsync(string[] suffixes, long[] parcelIds) {
+                var source = indexed?.Contains(suffixes[0]) == true ? measurements : read;
+                var query = source.QueryAll(suffixes, branch => {
+                    var matching = branch.Where(row => row.Stage == ParcelProcessingStage.Detected && row.ParcelId != null
+                        && row.SourceParcelId != null && row.IsSuccess != false && parcelIds.Contains(row.ParcelId.Value));
+                    return sourceInstanceId is null ? matching : matching.Where(row => row.SourceInstanceId == sourceInstanceId);
+                });
+                await foreach (var row in query.AsAsyncEnumerable().WithCancellation(token)) {
+                    if (count++ == ParcelDwsConsistencyReadService.MaximumRecords)
+                        throw new ArgumentException("扫码检测读取超过20万条，请缩小日期或来源范围。");
                     var identity = (row.SourceInstanceId, row.SourceRunId, row.SourceParcelId!.Value, row.ParcelId!.Value);
                     if (!wanted.Contains(identity)) continue;
-                    if (count++ == 200000) throw new ArgumentException("扫码检测记录超过20万条，请缩小日期或来源范围。");
                     if (!detections.TryGetValue(identity, out var records)) detections[identity] = records = [];
                     records.Add(row);
                 }

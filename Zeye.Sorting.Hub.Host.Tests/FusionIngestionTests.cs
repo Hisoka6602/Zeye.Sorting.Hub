@@ -8,6 +8,26 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 
 /// <summary>使用实际关系持久化验证认证、租约、逐条确认、乱序与恢复。</summary>
 public sealed class FusionIngestionTests {
+    /// <summary>目标格口的两种受支持字段在成功判定和业务投影中采用同一值，保留原始编码。</summary>
+    [Theory]
+    [InlineData("targetChute")]
+    [InlineData("chuteCode")]
+    public async Task TargetChuteAliasesAgreeOnBusinessSuccessAndProjection(string field) {
+        await using var environment = new FusionIngressTestEnvironment(); await environment.InitializeAsync();
+        var lease = await environment.Ingress.RegisterAsync("chute-alias-test", "fusion-line-01", FusionIngressTestEnvironment.Hello(), default);
+        var at = DateTimeOffset.Now.AddSeconds(-2).ToOffset(TimeSpan.Zero);
+        var detection = FusionIngressTestEnvironment.Fact("parcel.detected", 1, time: at);
+        var assignment = FusionIngressTestEnvironment.Fact("parcel.chute-assigned", 2,
+            data: new Dictionary<string, string> { [field] = "0007" }, time: at.AddSeconds(1));
+        var published = await environment.Ingress.PublishAsync("chute-alias-test", FusionIngressTestEnvironment.Batch(lease, detection, assignment), default);
+        Assert.All(published.Records, receipt => Assert.Equal("stored", receipt.Status));
+        Assert.Equal(2, await environment.Projector().ProjectAsync(default));
+        var id = (await environment.Ingress.GetFactsAsync("fusion-line-01", null, 20, default)).First(fact => fact.ParcelId is not null).ParcelId!;
+        var parcel = (await environment.Database.Parcels.GetByIdAsync(long.Parse(id, System.Globalization.CultureInfo.InvariantCulture), default))!;
+        Assert.Equal("0007", parcel.TargetChuteCode);
+        Assert.True(Assert.Single(parcel.ProcessingRecords, record => record.Stage == Zeye.Sorting.Hub.Domain.Enums.Parcels.ParcelProcessingStage.ChuteAssigned).IsSuccess);
+    }
+
     /// <summary>无法提交接收簿时返回可重试，故障消除后同一原始事实仅存储一次。</summary>
     [Fact]
     public async Task ReceiptFailureNeverAcknowledgesVolatileState() {

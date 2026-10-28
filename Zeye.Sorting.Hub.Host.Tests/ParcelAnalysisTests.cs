@@ -32,7 +32,7 @@ public sealed class ParcelAnalysisTests {
         await SaveAsync(database, Fact("blocked-2", 2, start.AddDays(1).AddSeconds(1)) with {
             Stage = ParcelProcessingStage.ScanUploaded, IsSuccess = false, IsRoutingBlocked = true
         });
-        await SaveAsync(database, Fact("detect-other", 3, start.AddDays(1), "other-source"));
+        await SaveAsync(database, Fact("detect-other", 3, start.AddDays(1), "analysis-A"));
         await SaveAsync(database, Fact("old-scan-new-intake", 4, start.AddDays(-2)) with {
             RecordedAt = start.AddDays(1), PartitionTime = start.AddDays(1)
         });
@@ -54,6 +54,10 @@ public sealed class ParcelAnalysisTests {
         Assert.Equal("NoRead", Assert.Single(noread.Items).BarCodes);
         var blocked = await Reader(database).ReadAsync(request with { Issue = "blocked" }, default);
         Assert.True(Assert.Single(blocked.Items).IsRoutingBlocked);
+        var differentlyCasedSource = await Reader(database).ReadAsync(request with { SourceInstanceId = "analysis-A" }, default);
+        Assert.Equal(1, differentlyCasedSource.ParcelCount);
+        Assert.Equal(0, differentlyCasedSource.ExceptionCount);
+        Assert.Empty(differentlyCasedSource.Items);
     }
 
     /// <summary>分位数基于全部有效样本，偶数中位数保留精度，区间采用左闭右开且不补造缺失耗时。</summary>

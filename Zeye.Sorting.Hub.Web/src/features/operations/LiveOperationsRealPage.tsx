@@ -16,7 +16,7 @@ import { formatNumber } from '../../data/formatNumber';
 import { hasParcelException } from '../parcels/parcelExceptionDetails';
 import './liveOperations.css';
 
-/** 所有状态统计限定于当前最近入库窗口，不表示设备或全站总量。 */
+/** 所有状态统计限定于最近24小时摘要时间内的50票样本，不表示设备或全站总量。 */
 const emptyParcels: ParcelSummary[] = [];
 /** 复用包裹合同中的状态顺序，保留未识别状态的反馈。 */
 const statusName = (status: number) => ['待分拣', '已完成', '分拣异常'][status] ?? '未知';
@@ -70,28 +70,28 @@ export function LiveOperationsPage() {
   const refresh = () => { parcels.refresh(); live.refresh(); ready.refresh(); };
 
   return <div className="live-operations-page">
-    <PageIntro title="实时运行态势" description="实时查看平台健康与最近入库包裹的处理动态。" action={<div className="live-page-actions">
+    <PageIntro title="实时运行态势" description="实时查看平台健康与最近业务摘要窗口内的包裹处理动态。" action={<div className="live-page-actions">
       <span className="live-update-time"><ClockCircleOutlined aria-hidden="true" />最后更新 <time>{lastUpdated ? localTime(lastUpdated) : '等待数据'}</time></span>
       <Button icon={<ReloadOutlined />} onClick={refresh} loading={loading}>立即刷新</Button>
     </div>} />
     {(parcels.error || live.error || ready.error) && <InfoAlert type="error" closable={false} message="运行数据读取失败" description={[parcels.error?.message, live.error?.message, ready.error?.message].filter(Boolean).join('；')} />}
     <div className="live-status-grid">
       {probes.map((probe, index) => <LiveProbeCard key={probe.path} probe={probe} resource={[live, ready][index]} />)}
-      <article className="live-status-card live-exception-card" aria-label="最近入库窗口内的异常包裹">
+      <article className="live-status-card live-exception-card" aria-label="最近业务摘要窗口内的异常包裹">
         <div className="live-status-heading"><h2>窗口内异常包裹</h2><span className="live-status-icon" aria-hidden="true"><WarningOutlined /></span></div>
         <div className="live-exception-value">{parcels.loading && !parcels.data ? <Skeleton.Input active size="small" /> : <strong>{parcels.data ? formatNumber(abnormalCount) : '—'}</strong>}<span>票</span></div>
-        <p className="live-status-description">最近入库包裹中，发生过异常的票数，含已完成</p>
+        <p className="live-status-description">当前50票样本中，发生过异常的票数，含已完成</p>
         <div className="live-status-footer"><span>当前观察窗口</span><span>{parcels.data ? `最近 ${formatNumber(items.length)} 票包裹` : '等待包裹数据'}</span></div>
       </article>
     </div>
-    <p className="live-source-note"><InfoCircleOutlined aria-hidden="true" /><span>服务状态来自平台健康探针；包裹动态仅展示最近 50 票入库记录，不作全站统计。</span></p>
+    <p className="live-source-note"><InfoCircleOutlined aria-hidden="true" /><span>服务状态来自平台健康探针；包裹按检测 / 量测摘要时间筛选最近24小时，展示该时间最新的50票。Hub首次入库时间单独展示，不作全站统计。</span></p>
     <SectionCard title={<div className="live-activity-heading"><h2>最新包裹动态</h2><span>{parcels.data ? `${formatNumber(items.length)} 票包裹 · ${formatNumber(workstations.length)} 个来源工作台` : '等待入库记录'}</span></div>} className="live-activity-card" extra={<Link className="live-ledger-link" to="/parcels">查看包裹台账 →</Link>}>
       <div className="live-activity-toolbar">
         <Segmented aria-label="包裹筛选" value={status} onChange={value => { setStatus(String(value)); setPage(1); }} options={[{ label: '全部包裹', value: 'all' }, { label: '待分拣', value: '0' }, { label: '已完成', value: '1' }, { label: '发生异常', value: '2' }]} />
         <div className="live-workstation-filter"><label htmlFor="live-workstation">来源工作台</label><Select id="live-workstation" aria-label="来源工作台" allowClear showSearch optionFilterProp="label" placeholder="全部工作台" value={workstation} onChange={value => { setWorkstation(value); setPage(1); }} options={workstations.map(value => ({ value, label: value }))} /></div>
       </div>
       <DataTable<ParcelSummary> rowKey="id" countUnit="票" loading={parcels.loading} dataSource={filtered} tableLayout="fixed" scroll={{ x: 1100 }} pagination={{ current: currentPage, pageSize, pageSizeOptions: ['10', '20', '50'], onChange: (nextPage, nextSize) => { setPage(nextPage); setPageSize(nextSize); } }} locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={items.length ? '当前筛选条件下暂无包裹' : '暂无入库包裹，收到包裹后将自动更新'} /> }} columns={[
-        { title: '入库时间', dataIndex: 'createdTime', width: 215, render: (value: string) => <time className="live-parcel-time" dateTime={value} title={localTime(value)}>{localTime(value)}</time> },
+        { title: 'Hub首次入库时间', dataIndex: 'createdTime', width: 215, render: (value: string) => <time className="live-parcel-time" dateTime={value} title={localTime(value)}>{localTime(value)}</time> },
         { title: '包裹条码', dataIndex: 'barCodes', width: 360, render: (value: string, item) => <Tooltip title={value || item.id}><Link className="live-barcode-link" to={`/parcels/${item.id}`}>{value || item.id}</Link></Tooltip> },
         { title: '来源工作台', dataIndex: 'workstationName', width: 230, render: (value: string) => <span className="live-workstation-cell"><DesktopOutlined aria-hidden="true" /><Tooltip title={value || '未提供'}><span>{value || '未提供'}</span></Tooltip></span> },
         { title: '状态', dataIndex: 'status', width: 120, render: (value: number, item) => <><StatusTag value={statusName(value)} />{value !== 2 && hasParcelException(item) && <StatusTag value="发生异常" tone="red" />}</> },

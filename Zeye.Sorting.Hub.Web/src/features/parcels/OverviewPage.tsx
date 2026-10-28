@@ -106,7 +106,7 @@ export function OverviewPage() {
       <div className={`workbench-probes ${canReadGovernance ? '' : 'is-basic'}`}>{healthProbes.map((probe, index) => (index < 2 || canReadGovernance) && <PlatformProbe key={probe.path} probe={probe} resource={[live, ready, deep][index]} />)}</div>
     </section>
     <SectionCard className="workbench-stations-card" title={<div className="workbench-section-title"><AppstoreOutlined /><div><h2>分拣工作台</h2><p>按来源实例查看处理情况，支持多个工作台同时工作</p></div></div>} extra={<span className="workbench-connection-state"><ApiOutlined />{connection === 'connected' ? '实时通道已连接' : connection === 'reconnecting' ? '实时通道重连中' : connection === 'connecting' ? '正在连接实时通道' : '实时通道未连接'}</span>}>
-      <div className="workbench-source-note"><span><CheckCircleOutlined />处理情况来自已入库包裹，在线状态来自 Fusion 心跳</span><p>显示已登记工作台及最近出现的来源。包裹统计按扫码时间汇总滚动最近 24 小时内的全部记录；下方明细展示最新 200 票包裹。Fusion 在线表示服务心跳有效，设备连接状态需另行上报。</p></div>
+      <div className="workbench-source-note"><span><CheckCircleOutlined />处理情况来自已入库包裹，在线状态来自 Fusion 心跳</span><p>显示已登记工作台及最近出现的来源。包裹统计按检测 / 量测摘要时间汇总滚动最近 24 小时内的全部记录；下方明细按同一摘要时间展示最新 200 票包裹。Hub首次入库时间单独展示。Fusion 在线表示服务心跳有效，设备连接状态需另行上报。</p></div>
       <ApiFeedback error={sources.error} retry={sources.refresh} />
       {statistics.data && <p className="workbench-unassigned-note">统计窗口 {localTime(statistics.data.windowStartLocal)} — {localTime(statistics.data.windowEndLocal)}</p>}
       <div className="workbench-summary"><div><span>观察到的工作台</span><strong>{statistics.data ? observations.workstations.length : '—'}</strong></div>
@@ -125,7 +125,7 @@ export function OverviewPage() {
       <SectionCard title={<div className="workbench-section-title"><DesktopOutlined /><div><h2>最近包裹记录</h2><p>{selectedKey ? `${selectedStation?.name ?? '所选工作台'} · 最近 24 小时内最新 200 票包裹` : '最近 24 小时 · 最新 200 票包裹'}</p></div></div>} extra={<div className="workbench-table-actions">
         {selectedKey && <Button onClick={() => setSelectedKey(undefined)}>显示全部工作台</Button>}<Button type="link" icon={<ArrowRightOutlined />} iconPosition="end" onClick={() => navigate('/parcels')}>查看台账</Button></div>}>
         {parcels.error ? <ApiFeedback error={parcels.error} retry={parcels.refresh} /> : <DataTable<ParcelSummary> countUnit="票" loading={parcels.loading} rowKey="id" dataSource={recent} pagination={{ defaultPageSize: 8, showSizeChanger: false }} scroll={{ x: 940 }} columns={[
-          { title: '入库时间', dataIndex: 'createdTime', width: 165, render: localTime },
+          { title: 'Hub首次入库时间', dataIndex: 'createdTime', width: 190, render: localTime },
           { title: '主条码 / 包裹 ID', dataIndex: 'barCodes', width: 180, render: (value: string, item) => <Button type="link" className="table-link" onClick={() => navigate(`/parcels/${item.id}`)}>{value || item.id}</Button> },
           { title: '工作台', dataIndex: 'workstationName', width: 130, render: (value: string) => value || '未提供' },
           { title: '来源实例', dataIndex: 'sourceInstanceId', width: 150, render: (value: string | null) => value || '未提供' },

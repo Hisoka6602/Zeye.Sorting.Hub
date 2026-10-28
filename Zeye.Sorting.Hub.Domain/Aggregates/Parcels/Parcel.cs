@@ -104,11 +104,21 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
             Type = ParcelType.Normal;
             ApplyStatus(ParcelStatus.Pending, null);
             ParcelProcessingRecord? providerResponse = null;
-            foreach (var record in records.OrderBy(x => x.OccurredAt).ThenBy(x => x.AttemptNumber).ThenBy(x => x.RecordId, StringComparer.Ordinal)) {
+            DateTime? firstSourceEventAt = null;
+            DateTime? latestRecordedAt = null;
+            bool? detectionTimestampReliable = null;
+            // 同刻按业务阶段推进；同阶段仍按尝试号和稳定编号排序，避免随机事实编号改变检测、路由及落格结果。
+            foreach (var record in records.OrderBy(x => x.OccurredAt).ThenBy(x => x.Stage)
+                .ThenBy(x => x.AttemptNumber).ThenBy(x => x.RecordId, StringComparer.Ordinal)) {
                 // 步骤1：只接受明确关联到当前来源身份的记录，未绑定DWS不得更新包裹。
                 if (record.ParcelId != Id || record.SourceInstanceId != SourceInstanceId || record.SourceRunId != SourceRunId || record.SourceParcelId != SourceParcelId) continue;
+                firstSourceEventAt ??= record.OccurredAt;
+                if (!latestRecordedAt.HasValue || record.RecordedAt > latestRecordedAt.Value) latestRecordedAt = record.RecordedAt;
                 if (record.Stage == ParcelProcessingStage.Detected) {
-                    DetectedTime ??= record.OccurredAt;
+                    if (!DetectedTime.HasValue) {
+                        DetectedTime = record.OccurredAt;
+                        detectionTimestampReliable = record.HasReliableTimestamp;
+                    }
                     BarCodes = record.Barcode ?? BarCodes;
                     WorkstationName = record.WorkstationName ?? WorkstationName;
                 }
@@ -121,7 +131,6 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
                     Volume = record.VolumeMm3 ?? Volume;
                     VolumetricWeightGrams = record.VolumetricWeightGrams ?? VolumetricWeightGrams;
                     MeasurementTime = record.MeasuredAt ?? record.OccurredAt;
-                    ScannedTime = MeasurementTime.Value;
                 }
                 // 步骤2：接口成功只推进接口状态，实际落格才完成包裹生命周期。
                 if (record.Stage == ParcelProcessingStage.ScanUploaded && record.IsSuccess.HasValue) {
@@ -139,12 +148,17 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
                 if (record.IsFallback == true || record.IsRoutingBlocked == true)
                     ApplyProcessingException(ParcelExceptionType.AbnormalDischarge);
                 if (record.Stage == ParcelProcessingStage.ScanUploaded && !string.IsNullOrWhiteSpace(record.ResponseBody)) providerResponse = record;
-                var facts = ExceptionRuleMatcher.Facts(this, record, providerResponse);
-                var previousType = Type;
-                if (rules is not null && Status != ParcelStatus.Completed && record.Stage is ParcelProcessingStage.Detected or ParcelProcessingStage.DwsBound or ParcelProcessingStage.ScanUploaded)
-                    Type = ExceptionRuleMatcher.MatchParcel(rules, facts, WorkstationName, SourceInstanceId) ?? Type;
-                if (Type != previousType) facts = ExceptionRuleMatcher.Facts(this, record, providerResponse);
-                var matchedType = rules is not null ? ExceptionRuleMatcher.Match(rules, facts, WorkstationName, SourceInstanceId) : null;
+                ParcelExceptionType? matchedType = null;
+                if (rules is { Count: > 0 }
+                    && record.Stage is ParcelProcessingStage.Detected or ParcelProcessingStage.DwsBound
+                        or ParcelProcessingStage.ScanUploaded or ParcelProcessingStage.ParcelException) {
+                    var facts = ExceptionRuleMatcher.Facts(this, record, providerResponse);
+                    var previousType = Type;
+                    if (Status != ParcelStatus.Completed && record.Stage is ParcelProcessingStage.Detected or ParcelProcessingStage.DwsBound or ParcelProcessingStage.ScanUploaded)
+                        Type = ExceptionRuleMatcher.MatchParcel(rules, facts, WorkstationName, SourceInstanceId) ?? Type;
+                    if (Type != previousType) facts = ExceptionRuleMatcher.Facts(this, record, providerResponse);
+                    matchedType = ExceptionRuleMatcher.Match(rules, facts, WorkstationName, SourceInstanceId);
+                }
                 if (matchedType.HasValue && record.Stage is ParcelProcessingStage.Detected or ParcelProcessingStage.DwsBound or ParcelProcessingStage.ScanUploaded)
                     ApplyProcessingException(matchedType.Value);
                 else if (record.Stage == ParcelProcessingStage.ScanUploaded && record.IsSuccess == false)
@@ -167,11 +181,15 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
                         ApplyProcessingException(ParcelExceptionType.AbnormalDischarge);
                     DischargeTime = record.OccurredAt;
                     MarkCompleted(record.OccurredAt);
-                    LifecycleMilliseconds = DetectedTime.HasValue ? Math.Max(0, (record.OccurredAt - DetectedTime.Value).Ticks / TimeSpan.TicksPerMillisecond) : null;
+                    LifecycleMilliseconds = DetectedTime.HasValue && detectionTimestampReliable != false
+                        && record.HasReliableTimestamp != false && record.OccurredAt >= DetectedTime.Value
+                            ? (record.OccurredAt - DetectedTime.Value).Ticks / TimeSpan.TicksPerMillisecond : null;
                 }
                 if (record.Stage is ParcelProcessingStage.ImageRegistered or ParcelProcessingStage.ImageUploaded && record.IsSuccess != false) HasImages = true;
             }
-            ModifyTime = records.Count > 0 ? records.Max(x => x.RecordedAt) : ModifyTime;
+            // 完整来源历史决定兼容扫码时间，不能沿用首次到达的晚期事实或服务器入库时间。
+            ScannedTime = MeasurementTime ?? DetectedTime ?? firstSourceEventAt ?? ScannedTime;
+            ModifyTime = latestRecordedAt ?? ModifyTime;
         }
 
         /// <summary>
@@ -211,7 +229,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         public string? SegmentCodes { get; private set; }
 
         /// <summary>
-        /// 包裹生命周期（毫秒）
+        /// 包裹生命周期（毫秒）；缺少有效端点或来源明确标记时间不可靠时为空。
         /// </summary>
         public long? LifecycleMilliseconds { get; private set; }
 
@@ -284,7 +302,7 @@ namespace Zeye.Sorting.Hub.Domain.Aggregates.Parcels {
         public decimal? Volume { get; private set; }
 
         /// <summary>
-        /// 扫码时间
+        /// 兼容扫码摘要时间：成功DWS量测（缺失则绑定事件）优先，其次检测，最后为最早来源事件。
         /// </summary>
         public DateTime ScannedTime { get; private set; }
 

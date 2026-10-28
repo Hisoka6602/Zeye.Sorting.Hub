@@ -46,20 +46,20 @@ internal sealed class ParcelPartitionReadContext<TReadModel> : DbContext, IParce
 
     /// <summary>每个分表投影为同一 DTO 后使用 LINQ Concat，避免依赖不同实体根的集合运算。</summary>
     internal IQueryable<TReadModel> QueryAll(IReadOnlyList<string> suffixes,
-        Func<IQueryable<TReadModel>, IQueryable<TReadModel>> branch) {
+        Func<IQueryable<TReadModel>, IQueryable<TReadModel>> branch, bool requireReliableLifecycle = false) {
         if (suffixes.Count == 0) throw new ArgumentException("至少提供一个物理分表。", nameof(suffixes));
         var queries = suffixes.Distinct(StringComparer.Ordinal).Select(suffix => {
             if (Array.BinarySearch(_suffixes, suffix, StringComparer.Ordinal) < 0)
                 throw new ArgumentException("物理分表不属于当前只读模型。", nameof(suffixes));
             // 筛选和有界候选先在各个物理表执行，禁止先联合全表再按主键或邻近时间过滤。
-            return branch(Set<TReadModel>(EntityName(suffix)).AsNoTracking().Select(Projection));
+            return branch(ReadSource(suffix, requireReliableLifecycle).Select(Projection));
         });
         return queries.Aggregate((left, right) => left.Concat(right));
     }
 
     /// <summary>按指定的本地时间半开或闭区间读取物理分表。</summary>
     internal IQueryable<TReadModel> Query(IReadOnlyList<string> suffixes, string timeProperty,
-        DateTime fromLocal, DateTime toLocal, bool includeEnd) {
+        DateTime fromLocal, DateTime toLocal, bool includeEnd, bool requireReliableLifecycle = false) {
         if (suffixes.Count == 0) throw new ArgumentException("至少提供一个物理分表。", nameof(suffixes));
         if (toLocal <= fromLocal || fromLocal.Kind is not (DateTimeKind.Local or DateTimeKind.Unspecified)
             || toLocal.Kind is not (DateTimeKind.Local or DateTimeKind.Unspecified))
@@ -71,7 +71,7 @@ internal sealed class ParcelPartitionReadContext<TReadModel> : DbContext, IParce
         var queries = suffixes.Distinct(StringComparer.Ordinal).Select(suffix => {
             if (Array.BinarySearch(_suffixes, suffix, StringComparer.Ordinal) < 0)
                 throw new ArgumentException("物理分表不属于当前只读模型。", nameof(suffixes));
-            var source = Set<TReadModel>(EntityName(suffix)).AsNoTracking();
+            var source = ReadSource(suffix, requireReliableLifecycle);
             var filtered = time.PropertyType == typeof(DateTime?)
                 ? source.Where(item => EF.Property<DateTime?>(item, timeProperty) >= fromLocal
                     && (includeEnd ? EF.Property<DateTime?>(item, timeProperty) <= toLocal : EF.Property<DateTime?>(item, timeProperty) < toLocal))
@@ -80,6 +80,15 @@ internal sealed class ParcelPartitionReadContext<TReadModel> : DbContext, IParce
             return filtered.Select(Projection);
         });
         return queries.Aggregate((left, right) => left.Concat(right));
+    }
+
+    /// <summary>历史生命周期端点在同一查询上下文、同一物理分表内核对，不加载事实明细或触发写库。</summary>
+    private IQueryable<TReadModel> ReadSource(string suffix, bool requireReliableLifecycle) {
+        var source = Set<TReadModel>(EntityName(suffix));
+        return (requireReliableLifecycle
+            ? source.FromSqlRaw(ParcelTimestampReliabilitySql.ReliableLifecycleSource(SourceEntity,
+                this.GetService<ISqlGenerationHelper>(), suffix, Database.ProviderName))
+            : source).AsNoTracking();
     }
 
     /// <summary>仅注册读模型需要的列；列名、精度、转换及可空性沿用写入模型。</summary>

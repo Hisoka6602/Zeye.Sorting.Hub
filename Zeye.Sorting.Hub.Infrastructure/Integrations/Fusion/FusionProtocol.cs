@@ -84,6 +84,7 @@ public static partial class FusionProtocol {
     /// <summary>映射当前事实的真实阶段；快照中的历史状态不会制造额外业务事件。</summary>
     public static ParcelProcessingRecordRequest? Map(HubFactBody fact, FusionSourceOptions registered) {
         var data = fact.Data;
+        var metadata = data.TryGetProperty("sourceMetadata", out var nested) && nested.ValueKind == JsonValueKind.Object ? nested : default;
         var stage = fact.Kind switch {
             "parcel.detected" => 0, "dws.received" => 1, "dws.binding" or "parcel.measurement" => 2,
             "provider.interaction" => 3, "provider.decision" or "parcel.chute-assigned" => 4,
@@ -95,13 +96,14 @@ public static partial class FusionProtocol {
         var association = fact.Kind == "image.association" && Boolean(data, "associationConfirmed") == true
             && (ReadDecimal(data, "candidateCount") ?? 1) <= 1;
         var sourceParcel = fact.SourceParcelId is null ? (long?)null : Number(fact.SourceParcelId);
+        var targetChute = Text(data, "targetChute", 128) ?? Text(data, "chuteCode", 128);
         // 未绑定的非 DWS 事实仍保留原文，但不能为既有聚合制造假包裹。
         if (stage == 9 && !association || sourceParcel is null && stage is not (1 or 2)) return null;
         var success = fact.Kind switch {
             "parcel.measurement" => true,
             "dws.binding" => Text(data, "decision") is "Committed" or "PartialBound" && Long(data, "finalParcelId") is not null,
             "provider.decision" => Boolean(data, "isAssigned"),
-            "parcel.chute-assigned" => !string.IsNullOrWhiteSpace(Text(data, "targetChute")),
+            "parcel.chute-assigned" => !string.IsNullOrWhiteSpace(targetChute),
             "parcel.dispatched" => Boolean(data, "isSorterDispatched"),
             "parcel.landed" => Boolean(data, "actualLandingConfirmed") == true ? true : throw new ArgumentException("LandingNotConfirmed"),
             "image.association" => association,
@@ -128,19 +130,21 @@ public static partial class FusionProtocol {
             VolumetricWeightGrams = ReadDecimal(data, "volumetricWeightGrams"),
             PreviousCreationGapMilliseconds = (long?)ReadDecimal(data, "previousCreationGapMilliseconds"),
             IsSpacingViolation = Boolean(data, "isSpacingViolation"), IsAwaitingWcsDecision = Boolean(data, "isAwaitingWcsDecision"),
-            MeasuredAt = ProtocolTime(data, "measuredAtUtc", registered.TimeZoneId),
-            ReceivedAt = ProtocolTime(data, "receivedAtUtc", registered.TimeZoneId),
-            HasReliableTimestamp = Boolean(data, "hasReliableDetectionTimestamp"),
+            MeasuredAt = SourceTime(data, metadata, "measuredAtUtc", "measuredAt", "MeasuredAt", registered.TimeZoneId),
+            ReceivedAt = SourceTime(data, metadata, "receivedAtUtc", "receivedAt", "ReceivedAt", registered.TimeZoneId),
+            HasReliableTimestamp = Boolean(data, "hasReliableDetectionTimestamp") ?? Boolean(data, "hasReliableTimestamp"),
+            HasReliableFrameBoundary = Boolean(data, "hasReliableFrameBoundary") ?? MetadataBoolean(metadata, "FrameBoundaryReliable"),
             Provider = Text(data, "provider", 96), TaskCode = Text(data, "taskCode", 256),
-            TargetChuteCode = Text(data, "targetChute", 128) ?? Text(data, "chuteCode", 128),
-            DispatchedChuteCode = stage == 5 ? Text(data, "targetChute", 128) : null,
+            TargetChuteCode = targetChute,
+            DispatchedChuteCode = stage == 5 ? targetChute : null,
             ActualChuteCode = stage == 6 ? Text(data, "actualChute", 128) : null,
             IsFallback = Boolean(data, "isFallbackChuteAssigned"), IsRoutingBlocked = Boolean(data, "isRoutingBlocked"),
             BindingMode = Text(data, "correlationMode", 32) ?? Text(data, "fusionMode", 32),
             CandidateSourceParcelId = Long(data, "candidateParcelId"), FinalSourceParcelId = fact.Kind == "parcel.measurement" ? sourceParcel : Long(data, "finalParcelId"),
-            CorrelationId = Long(data, "correlationId") ?? Long(data, "correlationIdHint"),
-            TriggerBatch = Text(data, "triggerBatch", 128), ScanSequence = Text(data, "scanSequence", 128),
-            MessageIdentity = Text(data, "messageIdentity", 256), DeltaMilliseconds = ReadDecimal(data, "deltaMilliseconds"),
+            CorrelationId = Long(data, "correlationId") ?? Long(data, "correlationIdHint") ?? MetadataLong(metadata, "CorrelationId"),
+            TriggerBatch = SourceText(data, metadata, "triggerBatch", "TriggerBatch", 128),
+            ScanSequence = SourceText(data, metadata, "scanSequence", "ScanSequence", 128),
+            MessageIdentity = SourceMessageIdentity(fact, metadata), DeltaMilliseconds = ReadDecimal(data, "deltaMilliseconds"),
             DecisionReason = Text(data, "reason", 2048),
             ExceptionCode = stage == 7 ? Text(data, "exceptionType", 128) ?? (Boolean(data, "isDwsTimedOut") == true ? "DwsTimeout"
                 : Boolean(data, "isSpacingViolation") == true ? "ParcelSpacingViolation" : Text(data, "stage", 128) ?? "Unknown") : null,

@@ -35,7 +35,8 @@ public sealed class ParcelAnalysisReadService(IDbContextFactory<SortingHubDbCont
         var cohort = read.Query(suffixes, nameof(Parcel.CreatedTime), budget.RangeStartLocal, budget.RangeEndLocal, false)
             .Where(parcel => parcel.SourceParcelId != null && parcel.DetectedTime != null);
         if (request.WorkstationName is not null) cohort = cohort.Where(parcel => parcel.WorkstationName == request.WorkstationName);
-        if (request.SourceInstanceId is not null) cohort = cohort.Where(parcel => parcel.SourceInstanceId == request.SourceInstanceId);
+        var sourceCollation = SourceCollation(db.Database.ProviderName);
+        cohort = FilterSource(cohort, request.SourceInstanceId, sourceCollation);
         var summary = await cohort.GroupBy(_ => 1).Select(group => new {
             Count = group.LongCount(),
             Completed = group.LongCount(parcel => parcel.Status == ParcelStatus.Completed),
@@ -80,7 +81,11 @@ public sealed class ParcelAnalysisReadService(IDbContextFactory<SortingHubDbCont
             if (request.Issue == "exception" && request.ExceptionType.HasValue)
                 details = details.Where(parcel => parcel.ExceptionType == (ParcelExceptionType)request.ExceptionType.Value);
         } else if (request.View == "duration") {
-            var valid = cohort.Where(ValidDuration);
+            var valid = read.Query(suffixes, nameof(Parcel.CreatedTime), budget.RangeStartLocal, budget.RangeEndLocal,
+                    false, requireReliableLifecycle: true)
+                .Where(parcel => parcel.SourceParcelId != null && parcel.DetectedTime != null).Where(ValidDuration);
+            if (request.WorkstationName is not null) valid = valid.Where(parcel => parcel.WorkstationName == request.WorkstationName);
+            valid = FilterSource(valid, request.SourceInstanceId, sourceCollation);
             var durations = await valid.GroupBy(_ => 1).Select(group => new {
                 Count = group.LongCount(), Sum = group.Sum(parcel => parcel.LifecycleMilliseconds!.Value),
                 Minimum = group.Min(parcel => parcel.LifecycleMilliseconds!.Value), Maximum = group.Max(parcel => parcel.LifecycleMilliseconds!.Value)
@@ -115,19 +120,15 @@ public sealed class ParcelAnalysisReadService(IDbContextFactory<SortingHubDbCont
             if (request.MaximumMilliseconds.HasValue) details = details.Where(parcel => parcel.LifecycleMilliseconds < request.MaximumMilliseconds);
         } else {
             var rowLimit = Math.Min(1000, budget.RowLimit);
-            var routes = await cohort.GroupBy(parcel => new { parcel.SourceInstanceId, parcel.WorkstationName, parcel.TargetChuteCode, parcel.ActualChuteCode })
-                .Select(group => new ParcelChuteRouteResponse {
-                    SourceInstanceId = group.Key.SourceInstanceId, WorkstationName = group.Key.WorkstationName,
-                    TargetChuteCode = group.Key.TargetChuteCode, ActualChuteCode = group.Key.ActualChuteCode,
-                    Count = group.LongCount(), FallbackCount = group.LongCount(parcel => parcel.IsFallbackChuteAssigned == true)
-                }).OrderByDescending(route => route.Count).ThenBy(route => route.SourceInstanceId).ThenBy(route => route.WorkstationName)
+            var routes = await ChuteRoutes(cohort, sourceCollation)
+                .OrderByDescending(route => route.Count).ThenBy(route => route.SourceInstanceId).ThenBy(route => route.WorkstationName)
                 .ThenBy(route => route.TargetChuteCode).ThenBy(route => route.ActualChuteCode).Take(rowLimit + 1).ToArrayAsync(cancellationToken);
             result = result with { ChuteRoutes = routes.Take(rowLimit).ToArray(), ChuteRoutesTruncated = routes.Length > rowLimit };
             result = result with {
                 ActualChuteHeatmap = await ParcelChuteHeatmapReader.ReadAsync(cohort, true, summary?.ActualChuteSamples ?? 0,
-                    result.ParcelCount, rowLimit, cancellationToken),
+                    result.ParcelCount, rowLimit, sourceCollation, cancellationToken),
                 TargetChuteHeatmap = await ParcelChuteHeatmapReader.ReadAsync(cohort, false, summary?.TargetChuteSamples ?? 0,
-                    result.ParcelCount, rowLimit, cancellationToken)
+                    result.ParcelCount, rowLimit, sourceCollation, cancellationToken)
             };
             if (request.MismatchOnly) details = details.Where(parcel => parcel.TargetChuteCode != null && parcel.TargetChuteCode.Trim() != ""
                 && parcel.ActualChuteCode != null && parcel.ActualChuteCode.Trim() != ""
@@ -151,6 +152,30 @@ public sealed class ParcelAnalysisReadService(IDbContextFactory<SortingHubDbCont
             IsFallbackChuteAssigned = parcel.IsFallbackChuteAssigned, IsRoutingBlocked = parcel.IsRoutingBlocked
         }).ToArray() };
     }
+
+    /// <summary>来源身份与接入认证一致；有大小写不敏感默认规则的提供器显式使用二进制比较。</summary>
+    internal static string? SourceCollation(string? provider) => provider switch {
+        DbProviderNames.MySql => "utf8mb4_bin",
+        DbProviderNames.SqlServer => "Latin1_General_100_BIN2",
+        _ => null
+    };
+
+    /// <summary>精确来源筛选在数据库执行，避免默认排序规则把大小写不同的工作台实例合并。</summary>
+    internal static IQueryable<ParcelAnalysisSnapshot> FilterSource(IQueryable<ParcelAnalysisSnapshot> cohort, string? source, string? sourceCollation) =>
+        source is null ? cohort : sourceCollation is null
+            ? cohort.Where(parcel => parcel.SourceInstanceId == source)
+            : cohort.Where(parcel => EF.Functions.Collate(parcel.SourceInstanceId!, sourceCollation) == source);
+
+    /// <summary>格口流向按完整来源身份聚合；同名工作台和同名格口不能覆盖来源大小写差异。</summary>
+    internal static IQueryable<ParcelChuteRouteResponse> ChuteRoutes(IQueryable<ParcelAnalysisSnapshot> cohort, string? sourceCollation) =>
+        cohort.GroupBy(parcel => new {
+            SourceInstanceId = sourceCollation == null ? parcel.SourceInstanceId : EF.Functions.Collate(parcel.SourceInstanceId!, sourceCollation),
+            parcel.WorkstationName, parcel.TargetChuteCode, parcel.ActualChuteCode
+        }).Select(group => new ParcelChuteRouteResponse {
+            SourceInstanceId = group.Key.SourceInstanceId, WorkstationName = group.Key.WorkstationName,
+            TargetChuteCode = group.Key.TargetChuteCode, ActualChuteCode = group.Key.ActualChuteCode,
+            Count = group.LongCount(), FallbackCount = group.LongCount(parcel => parcel.IsFallbackChuteAssigned == true)
+        });
 
     /// <summary>在创建任何数据库查询前限制日期、分页和精确筛选字段。</summary>
     private static ParcelAnalysisRequest Validate(ParcelAnalysisRequest request) {

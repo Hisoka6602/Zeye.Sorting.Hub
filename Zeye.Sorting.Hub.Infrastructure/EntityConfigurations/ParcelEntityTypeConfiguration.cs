@@ -36,8 +36,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
             builder.HasIndex(x => x.ParcelTimestamp);
             builder.HasIndex(x => new { x.ScannedTime, x.Id });
             builder.HasIndex(x => x.CreatedTime);
-            // 创建节拍和跨入库周期的完成统计走窄索引，不回表读取完整聚合。
+            // 入库总体、源端检测节拍和跨入库周期的完成统计使用各自的窄索引。
             builder.HasIndex(x => new { x.CreatedTime, x.Id, x.SourceParcelId, x.DetectedTime });
+            builder.HasIndex(x => new { x.DetectedTime, x.Id, x.SourceParcelId });
             builder.HasIndex(x => new { x.CompletedTime, x.Status, x.SourceParcelId, x.DetectedTime });
             // BagCode 等值 + ScannedTime 范围/排序，升级为复合索引覆盖 GetByBagCodeAsync 路径
             builder.HasIndex(x => new { x.BagCode, x.ScannedTime, x.Id });

@@ -4,8 +4,15 @@ import { buildParcelTimingRows, createTimingScale, parcelTimingNodes, parseTimin
 import { groupTimingDiagnostics, layoutTimingOverview, timingAxisTicks, timingOverview, timingOverviewSpans } from '../src/features/parcels/parcelTimingPresentation.ts';
 
 const stamp = ms => '2026-10-07T10:00:00.' + String(ms).padStart(3, '0');
-const parcel = overrides => ({ id: '9223372036854775806', barCodes: 'PKG', scannedTime: stamp(200),
-  detectedTime: null, dischargeTime: null, completedTime: null, processingRecords: [], apiRequests: [], ...overrides });
+const parcel = overrides => {
+  const value = { id: '9223372036854775806', barCodes: 'PKG', scannedTime: stamp(200),
+    sourceInstanceId: 'line-01', sourceRunId: 'run-a', sourceParcelId: '1',
+    detectedTime: null, dischargeTime: null, completedTime: null, processingRecords: [], apiRequests: [], ...overrides };
+  return { ...value, processingRecords: [...(value.scannedTime ? [{ recordId: 'scan-receipt', parcelId: value.id,
+    sourceInstanceId: value.sourceInstanceId, sourceRunId: value.sourceRunId, sourceParcelId: value.sourceParcelId,
+    stage: 1, barcode: 'PKG', occurredAt: value.scannedTime, receivedAt: value.scannedTime,
+    isSuccess: true, hasReliableTimestamp: true, messageIdentity: 'scan-receipt' }] : []), ...value.processingRecords] };
+};
 const row = overrides => buildParcelTimingRows({ anchorId: '9223372036854775806', items: [parcel(overrides)], beforeCount: 0, afterCount: 0 })[0];
 const call = (start, end, status = 1) => ({ apiType: 0, requestStatus: status, requestTime: stamp(start), responseTime: end === null ? null : stamp(end), elapsedMilliseconds: 999 });
 const fact = (stage, at) => ({ recordId: `${stage}-${at}`, parcelId: '9223372036854775806', stage, occurredAt: stamp(at),
@@ -105,7 +112,7 @@ test('概览和选中隐藏动作沿用原始坐标，七位精度与响应窗�
   }
   assert.equal(layout.find(point => point.mark.title === '分拣机检测').mark.start, parseTimingTime('2026-10-07T10:00:00.1999999'));
   assert.ok(layout.some(point => point.mark.key.endsWith('api:1')));
-  assert.equal(value.marks.length, 6);
+  assert.equal(value.marks.length, 7);
 });
 
 test('同一时刻的关键点不会被横向挪动，扫码与请求标签仍可直接阅读', () => {

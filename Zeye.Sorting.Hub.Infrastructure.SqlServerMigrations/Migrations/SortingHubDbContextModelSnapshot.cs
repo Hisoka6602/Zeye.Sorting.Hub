@@ -15,6 +15,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations.Migrations
     {
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
+#pragma warning disable 612, 618
             modelBuilder
                 .HasDefaultSchema("dbo")
                 .HasAnnotation("ProductVersion", "9.0.14")
@@ -705,6 +706,8 @@ namespace Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations.Migrations
                     b.HasIndex("ActualChuteId", "ScannedTime", "Id");
 
                     b.HasIndex("BagCode", "ScannedTime", "Id");
+
+                    b.HasIndex("DetectedTime", "Id", "SourceParcelId");
 
                     b.HasIndex("NoReadType", "ScannedTime", "Id");
 
@@ -2431,6 +2434,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations.Migrations
                 {
                     b.Navigation("Detail");
                 });
+#pragma warning restore 612, 618
         }
     }
 }

@@ -65,6 +65,7 @@ async function outputManifest(root) {
   if (!await exists(path.join(client, "index.html"))) return null;
   return hashes(client, await files(client));
 }
+/** 核对锁定的必需依赖、已安装版本与构建命令入口，避免损坏缓存跳过还原。 */
 async function dependenciesReady(root, lock) {
   const installed = await json(path.join(root, "node_modules", ".package-lock.json"));
   if (!installed?.packages || !Object.keys(installed.packages).length) return false;
@@ -72,11 +73,22 @@ async function dependenciesReady(root, lock) {
   for (const name of Object.keys({ ...manifest.dependencies, ...manifest.devDependencies })) {
     if (!installed.packages[`node_modules/${name}`]) return false;
   }
+  // 安装索引也可能缺失整个传递包，必须从项目锁反向核对必需项。
+  for (const [location, expected] of Object.entries(lock.packages ?? {})) {
+    if (location.startsWith("node_modules/") && !expected.optional && !installed.packages[location]) return false;
+  }
   for (const [location, item] of Object.entries(installed.packages)) {
     const expected = lock.packages?.[location];
     if (!location.startsWith("node_modules/") || location.split("/").includes("..") || !expected || item.link || item.version !== expected.version || item.integrity !== expected.integrity) return false;
     const actual = await json(path.join(root, location, "package.json"));
     if (!actual || actual.version !== item.version) return false;
+    const declaredBins = expected.bin ?? actual.bin ?? {};
+    const bins = typeof declaredBins === "string" ? { [location.split("/").at(-1)]: declaredBins } : declaredBins;
+    const modulesDirectory = location.slice(0, location.lastIndexOf("node_modules/") + "node_modules".length);
+    for (const [name, target] of Object.entries(bins)) {
+      if (!await exists(path.join(root, location, target))) return false;
+      if (!await exists(path.join(root, modulesDirectory, ".bin", `${name}${process.platform === "win32" ? ".cmd" : ""}`))) return false;
+    }
   }
   return exists(path.join(root, "node_modules", "vite", "bin", "vite.js"));
 }
@@ -125,9 +137,17 @@ async function npmCli() {
   for (const candidate of candidates) if (candidate.endsWith("npm-cli.js") && await exists(candidate)) return candidate;
   throw new Error("npm was not found. Install Node.js/npm on the publish machine.");
 }
+/** 转发构建输出并保留有界错误尾部，供发布失败时显示具体诊断。 */
 export function runProcess(command, args, { cwd, timeout = 180000, log = console.log, label = "command" } = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd, stdio: "inherit", windowsHide: true, detached: process.platform !== "win32" });
+    const child = spawn(command, args, { cwd, stdio: ["ignore", "pipe", "pipe"], windowsHide: true, detached: process.platform !== "win32" });
+    let outputTail = "";
+    const forward = (destination) => (chunk) => {
+      destination.write(chunk);
+      outputTail = (outputTail + chunk.toString()).slice(-4096);
+    };
+    child.stdout.on("data", forward(process.stdout));
+    child.stderr.on("data", forward(process.stderr));
     const started = Date.now();
     let timedOut = false;
     const progress = setInterval(() => log(`Still running (${Math.round((Date.now() - started) / 1000)}s): ${label}`), 15000);
@@ -147,8 +167,8 @@ export function runProcess(command, args, { cwd, timeout = 180000, log = console
     child.on("error", (error) => { clear(); reject(error); });
     child.on("close", (code) => {
       clear();
-      if (timedOut) reject(new Error(`Command exceeded ${Math.round(timeout / 1000)} seconds.`));
-      else if (code !== 0) reject(new Error(`npm command exited with code ${code}.`));
+      if (timedOut) reject(new Error(`${label} exceeded ${Math.round(timeout / 1000)} seconds. ${outputTail.trim()}`));
+      else if (code !== 0) reject(new Error(`${label} exited with code ${code}. ${outputTail.trim()}`));
       else resolve();
     });
   });
@@ -180,7 +200,8 @@ async function restore(root, options, run, log) {
 export async function publishWebUi({ root, restoreDependencies = true, forceBuild = false, forceRestore = false,
   registry = officialRegistry, fallbackRegistry: backup = fallbackRegistry, cacheDirectory = path.resolve(root, "../artifacts/npm-publish-cache"),
   installTimeout = 90000, buildTimeout = 180000, lockTimeout = 180000, runNpm, log = (message) => console.log(`[Web publish] ${message}`) }) {
-  root = path.resolve(root);
+  // Windows 大小写路径或目录联接必须共享同一发布锁，避免并发重建同一依赖目录。
+  root = await fs.realpath(path.resolve(root));
   const stateDirectory = path.resolve(root, "../artifacts/web-publish", digest(root).slice(0, 16));
   const unlock = await acquireLock(path.join(stateDirectory, "publish.lock"), log, lockTimeout);
   try {
@@ -229,5 +250,9 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   publishWebUi({ root: path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."),
     restoreDependencies: args["--restore-dependencies"]?.toLowerCase() !== "false", forceBuild: args["--force-build"]?.toLowerCase() === "true", forceRestore: args["--force-restore"]?.toLowerCase() === "true",
     registry: args["--registry"] || officialRegistry, fallbackRegistry: args["--fallback-registry"]?.toLowerCase() === "none" ? "" : args["--fallback-registry"] ?? fallbackRegistry })
-    .catch((error) => { console.error(`[Web publish] ${error.message}`); process.exitCode = 1; });
+    .catch((error) => {
+      // 使用 MSBuild 标准错误格式，让 Visual Studio 错误列表保留底层原因。
+      console.error(`scripts/publish-web-ui.mjs : error WEBUI001: ${error.message.replace(/\r?\n/g, " | ")}`);
+      process.exitCode = 1;
+    });
 }

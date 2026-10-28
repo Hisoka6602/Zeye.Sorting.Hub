@@ -160,7 +160,7 @@ export function WorkbenchDataOverview() {
 
   return <section className="workbench-data" aria-labelledby="workbench-data-title">
     <div className="workbench-data-heading">
-      <div><h2 id="workbench-data-title">分拣表现</h2><p>卡片按首次入库日期统计，每日分拣趋势按完成日期统计</p></div>
+      <div><h2 id="workbench-data-title">分拣表现</h2><p>包裹数量按首次入库日期统计，时效按源端检测日期统计，每日趋势按完成日期统计</p></div>
       <Button type="link" icon={<ArrowRightOutlined />} iconPosition="end" onClick={() => navigate('/analytics')}>查看完整报表</Button>
     </div>
     <div className="workbench-data-filter">

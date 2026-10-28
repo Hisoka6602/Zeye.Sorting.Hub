@@ -84,7 +84,7 @@ export function ParcelDwsConsistencyPage() {
       action={<Link to="/parcels/duration"><Button>耗时分析</Button></Link>} />
     <SectionCard>
       <div className="dws-filter-grid">
-        <Field label="记录首次入库日期"><DatePicker.RangePicker aria-label="记录首次入库日期" style={{ width: '100%' }}
+        <Field label="记录Hub首次入库日期"><DatePicker.RangePicker aria-label="记录Hub首次入库日期" style={{ width: '100%' }}
           value={validAnalysisDate(draft.fromDate) && validAnalysisDate(draft.toDate) ? [dayjs(draft.fromDate), dayjs(draft.toDate)] : null}
           onChange={range => setDraft(previous => ({ ...previous, fromDate: range?.[0]?.format('YYYY-MM-DD') ?? '', toDate: range?.[1]?.format('YYYY-MM-DD') ?? '' }))} /></Field>
         <Field label="精确条码"><Input aria-label="精确条码" maxLength={1024} value={draft.barcode} onChange={event => changeDraft('barcode', event.target.value)} onPressEnter={search} allowClear placeholder="全部条码，区分大小写" /></Field>

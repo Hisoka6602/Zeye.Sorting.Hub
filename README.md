@@ -942,7 +942,7 @@ Zeye.Sorting.Hub.Web/设计验收.md（前端页面视觉对照、交互验证�
 - `ParcelProcessingContractMapper.cs`：合同与领域集中映射及内容哈希。
 - `ParcelProcessingRecordEntityTypeConfiguration.cs`：处理事实关系映射、发生时间及其他查询索引与量测精度。
 - `ParcelAnalyticsReadService.cs`：先按入库日期裁剪包裹快照物理表，再在数据库中完成条件计数、分组和平均完成耗时计算；事实发生日仍跨历史表统计。
-- 数据概览的“分拣时效”在同一张卡片展示实际与理论小时产能，单位均为票/小时：实际时效 = `3,600,000 / 相邻成功创建包裹的间隔中位数（ms）`，理论时效 = `3,600,000 / 最短的正相邻创建间隔（ms）`。对所选范围内已成功入库、具有来源身份和检测事实的包裹，按首次创建时间 `CreatedTime` 统一排序；跨日与跨物理分表的相邻间隔一起计算，重复消息不重复计数，忽略零间隔。偶数个间隔的中位数取中间两项的平均，最短间隔取全部有效间隔的最小值，零样本或单票返回空值。后端返回 `medianCreationIntervalMilliseconds`、`minimumCreationIntervalMilliseconds`、`actualSortingThroughputPerHour`、`theoreticalSortingThroughputPerHour`、`creationIntervalSampleCount`；原 `averageLifecycleSeconds` 继续表示首次检测至完成的平均耗时。
+- 数据概览的“分拣时效”在同一张卡片展示实际与理论小时产能，单位均为票/小时：实际时效 = `3,600,000 / 相邻包裹源端检测间隔中位数（ms）`，理论时效 = `3,600,000 / 最短正源端检测间隔（ms）`。具有来源身份的包裹按 `DetectedTime` 筛选本地日期范围并统一排序；该时间来自源端检测事实，Fusion 优先提供 `detectedAtUtc`，否则采用该事实的发生时间。服务器投影生成的 `CreatedTime` 仅用于首次入库及分表，不参与时效。全部入库分表和历史基础表先合并再计算，覆盖检测日与后续补传入库日不同的包裹；重复消息不重复计数，忽略零间隔，缺少检测时间不回退服务器时钟。偶数个间隔的中位数取中间两项的平均，最短间隔取全部有效间隔的最小值，零样本或单票返回空值。`medianCreationIntervalMilliseconds`、`minimumCreationIntervalMilliseconds` 和 `creationIntervalSampleCount` 保留历史接口名，值均采用源端检测间隔；两个小时产能字段保持不变。包裹数量卡片仍按首次入库日期，分拣趋势按实际完成日期；`averageLifecycleSeconds` 继续表示首次检测至完成的平均耗时。源端缺失设备时间而显式降级的检测时间仍遵循来源事实语义，设备时钟可靠性需结合原事实的 `HasReliableTimestamp` 核对。
 - `ParcelProcessingRepository.cs`：去重凭据、定位、处理事实与快照的统一事务实现，并拒绝同一来源三元组的第二次检测误合并。
 - `ParcelPartitionPeriod.cs`：天、ISO周、月的唯一周期计算，默认月。
 - `ParcelPartitionCatalogEntry.cs`：历史分表目录，粒度配置变更后保留可检索性。
@@ -1977,8 +1977,8 @@ Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/
 Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding/
   AuditPartitionMaintenanceService.cs
 Zeye.Sorting.Hub.Infrastructure/Queries/
-  CreationIntervalStatistics.cs
-  ParcelCreationIntervalQuery.cs
+  DetectionIntervalStatistics.cs
+  ParcelDetectionIntervalQuery.cs
 Zeye.Sorting.Hub.Web/public/demo/
   parcel-multi-label.svg
   parcel-multi-side.svg
@@ -2073,8 +2073,8 @@ Zeye.Sorting.Hub.Web/tests/
 | Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations | `20261002180106_RemoveRetiredMessageStorage.cs` | MySQL 退役消息存储结构清理迁移 |
 | Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations | `20261002180106_RemoveRetiredMessageStorage.Designer.cs` | MySQL 退役消息存储迁移模型元数据 |
 | Zeye.Sorting.Hub.Infrastructure/Persistence/Sharding | `AuditPartitionMaintenanceService.cs` | 请求审计分表自动建表、索引与窗口维护 |
-| Zeye.Sorting.Hub.Infrastructure/Queries | `CreationIntervalStatistics.cs` | 创建间隔中位数、最短间隔及小时产能统计 |
-| Zeye.Sorting.Hub.Infrastructure/Queries | `ParcelCreationIntervalQuery.cs` | 跨包裹分表读取成功创建时间并计算间隔 |
+| Zeye.Sorting.Hub.Infrastructure/Queries | `DetectionIntervalStatistics.cs` | 源端检测间隔中位数、最短正间隔及有效样本统计 |
+| Zeye.Sorting.Hub.Infrastructure/Queries | `ParcelDetectionIntervalQuery.cs` | 跨全部入库分表按源端检测日期筛选并计算检测间隔 |
 | Zeye.Sorting.Hub.Web/public/demo | `parcel-multi-label.svg` | 多图案例的模拟面单图片 |
 | Zeye.Sorting.Hub.Web/public/demo | `parcel-multi-side.svg` | 多图案例的模拟侧面图片 |
 | Zeye.Sorting.Hub.Web/public/demo | `parcel-multi-top.svg` | 多图案例的模拟顶面图片 |
@@ -2265,7 +2265,7 @@ Zeye.Sorting.Hub.Host.Tests/
 | Host.Tests | `SlowQueryReadCaptureInterceptor.cs` | 保存包裹与投影队列的真实 SELECT 和参数，验证有界读取及执行计划 |
 | Host.Tests | `SlowQueryReadPathTests.cs` | 短窗口分页与游标、跨周期晚到数据、受配置约束的回退、投影队列认领边界及四种驱动查询翻译回归 |
 
-业务查询与写入优先使用 EF Core 的 LINQ、`SaveChangesAsync`、`ExecuteUpdateAsync` 和 `ExecuteDeleteAsync`。报表及工作台统计不再手写跨表窄字段 SELECT；独立分表的列表查询直接使用对应 EF 模型。尚需原生语句的范围限于数据库维护、跨实体物理分表路由和精确创建间隔窗口统计，集中在基础设施实现并复用提供器映射与参数化，禁止把语句散落到页面、应用用例或高频收包逻辑。
+业务查询与写入优先使用 EF Core 的 LINQ、`SaveChangesAsync`、`ExecuteUpdateAsync` 和 `ExecuteDeleteAsync`。报表及工作台统计不再手写跨表窄字段 SELECT；独立分表的列表查询直接使用对应 EF 模型。尚需原生语句的范围限于数据库维护、跨实体物理分表路由和精确检测间隔窗口统计，集中在基础设施实现并复用提供器映射与参数化，禁止把语句散落到页面、应用用例或高频收包逻辑。
 
 热处理不逐票读取管理配置或反复检查已预建的分表；本实例保存规则及完成建表后立即更新内存，其他实例的元数据变更由后台每分钟同步。快照仅缓存规则和目录，不缓存包裹统计结果。接收事实的确认仍在 EF Core 事务提交之后，图片存储确认仍在完整落盘及摘要校验之后；这些耐久边界不能改为提前返回成功。请求审计和业务投影继续由既有有界后台链路处理。
 
@@ -2651,7 +2651,7 @@ Zeye.Sorting.Hub.Web/tests/
 
 ## DWS分析读取
 
-DWS一致性分析读取按首次入库周期分区的 `Parcel_DwsMeasurements` 窄表。检测、DWS接收和绑定的身份、真实时间与量测字段随原事实在同一事务中保存，不读取报文正文。历史记录按512条主键批次补齐，与耗时事实使用独立的补齐游标；只有完整补齐的分表才切换到窄表，未完成分表仍按原事实统计。页面筛选不会触发补齐写库，重复消息、身份冲突、缺失量测及扫码时间判定沿用原口径。
+DWS一致性分析读取按首次入库周期分区的 `Parcel_DwsMeasurements` 窄表。检测、DWS接收和绑定的身份、真实时间与量测字段随原事实在同一事务中保存，不读取报文正文。历史记录按512条主键批次补齐，与耗时事实使用独立的补齐游标；只有完整补齐的分表才切换到窄表，未完成分表仍按原事实统计。一次量测以最早接收事实的首次入库日期归组；缺少接收事实时才采用绑定的入库锚点。跨午夜接收与绑定按完整来源实例、运行会话及消息身份跨分表补齐，检测端点按明确包裹身份跨表读取，同一量测不因两个入库日期重复计数。工作台筛选按归并后的绑定工作台执行，缺条码仅通过确认的包裹编号读取。页面筛选不会触发补齐写库；正常窗口仍使用窄表，跨日消息关联复用原事实消息身份索引，受20万行预算约束。
 
 新增量测表与游标通过四数据库 Code First 迁移及既有物理分表迁移治理落库，迁移审批、预览、审计与回滚流程保持一致。`AlignDwsMeasurementIdentityLength` 将量测消息身份长度与原事实的256字符对齐；回退该长度前应核实历史身份均不超过128字符，避免截断。量测分析的20万记录预算与显式刷新保持有效。
 
@@ -2705,3 +2705,103 @@ Zeye.Sorting.Hub.Host.Tests/
 | `tools/ParcelExceptionRepair/ExceptionRepairEntry.cs` | 数据库位置、包裹身份与修复前后审计凭据 |
 | `tools/ParcelExceptionRepair/ExceptionRepairSnapshot.cs` | 限定可修复和回滚的质量字段 |
 | `docs/包裹异常保留与历史修复.md` | 新统计口径、部署配合及旧数据修复操作说明 |
+
+## 各层级与各文件作用说明（逐项）：源端检测时效索引
+
+分拣时效按源端检测日期读取全部入库周期，使用 `(DetectedTime, Id, SourceParcelId)` 覆盖索引。四数据库通过 Code First 迁移及既有物理分表迁移治理建立索引；生产环境沿用迁移预览、审批、审计及回滚流程，不重写包裹的入库时间或历史处理事实。
+
+```text
+Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/
+  20261028143835_AddParcelDetectionIntervalIndex.cs
+  20261028143835_AddParcelDetectionIntervalIndex.Designer.cs
+Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations/
+  20261028143855_AddParcelDetectionIntervalIndex.cs
+  20261028143855_AddParcelDetectionIntervalIndex.Designer.cs
+Zeye.Sorting.Hub.Infrastructure.OracleMigrations/Migrations/
+  20261028143900_AddParcelDetectionIntervalIndex.cs
+  20261028143900_AddParcelDetectionIntervalIndex.Designer.cs
+Zeye.Sorting.Hub.Infrastructure.SqliteMigrations/Migrations/
+  20261028143905_AddParcelDetectionIntervalIndex.cs
+  20261028143905_AddParcelDetectionIntervalIndex.Designer.cs
+```
+
+| 目录 | 文件 | 职责 |
+| --- | --- | --- |
+| Infrastructure/Persistence/Migrations | `20261028143835_AddParcelDetectionIntervalIndex.cs`、`20261028143835_AddParcelDetectionIntervalIndex.Designer.cs` | MySQL 源端检测时间覆盖索引、回滚及目标模型 |
+| Infrastructure.SqlServerMigrations/Migrations | `20261028143855_AddParcelDetectionIntervalIndex.cs`、`20261028143855_AddParcelDetectionIntervalIndex.Designer.cs` | SQL Server 源端检测时间覆盖索引、回滚及目标模型 |
+| Infrastructure.OracleMigrations/Migrations | `20261028143900_AddParcelDetectionIntervalIndex.cs`、`20261028143900_AddParcelDetectionIntervalIndex.Designer.cs` | Oracle 源端检测时间覆盖索引、回滚及目标模型 |
+| Infrastructure.SqliteMigrations/Migrations | `20261028143905_AddParcelDetectionIntervalIndex.cs`、`20261028143905_AddParcelDetectionIntervalIndex.Designer.cs` | SQLite 源端检测时间覆盖索引、回滚及目标模型 |
+
+## 数据来源与时间口径
+
+业务发生时间在接入边界转换为登记来源的本地时间，保留原始精度；服务器处理时间只表达Hub处理过程。日期筛选、排序及端点计算使用各自明确的时间总体。
+
+| 字段或指标 | 来源及含义 |
+| --- | --- |
+| 包裹 `CreatedTime` | Hub首次建立包裹快照的时间，承担入库日期及分表锚点 |
+| 处理事实 `RecordedAt` | Hub处理该事实的时间，区别于源事件发生或网络接收 |
+| Fusion接收簿 `ReceivedAt` | Hub收到原始事实的时间，区别于DWS接收端点 |
+| `DetectedTime` | 源端检测事实，优先采用协议中的明确检测时间 |
+| 处理事实 `ReceivedAt` | 源端程序捕获DWS报文的接收时间，用于有明确关联的扫码端点 |
+| `MeasuredAt` / `MeasurementTime` | 设备量测时间；缺少设备量测时间时，量测摘要可采用成功绑定的源事件时间 |
+| `ScannedTime` | 兼容的检测 / 量测摘要：成功量测时间优先，否则检测时间，最后采用最早匹配来源事件；不代表已识读条码 |
+| `CompletedTime` | 源端确认实际落格的发生时间，接口成功或会话结束不代替它 |
+| 有效生命周期 | 明确检测至实际完成的非倒序时间差，所用端点明确不可靠时保持未知 |
+
+Fusion接入同时支持规范时间字段、源端绑定事件的 `receivedAt` / `measuredAt` 本地文本，以及 `sourceMetadata` 中原大小写的 `ReceivedAt`、`MeasuredAt`、`MessageIdentity`、`TriggerBatch`、`ScanSequence`、`CorrelationId` 和 `FrameBoundaryReliable`。规范时间字段优先；非法显式时间拒绝，不回退Hub时钟。帧边界可靠性与时间可靠性独立。设备消息身份缺失时，只能用接收事实及绑定的明确 `receivedRecordId` 引用建立同一来源、同一发送库内的稳定身份，不按条码猜测。
+
+概览平均、完成耗时分析及检测节拍读取时，在同一物理分表核对实际使用的源事实端点，排除明确 `HasReliableTimestamp=false` 的样本；历史未声明可靠性时保持兼容。读取不会修改历史耗时或原事实，也不会为旧投影中已经缺失的元数据制造端点。相同最终事实集合的重放结果不受消息到达顺序影响，Hub首次入库及分表锚点保持原值。
+
+时序和对比的扫码节点只来自完整身份匹配、条码有效且时间无冲突的DWS接收事实。只有检测、量测摘要、绑定或未绑定DWS时，扫码时间及相关间隔保持未知。包裹台账的日期结束包含当天最后100纳秒；来源实例身份在报表筛选及格口分组中保持大小写精确匹配。
+
+### 各层级与各文件作用说明（逐项）
+
+```text
+Zeye.Sorting.Hub.Infrastructure/Integrations/Fusion/
+  FusionProtocol.SourceMetadata.cs
+Zeye.Sorting.Hub.Infrastructure/Persistence/ReadModels/
+  ParcelTimestampReliabilitySql.cs
+Zeye.Sorting.Hub.Host.Tests/
+  FusionSourceMetadataTests.cs
+  ParcelTimestampSourceTests.cs
+  ParcelTimestampReliabilityReadTests.cs
+```
+
+| 目录 | 文件 | 职责 |
+| --- | --- | --- |
+| Infrastructure/Integrations/Fusion | `FusionProtocol.SourceMetadata.cs` | 源端DWS元数据、本地时间及明确接收事实引用的统一接入映射 |
+| Infrastructure/Persistence/ReadModels | `ParcelTimestampReliabilitySql.cs` | 按完整来源及实际端点选择核对历史可靠性，同分表只读过滤 |
+| Host.Tests | `FusionSourceMetadataTests.cs` | 真实源端字段结构、时间精度、引用身份及接入至扫码分析贯通回归 |
+| Host.Tests | `ParcelTimestampSourceTests.cs` | 乱序重放、检测 / 量测摘要优先级及生命周期端点可靠性回归 |
+| Host.Tests | `ParcelTimestampReliabilityReadTests.cs` | 历史原值保留、所用端点选择、延迟入库与四库SQL组合验证 |
+
+## 重放、实时资源与查询性能边界
+
+同刻业务事实先按阶段推进，再按尝试号和原始记录编号排序，保证检测与路由先于同刻落格；同阶段首检测、末成功完成的规则保持一致。快照更新时间只取完整来源身份匹配的事实，外来记录不能影响它。格口别名的成功判定与实际映射复用同一目标值。
+
+显式DWS消息身份不截断。超过256字符的完整身份采用稳定SHA256摘要；显式值若命中 `received-fact:` 或 `explicit-sha256:` 保留命名空间，也按完整原文规范化，避免与接收事实引用或摘要身份发生别名碰撞。接收与绑定采用同一规则，原始事实仍保存原文。
+
+DWS分析对全部候选身份核对历史接收与冲突，即使窗口内已有接收和绑定，也不能忽略更早的同身份接收。消息按500个一批、物理分表按32个一块在各分支筛选后联合读取；检测优先按 `ParcelLocation` 定位，缺少有效目录的历史数据才跨表块查找。候选、关联及检测仍受实际读取预算约束，不靠返回空行规避保护。
+
+包裹写入继续完整重放以保留乱序与规则变更语义，但仅选择派生计算需要的历史字段。原始报文、请求头、请求正文和上传描述不进入重放；分类实际需要的多条码、异常信息及扫描响应保持完整。只有具有规则用途的阶段才构造分类事实，无规则时跳过构造；新事实保存、详情及未关联记录读取仍保留全部原文。
+
+实时资源使用连接代际、流版本及刷新版本隔离回调。旧读取不能覆盖更新推送或后发刷新，旧会话响应与错误不能修改新会话状态。写入在派发前会话变化则不发送；派发后会话或连接变化时返回结果未确认，不自动重放。HTTP与实时资源采用同一错误清理策略：默认清旧数据，显式允许保留时仅限同资源且非认证/权限错误；手动刷新标记仅对当次操作生效。
+
+### 各层级与各文件作用说明（逐项）
+
+```text
+Zeye.Sorting.Hub.Infrastructure/Repositories/
+  ParcelProcessingReplayQuery.cs
+Zeye.Sorting.Hub.Host.Tests/
+  ParcelProcessingReplayQueryTests.cs
+Zeye.Sorting.Hub.Web/tests/
+  realtimeTransport.test.mjs
+  useApiResource.test.mjs
+```
+
+| 目录 | 文件 | 职责 |
+| --- | --- | --- |
+| Infrastructure/Repositories | `ParcelProcessingReplayQuery.cs` | 单条与批量写入共用的历史窄字段重放查询，保留完整规则输入 |
+| Host.Tests | `ParcelProcessingReplayQueryTests.cs` | 四库窄查询翻译、真实写入口规则判定及原始大正文保留验证 |
+| Web/tests | `realtimeTransport.test.mjs` | 受控Promise验证共享订阅、过期读取、旧会话回调及写入结果未确认语义 |
+| Web/tests | `useApiResource.test.mjs` | 执行真实Hook验证错误数据清理、权限隔离及当次刷新标记 |

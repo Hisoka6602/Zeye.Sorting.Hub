@@ -11,15 +11,32 @@ export function useApiResource<T>(path: string | null, loader: (path: string, si
   const [state, setState] = useState<ResourceState<T>>({ loading: path !== null });
   const [revision, setRevision] = useState(0);
   const previousPath = useRef<string | null | undefined>(undefined);
+  const appliedRevision = useRef(0);
   const authenticated = useSyncExternalStore(subscribeRealtimeAuthenticated, getRealtimeAuthenticated, getRealtimeAuthenticated);
   const refresh = useCallback(() => setRevision(value => value + 1), []);
   useEffect(() => {
+    const sameResource = previousPath.current === path;
+    const refreshRequested = sameResource && appliedRevision.current !== revision;
+    previousPath.current = path;
+    appliedRevision.current = revision;
     if (path === null) { setState({ loading: false }); return; }
     const controller = new AbortController();
-    const sameResource = previousPath.current === path;
-    previousPath.current = path;
+    const realtimeResource = realtime && usesRealtimeTransport() && isRealtimeResource(path);
+    /** 所有失败入口统一清理；权限变化不得保留先前授权的数据。 */
+    const fail = (error: unknown) => {
+      if (controller.signal.aborted) return;
+      const denied = error instanceof ApiError && (error.status === 401 || error.status === 403);
+      setState(previous => ({
+        ...(retainOnError && sameResource && !denied ? { data: previous.data } : {}),
+        loading: false, error: error instanceof Error ? error : new Error(String(error)),
+      }));
+      if (realtimeResource && denied) {
+        if (error.status === 401) setRealtimeAuthenticated(false);
+        window.dispatchEvent(new Event('zeye-session-changed'));
+      }
+    };
     setState(previous => sameResource ? { ...previous, loading: true, error: undefined } : { loading: true });
-    if (realtime && usesRealtimeTransport() && isRealtimeResource(path)) {
+    if (realtimeResource) {
       let unsubscribe: (() => void) | undefined;
       void import('./realtimeTransport').then(({ watchRealtimeResource }) => {
         if (controller.signal.aborted) return;
@@ -28,27 +45,14 @@ export function useApiResource<T>(path: string | null, loader: (path: string, si
           try {
             const data = decodeApiResponse<T>(response.statusCode, response.json, path.startsWith('/health/') ? [503] : []);
             setState({ data: path.startsWith('/health/') ? requireHealthReport<T>(data) : data, loading: false });
-          } catch (error) {
-            if (error instanceof ApiError && error.status === 401) setRealtimeAuthenticated(false);
-            if (error instanceof ApiError && (error.status === 401 || error.status === 403)) window.dispatchEvent(new Event('zeye-session-changed'));
-            setState(previous => ({ ...previous, loading: false, error: error instanceof Error ? error : new Error(String(error)) }));
-          }
-        }, error => {
-          if (controller.signal.aborted) return;
-          if (error instanceof ApiError && error.status === 401) { setRealtimeAuthenticated(false); window.dispatchEvent(new Event('zeye-session-changed')); }
-          setState(previous => ({ ...previous, loading: false, error }));
-        }, revision > 0);
-      }).catch(error => { if (!controller.signal.aborted) setState(previous => ({ ...previous, loading: false, error })); });
+          } catch (error) { fail(error); }
+        }, fail, refreshRequested);
+      }).catch(fail);
       return () => { controller.abort(); unsubscribe?.(); };
     }
     loader(path, controller.signal).then(data => {
       if (!controller.signal.aborted) setState({ data, loading: false });
-    }).catch((error: unknown) => {
-      if (!controller.signal.aborted) setState(previous => ({
-        ...(retainOnError && sameResource && !(error instanceof ApiError && [401, 403].includes(error.status)) ? { data: previous.data } : {}),
-        loading: false, error: error instanceof Error ? error : new Error(String(error)),
-      }));
-    });
+    }).catch(fail);
     return () => controller.abort();
   }, [path, revision, loader, realtime, authenticated, retainOnError]);
   return { ...state, refresh };

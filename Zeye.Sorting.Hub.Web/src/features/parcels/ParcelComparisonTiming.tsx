@@ -37,7 +37,7 @@ export function ParcelComparisonTiming({ rows, ids, baselineId, axis, zoom, onAx
       {(first || second) && <p className="parcel-comparison-note parcel-comparison-node-details">{[first, second].map((node, index) => node && <span key={index}>{index === 0 ? 'A' : 'B'}：{comparisonLabel(node.mark.parcelId, ids)} · {node.mark.title} · {formatTimingTime(node.ticks)}{node.mark.warning && ' · ' + node.mark.warning}</span>)}</p>}
       <div className="parcel-timing-legend">{timingKinds.map(kind => <span key={kind.key} className={`kind-${kind.key}`}><i />{kind.label}</span>)}<span className="legend-issue"><i />失败 / 异常</span><span>● 节点　□ 响应　! 时间提醒</span></div>
       <ParcelTimingChart rows={rows} rowLabels={rowLabels} axis={axis} zoom={zoom} first={first} second={second} onSelect={selectNode} onCompare={(a, b) => setSelection({ first: a, second: b })} />
-      <p className="parcel-comparison-note">按选择顺序展示。对齐模式以每票自己的检测 / 扫码时间为 0，A/B 始终计算实际时间差；跨设备比较需核对来源时钟。点击动作数展开完整动作，缺失请求或响应时不补造窗口。{invalidTimes > 0 && ` ${invalidTimes} 个无效或缺失时间未绘入图中。`}</p>
+      <p className="parcel-comparison-note">按选择顺序展示。对齐模式以每票自己的源端检测 / 有效条码接收时间为 0，A/B 始终计算实际时间差；跨设备比较需核对来源时钟。扫码节点只使用已关联的DWS接收事实，检测 / 量测摘要不用于补造扫码；缺少真实端点时保持未知。点击动作数展开完整动作。{invalidTimes > 0 && ` ${invalidTimes} 个无效或缺失时间未绘入图中。`}</p>
     </SectionCard>
     <SectionCard title="关键阶段耗时" extra={<span className="text-muted">毫秒 · Δ 相对 {comparisonLabel(baselineId, ids)}</span>}>
       <div className="parcel-comparison-table-scroll" tabIndex={0} role="region" aria-label="关键阶段耗时对比表">

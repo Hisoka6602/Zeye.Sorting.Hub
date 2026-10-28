@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Data.Sqlite;
+using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Infrastructure.DependencyInjection;
 using Zeye.Sorting.Hub.Infrastructure.Persistence;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.DatabaseDialects;
@@ -13,7 +14,7 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 
 /// <summary>四数据库注册、独立迁移快照及不产生隐式文件的回归验证。</summary>
 public sealed class AdditionalDatabaseProviderTests {
-    /// <summary>运行配置必须选择对应驱动和迁移快照，模型不能有未登记差异。</summary>
+    /// <summary>运行配置选择对应驱动与快照，检测节拍覆盖索引的模型顺序及升降级脚本必须一致。</summary>
     [Theory]
     [InlineData("MySql", "Pomelo.EntityFrameworkCore.MySql", "Zeye.Sorting.Hub.Infrastructure")]
     [InlineData("SqlServer", "Microsoft.EntityFrameworkCore.SqlServer", "Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations")]
@@ -32,6 +33,23 @@ public sealed class AdditionalDatabaseProviderTests {
         Assert.Equal(driver, db.Database.ProviderName);
         Assert.Equal(migrationAssembly, db.GetService<IMigrationsAssembly>().Assembly.GetName().Name);
         Assert.False(db.Database.HasPendingModelChanges());
+
+        const string indexName = "IX_Parcels_DetectedTime_Id_SourceParcelId";
+        var parcel = db.Model.FindEntityType(typeof(Parcel))!;
+        var detectionIndex = Assert.Single(parcel.GetIndexes(), index => index.GetDatabaseName() == indexName);
+        Assert.Equal(new[] { nameof(Parcel.DetectedTime), nameof(Parcel.Id), nameof(Parcel.SourceParcelId) },
+            detectionIndex.Properties.Select(property => property.Name));
+
+        var migrations = db.GetService<IMigrationsAssembly>().Migrations.Keys.OrderBy(id => id, StringComparer.Ordinal).ToArray();
+        var detectionMigration = Assert.Single(migrations, id => id.EndsWith("_AddParcelDetectionIntervalIndex", StringComparison.Ordinal));
+        var previousMigration = migrations.TakeWhile(id => id != detectionMigration).Last();
+        var migrator = db.GetService<IMigrator>();
+        var upgrade = migrator.GenerateScript(fromMigration: previousMigration, toMigration: detectionMigration);
+        var downgrade = migrator.GenerateScript(fromMigration: detectionMigration, toMigration: previousMigration);
+        Assert.Contains(indexName, upgrade, StringComparison.Ordinal);
+        Assert.Contains("CREATE INDEX", upgrade, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(indexName, downgrade, StringComparison.Ordinal);
+        Assert.Contains("DROP INDEX", downgrade, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>SQLite 缺失文件的只读初始化探测不能创建文件或目录。</summary>

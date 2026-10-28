@@ -20,6 +20,14 @@ internal sealed record ParcelTimingFactSnapshot {
     public DateTime OccurredAt { get; init; }
     /// <summary>记录时间。</summary>
     public DateTime RecordedAt { get; init; }
+    /// <summary>来源DWS接收端点，不使用设备量测或Hub处理时刻代替。</summary>
+    public DateTime? ReceivedAt { get; init; }
+    /// <summary>源端设备量测时间。</summary>
+    public DateTime? MeasuredAt { get; init; }
+    /// <summary>本次事实携带的条码。</summary>
+    public string? Barcode { get; init; }
+    /// <summary>来源稳定量测消息身份。</summary>
+    public string? MessageIdentity { get; init; }
     /// <summary>固定分表时间。</summary>
     public DateTime PartitionTime { get; init; }
     /// <summary>成功标志。</summary>

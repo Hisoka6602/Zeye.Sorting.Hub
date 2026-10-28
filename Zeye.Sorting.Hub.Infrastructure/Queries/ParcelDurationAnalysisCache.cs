@@ -10,7 +10,7 @@ public sealed class ParcelDurationAnalysisCache : IDisposable {
     /// <summary>合并并发冷读，热快照无需等待。</summary>
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    /// <summary>阶段总体15秒内复用，五类接口共用一分钟快照；失败或取消不会缓存半成品。</summary>
+    /// <summary>阶段总体15秒内复用，各接口类型独立缓存一分钟；失败或取消不会缓存半成品。</summary>
     internal async Task<ParcelDurationDataset> GetAsync(string key, bool refresh, Func<Task<ParcelDurationDataset>> read,
         CancellationToken cancellationToken) {
         if (!refresh && _cache.TryGetValue<ParcelDurationDataset>(key, out var hit)) return hit!;

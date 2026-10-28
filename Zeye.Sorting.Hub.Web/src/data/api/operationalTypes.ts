@@ -44,6 +44,12 @@ export interface BackupArtifacts { isSupported: boolean; artifacts: BackupArtifa
 /** 日期时间控件与当前时间统一使用三位毫秒的本地显示格式。 */
 export const localDateTimeFormat = 'YYYY-MM-DD HH:mm:ss.SSS';
 
+/** 为包含式日期筛选保留.NET完整100ns日末边界，不把最后一秒或最后一毫秒截掉。 */
+export function inclusiveLocalDayRange(fromDate?: string, toDate?: string): { start?: string; end?: string } {
+  return { start: fromDate ? `${fromDate}T00:00:00.0000000` : undefined,
+    end: toDate ? `${toDate}T23:59:59.9999999` : undefined };
+}
+
 /** 仅截断展示精度，不解析时区或四舍五入；原始值保留用于排序、请求和报文追溯。 */
 export function localTime(value?: string | null): string {
   if (!value) return '-';

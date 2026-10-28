@@ -222,8 +222,8 @@ function ParcelAnalysisPage({ view }: { view: ParcelAnalysisView }) {
         locale={{ emptyText: unavailable ? '分析数据暂不可用，请重试' : '当前筛选条件没有匹配的包裹' }} columns={[
           { title: '包裹 ID', dataIndex: 'id', width: 190, render: value => <Link to={`/parcels/${encodeURIComponent(value)}`}>{value}</Link> },
           { title: '主条码', dataIndex: 'barCodes', width: 180, ellipsis: true, render: value => value || '未提供' },
-          { title: '首次入库时间', dataIndex: 'createdTime', width: 230, render: value => localTime(value) },
-          { title: '扫码时间', dataIndex: 'scannedTime', width: 230, render: value => localTime(value) },
+          { title: 'Hub首次入库时间', dataIndex: 'createdTime', width: 230, render: value => localTime(value) },
+          { title: '检测 / 量测摘要时间', dataIndex: 'scannedTime', width: 230, render: value => localTime(value) },
           { title: '工作台 / 来源', width: 210, render: (_, parcel) => <><div>{parcel.workstationName || '未提供'}</div><span className="text-muted">{parcel.sourceInstanceId || '未提供来源实例'}</span></> },
           { title: '当前状态', width: 120, render: (_, parcel) => <Tag color={parcel.status === 2 ? 'red' : parcel.status === 1 ? 'green' : 'blue'}>{stateLabel(parcel.status)}</Tag> },
           ...(view === 'duration' ? [{ title: '完成耗时（ms）', dataIndex: 'lifecycleMilliseconds', width: 160, render: (value: number | null) => milliseconds(value) }]

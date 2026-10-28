@@ -37,7 +37,11 @@ test('差值相对明确基准，零基准无百分比，微小的真实量测�
 });
 
 const stamp = value => `2026-10-08T10:00:00.${value}`;
-const row = overrides => buildParcelTimingRows({ anchorId: '42', beforeCount: 0, afterCount: 0, items: [{ id: '42', barCodes: 'PKG', detectedTime: stamp('0500000'), scannedTime: stamp('2000000'), createdTime: '2026-10-09T10:00:00.000', dischargeTime: stamp('7000000'), completedTime: null, processingRecords: [], apiRequests: [], ...overrides }] })[0];
+const scanReceipt = { recordId: 'scan-receipt', parcelId: '42', sourceInstanceId: 'line-a', sourceRunId: 'run-a', sourceParcelId: '12',
+  stage: 1, barcode: 'PKG', occurredAt: stamp('2000000'), receivedAt: stamp('2000000'), isSuccess: true, hasReliableTimestamp: true };
+const row = overrides => buildParcelTimingRows({ anchorId: '42', beforeCount: 0, afterCount: 0, items: [{ id: '42', barCodes: 'PKG',
+  sourceInstanceId: 'line-a', sourceRunId: 'run-a', sourceParcelId: '12', detectedTime: stamp('0500000'), scannedTime: stamp('2000000'),
+  createdTime: '2026-10-09T10:00:00.000', dischargeTime: stamp('7000000'), completedTime: null, processingRecords: [scanReceipt], apiRequests: [], ...overrides }] })[0];
 const call = (start, end) => ({ apiType: 0, requestStatus: 2, requestTime: stamp(start), responseTime: end === null ? null : stamp(end), elapsedMilliseconds: 999 });
 
 test('阶段使用首次真实请求，保留失败、0ms和七位时间精度，不从上报耗时补造响应', () => {
@@ -52,4 +56,14 @@ test('检测不由Hub入库时间代替，来源标记不可靠的端点不用�
   const record = { recordId: 'detected', parcelId: '42', stage: 0, occurredAt: stamp('0500000'), hasReliableTimestamp: false, isSuccess: true };
   assert.equal(comparisonIntervals(row({ processingRecords: [record] }))[0].value, null);
   assert.equal(comparisonIntervals(row({ dischargeTime: null, completedTime: stamp('9000000') }))[3].value, null);
+});
+
+test('仅有摘要或量测绑定不生成检测到扫码的零值，未绑定和不可靠接收也保持未知', () => {
+  for (const records of [[], [{ ...scanReceipt, stage: 2 }], [{ ...scanReceipt, parcelId: null }],
+    [{ ...scanReceipt, hasReliableTimestamp: false }]]) {
+    const values = comparisonIntervals(row({ detectedTime: stamp('2000000'), processingRecords: records, apiRequests: [call('3000000', '3500000')] }));
+    assert.equal(values[0].value, null);
+    assert.equal(values[1].value, null);
+    assert.equal(values[2].value, 50);
+  }
 });

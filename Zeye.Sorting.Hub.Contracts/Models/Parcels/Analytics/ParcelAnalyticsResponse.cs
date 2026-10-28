@@ -1,6 +1,6 @@
 namespace Zeye.Sorting.Hub.Contracts.Models.Parcels.Analytics;
 
-/// <summary>按首次入库日期统计的包裹快照，以及按事件发生日期统计的独立处理事实。</summary>
+/// <summary>按首次入库日统计的包裹快照、按源端检测日估算的时效，以及按发生日统计的处理事实。</summary>
 public sealed record ParcelAnalyticsResponse {
     /// <summary>本地日期起点，包含当天。</summary>
     public required string FromDate { get; init; }
@@ -18,15 +18,15 @@ public sealed record ParcelAnalyticsResponse {
     public long ChuteMismatchCount { get; init; }
     /// <summary>有有效生命周期的已完成包裹平均耗时，单位秒；无样本时为空。</summary>
     public decimal? AverageLifecycleSeconds { get; init; }
-    /// <summary>窗口内成功入库的来源包裹，相邻首次创建时间的正间隔中位数，单位毫秒；无有效间隔时为空。</summary>
+    /// <summary>窗口内源端检测时间的正相邻间隔中位数，单位毫秒；保留历史字段名以兼容客户端，无有效间隔时为空。</summary>
     public decimal? MedianCreationIntervalMilliseconds { get; init; }
-    /// <summary>窗口内成功入库的来源包裹，最短的正相邻创建间隔，单位毫秒；无有效间隔时为空。</summary>
+    /// <summary>窗口内源端检测时间的最短正相邻间隔，单位毫秒；保留历史字段名以兼容客户端，无有效间隔时为空。</summary>
     public decimal? MinimumCreationIntervalMilliseconds { get; init; }
-    /// <summary>实际每小时分拣票数：3600000 / 创建间隔中位数；无有效间隔时为空。</summary>
+    /// <summary>实际每小时分拣票数：3600000 / 源端检测间隔中位数；无有效间隔时为空。</summary>
     public decimal? ActualSortingThroughputPerHour { get; init; }
-    /// <summary>理论每小时分拣票数：3600000 / 最短正创建间隔；无有效间隔时为空。</summary>
+    /// <summary>理论每小时分拣票数：3600000 / 最短正源端检测间隔；无有效间隔时为空。</summary>
     public decimal? TheoreticalSortingThroughputPerHour { get; init; }
-    /// <summary>用于计算实际与理论时效的有效相邻间隔数，重试和非正间隔不计入。</summary>
+    /// <summary>用于计算时效的有效源端检测间隔数；保留历史字段名，重试和非正间隔不计入。</summary>
     public long CreationIntervalSampleCount { get; init; }
     /// <summary>按首次入库本地日期分组的快照汇总。</summary>
     public required IReadOnlyList<ParcelAnalyticsDailyItem> Daily { get; init; }
