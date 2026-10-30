@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.Analysis;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.Processing;
@@ -14,6 +16,9 @@ namespace Zeye.Sorting.Hub.Host.Tests;
 public sealed class ParcelTimestampReliabilityReadTests {
     /// <summary>可靠历史完成样本按耗时倒序返回的固定编号。</summary>
     private static readonly string[] ReliableCompletionIds = ["4", "1"];
+    /// <summary>查询计划及历史维护共用的端点索引列顺序。</summary>
+    private static readonly string[] EndpointIndexColumns = [nameof(ParcelProcessingRecord.ParcelId), nameof(ParcelProcessingRecord.OccurredAt),
+        nameof(ParcelProcessingRecord.Stage), nameof(ParcelProcessingRecord.HasReliableTimestamp)];
 
     /// <summary>基础表和物理分表中的不可靠历史耗时从平均及完成分析排除，包裹数量与历史原值保持不变。</summary>
     [Fact]
@@ -104,6 +109,104 @@ public sealed class ParcelTimestampReliabilityReadTests {
         Assert.Equal(7200m, report.TheoreticalSortingThroughputPerHour);
     }
 
+    /// <summary>按包裹、端点、阶段及可靠性定位事实，避免每票扫描全部阶段及大报文；基础表和历史分表均受保护。</summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LifecycleEndpointChecksUseAllColumnsOfReliabilityLookupIndex(bool baseTable) {
+        var capture = new StatisticsCaptureInterceptor();
+        await using var database = new RelationalParcelTestDatabase("PerMonth", capture);
+        await database.InitializeAsync();
+        var at = new DateTime(2026, 10, 1, 10, 0, 0);
+        for (var id = 1; id <= 8; id++) {
+            var unrelated = Enumerable.Range(0, 40).Select(index => Fact(id, "unrelated-" + index,
+                ParcelProcessingStage.ScanUploaded, at.AddSeconds(index + 1), at) with {
+                    HasReliableTimestamp = false, RawPayload = new string('x', 2048)
+                }).ToArray();
+            await SeedLegacyAsync(database, id, at, at, 10, true, true, baseTable, unrelated);
+        }
+        await using var db = await database.Factory.CreateDbContextAsync();
+        await db.Database.ExecuteSqlRawAsync("ANALYZE");
+        var suffix = baseTable ? string.Empty : database.Partitions.Resolve(at).Suffix;
+        await using var read = ParcelPartitionReadContext<ParcelAnalyticsSnapshot>.Create<Parcel>(db, [suffix]);
+        var rows = await read.Query([suffix], nameof(Parcel.CreatedTime), at.Date, at.Date.AddDays(1), false,
+                requireReliableLifecycle: true)
+            .GroupBy(parcel => parcel.CreatedTime.Date)
+            .Select(group => new { Count = group.LongCount(), Sum = group.Sum(parcel => parcel.LifecycleMilliseconds!.Value) })
+            .ToListAsync();
+        Assert.Equal(8, Assert.Single(rows).Count);
+        Assert.Equal(80000, rows[0].Sum);
+        var captured = Assert.Single(capture.Commands);
+        await db.Database.OpenConnectionAsync();
+        await using var command = db.Database.GetDbConnection().CreateCommand();
+        command.CommandText = "EXPLAIN QUERY PLAN " + captured.Sql;
+        foreach (var (name, value, type) in captured.Parameters) {
+            var parameter = command.CreateParameter();
+            parameter.ParameterName = name; parameter.Value = value; parameter.DbType = type;
+            command.Parameters.Add(parameter);
+        }
+        var lookups = new List<string>();
+        await using var plan = await command.ExecuteReaderAsync();
+        while (await plan.ReadAsync()) {
+            var detail = plan.GetString(3);
+            if (detail.StartsWith("SEARCH f ", StringComparison.Ordinal)) lookups.Add(detail);
+            Assert.False(detail.StartsWith("SCAN f", StringComparison.Ordinal), detail);
+        }
+        Assert.NotEmpty(lookups);
+        Assert.All(lookups, detail => Assert.Contains("ParcelId=? AND OccurredAt=? AND Stage=? AND HasReliableTimestamp=?",
+            detail, StringComparison.Ordinal));
+    }
+
+    /// <summary>同刻重试按尝试号再按编号排序，检测取首个、完成取最后未失败事实，可靠性不能因查询拆分而变化。</summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SameTimestampRetryOrderPreservesSelectedEndpointReliability(bool baseTable) {
+        await using var database = new RelationalParcelTestDatabase("PerDay");
+        await database.InitializeAsync();
+        var at = new DateTime(2026, 10, 1, 10, 0, 0);
+        await SeedLegacyAsync(database, 1, at, at, 10, true, true, baseTable, [
+            Fact(1, "000-later-detection", ParcelProcessingStage.Detected, at, at) with { AttemptNumber = 2, HasReliableTimestamp = false },
+            Fact(1, "000-earlier-completion", ParcelProcessingStage.SortingCompleted, at.AddSeconds(10), at) with { HasReliableTimestamp = false },
+            Fact(1, "failed-last-completion", ParcelProcessingStage.SortingCompleted, at.AddSeconds(10), at) with { AttemptNumber = 3, HasReliableTimestamp = false, IsSuccess = false }
+        ]);
+        await SeedLegacyAsync(database, 2, at.AddMilliseconds(100), at, 20, false, true, baseTable, [
+            Fact(2, "000-later-detection", ParcelProcessingStage.Detected, at.AddMilliseconds(100), at) with { AttemptNumber = 2, HasReliableTimestamp = true }
+        ]);
+        await SeedLegacyAsync(database, 3, at.AddMilliseconds(500), at, 30, true, true, baseTable, [
+            Fact(3, "000-later-completion", ParcelProcessingStage.SortingCompleted, at.AddMilliseconds(500).AddSeconds(30), at) with { AttemptNumber = 2, HasReliableTimestamp = false }
+        ]);
+
+        var report = await Analytics(database).GetAsync(at.Date, at.Date, default);
+        Assert.Equal(3, report.CompletedCount);
+        Assert.Equal(1, Assert.Single(report.Daily).LifecycleSampleCount);
+        Assert.Equal(10m, report.AverageLifecycleSeconds);
+        Assert.Equal(1, report.CreationIntervalSampleCount);
+        Assert.Equal(500m, report.MedianCreationIntervalMilliseconds);
+    }
+
+    /// <summary>升级时已登记的历史事实分表自动补齐端点索引，不要求清空或重写旧业务数据。</summary>
+    [Fact]
+    public async Task MaintenanceRepairsMissingHistoricalEndpointIndexWithoutChangingFacts() {
+        await using var database = new RelationalParcelTestDatabase("PerDay");
+        await database.InitializeAsync();
+        var at = new DateTime(2026, 1, 2, 10, 0, 0);
+        await SeedLegacyAsync(database, 1, at, at, 10, true, true);
+        var period = database.Partitions.Resolve(at);
+        await using var db = await database.Partitions.CreateContextAsync(period.Suffix, default);
+        var index = db.Model.FindEntityType(typeof(ParcelProcessingRecord))!.GetIndexes().Single(candidate =>
+            candidate.Properties.Select(property => property.Name).SequenceEqual(EndpointIndexColumns));
+        var name = index.GetDatabaseName()!;
+        await db.Database.ExecuteSqlRawAsync("DROP INDEX " + db.GetService<ISqlGenerationHelper>().DelimitIdentifier(name));
+        var maintenance = new PartitionMaintenanceService(database.Partitions, database.Factory,
+            Microsoft.Extensions.Options.Options.Create(new ShardingPrebuildOptions()));
+        await maintenance.ExecuteAsync(default);
+        Assert.Equal(1, await db.Database.SqlQueryRaw<long>(
+            "SELECT COUNT(*) AS Value FROM sqlite_master WHERE type = 'index' AND name = {0}", name).SingleAsync());
+        Assert.Equal(2, await db.Set<ParcelProcessingRecord>().CountAsync());
+        Assert.Equal(10000, await db.Set<Parcel>().Select(parcel => parcel.LifecycleMilliseconds).SingleAsync());
+    }
+
     /// <summary>四库都必须能组合带端点核对的窄查询及分表聚合，生成SQL不会连接业务数据库。</summary>
     [Theory]
     [InlineData("MySql")]
@@ -116,7 +219,7 @@ public sealed class ParcelTimestampReliabilityReadTests {
         if (provider == "MySql") options.UseMySql("Server=127.0.0.1;Database=design_time_only;User Id=design_time_only", new MySqlServerVersion(new Version(8, 4, 0)));
         else if (provider == "SqlServer") options.UseSqlServer("Server=127.0.0.1;Database=design_time_only;Integrated Security=True;TrustServerCertificate=True");
         else AdditionalDbContextOptions.Configure(options, provider, provider == "Oracle"
-            ? "User Id=design_time_only;Password=design_time_only;Data Source=127.0.0.1:1521/FREEPDB1"
+            ? "User Id=design_time_only;Data Source=127.0.0.1:1521/FREEPDB1"
             : "Data Source=timestamp-read-design-time-only.db");
         using var db = new SortingHubDbContext(options.Options);
         using var read = ParcelPartitionReadContext<ParcelAnalysisSnapshot>.Create<Parcel>(db, ["", "202610"]);
@@ -127,6 +230,15 @@ public sealed class ParcelTimestampReliabilityReadTests {
         Assert.Contains("NOT EXISTS", sql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Parcel_ProcessingRecords_202610", sql, StringComparison.Ordinal);
         Assert.Contains("HasReliableTimestamp", sql, StringComparison.Ordinal);
+        if (provider == "MySql") {
+            Assert.DoesNotContain("SELECT DISTINCT", sql, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("f FORCE INDEX (`IX_Processing_Endpoint_Reliability_Covering`)", sql, StringComparison.Ordinal);
+            Assert.Contains("e FORCE INDEX (`IX_Processing_Endpoint_Reliability_Covering`)", sql, StringComparison.Ordinal);
+            Assert.Contains("f FORCE INDEX (`IX_Processing_Endpoint_Reliability_Covering_202610`)", sql, StringComparison.Ordinal);
+            Assert.Contains("e FORCE INDEX (`IX_Processing_Endpoint_Reliability_Covering_202610`)", sql, StringComparison.Ordinal);
+            Assert.DoesNotContain(nameof(ParcelProcessingRecord.RawPayload), sql, StringComparison.Ordinal);
+            Assert.DoesNotContain(nameof(ParcelProcessingRecord.RequestBody), sql, StringComparison.Ordinal);
+        } else Assert.DoesNotContain("FORCE INDEX", sql, StringComparison.Ordinal);
     }
 
     /// <summary>模拟旧版本已经保存耗时的快照，原始事实仍保留真实可靠性标记。</summary>

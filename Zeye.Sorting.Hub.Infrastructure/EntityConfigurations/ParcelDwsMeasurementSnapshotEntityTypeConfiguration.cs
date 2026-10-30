@@ -23,7 +23,12 @@ public sealed class ParcelDwsMeasurementSnapshotEntityTypeConfiguration : IEntit
         builder.HasIndex(row => new { row.PartitionTime, row.Stage });
         builder.HasIndex(row => new { row.SourceInstanceId, row.PartitionTime, row.Stage });
         builder.HasIndex(row => new { row.ParcelId, row.Stage });
+        // 跨日核对同一测量消息时在耐久窄表定位，避免回读所有阶段的原始报文数据页。
+        builder.HasIndex(row => new { row.MessageIdentity, row.Stage, row.IsSuccess }).HasDatabaseName("IX_Dws_Message_Stage_Success");
         // 时间窗口的阶段与成功筛选仅访问索引，避免探测边界时逐行回表。
         builder.HasIndex(row => new { row.PartitionTime, row.Stage, row.IsSuccess }).HasDatabaseName("IX_Dws_Time_Stage_Success");
+        // 来源等值筛选下，时间边界和窗外存在性探测都只读取覆盖索引。
+        builder.HasIndex(row => new { row.SourceInstanceId, row.PartitionTime, row.Stage, row.IsSuccess })
+            .HasDatabaseName("IX_Dws_Source_Time_Stage_Success");
     }
 }

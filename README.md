@@ -2340,14 +2340,16 @@ docs/Fusion在线接入配置.md
 | Host.Tests | `FusionParcelBatchRecoveryTests.cs` | 提交故障后的精确确认与批次恢复回归 |
 | Host.Tests | `FusionProjectionConcurrencyTests.cs` | 投影并发度、批次认领及有界处理回归 |
 | Host.Tests | `FusionTransactionGuardStrategy.cs` | 真实事务边界和提交失败的测试执行策略 |
-| Web/scripts | `publish-web-ui.mjs` | 按内容校验依赖与产物，增量构建及损坏修复 |
+| Web/scripts | `publish-web-ui.mjs` | 按内容校验依赖与产物，核对必需传递包和构建命令，增量构建及输出具体发布错误 |
 | Web/src/data/api | `fusionTypes.ts` | 在线配置、来源状态与配对的前端合同 |
 | Web/src/features/access | `FusionSettingsPage.tsx` | 工作台登记、配对、停用及轮换的配置页面 |
 | Web/src/features/access | `fusion-settings.css` | 在线接入表单、工作台列表与窄屏布局样式 |
-| Web/tests | `publish-web-ui.test.mjs` | 内容变化、损坏资源、依赖恢复和增量发布回归 |
+| Web/tests | `publish-web-ui.test.mjs` | 内容变化、损坏依赖与资源恢复、并发路径隔离及真实失败进程诊断回归 |
 | docs | `Fusion在线接入配置.md` | 多工作台接入、配对、网络及凭据备份说明 |
 
 在线接入操作说明见 [Fusion 在线接入配置](docs/Fusion在线接入配置.md)。前端增量发布仍检查完整资源指纹，源码或产物变化会重建；首次构建需要 Node/npm，目标服务器只运行发布后的 Host。
+
+需要重新构建时，发布脚本会核对锁定的必需传递包、工具启动文件与 npm 命令入口；损坏依赖按既有开关还原，禁用还原时直接说明缺失原因。Windows 大小写路径共用同一发布锁。构建与安装失败保留有界输出尾部，并以 `WEBUI001` 显示在 Visual Studio 错误列表，详细输出仍可在“输出 → 生成/发布”中查看。
 
 ## 各层级与各文件作用说明（逐项）：包裹完整字段展示
 
@@ -2741,7 +2743,7 @@ Zeye.Sorting.Hub.Infrastructure.SqliteMigrations/Migrations/
 | 包裹 `CreatedTime` | Hub首次建立包裹快照的时间，承担入库日期及分表锚点 |
 | 处理事实 `RecordedAt` | Hub处理该事实的时间，区别于源事件发生或网络接收 |
 | Fusion接收簿 `ReceivedAt` | Hub收到原始事实的时间，区别于DWS接收端点 |
-| `DetectedTime` | 源端检测事实，优先采用协议中的明确检测时间 |
+| `DetectedTime` | 源端检测事实，优先采用协议中的明确检测时间；接收时间降级值保留不可靠标记，不参与设备节拍估算 |
 | 处理事实 `ReceivedAt` | 源端程序捕获DWS报文的接收时间，用于有明确关联的扫码端点 |
 | `MeasuredAt` / `MeasurementTime` | 设备量测时间；缺少设备量测时间时，量测摘要可采用成功绑定的源事件时间 |
 | `ScannedTime` | 兼容的检测 / 量测摘要：成功量测时间优先，否则检测时间，最后采用最早匹配来源事件；不代表已识读条码 |
@@ -2750,7 +2752,7 @@ Zeye.Sorting.Hub.Infrastructure.SqliteMigrations/Migrations/
 
 Fusion接入同时支持规范时间字段、源端绑定事件的 `receivedAt` / `measuredAt` 本地文本，以及 `sourceMetadata` 中原大小写的 `ReceivedAt`、`MeasuredAt`、`MessageIdentity`、`TriggerBatch`、`ScanSequence`、`CorrelationId` 和 `FrameBoundaryReliable`。规范时间字段优先；非法显式时间拒绝，不回退Hub时钟。帧边界可靠性与时间可靠性独立。设备消息身份缺失时，只能用接收事实及绑定的明确 `receivedRecordId` 引用建立同一来源、同一发送库内的稳定身份，不按条码猜测。
 
-概览平均、完成耗时分析及检测节拍读取时，在同一物理分表核对实际使用的源事实端点，排除明确 `HasReliableTimestamp=false` 的样本；历史未声明可靠性时保持兼容。读取不会修改历史耗时或原事实，也不会为旧投影中已经缺失的元数据制造端点。相同最终事实集合的重放结果不受消息到达顺序影响，Hub首次入库及分表锚点保持原值。
+概览平均、完成耗时分析及检测节拍读取时，在同一物理分表核对实际使用的源事实端点，排除明确 `HasReliableTimestamp=false` 的样本；历史未声明可靠性时保持兼容。设备缺失原始时间时，源程序记录的接收时间可能受TCP批量收包影响，不作为原始包裹创建/检测节拍。读取不会修改历史耗时或原事实，也不会为旧投影中已经缺失的元数据制造端点。相同最终事实集合的重放结果不受消息到达顺序影响，Hub首次入库及分表锚点保持原值。
 
 时序和对比的扫码节点只来自完整身份匹配、条码有效且时间无冲突的DWS接收事实。只有检测、量测摘要、绑定或未绑定DWS时，扫码时间及相关间隔保持未知。包裹台账的日期结束包含当天最后100纳秒；来源实例身份在报表筛选及格口分组中保持大小写精确匹配。
 
@@ -2805,3 +2807,90 @@ Zeye.Sorting.Hub.Web/tests/
 | Host.Tests | `ParcelProcessingReplayQueryTests.cs` | 四库窄查询翻译、真实写入口规则判定及原始大正文保留验证 |
 | Web/tests | `realtimeTransport.test.mjs` | 受控Promise验证共享订阅、过期读取、旧会话回调及写入结果未确认语义 |
 | Web/tests | `useApiResource.test.mjs` | 执行真实Hook验证错误数据清理、权限隔离及当次刷新标记 |
+
+## 2026-10-30 数据概览生命周期聚合超时修复
+
+数据概览与分析报表的历史生命周期校验分别查询检测端点和完成端点，按包裹、发生时间、阶段与明确不可靠标记等值定位处理事实。新增 `IX_Processing_Parcel_Endpoint_Reliability` 四列索引，减少每票读取其他阶段和大报文数据页的开销；完整来源身份、同刻尝试顺序及失败完成排除规则继续参与核对。基础表由各提供器迁移升级，已登记历史分表由既有启动维护补齐索引。
+
+MySQL 8.0.46 隔离库使用相同 12,000 票、120,000 条事实（每票八条含 2 KiB 原文）实测：生命周期汇总稳态从 1,495–1,577 ms 降至 70–72 ms，完整报表读服务从约 2,594 ms 降至约 235 ms。12,000 票、9,600 个有效生命周期样本、10 秒均值与 10,799 个检测间隔均一致。结果来自该固定负载的实际查询，现场容量及并发仍需部署后复核。
+
+### 各层级与各文件作用说明（逐项）
+
+```text
+Zeye.Sorting.Hub.Infrastructure/Persistence/Migrations/
+  20261030112152_AddParcelEndpointReliabilityIndex.cs
+  20261030112152_AddParcelEndpointReliabilityIndex.Designer.cs
+Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations/Migrations/
+  20261030112306_AddParcelEndpointReliabilityIndex.cs
+  20261030112306_AddParcelEndpointReliabilityIndex.Designer.cs
+Zeye.Sorting.Hub.Infrastructure.OracleMigrations/Migrations/
+  20261030112311_AddParcelEndpointReliabilityIndex.cs
+  20261030112311_AddParcelEndpointReliabilityIndex.Designer.cs
+Zeye.Sorting.Hub.Infrastructure.SqliteMigrations/Migrations/
+  20261030112317_AddParcelEndpointReliabilityIndex.cs
+  20261030112317_AddParcelEndpointReliabilityIndex.Designer.cs
+```
+
+| 目录 | 文件 | 职责 |
+| --- | --- | --- |
+| Infrastructure/Persistence/Migrations | `20261030112152_AddParcelEndpointReliabilityIndex.cs`、`20261030112152_AddParcelEndpointReliabilityIndex.Designer.cs` | MySQL 端点可靠性索引升级、回滚及目标模型 |
+| Infrastructure.SqlServerMigrations/Migrations | `20261030112306_AddParcelEndpointReliabilityIndex.cs`、`20261030112306_AddParcelEndpointReliabilityIndex.Designer.cs` | SQL Server 端点可靠性索引升级、回滚及目标模型 |
+| Infrastructure.OracleMigrations/Migrations | `20261030112311_AddParcelEndpointReliabilityIndex.cs`、`20261030112311_AddParcelEndpointReliabilityIndex.Designer.cs` | Oracle 端点可靠性索引升级、回滚及目标模型 |
+| Infrastructure.SqliteMigrations/Migrations | `20261030112317_AddParcelEndpointReliabilityIndex.cs`、`20261030112317_AddParcelEndpointReliabilityIndex.Designer.cs` | SQLite 端点可靠性索引升级、回滚及目标模型 |
+
+## 2026-10-30 慢查询自查与自动索引升级
+
+使用20,000票、180,000条含2 KiB报文的事实数据检查22类查询和工作台。进一步修复MySQL端点子查询选错索引，以及DWS历史消息关联重复读取宽事实的问题。已补齐周期使用DWS耐久窄表关联，窗外历史仍完整核对首次接收和冲突；未补齐周期按阶段、时间索引读取有界主键，再批量读取量测字段。新增DWS消息检索及原事实检测端点覆盖索引，保持来源身份、重试顺序、空值语义和20万条保护预算。
+
+旧版配置缺少 `Persistence:MigrationGovernance:AutomaticIndexUpgradeEnabled` 时默认启用。已有数据库待升级操作全部为普通非唯一索引创建时，启动自动执行基础表及已登记历史分表升级，无需手动执行SQL，也无需修改原有预演及建表限制配置。保留升级归档、锁、版本跟踪和失败后重启续跑。显式将该开关设为 `false` 可关闭；涉及表、列、唯一约束或原始SQL的迁移继续沿用原治理规则。
+
+固定负载的正常路径：完成耗时约18–19秒降至0.31秒，分析报表约4.3–4.6秒降至0.20–0.22秒，DWS一致性约15–16秒降至1.56–1.69秒。历史补齐尚未完成时的DWS回退从80–105秒降至约7–8秒，补齐前后完整响应一致。执行计划、测量范围和升级验证见 [查询性能验收](docs/查询性能验收.md)。这些是隔离环境的读服务测量，现场并发及容量需部署后复核。
+
+### 各层级与各文件作用说明（逐项）
+
+| 目录 | 文件 | 职责 |
+| --- | --- | --- |
+| Infrastructure/Persistence/MigrationGovernance | `AutomaticIndexUpgradePolicy.cs` | 按实际迁移操作判定普通索引自动升级，兼容旧版缺省配置 |
+| Host.Tests | `AutomaticIndexUpgradeTests.cs` | 真实旧库保留预演配置重启，验证基础表、历史分表、部分升级续跑及关闭开关 |
+| Infrastructure/Persistence/Migrations | `20261030115212_AddDwsMessageLookupIndex.cs`、`20261030115212_AddDwsMessageLookupIndex.Designer.cs` | MySQL DWS消息检索索引升级、回滚及目标模型 |
+| Infrastructure.SqlServerMigrations/Migrations | `20261030115424_AddDwsMessageLookupIndex.cs`、`20261030115424_AddDwsMessageLookupIndex.Designer.cs` | SQL Server DWS消息检索索引升级、回滚及目标模型 |
+| Infrastructure.OracleMigrations/Migrations | `20261030115428_AddDwsMessageLookupIndex.cs`、`20261030115428_AddDwsMessageLookupIndex.Designer.cs` | Oracle DWS消息检索索引升级、回滚及目标模型 |
+| Infrastructure.SqliteMigrations/Migrations | `20261030115432_AddDwsMessageLookupIndex.cs`、`20261030115432_AddDwsMessageLookupIndex.Designer.cs` | SQLite DWS消息检索索引升级、回滚及目标模型 |
+| Infrastructure/Persistence/Migrations | `20261030123443_AddDwsDetectionLookupIndex.cs`、`20261030123443_AddDwsDetectionLookupIndex.Designer.cs` | MySQL DWS检测覆盖索引升级、回滚及目标模型 |
+| Infrastructure.SqlServerMigrations/Migrations | `20261030123447_AddDwsDetectionLookupIndex.cs`、`20261030123447_AddDwsDetectionLookupIndex.Designer.cs` | SQL Server DWS检测覆盖索引升级、回滚及目标模型 |
+| Infrastructure.OracleMigrations/Migrations | `20261030123451_AddDwsDetectionLookupIndex.cs`、`20261030123451_AddDwsDetectionLookupIndex.Designer.cs` | Oracle DWS检测覆盖索引升级、回滚及目标模型 |
+| Infrastructure.SqliteMigrations/Migrations | `20261030123455_AddDwsDetectionLookupIndex.cs`、`20261030123455_AddDwsDetectionLookupIndex.Designer.cs` | SQLite DWS检测覆盖索引升级、回滚及目标模型 |
+
+## 2026-10-30 DWS一致性与部分补齐回退继续优化
+
+DWS历史关联先在时间和阶段覆盖索引上确认周期确有窗外事实，再对这些周期执行消息核对，避免每批消息重复查询空历史。未补齐周期仍由原事实主键确定完整总体，优先读取实际存在的窄投影，只回读缺失部分；缺失集合在应用中固定，后台同时补入窄表不会造成漏算或重复。原事实按主键排序、小批次读取，MySQL最多四条独立连接重叠读取，每个上下文使用自己的连接，外部显式共享连接保持串行。
+
+新增原事实与DWS窄表的 `SourceInstanceId / PartitionTime / Stage / IsSuccess` 覆盖索引，保留随程序启动自动迁移。数字包裹编号、窄表字符串主键与宽事实字符串主键分别设置有界批次，避免单条大IN列表超过MySQL范围优化器内存预算。统计总体、历史首次接收及后续冲突核对、来源精确匹配、真实时间和20万条保护预算继续保持。性能及空窄表、部分补齐验证见 [查询性能验收](docs/查询性能验收.md)。
+
+### 各层级与各文件作用说明（逐项）
+
+| 目录 | 文件 | 职责 |
+| --- | --- | --- |
+| Host.Tests | `DwsBackfillDuringReadInterceptor.cs` | 在窄表读取与缺失原事实读取之间实际插入投影，验证后台补齐竞态 |
+| Infrastructure/Persistence/Migrations | `20261030133701_AddDwsSourceWindowIndexes.cs`、`20261030133701_AddDwsSourceWindowIndexes.Designer.cs` | MySQL原事实及窄表来源时间覆盖索引升级、回滚及目标模型 |
+| Infrastructure.SqlServerMigrations/Migrations | `20261030133705_AddDwsSourceWindowIndexes.cs`、`20261030133705_AddDwsSourceWindowIndexes.Designer.cs` | SQL Server原事实及窄表来源时间覆盖索引升级、回滚及目标模型 |
+| Infrastructure.OracleMigrations/Migrations | `20261030133709_AddDwsSourceWindowIndexes.cs`、`20261030133709_AddDwsSourceWindowIndexes.Designer.cs` | Oracle原事实及窄表来源时间覆盖索引升级、回滚及目标模型 |
+| Infrastructure.SqliteMigrations/Migrations | `20261030133714_AddDwsSourceWindowIndexes.cs`、`20261030133714_AddDwsSourceWindowIndexes.Designer.cs` | SQLite原事实及窄表来源时间覆盖索引升级、回滚及目标模型 |
+
+## 2026-10-30 启动慢SQL与历史端点复核
+
+现场五条慢SQL指纹逐一对应本次历史分表索引创建，合计约82秒，发生在数据库迁移完成之前。慢查询记录会恢复仍在有效窗口内的归档样本，重启不会直接清空；应结合最近出现时间判断更新后是否仍有业务SELECT取消，不能只看累计最大耗时。
+
+补测历史时间端点大量标记不可靠的情况，确认原MySQL窄集合物化仍随该比例变慢。改用实际EF映射的单票端点覆盖索引，包含完整来源身份、尝试号、记录编号和成功标记，保持首检测及末成功完成规则，避免整期物化及回读原始报文。各分表阶段先做一次与包裹无关的存在性探测，全可靠周期跳过逐票核验。新增四库普通索引迁移，继续自动升级基础表和历史分表，原业务事实不改写。
+
+MySQL在线索引生成范围补齐本轮六个分析索引，显式要求 `ALGORITHM=INPLACE LOCK=NONE`，现有索引按元数据跳过。在线创建仍有一次性构建开销及短暂元数据锁，不代表瞬间完成。分表批量探测按服务器 `lower_case_table_names` 规则比较，修正Windows已存在表因小写返回而持续误报缺失的问题，同时保留大小写敏感服务器的真实缺失报告。提供器专属Parcel映射改为上下文显式调用，消除无参配置扫描告警，四库模型不变。
+
+### 各层级与各文件作用说明（逐项）
+
+| 目录 | 文件 | 职责 |
+| --- | --- | --- |
+| Host.Tests | `MySqlTableNameProbeTests.cs` | 验证三种MySQL表名存储模式、Windows大小写误报及真正缺失表 |
+| Infrastructure/Persistence/Migrations | `20261030151906_AddEndpointReliabilityCoveringIndex.cs`、`20261030151906_AddEndpointReliabilityCoveringIndex.Designer.cs` | MySQL历史端点身份与重试覆盖索引升级、回滚及目标模型 |
+| Infrastructure.SqlServerMigrations/Migrations | `20261030151913_AddEndpointReliabilityCoveringIndex.cs`、`20261030151913_AddEndpointReliabilityCoveringIndex.Designer.cs` | SQL Server历史端点覆盖索引升级、回滚及目标模型 |
+| Infrastructure.OracleMigrations/Migrations | `20261030151921_AddEndpointReliabilityCoveringIndex.cs`、`20261030151921_AddEndpointReliabilityCoveringIndex.Designer.cs` | Oracle历史端点覆盖索引升级、回滚及目标模型 |
+| Infrastructure.SqliteMigrations/Migrations | `20261030151929_AddEndpointReliabilityCoveringIndex.cs`、`20261030151929_AddEndpointReliabilityCoveringIndex.Designer.cs` | SQLite历史端点覆盖索引升级、回滚及目标模型 |

@@ -177,6 +177,9 @@
       // 是否仅执行 dry-run（仅预演、归档、不执行真实迁移）。
       // 可填写范围：true / false。
       "DryRun": true,
+      // 已初始化数据库的普通非唯一索引随程序更新自动升级，独立于结构变更预演；关闭后恢复统一预演策略。
+      // 可填写范围：true / false；兼容旧配置的缺省值为 true。
+      "AutomaticIndexUpgradeEnabled": true,
       // 迁移脚本与回滚参考脚本归档目录（相对内容根目录或绝对路径）。
       // 可填写范围：任意合法目录路径。
       "ArchiveDirectory": "migration-scripts",

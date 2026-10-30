@@ -167,7 +167,7 @@ public sealed class DatabaseSetupTests {
         var revision = snapshot.GetProperty("revision").GetString();
         var response = await client.PutAsJsonAsync("/api/setup/database/runtime", new { revision,
             changes = new { Persistence = new { Provider = "SQLite", MigrationGovernance = new { DryRun = false } },
-                ConnectionStrings = new { OracleAdministration = "User Id=setup_admin;Password=setup-only-test;Data Source=localhost:1521/TESTPDB;" } } });
+                ConnectionStrings = new { OracleAdministration = "User Id=setup_admin;Password=<SETUP_TEST_PASSWORD>;Data Source=localhost:1521/TESTPDB;" } } });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("SQLite", environment.Store.ReadRuntime()["Persistence"]!["Provider"]!.GetValue<string>());
         Assert.False(environment.Store.ReadRuntime()["Persistence"]!["MigrationGovernance"]!["DryRun"]!.GetValue<bool>());
@@ -226,7 +226,8 @@ public sealed class DatabaseSetupTests {
     }
 
     /// <summary>按实际启动顺序运行四库迁移治理和初始化，配置与归档文件均限定在测试目录。</summary>
-    internal static async Task<WebApplication> CreateInitializedDatabaseHostAsync(ConfigurationTestStorage environment, string provider, string connection, bool dryRun, string? oracleAdministration = null) {
+    internal static async Task<WebApplication> CreateInitializedDatabaseHostAsync(ConfigurationTestStorage environment, string provider, string connection, bool dryRun, string? oracleAdministration = null,
+        IReadOnlyDictionary<string, string?>? overrides = null, bool isolateProviderCache = false) {
         var builder = WebApplication.CreateBuilder(); builder.WebHost.UseTestServer();
         builder.Configuration.AddConfiguration(environment.Configuration).AddInMemoryCollection(new Dictionary<string, string?> {
             ["Persistence:Provider"] = provider,
@@ -235,8 +236,10 @@ public sealed class DatabaseSetupTests {
             ["Persistence:MigrationGovernance:DryRun"] = dryRun.ToString(),
             ["Persistence:MigrationGovernance:ArchiveDirectory"] = Path.Combine(environment.DirectoryPath, "migration-scripts")
         });
+        if (overrides is not null) builder.Configuration.AddInMemoryCollection(overrides);
         builder.Services.AddSingleton(environment.Source);
         builder.Services.AddSortingHubPersistence(builder.Configuration);
+        if (isolateProviderCache) builder.Services.AddDbContextFactory<SortingHubDbContext>(options => options.EnableServiceProviderCaching(false));
         builder.Services.AddHostedService<MigrationGovernanceHostedService>();
         builder.Services.AddHostedService<DatabaseInitializerHostedService>();
         DatabaseStartupHostedService.Register(builder.Services);

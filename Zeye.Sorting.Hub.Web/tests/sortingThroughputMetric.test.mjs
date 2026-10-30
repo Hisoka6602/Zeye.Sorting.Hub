@@ -14,6 +14,8 @@ test('actual and theoretical capacity use business descriptions without formulas
   assert.equal(metric.theoretical.note, '最佳处理节奏下的预估产能');
   assert.match(metric.hint, /实际时效.*常态处理效率/);
   assert.match(metric.hint, /理论时效.*预估产能/);
+  assert.match(metric.hint, /数据源原始.*包裹创建/);
+  assert.match(metric.hint, /缺少可靠原始时间.*不生成时效/);
   for (const description of [metric.actual.note, metric.theoretical.note, metric.hint]) {
     assert.doesNotMatch(description, /\d|ms|间隔|中位数|÷|=/);
   }

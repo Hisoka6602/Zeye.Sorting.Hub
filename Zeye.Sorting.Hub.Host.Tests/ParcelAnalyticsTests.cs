@@ -1,6 +1,11 @@
+using System.Globalization;
+using System.Text.Json;
 using Microsoft.Extensions.Options;
+using Zeye.Sorting.Hub.Application.Services.Parcels;
+using Zeye.Sorting.Hub.Contracts.Models.Fusion;
 using Zeye.Sorting.Hub.Domain.Aggregates.Parcels.Processing;
 using Zeye.Sorting.Hub.Domain.Enums.Parcels;
+using Zeye.Sorting.Hub.Infrastructure.Integrations.Fusion;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.ReadModels;
 using Zeye.Sorting.Hub.Infrastructure.Queries;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
@@ -191,6 +196,61 @@ public sealed class ParcelAnalyticsTests {
         Assert.Equal(500m, report.MinimumCreationIntervalMilliseconds);
         Assert.Equal(7200m, report.ActualSortingThroughputPerHour);
         Assert.Equal(7200m, report.TheoreticalSortingThroughputPerHour);
+    }
+
+    /// <summary>136票经真实协议映射后仅用可靠原始创建时间估算节拍，源端回退观察时间及Hub微秒入库不能制造产能。</summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task OriginalSourceCreationTimesRequireReliabilityAndIgnoreCompressedHubIntakeFor136Parcels(bool reliableDeviceTime) {
+        await using var database = new RelationalParcelTestDatabase("PerDay");
+        await database.InitializeAsync();
+        var start = new DateTime(2026, 9, 28, 10, 0, 0);
+        var hubIntake = start.AddMinutes(5);
+        var source = new FusionSourceOptions { SourceInstanceId = "source-observed-cadence", TimeZoneId = "Asia/Shanghai" };
+        for (var index = 0; index < 136; index++) {
+            var sourceCreatedAt = start.AddMilliseconds(index * 500);
+            // 协议边界直接构造与来源本地10点对应的绝对时刻，不在业务时间上追加转换链路。
+            var occurredUtc = new DateTimeOffset(2026, 9, 28, 2, 0, 0, TimeSpan.Zero).AddMilliseconds(index * 500);
+            var landedUtc = occurredUtc.AddSeconds(10);
+            var sequence = index * 2 + 1;
+            var detectedBody = new HubFactBody("1.0", source.SourceInstanceId, new string('a', 32), new string('b', 32),
+                (index + 1).ToString(CultureInfo.InvariantCulture), sequence.ToString("x32", CultureInfo.InvariantCulture),
+                sequence.ToString(CultureInfo.InvariantCulture), "parcel.detected", occurredUtc, occurredUtc, source.TimeZoneId,
+                new string('c', 32), "test", new string('d', 64), JsonSerializer.SerializeToElement(new {
+                    detectedAtUtc = occurredUtc, hasSorterDetection = true, hasReliableDetectionTimestamp = reliableDeviceTime
+                }));
+            var completedBody = detectedBody with {
+                RecordId = (sequence + 1).ToString("x32", CultureInfo.InvariantCulture),
+                SourceSequence = (sequence + 1).ToString(CultureInfo.InvariantCulture), Kind = "parcel.landed",
+                OccurredAtUtc = landedUtc, CapturedAtUtc = landedUtc,
+                Data = JsonSerializer.SerializeToElement(new {
+                    landedAtUtc = landedUtc, actualLandingConfirmed = true, targetChute = "01", actualChute = "01", hasReliableTimestamp = true
+                })
+            };
+            var detected = FusionProtocol.Map(detectedBody, source)!;
+            var completed = FusionProtocol.Map(completedBody, source)!;
+            Assert.Equal(sourceCreatedAt, detected.OccurredAt);
+            Assert.Equal(reliableDeviceTime, detected.HasReliableTimestamp);
+            // 两票共用一个Hub时间，相邻批次只有2微秒，不能替代500毫秒的源端创建节拍。
+            var recordedAt = hubIntake.AddTicks(index / 2 * 20);
+            var outcomes = await database.Processing.AppendBatchAsync([
+                ParcelProcessingContractMapper.ToDomain(detected, recordedAt),
+                ParcelProcessingContractMapper.ToDomain(completed, recordedAt)
+            ], default);
+            Assert.All(outcomes, outcome => Assert.True(outcome.IsSuccess, outcome.ErrorMessage));
+        }
+
+        var report = await Reader(database).GetAsync(start.Date, start.Date, default);
+        Assert.Equal(136, report.DetectedCount);
+        Assert.Equal(136, report.CompletedCount);
+        Assert.Equal(reliableDeviceTime ? 135 : 0, report.CreationIntervalSampleCount);
+        Assert.Equal(reliableDeviceTime ? 500m : (decimal?)null, report.MedianCreationIntervalMilliseconds);
+        Assert.Equal(reliableDeviceTime ? 500m : (decimal?)null, report.MinimumCreationIntervalMilliseconds);
+        Assert.Equal(reliableDeviceTime ? 7200m : (decimal?)null, report.ActualSortingThroughputPerHour);
+        Assert.Equal(reliableDeviceTime ? 7200m : (decimal?)null, report.TheoreticalSortingThroughputPerHour);
+        Assert.Equal(reliableDeviceTime ? 10m : (decimal?)null, report.AverageLifecycleSeconds);
+        Assert.Equal(reliableDeviceTime ? 136 : 0, Assert.Single(report.Daily).LifecycleSampleCount);
     }
 
     /// <summary>源端检测日期决定时效窗口，后日入库分表仍可参与；入库数量继续使用首次入库日期。</summary>

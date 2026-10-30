@@ -76,11 +76,12 @@ public sealed class PhysicalPartitionMigrationService(IDbContextFactory<SortingH
                         key, previous, versions[^1], string.Join(Environment.NewLine, commands.Select(c => c.CommandText)),
                         string.Join(Environment.NewLine, rollback.Select(c => c.CommandText)), pending.Any(operation => operation is not CreateIndexOperation));
                     var dangerous = MigrationSafetyEvaluator.EvaluateDangerousOperations(string.Join(Environment.NewLine, commands.Select(c => c.CommandText)));
-                    if (commands.Count > 0 && AutoTuningConfigurationReader.GetBoolOrDefault(configuration, "Persistence:MigrationGovernance:DryRun", true))
+                    var automaticIndexes = AutomaticIndexUpgradePolicy.Allows(configuration, pending);
+                    if (commands.Count > 0 && !automaticIndexes && AutoTuningConfigurationReader.GetBoolOrDefault(configuration, "Persistence:MigrationGovernance:DryRun", true))
                         throw new InvalidOperationException("历史分表迁移处于预演模式，已记录 DDL 但禁止更新结构或版本。");
                     if (dangerous.Count > 0 && environment?.IsProduction() == true && AutoTuningConfigurationReader.GetBoolOrDefault(configuration, "Persistence:MigrationGovernance:BlockDangerousMigrationInProduction", true))
                         throw new InvalidOperationException("历史分表检测到危险迁移，生产守卫已阻断：" + string.Join(" | ", dangerous));
-                    if (commands.Count > 0 && (!AutoTuningConfigurationReader.GetBoolOrDefault(configuration, "Persistence:Sharding:WriteRouting:AllowTableCreation", false) || AutoTuningConfigurationReader.GetBoolOrDefault(configuration, "Persistence:Sharding:WriteRouting:DryRun", true)))
+                    if (commands.Count > 0 && !automaticIndexes && (!AutoTuningConfigurationReader.GetBoolOrDefault(configuration, "Persistence:Sharding:WriteRouting:AllowTableCreation", false) || AutoTuningConfigurationReader.GetBoolOrDefault(configuration, "Persistence:Sharding:WriteRouting:DryRun", true)))
                         throw new InvalidOperationException("历史分表需要升级，建表隔离器禁止执行或处于预演模式。");
                     // 步骤2：EF 执行器处理事务与 SQLite 重建，成功后持久化版本。
                     await target.GetService<IMigrationCommandExecutor>().ExecuteNonQueryAsync(commands, target.GetService<IRelationalConnection>(), token);

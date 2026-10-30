@@ -10,9 +10,9 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 namespace Zeye.Sorting.Hub.Infrastructure.EntityConfigurations {
 
     /// <summary>
-    /// Parcel 聚合 EF Core 映射（Infrastructure 层）
+    /// Parcel 聚合的提供器专属映射，由上下文显式配置，不参加EF无参配置扫描。
     /// </summary>
-    public sealed class ParcelEntityTypeConfiguration : IEntityTypeConfiguration<Parcel> {
+    public sealed class ParcelEntityTypeConfiguration {
         /// <summary>
         /// 是否使用 SQL Server 对象键索引配置。
         /// </summary>

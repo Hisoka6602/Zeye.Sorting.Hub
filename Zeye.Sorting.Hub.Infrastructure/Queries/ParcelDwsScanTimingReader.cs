@@ -40,7 +40,8 @@ internal static class ParcelDwsScanTimingReader {
             await using var measurements = ParcelPartitionReadContext<ParcelDwsDetectionSnapshot>.Create<ParcelDwsMeasurementSnapshot>(db, catalog.Suffixes, streaming: true);
             var registered = catalog.Suffixes.ToHashSet(StringComparer.Ordinal);
             var locations = new Dictionary<long, string>();
-            foreach (var batch in ids.Chunk(ParcelDwsConsistencyReadService.IdentityBatchSize)) {
+            var batchSize = ParcelDwsConsistencyReadService.ParcelLookupBatchSize(db);
+            foreach (var batch in ids.Chunk(batchSize)) {
                 var entries = await db.Set<ParcelLocation>().AsNoTracking().Where(location => batch.Contains(location.Id))
                     .Select(location => new { location.Id, location.Suffix }).ToArrayAsync(token);
                 foreach (var entry in entries) if (registered.Contains(entry.Suffix)) locations.TryAdd(entry.Id, entry.Suffix);
@@ -48,7 +49,7 @@ internal static class ParcelDwsScanTimingReader {
             var count = 0;
             // 目录是包裹不可变的入库归属，正常查询不探测无关历史分表。
             foreach (var group in ids.Where(locations.ContainsKey).GroupBy(id => locations[id], StringComparer.Ordinal))
-            foreach (var parcelIds in group.Chunk(ParcelDwsConsistencyReadService.IdentityBatchSize))
+            foreach (var parcelIds in group.Chunk(indexed?.Contains(group.Key) == true ? batchSize : ParcelDwsConsistencyReadService.IdentityBatchSize))
                 await ReadDetectionsAsync([group.Key], parcelIds);
             // 缺失目录或目录已指向不在当前目录中的分表时，保留跨历史及基础表的兼容路径。
             var legacy = ids.Where(id => !locations.ContainsKey(id)).ToArray();

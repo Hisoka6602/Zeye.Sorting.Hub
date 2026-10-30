@@ -7,7 +7,7 @@ interface DetectionIntervals {
   creationIntervalSampleCount: number;
 }
 
-/** 时效采用源端检测间隔；接口保留历史创建间隔字段名以兼容已有客户端。 */
+/** 时效采用源端原始包裹创建/检测间隔；不使用批量接收或Hub入库时间估算设备节拍。 */
 export function sortingThroughputMetric(data: DetectionIntervals | null | undefined) {
   const samples = data?.creationIntervalSampleCount ?? 0;
   const positiveNumber = (value: number) => value < 0.01 ? '< 0.01' : formatNumber(value, { grouping: true });
@@ -22,6 +22,6 @@ export function sortingThroughputMetric(data: DetectionIntervals | null | undefi
   return {
     actual: metric(data?.medianCreationIntervalMilliseconds, data?.actualSortingThroughputPerHour, '当前处理节奏下的小时产能'),
     theoretical: metric(data?.minimumCreationIntervalMilliseconds, data?.theoreticalSortingThroughputPerHour, '最佳处理节奏下的预估产能'),
-    hint: '按所选日期内的源端检测时间估算：实际时效反映常态处理效率，理论时效反映最佳处理节奏下的预估产能。',
+    hint: '按所选日期内数据源原始的包裹创建 / 检测时间估算；缺少可靠原始时间时不生成时效。实际时效反映常态处理效率，理论时效反映最佳处理节奏下的预估产能。',
   };
 }

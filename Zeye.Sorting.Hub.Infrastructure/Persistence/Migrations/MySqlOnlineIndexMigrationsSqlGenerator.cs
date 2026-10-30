@@ -9,7 +9,9 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.Migrations;
 /// <summary>由 EF Core 生成分析覆盖索引，并要求 MySQL 在线创建，避免退化为阻塞写入的建表算法。</summary>
 internal sealed class MySqlOnlineIndexMigrationsSqlGenerator : IMigrationsSqlGenerator {
     /// <summary>覆盖索引的基础名称，历史物理表名称在此名称后附加周期。</summary>
-    private static readonly string[] DurationIndexNames = ["IX_Processing_Stage_PartitionTime_Duration", "IX_Processing_Source_Stage_Duration", "IX_Dws_Time_Stage_Success"];
+    private static readonly string[] OnlineIndexNames = ["IX_Processing_Stage_PartitionTime_Duration", "IX_Processing_Source_Stage_Duration", "IX_Dws_Time_Stage_Success",
+        "IX_Processing_Parcel_Endpoint_Reliability", "IX_Processing_Parcel_Stage_Detection", "IX_Processing_Source_Time_Stage_Success",
+        "IX_Dws_Message_Stage_Success", "IX_Dws_Source_Time_Stage_Success", "IX_Processing_Endpoint_Reliability_Covering"];
 
     /// <summary>提供器负责完整迁移的预处理、转义、批处理和事务标记。</summary>
     private readonly MySqlMigrationsSqlGenerator _provider;
@@ -55,13 +57,13 @@ internal sealed class MySqlOnlineIndexMigrationsSqlGenerator : IMigrationsSqlGen
 
     /// <summary>仅普通分析覆盖索引要求在线创建，唯一、全文、空间和其他表索引沿用提供器行为。</summary>
     private static bool RequiresOnlineCreation(CreateIndexOperation operation) {
-        var isDurationIndex = DurationIndexNames.Any(name => operation.Name.Equals(name, StringComparison.OrdinalIgnoreCase)
+        var isAnalyticsIndex = OnlineIndexNames.Any(name => operation.Name.Equals(name, StringComparison.OrdinalIgnoreCase)
             || operation.Name.StartsWith(name + "_", StringComparison.OrdinalIgnoreCase));
         var isProcessingTable = operation.Table.Equals("Parcel_ProcessingRecords", StringComparison.OrdinalIgnoreCase)
             || operation.Table.StartsWith("Parcel_ProcessingRecords_", StringComparison.OrdinalIgnoreCase)
             || operation.Table.Equals("Parcel_DwsMeasurements", StringComparison.OrdinalIgnoreCase)
             || operation.Table.StartsWith("Parcel_DwsMeasurements_", StringComparison.OrdinalIgnoreCase);
-        return isDurationIndex && isProcessingTable && !operation.IsUnique
+        return isAnalyticsIndex && isProcessingTable && !operation.IsUnique
             && operation["MySql:FullTextIndex"] is not true && operation["MySql:SpatialIndex"] is not true;
     }
 }

@@ -1,5 +1,7 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Zeye.Sorting.Hub.Contracts.Models.Parcels.Dws;
@@ -26,11 +28,12 @@ public sealed class ParcelDwsMeasurementProjectionTests {
             ["Persistence:Provider"] = provider, ["Persistence:MySql:ServerVersion"] = "8.4.0",
             ["ConnectionStrings:MySql"] = "Server=127.0.0.1;Database=design_time_only;User Id=design_time_only",
             ["ConnectionStrings:SqlServer"] = "Server=127.0.0.1;Database=design_time_only;Integrated Security=True;TrustServerCertificate=True",
-            ["ConnectionStrings:Oracle"] = "User Id=design_time_only;Password=design_time_only;Data Source=127.0.0.1:1521/FREEPDB1",
+            ["ConnectionStrings:Oracle"] = "User Id=design_time_only;Data Source=127.0.0.1:1521/FREEPDB1",
             ["ConnectionStrings:SQLite"] = "Data Source=data/business/design-time-only.db"
         }).Build();
         using var services = new ServiceCollection().AddSingleton<IConfiguration>(settings).AddSortingHubPersistence(settings)
-            .AddDbContextFactory<SortingHubDbContext>(options => options.EnableServiceProviderCaching(false)).BuildServiceProvider();
+            .AddDbContextFactory<SortingHubDbContext>(options => options.EnableServiceProviderCaching(false)
+                .ConfigureWarnings(warnings => warnings.Throw(CoreEventId.SkippedEntityTypeConfigurationWarning))).BuildServiceProvider();
         using var db = services.GetRequiredService<IDbContextFactory<SortingHubDbContext>>().CreateDbContext();
         var factModel = db.Model.FindEntityType(typeof(ParcelProcessingRecord))!;
         var measurementModel = db.Model.FindEntityType(typeof(ParcelDwsMeasurementSnapshot))!;
@@ -48,15 +51,33 @@ public sealed class ParcelDwsMeasurementProjectionTests {
         Assert.DoesNotContain("Parcel_ProcessingRecords", sql, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("WeightGrams", sql); Assert.Contains("ReceivedAt", sql);
         Assert.DoesNotContain("RawPayload", sql); Assert.DoesNotContain("ErrorMessage", sql);
+        using var independent = read.CreateIndependent();
+        Assert.NotSame(read.Database.GetDbConnection(), independent.Database.GetDbConnection());
+        Assert.Equal(sql, independent.Query(["202610"], nameof(ParcelDwsMeasurementSnapshot.PartitionTime), from, from.AddDays(1), false)
+            .Where(row => row.Stage == ParcelProcessingStage.DwsReceived || row.Stage == ParcelProcessingStage.DwsBound).ToQueryString());
         var batch = ParcelDwsMeasurementBackfillService.BuildBatch(db.Set<ParcelProcessingRecord>().AsNoTracking(), "cursor").ToQueryString();
         Assert.Contains("ORDER BY", batch, StringComparison.OrdinalIgnoreCase); Assert.Contains("Key", batch);
         Assert.DoesNotContain("OFFSET", batch, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("RawPayload", batch); Assert.DoesNotContain("RequestBody", batch);
     }
 
-    /// <summary>新事实窄投影同事务保存，历史补齐幂等；补齐后即使原表不可供查询也保持完整业务结果。</summary>
+    /// <summary>外部显式共享的连接不能被复制为并行分支，避免多个读取器争用相同连接。</summary>
     [Fact]
-    public async Task DurableProjectionPreservesMeasurementsIdentityAndScanEndpoints() {
+    public void ExternalSharedConnectionRejectsIndependentReader() {
+        using var connection = new SqliteConnection("Data Source=:memory:");
+        using var db = new SortingHubDbContext(new DbContextOptionsBuilder<SortingHubDbContext>().UseSqlite(connection).Options);
+        using var read = ParcelPartitionReadContext<ParcelDwsMeasurementSnapshot>.Create<ParcelProcessingRecord>(db, [string.Empty], streaming: true);
+        Assert.False(read.CanCreateIndependentConnection);
+        Assert.Throws<InvalidOperationException>(() => read.CreateIndependent());
+    }
+
+    /// <summary>新事实窄投影同事务保存，历史补齐幂等；补齐后即使原表不可供查询也保持完整业务结果。</summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    public async Task DurableProjectionPreservesMeasurementsIdentityAndScanEndpoints(int projectedPerDay) {
         await using var database = new RelationalParcelTestDatabase("PerDay"); await database.InitializeAsync();
         var at = new DateTime(2026, 10, 6, 10, 0, 0);
         foreach (var day in new[] { 0, 1 }) {
@@ -71,7 +92,8 @@ public sealed class ParcelDwsMeasurementProjectionTests {
             Assert.Equal(3, await db.Set<ParcelDwsMeasurementSnapshot>().CountAsync());
             Assert.All(await db.Set<ParcelDwsMeasurementSnapshot>().ToListAsync(), row => Assert.True(row.Key.StartsWith("detected-", StringComparison.Ordinal) || row.Key.StartsWith("received-", StringComparison.Ordinal) || row.Key.StartsWith("bound-", StringComparison.Ordinal)));
             // 模拟升级前的历史记录：只清除测试数据库中的派生读模型，原事实完整保留。
-            await db.Set<ParcelDwsMeasurementSnapshot>().ExecuteDeleteAsync();
+            var retained = await db.Set<ParcelDwsMeasurementSnapshot>().OrderBy(row => row.Key).Take(projectedPerDay).Select(row => row.Key).ToArrayAsync();
+            await db.Set<ParcelDwsMeasurementSnapshot>().Where(row => !retained.Contains(row.Key)).ExecuteDeleteAsync();
         }
         var reader = new ParcelDwsConsistencyReadService(database.Factory,
             new ReportingQueryBudgetPlanner(Microsoft.Extensions.Options.Options.Create(new ReadOnlyDatabaseOptions())), database.Partitions);
@@ -110,6 +132,37 @@ public sealed class ParcelDwsMeasurementProjectionTests {
         for (var attempt = 0; attempt < 3; attempt++) await backfill.RunBatchAsync(default);
         await using var read = await database.Partitions.CreateContextAsync(database.Partitions.Resolve(at).Suffix, default);
         Assert.Equal(600, await read.Set<ParcelDwsMeasurementSnapshot>().CountAsync());
+    }
+
+    /// <summary>窄表读完后后台才补入缺失记录，原事实回退仍返回该事实且不会重复计量。</summary>
+    [Fact]
+    public async Task ProjectionInsertedBetweenReadsDoesNotHideOrDuplicateMeasurement() {
+        var interceptor = new DwsBackfillDuringReadInterceptor();
+        await using var database = new RelationalParcelTestDatabase("PerDay", interceptor);
+        await database.InitializeAsync();
+        var at = new DateTime(2026, 10, 6, 10, 0, 0);
+        await database.Partitions.EnsureCreatedAsync(database.Partitions.Resolve(at), default);
+        var suffix = database.Partitions.Resolve(at).Suffix;
+        var received = Fact("racing-received", 9007199254741001, at) with { ReceivedAt = at };
+        await using (var db = await database.Partitions.CreateContextAsync(suffix, default)) {
+            db.Add(received); await db.SaveChangesAsync();
+        }
+        var reader = new ParcelDwsConsistencyReadService(database.Factory,
+            new ReportingQueryBudgetPlanner(Microsoft.Extensions.Options.Options.Create(new ReadOnlyDatabaseOptions())), database.Partitions);
+        var request = new ParcelDwsConsistencyRequest { FromDate = at.Date, ToDate = at.Date, DetailBarcode = "SAME" };
+        var expected = await reader.ReadAsync(request, default);
+        await using (var db = await database.Partitions.CreateContextAsync(suffix, default))
+            await db.Set<ParcelDwsMeasurementSnapshot>().ExecuteDeleteAsync();
+        interceptor.BackfillAsync = async token => {
+            await using var db = await database.Partitions.CreateContextAsync(suffix, token);
+            db.Add(ParcelDwsMeasurementSnapshot.Create(received));
+            await db.SaveChangesAsync(token);
+        };
+        var actual = await reader.ReadAsync(request, default);
+        Assert.True(interceptor.Triggered);
+        Assert.Equal(1, actual.MeasurementCount);
+        Assert.Equal(0, actual.DuplicateRecordCount);
+        Assert.Equal(JsonSerializer.Serialize(expected with { GeneratedAt = at }), JsonSerializer.Serialize(actual with { GeneratedAt = at }));
     }
 
     /// <summary>明确关联与真实接收时间的固定测试事实。</summary>

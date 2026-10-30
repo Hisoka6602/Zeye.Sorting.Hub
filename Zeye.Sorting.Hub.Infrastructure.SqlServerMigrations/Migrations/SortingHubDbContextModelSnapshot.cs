@@ -960,6 +960,18 @@ namespace Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations.Migrations
 
                     b.HasIndex("OccurredAt", "IsSuccess", "ParcelId", "Stage");
 
+                    b.HasIndex("ParcelId", "OccurredAt", "Stage", "HasReliableTimestamp")
+                        .HasDatabaseName("IX_Processing_Parcel_Endpoint_Reliability");
+
+                    b.HasIndex("SourceInstanceId", "PartitionTime", "Stage", "IsSuccess")
+                        .HasDatabaseName("IX_Processing_Source_Time_Stage_Success");
+
+                    b.HasIndex("ParcelId", "Stage", "SourceInstanceId", "SourceRunId", "SourceParcelId", "OccurredAt", "PartitionTime", "HasReliableTimestamp", "IsSuccess")
+                        .HasDatabaseName("IX_Processing_Parcel_Stage_Detection");
+
+                    b.HasIndex("ParcelId", "OccurredAt", "Stage", "HasReliableTimestamp", "SourceInstanceId", "SourceRunId", "SourceParcelId", "AttemptNumber", "RecordId", "IsSuccess")
+                        .HasDatabaseName("IX_Processing_Endpoint_Reliability_Covering");
+
                     b.HasIndex("SourceInstanceId", "Stage", "PartitionTime", "ParcelId", "OccurredAt", "SourceRunId", "SourceParcelId", "RecordId", "IsSuccess", "HasReliableTimestamp")
                         .HasDatabaseName("IX_Processing_Source_Stage_Duration");
 
@@ -1700,10 +1712,16 @@ namespace Zeye.Sorting.Hub.Infrastructure.SqlServerMigrations.Migrations
 
                     b.HasIndex("PartitionTime", "Stage");
 
+                    b.HasIndex("MessageIdentity", "Stage", "IsSuccess")
+                        .HasDatabaseName("IX_Dws_Message_Stage_Success");
+
                     b.HasIndex("PartitionTime", "Stage", "IsSuccess")
                         .HasDatabaseName("IX_Dws_Time_Stage_Success");
 
                     b.HasIndex("SourceInstanceId", "PartitionTime", "Stage");
+
+                    b.HasIndex("SourceInstanceId", "PartitionTime", "Stage", "IsSuccess")
+                        .HasDatabaseName("IX_Dws_Source_Time_Stage_Success");
 
                     b.ToTable("Parcel_DwsMeasurements", "dbo");
                 });

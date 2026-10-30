@@ -261,7 +261,7 @@ WHERE TABLE_SCHEMA = COALESCE(NULLIF(@p0, ''), DATABASE())
         }
 
         /// <summary>
-        /// 批量探测 MySQL 物理分表缺失项（单次查询目标 schema 全量表名后做内存对比；为空回退当前数据库）。
+        /// 批量探测 MySQL 物理分表缺失项，按服务器表名大小写规则比较；为空回退当前数据库。
         /// </summary>
         /// <param name="dbContext">数据库上下文。</param>
         /// <param name="schemaName">schema 名称；为空时默认使用当前数据库。</param>
@@ -298,13 +298,16 @@ WHERE TABLE_SCHEMA = COALESCE(NULLIF(@p0, ''), DATABASE())
             var existingTables = await dbContext.Database
                 .SqlQueryRaw<string>(sql, normalizedSchemaName ?? string.Empty)
                 .ToListAsync(cancellationToken);
-            var existingTableSet = existingTables
-                .Where(static tableName => !string.IsNullOrWhiteSpace(tableName))
-                .ToHashSet(StringComparer.Ordinal);
+            var lowerCaseMode = await dbContext.Database.SqlQueryRaw<int>("SELECT @@lower_case_table_names AS Value")
+                .SingleAsync(cancellationToken);
+            return FindMissingTableNames(normalizedExpectedTables, existingTables, lowerCaseMode);
+        }
 
-            return normalizedExpectedTables
-                .Where(tableName => !existingTableSet.Contains(tableName))
-                .ToArray();
+        /// <summary>Windows小写存储模式不误报PascalCase表名；Linux大小写敏感模式仍严格区分真实对象。</summary>
+        internal static IReadOnlyList<string> FindMissingTableNames(IReadOnlyList<string> expected, IReadOnlyList<string> existing, int lowerCaseMode) {
+            var comparer = lowerCaseMode == 0 ? StringComparer.Ordinal : StringComparer.OrdinalIgnoreCase;
+            var actual = existing.Where(static name => !string.IsNullOrWhiteSpace(name)).ToHashSet(comparer);
+            return expected.Where(name => !actual.Contains(name)).ToArray();
         }
 
         /// <summary>

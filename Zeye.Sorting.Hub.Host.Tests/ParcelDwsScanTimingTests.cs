@@ -123,7 +123,8 @@ public sealed class ParcelDwsScanTimingTests {
     [InlineData(false)]
     [InlineData(true)]
     public async Task CompleteWindowGroupStillUsesEarlierHistoricalReception(bool useIndex) {
-        await using var db = new RelationalParcelTestDatabase("PerDay");
+        var capture = new UnboundQueryCaptureInterceptor(includeDwsMeasurements: true);
+        await using var db = new RelationalParcelTestDatabase("PerDay", capture);
         await db.InitializeAsync();
         var sourceDetected = new DateTime(2026, 10, 1, 10, 0, 0);
         var laterIntake = sourceDetected.AddDays(1);
@@ -145,6 +146,7 @@ public sealed class ParcelDwsScanTimingTests {
             var backfill = new ParcelDwsMeasurementBackfillService(db.Factory, db.Partitions);
             while (await backfill.RunBatchAsync(default) > 0) { }
         }
+        capture.Commands.Clear();
         var reader = Reader(db);
         var firstDay = await reader.ReadAsync(Request(sourceDetected) with { DetailBarcode = "SCAN" }, default);
         var secondDay = await reader.ReadAsync(Request(laterIntake) with { DetailBarcode = "SCAN" }, default);
@@ -156,6 +158,13 @@ public sealed class ParcelDwsScanTimingTests {
         Assert.Equal(1, combined.MeasurementCount);
         Assert.Equal(firstDay.MeasurementCount + secondDay.MeasurementCount, combined.MeasurementCount);
         Assert.Equal(2, combined.DuplicateRecordCount);
+        var messageQueries = capture.Commands.Where(command => command.Parameters.Any(parameter =>
+            parameter.Name.Contains("messages", StringComparison.Ordinal))).ToArray();
+        Assert.NotEmpty(messageQueries);
+        Assert.All(messageQueries, command => {
+            Assert.Contains(useIndex ? "Parcel_DwsMeasurements" : "Parcel_ProcessingRecords", command.Sql, StringComparison.Ordinal);
+            if (useIndex) Assert.DoesNotContain("Parcel_ProcessingRecords", command.Sql, StringComparison.Ordinal);
+        });
     }
 
     /// <summary>501票跨身份批次时按分表块关联，正常检测走目录；缺目录历史联合读取仍保留冲突事实。</summary>
@@ -167,6 +176,7 @@ public sealed class ParcelDwsScanTimingTests {
         var at = new DateTime(2026, 10, 8, 10, 0, 0);
         for (var day = 1; day <= 3; day++)
             await db.Partitions.EnsureCreatedAsync(db.Partitions.Resolve(at.AddDays(-day)), default);
+        await Save(db, Measurement("unrelated-history", "unrelated-history", "a", "run-1", null, at.AddDays(-1)));
         for (var index = 1; index <= 501; index++) {
             var detected = at.AddSeconds(index);
             await Detect(db, "a", "run-1", index, detected);
@@ -181,8 +191,12 @@ public sealed class ParcelDwsScanTimingTests {
         Assert.Equal(501, report.ScanTimingSampleCount);
         var queries = capture.Commands.ToArray();
         var messageQueries = queries.Where(command => command.Parameters.Any(parameter => parameter.Name.Contains("messages", StringComparison.Ordinal))).ToArray();
-        Assert.Equal(2, messageQueries.Length);
-        Assert.All(messageQueries, command => Assert.Contains("UNION ALL", command.Sql, StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(4, messageQueries.Length);
+        Assert.All(messageQueries, command => {
+            Assert.Contains("Parcel_ProcessingRecords_20261007", command.Sql, StringComparison.Ordinal);
+            Assert.DoesNotContain("Parcel_ProcessingRecords_20261006", command.Sql, StringComparison.Ordinal);
+            Assert.DoesNotContain("Parcel_ProcessingRecords_20261005", command.Sql, StringComparison.Ordinal);
+        });
         var detections = queries.Where(command => command.Sql.Contains("OccurredAt", StringComparison.Ordinal)
             && !command.Sql.Contains("MessageIdentity", StringComparison.Ordinal)).ToArray();
         Assert.Equal(2, detections.Length);
@@ -191,6 +205,21 @@ public sealed class ParcelDwsScanTimingTests {
             Assert.DoesNotContain("UNION ALL", command.Sql, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("Parcel_ProcessingRecords_20261007", command.Sql, StringComparison.Ordinal);
         });
+        await using (var dbContext = await db.Factory.CreateDbContextAsync()) {
+            await dbContext.Database.OpenConnectionAsync();
+            await using var command = dbContext.Database.GetDbConnection().CreateCommand();
+            command.CommandText = "EXPLAIN QUERY PLAN " + detections[0].Sql;
+            foreach (var (name, value, type) in detections[0].Parameters) {
+                var parameter = command.CreateParameter();
+                parameter.ParameterName = name; parameter.Value = value; parameter.DbType = type;
+                command.Parameters.Add(parameter);
+            }
+            await using var plan = await command.ExecuteReaderAsync();
+            var lookups = new List<string>();
+            while (await plan.ReadAsync()) lookups.Add(plan.GetString(3));
+            Assert.Contains(lookups, detail => detail.Contains("IX_Processing_Parcel_Stage_Detection", StringComparison.Ordinal)
+                && detail.Contains("ParcelId=? AND Stage=?", StringComparison.Ordinal));
+        }
         Assert.True(messageQueries.Length + detections.Length < 2 * catalog.Suffixes.Count);
 
         // 移除测试目录以覆盖遗留路径，另存一个原始冲突检测，不能被只取首条的优化掩盖。
@@ -308,6 +337,24 @@ public sealed class ParcelDwsScanTimingTests {
         var result = ParcelDwsScanTimingReader.ReceiveEndpoint(sample, [received, bound]);
         Assert.Equal("conflicting-parcel-identity", result.ScanTimingUnavailableReason);
         Assert.Null(result.ScanCompletedAt); Assert.Null(result.ScanDurationMilliseconds);
+    }
+
+    /// <summary>切换事实回退与补齐窄表时，来源展示和量测统计不依赖数据库返回顺序。</summary>
+    [Fact]
+    public async Task BackfillDoesNotChangeSourceSummaryOrMeasurementStatistics() {
+        await using var db = new RelationalParcelTestDatabase("PerDay");
+        await db.InitializeAsync();
+        var at = new DateTime(2026, 10, 1, 10, 0, 0);
+        await Save(db, Measurement("first-source-summary", "first-message", "a", "run-1", null, at) with { WorkstationName = "工作台-Z" });
+        await Save(db, Measurement("second-source-summary", "second-message", "a", "run-1", null, at.AddSeconds(1)) with { WorkstationName = "工作台-A" });
+        var reader = Reader(db);
+        var before = await reader.ReadAsync(Request(at) with { DetailBarcode = "SCAN" }, default);
+        Assert.Equal("工作台-A", Assert.Single(before.Sources).WorkstationName);
+        var backfill = new ParcelDwsMeasurementBackfillService(db.Factory, db.Partitions);
+        while (await backfill.RunBatchAsync(default) > 0) { }
+        var after = await reader.ReadAsync(Request(at) with { DetailBarcode = "SCAN" }, default);
+        Assert.Equal(System.Text.Json.JsonSerializer.Serialize(before with { GeneratedAt = at }),
+            System.Text.Json.JsonSerializer.Serialize(after with { GeneratedAt = at }));
     }
 
     /// <summary>生产同款缓存、预算与EF Core分表读取。</summary>

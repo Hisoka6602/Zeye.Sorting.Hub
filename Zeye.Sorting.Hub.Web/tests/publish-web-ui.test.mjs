@@ -60,6 +60,7 @@ async function fixture(t) {
   return { root, directory, options, calls, install, build, runNpm };
 }
 
+/** 同时损坏安装索引和传递包，覆盖旧版只检查已列出包的校验缺口。 */
 async function removeTransitivePackage(root) {
   const installedFile = path.join(root, "node_modules/.package-lock.json");
   const installed = JSON.parse(await fs.readFile(installedFile, "utf8"));
@@ -205,13 +206,14 @@ test("offline cache failure and primary-source failure fall back with bounded wa
   assert.equal(await fs.readFile(path.join(f.root, "package-lock.json"), "utf8"), before);
 });
 
-test("simultaneous publications share one install and one build", async (t) => {
+test("simultaneous publications and Windows path aliases share one install and one build", async (t) => {
   const f = await fixture(t);
   const options = { ...f.options, runNpm: async (args, settings) => {
     await new Promise((resolve) => setTimeout(resolve, 60));
     return f.runNpm(args, settings);
   } };
-  const results = await Promise.all([publishWebUi(options), publishWebUi(options)]);
+  const aliasedRoot = process.platform === "win32" ? options.root.toUpperCase() : options.root;
+  const results = await Promise.all([publishWebUi(options), publishWebUi({ ...options, root: aliasedRoot })]);
   assert.equal(results.filter((result) => result.built).length, 1);
   assert.equal(f.calls.length, 2);
 });

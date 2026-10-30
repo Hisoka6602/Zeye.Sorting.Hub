@@ -64,6 +64,42 @@ public sealed class PartitionIndexMaintenanceTests {
     [InlineData(true, "", "IX_Dws_Time_Stage_Success")]
     [InlineData(true, "202609", "IX_Dws_Time_Stage_Success")]
     [InlineData(true, "202610", "IX_Dws_Time_Stage_Success")]
+    [InlineData(false, "", "IX_Processing_Parcel_Endpoint_Reliability")]
+    [InlineData(false, "202609", "IX_Processing_Parcel_Endpoint_Reliability")]
+    [InlineData(false, "202610", "IX_Processing_Parcel_Endpoint_Reliability")]
+    [InlineData(true, "", "IX_Processing_Parcel_Endpoint_Reliability")]
+    [InlineData(true, "202609", "IX_Processing_Parcel_Endpoint_Reliability")]
+    [InlineData(true, "202610", "IX_Processing_Parcel_Endpoint_Reliability")]
+    [InlineData(false, "", "IX_Processing_Parcel_Stage_Detection")]
+    [InlineData(false, "202609", "IX_Processing_Parcel_Stage_Detection")]
+    [InlineData(false, "202610", "IX_Processing_Parcel_Stage_Detection")]
+    [InlineData(true, "", "IX_Processing_Parcel_Stage_Detection")]
+    [InlineData(true, "202609", "IX_Processing_Parcel_Stage_Detection")]
+    [InlineData(true, "202610", "IX_Processing_Parcel_Stage_Detection")]
+    [InlineData(false, "", "IX_Processing_Source_Time_Stage_Success")]
+    [InlineData(false, "202609", "IX_Processing_Source_Time_Stage_Success")]
+    [InlineData(false, "202610", "IX_Processing_Source_Time_Stage_Success")]
+    [InlineData(true, "", "IX_Processing_Source_Time_Stage_Success")]
+    [InlineData(true, "202609", "IX_Processing_Source_Time_Stage_Success")]
+    [InlineData(true, "202610", "IX_Processing_Source_Time_Stage_Success")]
+    [InlineData(false, "", "IX_Dws_Message_Stage_Success")]
+    [InlineData(false, "202609", "IX_Dws_Message_Stage_Success")]
+    [InlineData(false, "202610", "IX_Dws_Message_Stage_Success")]
+    [InlineData(true, "", "IX_Dws_Message_Stage_Success")]
+    [InlineData(true, "202609", "IX_Dws_Message_Stage_Success")]
+    [InlineData(true, "202610", "IX_Dws_Message_Stage_Success")]
+    [InlineData(false, "", "IX_Dws_Source_Time_Stage_Success")]
+    [InlineData(false, "202609", "IX_Dws_Source_Time_Stage_Success")]
+    [InlineData(false, "202610", "IX_Dws_Source_Time_Stage_Success")]
+    [InlineData(true, "", "IX_Dws_Source_Time_Stage_Success")]
+    [InlineData(true, "202609", "IX_Dws_Source_Time_Stage_Success")]
+    [InlineData(true, "202610", "IX_Dws_Source_Time_Stage_Success")]
+    [InlineData(false, "", "IX_Processing_Endpoint_Reliability_Covering")]
+    [InlineData(false, "202609", "IX_Processing_Endpoint_Reliability_Covering")]
+    [InlineData(false, "202610", "IX_Processing_Endpoint_Reliability_Covering")]
+    [InlineData(true, "", "IX_Processing_Endpoint_Reliability_Covering")]
+    [InlineData(true, "202609", "IX_Processing_Endpoint_Reliability_Covering")]
+    [InlineData(true, "202610", "IX_Processing_Endpoint_Reliability_Covering")]
     public void DurationIndexUsesOnlineDdlInRuntimeAndDesignTime(bool designTime, string suffix, string indexName) {
         var configuration = BuildConfiguration();
         using var services = new ServiceCollection().AddSingleton<IConfiguration>(configuration)
@@ -80,7 +116,13 @@ public sealed class PartitionIndexMaintenanceTests {
         var command = Assert.Single(generator.Generate([operation], model));
         Assert.Contains(" ALGORITHM=INPLACE LOCK=NONE;", command.CommandText, StringComparison.Ordinal);
         Assert.Contains("`" + operation.Table + "`", command.CommandText, StringComparison.Ordinal);
-        Assert.Equal(indexName == "IX_Dws_Time_Stage_Success" ? 3 : 10, operation.Columns.Length);
+        var expectedColumnCount = indexName switch {
+            "IX_Dws_Time_Stage_Success" or "IX_Dws_Message_Stage_Success" => 3,
+            "IX_Processing_Parcel_Stage_Detection" => 9,
+            "IX_Processing_Parcel_Endpoint_Reliability" or "IX_Processing_Source_Time_Stage_Success" or "IX_Dws_Source_Time_Stage_Success" => 4,
+            _ => 10
+        };
+        Assert.Equal(expectedColumnCount, operation.Columns.Length);
         if (suffix.Length == 0) Assert.False(db.Database.HasPendingModelChanges());
     }
 

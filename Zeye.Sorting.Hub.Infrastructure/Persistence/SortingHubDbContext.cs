@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Zeye.Sorting.Hub.Domain.Aggregates.Parcels;
 using Zeye.Sorting.Hub.Infrastructure.EntityConfigurations;
 using Zeye.Sorting.Hub.Infrastructure.Persistence.Sharding;
 
@@ -43,7 +44,7 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence {
             modelBuilder.ApplyConfigurationsFromAssembly(
                 typeof(SortingHubDbContext).Assembly,
                 type => type != typeof(ParcelEntityTypeConfiguration));
-            modelBuilder.ApplyConfiguration(new ParcelEntityTypeConfiguration(Database.ProviderName == DbProviderNames.SqlServer));
+            new ParcelEntityTypeConfiguration(Database.ProviderName == DbProviderNames.SqlServer).Configure(modelBuilder.Entity<Parcel>());
             // 协议身份区分大小写，不能由数据库默认语言排序规则合并不同来源图片。
             FusionEntityTypeConfiguration.ConfigureIdentities(modelBuilder, Database.ProviderName);
             modelBuilder.Entity<Management.ManagedDocument>(b => {

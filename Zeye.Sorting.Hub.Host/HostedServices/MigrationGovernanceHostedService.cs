@@ -137,6 +137,15 @@ public sealed class MigrationGovernanceHostedService : IHostedService {
                 && !await _dialect.HasUserObjectsAsync(administration, _dialect.ExtractDatabaseName(connectionString), cancellationToken);
             var forwardScript = GenerateForwardScript(dbContext, appliedMigrations, pendingMigrations);
             var dangerousOperations = MigrationSafetyEvaluator.EvaluateDangerousOperations(forwardScript);
+            if (appliedMigrations.Length > 0 && pendingMigrations.Length > 0) {
+                var migrations = dbContext.GetService<IMigrationsAssembly>();
+                var operations = pendingMigrations.SelectMany(id => migrations.CreateMigration(
+                    migrations.Migrations[id], dbContext.Database.ProviderName!).UpOperations).ToArray();
+                if (AutomaticIndexUpgradePolicy.Allows(_configuration, operations)) {
+                    isDryRun = false;
+                    NLogLogger.Info("已有数据库执行普通索引自动升级，Provider={Provider}, MigrationCount={Count}", providerName, pendingMigrations.Length);
+                }
+            }
             var (shouldApplyMigrations, skipReason) = EvaluateShouldApplyMigrations(
                 pendingMigrations.Length > 0,
                 isDryRun,

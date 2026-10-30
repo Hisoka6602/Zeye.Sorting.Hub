@@ -11,6 +11,12 @@ namespace Zeye.Sorting.Hub.Infrastructure.Persistence.ReadModels;
 
 /// <summary>在同一物理分表内核对历史时间端点，仅排除明确不可靠的来源事实，不重写已保存快照。</summary>
 internal static class ParcelTimestampReliabilitySql {
+    /// <summary>按实际EF索引映射定位单票端点，基础表与历史物理表使用相同列序。</summary>
+    private static readonly string[] EndpointIndexProperties = [nameof(ParcelProcessingRecord.ParcelId), nameof(ParcelProcessingRecord.OccurredAt),
+        nameof(ParcelProcessingRecord.Stage), nameof(ParcelProcessingRecord.HasReliableTimestamp), nameof(ParcelProcessingRecord.SourceInstanceId),
+        nameof(ParcelProcessingRecord.SourceRunId), nameof(ParcelProcessingRecord.SourceParcelId), nameof(ParcelProcessingRecord.AttemptNumber),
+        nameof(ParcelProcessingRecord.RecordId), nameof(ParcelProcessingRecord.IsSuccess)];
+
     /// <summary>完成耗时读取仍由数据库筛选与聚合；不存在可靠性标记的历史端点保持兼容。</summary>
     internal static string ReliableLifecycleSource(IEntityType parcel, ISqlGenerationHelper helper, string suffix, string? provider) {
         var facts = parcel.Model.FindEntityType(typeof(ParcelProcessingRecord))!;
@@ -30,23 +36,53 @@ internal static class ParcelTimestampReliabilitySql {
     /// <summary>完整来源身份与当前快照端点同时匹配，失败的完成尝试不参与实际完成端点判断。</summary>
     private static string ReliableEndpoints(IEntityType parcel, IEntityType facts, ISqlGenerationHelper helper, string suffix,
         string? provider, string alias, bool includeCompletion) {
+        var detection = ReliableEndpoint(parcel, facts, helper, suffix, provider, alias, firstDetection: true);
+        // 两个端点各自按 ParcelId + OccurredAt 等值查找，避免 OR 使复合索引退化成逐票读取全部处理事实。
+        return includeCompletion
+            ? detection + " AND " + ReliableEndpoint(parcel, facts, helper, suffix, provider, alias, firstDetection: false)
+            : detection;
+    }
+
+    /// <summary>按单票端点、阶段及可靠性索引查找事实，再按完整身份及重试顺序确认端点可靠性。</summary>
+    private static string ReliableEndpoint(IEntityType parcel, IEntityType facts, ISqlGenerationHelper helper, string suffix,
+        string? provider, string alias, bool firstDetection) {
         string ParcelColumn(string name) => QualifiedColumn(parcel, helper, alias, name);
         string FactColumn(string name) => QualifiedColumn(facts, helper, "f", name);
-        var detection = $"({FactColumn(nameof(ParcelProcessingRecord.Stage))} = {(int)ParcelProcessingStage.Detected} "
-            + $"AND {FactColumn(nameof(ParcelProcessingRecord.OccurredAt))} = {ParcelColumn(nameof(Parcel.DetectedTime))} "
-            + $"AND {SelectedEndpoint(facts, helper, suffix, provider, firstDetection: true)})";
-        var completion = includeCompletion
-            ? $" OR ({FactColumn(nameof(ParcelProcessingRecord.Stage))} = {(int)ParcelProcessingStage.SortingCompleted} "
-                + $"AND ({FactColumn(nameof(ParcelProcessingRecord.IsSuccess))} IS NULL OR {FactColumn(nameof(ParcelProcessingRecord.IsSuccess))} <> 0) "
-                + $"AND {FactColumn(nameof(ParcelProcessingRecord.OccurredAt))} = {ParcelColumn(nameof(Parcel.CompletedTime))} "
-                + $"AND {SelectedEndpoint(facts, helper, suffix, provider, firstDetection: false)})"
-            : "";
-        return $"NOT EXISTS (SELECT 1 FROM {Table(facts, helper, suffix)} f WHERE "
+        var stage = firstDetection ? ParcelProcessingStage.Detected : ParcelProcessingStage.SortingCompleted;
+        var endpoint = firstDetection ? nameof(Parcel.DetectedTime) : nameof(Parcel.CompletedTime);
+        var success = firstDetection ? ""
+            : $"AND ({FactColumn(nameof(ParcelProcessingRecord.IsSuccess))} IS NULL OR {FactColumn(nameof(ParcelProcessingRecord.IsSuccess))} <> 0) ";
+        var reliable = $"NOT EXISTS (SELECT 1 FROM {EndpointFactSource(facts, helper, suffix, provider, "f")} WHERE "
             + $"{FactColumn(nameof(ParcelProcessingRecord.ParcelId))} = {ParcelColumn(nameof(Parcel.Id))} "
+            + $"AND {FactColumn(nameof(ParcelProcessingRecord.OccurredAt))} = {ParcelColumn(endpoint)} "
+            + $"AND {FactColumn(nameof(ParcelProcessingRecord.Stage))} = {(int)stage} {success}"
             + $"AND {EqualIdentity(FactColumn(nameof(ParcelProcessingRecord.SourceInstanceId)), ParcelColumn(nameof(Parcel.SourceInstanceId)), provider)} "
             + $"AND {EqualIdentity(FactColumn(nameof(ParcelProcessingRecord.SourceRunId)), ParcelColumn(nameof(Parcel.SourceRunId)), provider)} "
             + $"AND {FactColumn(nameof(ParcelProcessingRecord.SourceParcelId))} = {ParcelColumn(nameof(Parcel.SourceParcelId))} "
-            + $"AND {FactColumn(nameof(ParcelProcessingRecord.HasReliableTimestamp))} = 0 AND ({detection}{completion}))";
+            + $"AND {FactColumn(nameof(ParcelProcessingRecord.HasReliableTimestamp))} = 0 "
+            + $"AND {SelectedEndpoint(facts, helper, suffix, provider, firstDetection)})";
+        if (provider != DbProviderNames.MySql) return reliable;
+        // 该探测与包裹无关，MySQL仅执行一次；全可靠周期不再为每票重复探测空端点。
+        var probeIndex = facts.GetIndexes().Single(index => index.Properties.Count >= 2
+            && index.Properties[0].Name == nameof(ParcelProcessingRecord.Stage)
+            && index.Properties[1].Name == nameof(ParcelProcessingRecord.PartitionTime));
+        var probeSource = IndexedFactSource(facts, helper, suffix, "g", probeIndex);
+        return $"(NOT EXISTS (SELECT 1 FROM {probeSource} WHERE "
+            + $"{QualifiedColumn(facts, helper, "g", nameof(ParcelProcessingRecord.Stage))} = {(int)stage} "
+            + $"AND {QualifiedColumn(facts, helper, "g", nameof(ParcelProcessingRecord.HasReliableTimestamp))} = 0) OR {reliable})";
+    }
+
+    /// <summary>MySQL固定端点查找索引，避免按发生时间反复回表或大量旧不可靠端点触发整期物化；索引随启动迁移补齐。</summary>
+    private static string EndpointFactSource(IEntityType facts, ISqlGenerationHelper helper, string suffix, string? provider, string alias) {
+        if (provider != DbProviderNames.MySql) return Table(facts, helper, suffix) + " " + alias;
+        var index = facts.GetIndexes().Single(candidate => candidate.Properties.Select(property => property.Name).SequenceEqual(EndpointIndexProperties));
+        return IndexedFactSource(facts, helper, suffix, alias, index);
+    }
+
+    /// <summary>索引名来自EF实际映射，仅分表后缀由已验证的本地路由追加。</summary>
+    private static string IndexedFactSource(IEntityType facts, ISqlGenerationHelper helper, string suffix, string alias, IReadOnlyIndex index) {
+        var name = index.GetDatabaseName()! + (suffix.Length == 0 ? "" : "_" + suffix);
+        return Table(facts, helper, suffix) + " " + alias + " FORCE INDEX (" + helper.DelimitIdentifier(name) + ")";
     }
 
     /// <summary>同刻多事实沿用领域重放顺序：检测选最先，完成选最后一个未失败事实。</summary>
@@ -56,7 +92,7 @@ internal static class ParcelTimestampReliabilitySql {
         var comparison = firstDetection ? "<" : ">";
         var stage = firstDetection ? ParcelProcessingStage.Detected : ParcelProcessingStage.SortingCompleted;
         var success = firstDetection ? "" : $"AND ({Candidate(nameof(ParcelProcessingRecord.IsSuccess))} IS NULL OR {Candidate(nameof(ParcelProcessingRecord.IsSuccess))} <> 0) ";
-        return $"NOT EXISTS (SELECT 1 FROM {Table(facts, helper, suffix)} e WHERE "
+        return $"NOT EXISTS (SELECT 1 FROM {EndpointFactSource(facts, helper, suffix, provider, "e")} WHERE "
             + $"{Candidate(nameof(ParcelProcessingRecord.ParcelId))} = {Current(nameof(ParcelProcessingRecord.ParcelId))} "
             + $"AND {EqualIdentity(Candidate(nameof(ParcelProcessingRecord.SourceInstanceId)), Current(nameof(ParcelProcessingRecord.SourceInstanceId)), provider)} "
             + $"AND {EqualIdentity(Candidate(nameof(ParcelProcessingRecord.SourceRunId)), Current(nameof(ParcelProcessingRecord.SourceRunId)), provider)} "

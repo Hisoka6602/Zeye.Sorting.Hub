@@ -17,14 +17,25 @@ internal sealed class ParcelPartitionReadContext<TReadModel> : DbContext, IParce
     public Type ReadModelType => typeof(TReadModel);
     /// <summary>排序去重后的不可变物理后缀。</summary>
     private readonly string[] _suffixes;
+    /// <summary>不可变提供器配置供独立只读连接复用，不共享正在执行命令的DbContext。</summary>
+    private readonly DbContextOptions<ParcelPartitionReadContext<TReadModel>> _options;
     /// <summary>模型缓存按分表集合隔离，日期查询参数不参与模型缓存键。</summary>
     public string PartitionModelKey { get; }
 
     /// <summary>配置同一只读上下文中的共享实体，所有查询根使用同一连接及提供器。</summary>
     private ParcelPartitionReadContext(DbContextOptions<ParcelPartitionReadContext<TReadModel>> options, IEntityType sourceEntity,
         string[] suffixes) : base(options) {
-        SourceEntity = sourceEntity; _suffixes = suffixes;
+        SourceEntity = sourceEntity; _suffixes = suffixes; _options = options;
         PartitionModelKey = string.Join('|', suffixes);
+    }
+
+    /// <summary>外部显式提供的连接可能由调用方共享，不能用于并行分支。</summary>
+    internal bool CanCreateIndependentConnection => !_options.Extensions.OfType<RelationalOptionsExtension>().Any(extension => extension.Connection is not null);
+
+    /// <summary>新建独立上下文及连接，复用相同只读模型；禁止在外部共享连接上并行读取。</summary>
+    internal ParcelPartitionReadContext<TReadModel> CreateIndependent() {
+        if (!CanCreateIndependentConnection) throw new InvalidOperationException("显式共享的数据库连接不能创建并行读取分支。");
+        return new(_options, SourceEntity, _suffixes);
     }
 
     /// <summary>复制已有连接、超时和诊断拦截器配置，不建立第二套提供器配置或修改写入模型。</summary>
